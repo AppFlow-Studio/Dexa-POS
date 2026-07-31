@@ -57,6 +57,52 @@ export const KEY_FLOOR_LOAD_APPLY_MS = internKey("floor.load_apply_ms");
 export const KEY_RESUME_SETTLE_MS = internKey("resume_settle_ms");
 
 // --------------------------------------------------------------------------
+// Resume coordinator (lib/lifecycle/appLifecycleCoordinator.ts).
+//
+// resume_settle_ms above measures the SYMPTOM (how long until the JS thread
+// settles after foreground). These measure the CAUSE: which bucket spent the
+// time, how many tasks ran vs were gated out, and how many HTTP requests the
+// resume actually issued. `resume.requests` is the before/after number for
+// the request-storm acceptance criterion — compare its max (peak concurrent
+// in one resume window) across builds.
+// --------------------------------------------------------------------------
+export const KEY_RESUME_BUCKET_MS = internKey("resume.bucket_ms");
+export const KEY_RESUME_TASK_MS = internKey("resume.task_ms");
+export const KEY_RESUME_TASK_ERROR = internKey("resume.task_error");
+export const KEY_RESUME_TASKS_RUN = internKey("resume.tasks_run");
+export const KEY_RESUME_TASKS_SKIPPED = internKey("resume.tasks_skipped");
+/** Requests issued inside a resume window (count = windows, max = peak). */
+export const KEY_RESUME_REQUESTS = internKey("resume.requests");
+/** Requests in flight concurrently at any instant during a resume window. */
+export const KEY_RESUME_PEAK_CONCURRENT = internKey("resume.peak_concurrent");
+
+// --------------------------------------------------------------------------
+// Realtime channel lifecycle (hooks/realtime/useRealtimechannel.ts).
+//
+// Added because a telemetry export showed the floor fallback poll running —
+// which only happens while the channel is NOT subscribed — with no way to see
+// why, or for how long. `rt.disconnected_ms` is the number that matters: the
+// fallback poll's cost scales with it, so a station with long/frequent
+// disconnects pays repeatedly for the heaviest floor RPC.
+// --------------------------------------------------------------------------
+export const KEY_RT_CHANNEL_DISCONNECT = internKey("rt.channel_disconnect");
+export const KEY_RT_CHANNEL_SUBSCRIBED = internKey("rt.channel_subscribed");
+/** Wall time between losing SUBSCRIBED and regaining it. */
+export const KEY_RT_DISCONNECTED_MS = internKey("rt.disconnected_ms");
+
+const resumeBucketCache: Record<string, number> = Object.create(null);
+
+/** Per-bucket completion span id (`resume.bucket_ms.<bucket>`). */
+export function resumeBucketKeyIds(bucket: string): number {
+  let id = resumeBucketCache[bucket];
+  if (id === undefined) {
+    id = internKey(`resume.bucket_ms.${bucket}`);
+    resumeBucketCache[bucket] = id;
+  }
+  return id;
+}
+
+// --------------------------------------------------------------------------
 // Per-persist-key ids (persist.fire.<mmkvKey> etc.), cached per store name so
 // lazyDebouncedWrite does one object-property hit per call after the first.
 // --------------------------------------------------------------------------

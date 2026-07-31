@@ -1,9 +1,26 @@
+import OrdersSelectDropdown, {
+    ActiveFilterPill,
+} from "@/components/previous-orders/OrdersSelectDropdown";
+import PaginationBar from "@/components/previous-orders/PaginationBar";
+import ProviderChipRow from "@/components/previous-orders/ProviderChipRow";
+import { useHistoryFilterControls } from "@/hooks/pos/useHistoryFilterControls";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
+// Sort is driven by the table's column headers here (not a dropdown), so only
+// the status options are needed.
+import {
+    STATUS_OPTIONS,
+    type ChannelTab,
+    type SortKey,
+} from "@/lib/previousOrdersFilters";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
+import {
+    DEFAULT_HISTORY_FILTERS,
+    historyFilterKey,
+} from "@/services/historyOrderFilters";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
@@ -27,9 +44,28 @@ import OrdersTable, { SortColumn, SortDirection } from "./OrdersTable";
 // Define types for props
 type TabName = "All" | "Dine In" | "Takeaway" | "Delivery" | "Online";
 
-const DINE_IN_VALUES = new Set(["Dine In", "dine_in"]);
-const TAKEAWAY_VALUES = new Set(["Takeaway", "takeout"]);
-const DELIVERY_VALUES = new Set(["Delivery", "delivery"]);
+/**
+ * This tab bar predates the shared channel taxonomy and labels its tabs in
+ * display casing. Filtering is server-side now and keyed on `ChannelTab`, so
+ * these maps are the single translation point — the order-type value sets that
+ * used to drive local filtering are gone, along with the risk of the two
+ * definitions of "Dine In" drifting apart.
+ */
+const TAB_TO_CHANNEL: Record<TabName, ChannelTab> = {
+  All: "all",
+  "Dine In": "dine_in",
+  Takeaway: "takeout",
+  Delivery: "delivery",
+  Online: "online",
+};
+
+const CHANNEL_TO_TAB: Record<ChannelTab, TabName> = {
+  all: "All",
+  dine_in: "Dine In",
+  takeout: "Takeaway",
+  delivery: "Delivery",
+  online: "Online",
+};
 
 // Remove old OrderRow and RetrieveButton components - replaced by table view
 
@@ -184,14 +220,38 @@ const PreviousOrdersSection = () => {
   const setDateWindow = usePreviousOrdersStore((s) => s.setDateWindow);
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  const [activeTab, setActiveTab] = useState<TabName>("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync();
-  const loadMoreOrders = usePreviousOrdersStore((s) => s.loadMoreOrders);
-  const isLoadingMore = usePreviousOrdersStore((s) => s._isLoadingMore);
-  const hasMore = usePreviousOrdersStore((s) => s._hasMore);
+
+  // Server-side filters, window-wide counts and page state — the same wiring
+  // the full Previous Orders screen uses, so both surfaces agree on what each
+  // tab means and neither filters a partially-loaded list.
+  const {
+    channelTab,
+    providerFilter,
+    statusFilter,
+    sortKey,
+    searchText: searchQuery,
+    setSearchText: setSearchQuery,
+    activeFilterCount,
+    selectChannel,
+    selectProvider,
+    selectStatus,
+    selectSort,
+    clearFilters,
+    channelCounts,
+    providerCounts,
+    providerRoster,
+    pageIndex,
+    pageCount,
+    totalMatchingCount,
+    isPageLoading,
+    rangeStart,
+    rangeEnd,
+    goToPrevPage,
+    goToNextPage,
+  } = useHistoryFilterControls();
   // Store-driven loading flag: true during the initial fetch AND on every
   // filter/date-window switch (setDateWindow clears the list + flags a refetch).
   // Drives the empty-state spinner so a switch never shows "No orders found".
@@ -201,8 +261,19 @@ const PreviousOrdersSection = () => {
   // persisted locally — the list is re-fetched from the backend on next entry
   // via usePreviousOrdersListSync. Pagination + refresh-throttle state is reset
   // so a re-entry starts from a clean keyset cursor and always re-fetches.
+  // Both history surfaces now drive the same server-side filters, so entering
+  // this one starts from a clean slate rather than inheriting whatever the
+  // other screen was last filtered by — a narrowed list with no visible cause
+  // is worse than a redundant refetch.
   useFocusEffect(
     useCallback(() => {
+      usePreviousOrdersStore.setState({
+        filters: { ...DEFAULT_HISTORY_FILTERS },
+        _loadedFilterKey: historyFilterKey(DEFAULT_HISTORY_FILTERS),
+        totalMatchingCount: null,
+        pageIndex: 0,
+        pageCount: 0,
+      });
       return () => {
         usePreviousOrdersStore.setState({
           previousOrders: [],
@@ -215,6 +286,12 @@ const PreviousOrdersSection = () => {
           _oldestCursor: null,
           lastHistoryRefreshAt: null,
           _lastRefreshLocationId: null,
+          filters: { ...DEFAULT_HISTORY_FILTERS },
+          _loadedFilterKey: historyFilterKey(DEFAULT_HISTORY_FILTERS),
+          totalMatchingCount: null,
+          pageIndex: 0,
+          pageCount: 0,
+          _isPageLoading: false,
         });
       };
     }, []),
@@ -228,13 +305,26 @@ const PreviousOrdersSection = () => {
     [setDateWindow],
   );
 
-  const handleLoadMore = useCallback(() => {
-    if (hasMore && !isLoadingMore) void loadMoreOrders();
-  }, [hasMore, isLoadingMore, loadMoreOrders]);
+  // Table header sort ⇄ server sort. The table exposes its own column model,
+  // but only date and amount can be ordered by the backend, so those are the
+  // only headers OrdersTable leaves tappable in `serverSorted` mode.
+  const sortColumn: SortColumn = sortKey.startsWith("amount")
+    ? "total"
+    : "time";
+  const sortDirection: SortDirection = sortKey.endsWith("asc") ? "asc" : "desc";
 
-  // New state for table view
-  const [sortColumn, setSortColumn] = useState<SortColumn>("time");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const handleSort = useCallback(
+    (column: SortColumn) => {
+      const axis = column === "total" ? "amount" : "date";
+      const currentAxis = sortKey.startsWith("amount") ? "amount" : "date";
+      // Re-tapping the active column flips direction; a new column starts
+      // descending, which is the useful default for both dates and amounts.
+      const nextDir =
+        axis === currentAxis && sortKey.endsWith("desc") ? "asc" : "desc";
+      selectSort(`${axis}_${nextDir}` as SortKey);
+    },
+    [sortKey, selectSort],
+  );
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [menuOrderId, setMenuOrderId] = useState<string | null>(null);
 
@@ -327,70 +417,31 @@ const PreviousOrdersSection = () => {
   }, [previousOrders, offlineLiveOrders]);
 
   // Compute per-tab counts
-  const tabCounts = useMemo<TabCounts>(() => {
-    let dineIn = 0;
-    let takeaway = 0;
-    let delivery = 0;
-    let online = 0;
-    for (const o of allOrders) {
-      const t = o.order_type ?? "";
-      if (DINE_IN_VALUES.has(t)) dineIn++;
-      else if (TAKEAWAY_VALUES.has(t)) takeaway++;
-      else if (DELIVERY_VALUES.has(t)) delivery++;
-      if (o._isOnlineOrder) online++;
-    }
-    return {
-      All: allOrders.length,
-      "Dine In": dineIn,
-      Takeaway: takeaway,
-      Delivery: delivery,
-      Online: online,
-    };
-  }, [allOrders]);
+  // Counts describe the WHOLE date window, not the loaded page. The tab bar
+  // speaks TabName; the store speaks ChannelTab — bridge here rather than
+  // duplicating the taxonomy.
+  const tabCounts = useMemo<TabCounts>(
+    () => ({
+      All: channelCounts.all,
+      "Dine In": channelCounts.dine_in,
+      Takeaway: channelCounts.takeout,
+      Delivery: channelCounts.delivery,
+      Online: channelCounts.online,
+    }),
+    [channelCounts],
+  );
 
-  // Filter orders based on active tab and search query
-  const filteredOrders = useMemo(() => {
-    let filtered = allOrders;
+  const activeTab: TabName = CHANNEL_TO_TAB[channelTab] ?? "All";
 
-    // Filter by tab
-    if (activeTab === "Online") {
-      filtered = filtered.filter((o) => o._isOnlineOrder);
-    } else if (activeTab !== "All") {
-      const tabSet =
-        activeTab === "Dine In"
-          ? DINE_IN_VALUES
-          : activeTab === "Takeaway"
-            ? TAKEAWAY_VALUES
-            : DELIVERY_VALUES;
-      filtered = filtered.filter((o) => tabSet.has(o.order_type ?? ""));
-    }
+  const handleTabChange = useCallback(
+    (tabName: TabName) => selectChannel(TAB_TO_CHANNEL[tabName]),
+    [selectChannel],
+  );
 
-    // Filter by search query (customer name or display number)
-    if (searchQuery.trim() !== "") {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter((o) => {
-        const customerName = (o.customer_name || "walk-in").toLowerCase();
-        const displayNumber = String(o.display_number || "").toLowerCase();
-        return customerName.includes(query) || displayNumber.includes(query);
-      });
-    }
-
-    return filtered;
-  }, [allOrders, activeTab, searchQuery]);
-
-  const handleTabChange = (tabName: TabName) => setActiveTab(tabName);
-
-  // Handle sort
-  const handleSort = (column: SortColumn) => {
-    if (sortColumn === column) {
-      // Toggle direction
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      // New column, default to descending
-      setSortColumn(column);
-      setSortDirection("desc");
-    }
-  };
+  // The server already applied channel, provider, status, search and sort —
+  // render its page as-is. Filtering here would re-scope the result to the
+  // 50 rows currently loaded.
+  const filteredOrders = allOrders;
 
   // Handle row click - open PaymentDetailBottomSheet
   const handleRowClick = (orderId: string) => {
@@ -496,6 +547,18 @@ const PreviousOrdersSection = () => {
           )}
         </View>
 
+        {/* A non-default status or provider narrows the list from a control
+            that may be collapsed or off-tab — keep it visible and clearable. */}
+        <ActiveFilterPill count={activeFilterCount} onClear={clearFilters} />
+
+        <OrdersSelectDropdown
+          prefix="Status:"
+          options={STATUS_OPTIONS}
+          value={statusFilter}
+          onChange={selectStatus}
+          isActive={statusFilter !== "all"}
+        />
+
         {/* Refresh button */}
         <TouchableOpacity
           onPress={handleRefresh}
@@ -517,6 +580,21 @@ const PreviousOrdersSection = () => {
         </TouchableOpacity>
       </View>
 
+      {/* Provider sub-row — Online tab only, and only when the location has
+          online orders in this window. Resets to All Sources when the tab
+          changes, so it can't linger as a hidden filter. */}
+      {channelTab === "online" && providerRoster.length > 0 && (
+        <View style={{ marginBottom: s(10) }}>
+          <ProviderChipRow
+            roster={providerRoster}
+            counts={providerCounts}
+            totalCount={channelCounts.online}
+            selected={providerFilter}
+            onSelect={selectProvider}
+          />
+        </View>
+      )}
+
       {/* Orders Table Container - relative for absolute positioning of banner */}
       <View
         style={{
@@ -525,8 +603,11 @@ const PreviousOrdersSection = () => {
           backgroundColor: colors.screen,
         }}
       >
-        {/* Orders Table - No ScrollView wrapper to avoid nested VirtualizedLists */}
+        {/* Orders Table - one server-sorted page at a time; the pager rides in
+            the list footer so it's reached by scrolling to the bottom of the
+            rows. resetScrollKey snaps the body back to the top on page turn. */}
         <OrdersTable
+          resetScrollKey={pageIndex}
           orders={filteredOrders}
           sortColumn={sortColumn}
           sortDirection={sortDirection}
@@ -534,9 +615,22 @@ const PreviousOrdersSection = () => {
           onMoreClick={handleMoreClick}
           refreshing={isRefreshing}
           onRefresh={handleRefresh}
-          onEndReached={handleLoadMore}
-          isLoadingMore={isLoadingMore}
           isInitialLoading={isFetching}
+          serverSorted
+          ListFooter={
+            filteredOrders.length > 0 ? (
+              <PaginationBar
+                pageIndex={pageIndex}
+                pageCount={pageCount}
+                totalCount={totalMatchingCount}
+                rangeStart={rangeStart}
+                rangeEnd={rangeEnd}
+                isLoading={isPageLoading}
+                onPrev={goToPrevPage}
+                onNext={goToNextPage}
+              />
+            ) : null
+          }
         />
 
         {/* New Orders Banner - Floating */}

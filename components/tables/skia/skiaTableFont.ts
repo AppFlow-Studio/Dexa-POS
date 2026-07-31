@@ -1,4 +1,9 @@
-import { SkFont, Skia, SkTypeface } from "@shopify/react-native-skia";
+import {
+  FontHinting,
+  SkFont,
+  Skia,
+  SkTypeface,
+} from "@shopify/react-native-skia";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system";
 
@@ -97,7 +102,14 @@ export const getTableFont = (
   if (!tf) return null;
 
   const px = Math.max(1, Math.round(size));
-  return Skia.Font(tf, px);
+  const font = Skia.Font(tf, px);
+  // Grid-fit hinting snaps each glyph's outline (and advance width) to the
+  // pixel grid independently at this exact integer size, which is what reads
+  // as uneven letter spacing across a word. Disabling hinting + enabling
+  // linear (unhinted) metrics keeps glyph advances float-precise/consistent.
+  font.setHinting(FontHinting.None);
+  font.setLinearMetrics(true);
+  return font;
 };
 
 export const measureWidth = (font: SkFont, text: string): number => {

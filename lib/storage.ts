@@ -778,29 +778,45 @@ export function getStorageStats(): {
   };
 }
 
-export function getStorageSizeStats(): {
-  general: { keyCount: number; totalBytes: number };
-  secure: { keyCount: number; totalBytes: number };
-  sync: { keyCount: number; totalBytes: number };
-} {
-  const measureBucket = (bucket: typeof storage) => {
-    const keys = bucket.getAllKeys();
-    let totalBytes = 0;
-    for (const key of keys) {
-      const value = bucket.getString(key);
-      if (value != null) {
-        totalBytes += value.length;
-      }
-    }
-    return {
-      keyCount: keys.length,
-      totalBytes,
-    };
-  };
+/**
+ * The three storage buckets, addressable by name for monitoring/diagnostics.
+ */
+const BUCKETS = {
+  general: storage,
+  secure: secureStorage,
+  sync: syncStorage,
+} as const;
 
+export type StorageBucketName = keyof typeof BUCKETS;
+
+/**
+ * Allocated size of each bucket, in bytes.
+ *
+ * Reads MMKV's native `size` — an O(1) property read of the memory-mapped
+ * file, not a key/value enumeration. This runs on the boot path (the storage
+ * monitor in PosSyncProvider), so it must not scale with accumulated
+ * operational data.
+ *
+ * Note this is *allocated* size, not the sum of live values: MMKV grows in
+ * pages and does not shrink when keys are deleted (hence `trim()`), so it
+ * reads at or above the live total. That is the right number for a growth
+ * alarm — unreclaimed space is precisely the failure mode worth alerting on.
+ */
+export function getStorageSizeStats(): Record<StorageBucketName, number> {
   return {
-    general: measureBucket(storage),
-    secure: measureBucket(secureStorage),
-    sync: measureBucket(syncStorage),
+    general: storage.size,
+    secure: secureStorage.size,
+    sync: syncStorage.size,
   };
+}
+
+/**
+ * Number of keys in a single bucket.
+ *
+ * Enumerates keys but reads no values, so it is far cheaper than a full scan —
+ * still O(keys) though, so call it on demand (e.g. to annotate an alarm that
+ * has already fired) rather than on the boot path.
+ */
+export function getBucketKeyCount(name: StorageBucketName): number {
+  return BUCKETS[name].getAllKeys().length;
 }
