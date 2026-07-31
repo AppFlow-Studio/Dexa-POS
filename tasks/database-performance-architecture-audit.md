@@ -22,7 +22,8 @@ Live contract inspected: staging project `dfwqakoyittmrwbqvxgw`
 - Phase 1 static repository audit: complete.
 - Deployed PostgREST contract inventory: complete.
 - Lightweight staging relation estimates: complete.
-- Low-level PostgreSQL workload evidence: pending SQL Editor collector output.
+- Low-level PostgreSQL workload and live-index evidence: collected; controlled
+  delta snapshots and execution plans remain pending.
 - Performance migrations: not started.
 - Redis implementation: not recommended yet.
 
@@ -66,6 +67,22 @@ The read-only collector is:
 Run it in the staging Supabase SQL Editor as `postgres`, export every result
 grid, and return the output for Phase 2. It contains only `SELECT` statements.
 
+The SQL Editor run returned only the collector's final result grid. The
+single-result follow-up collector is:
+
+`supabase/audits/20260731_database_hotspots_followup_readonly.sql`
+
+It returns the statistics window, top statements, priority-table index
+inventory, foreign keys without a supporting index, and relation health in one
+exportable grid. It contains one `WITH`/`SELECT` statement.
+
+The focused delta collector is:
+
+`supabase/audits/20260731_database_workload_delta_readonly.sql`
+
+Run it immediately before and after a controlled POS test. It identifies which
+current client paths increment without clearing cumulative database statistics.
+
 ## Current Inventory
 
 ### Deployed staging contract
@@ -108,6 +125,139 @@ PostgREST planned-count estimates:
 These counts are adequate for staging correctness testing but not enough to
 prove production-scale plans. The target plans must also be tested with
 merchant-realistic cardinality.
+
+### Partial live workload evidence
+
+The final result grid from the staging collector was captured on `2026-07-31`.
+The statistics start time was not included in that grid, so these values are
+cumulative signals, not per-hour rates.
+
+| Relation | Sequential scans | Rows read by sequential scans | Average rows per sequential scan |
+| --- | ---: | ---: | ---: |
+| `order_item_modifiers` | 6,830,467 | 47,908,972,476 | 7,014.0 |
+| `order_discounts` | 5,114,502 | 687,418,437 | 134.4 |
+| `orders` | 39,227 | 134,114,966 | 3,418.9 |
+| `kds_item_status` | 23,094 | 122,426,103 | 5,301.2 |
+| `table_sessions` | 74,943 | 64,293,399 | 857.9 |
+| `modifier_groups` | 962,012 | 18,130,965 | 18.8 |
+| `floor_plan_objects` | 189,466 | 14,007,876 | 73.9 |
+
+Interpretation:
+
+- `order_item_modifiers` is the strongest measured hotspot. It combines
+  `6.83M` sequential scans with `47.9B` rows examined and matches the repeated
+  per-item modifier aggregation found in KDS and order payload builders.
+- `order_discounts` is the second strongest signal. A table with approximately
+  `175` live rows was sequentially scanned `5.11M` times. Current functions
+  repeatedly filter it by `order_id` and `voided_at`.
+- `kds_item_status` averages more than `5,300` rows per sequential scan. The
+  current KDS RPC repeats acknowledgement predicates and joins acknowledgement
+  state before the requested location has bounded the item set.
+- `orders` and `table_sessions` confirm that active-order and floor/session
+  polling are material database workloads, not only client-rendering costs.
+- The high scan counts on very small tables such as `modifier_groups` are not
+  automatically index defects. PostgreSQL may correctly prefer a tiny table
+  scan; statement-level total time decides whether these deserve work.
+
+Maintenance observations:
+
+- `order_items` had approximately `2,169` dead rows (`16.5%` of live plus dead)
+  and had not been automatically vacuumed since `2026-06-27`.
+- `order_payments` had approximately `770` dead rows (`13.2%`) and had not been
+  automatically vacuumed since `2026-05-08`.
+- `orders` had approximately `911` dead rows (`12.2%`), with automatic
+  maintenance recorded on `2026-07-22`.
+- Higher percentages on `menu_items` and `table_session_tables` represent only
+  tens of rows and are not meaningful storage bloat by themselves.
+
+The live index inventory rules out the initial missing-index hypothesis:
+
+- `order_item_modifiers(order_item_id)` exists as
+  `idx_order_item_modifiers_order_item` and recorded `68,399,203` scans.
+- `order_discounts(order_id)` exists, and the active-row partial index
+  `idx_order_discounts_order_active` recorded `99,233` scans.
+- `kds_item_status` has item, order/display, pending-status, full unique, and
+  display-scoped unique indexes. More indexes should not be added until the KDS
+  query shape is corrected and planned.
+
+Therefore, no new index migration is justified by these two relation hotspots.
+The evidence instead prioritizes:
+
+1. Remove repeated deep PostgREST child aggregation from hot order paths.
+2. Verify whether the active-order legacy fallback still runs in the current
+   build using two short-window workload snapshots.
+3. Rewrite `get_kds_tickets_v2` so location-scoped items, acknowledgements, and
+   modifiers are each aggregated once.
+4. Evaluate table-specific automatic-maintenance settings for high-churn order
+   tables after table size and write-rate evidence is captured.
+
+### Live statement workload evidence
+
+The single-result follow-up was captured at `2026-07-31 10:22:56 UTC`.
+`statistics_since` was `NULL`, so absolute totals may span multiple deployments
+and cannot prove that every query is emitted by the current app version. The
+relative concentration and query shapes are still actionable.
+
+The top 25 statements account for `12.54` cumulative database-hours in the
+captured counters:
+
+| Workload class | Statements | Calls | Database-hours | Share of top 25 |
+| --- | ---: | ---: | ---: | ---: |
+| Nested order payloads | 10 | 2,795 | 4.63 | 36.9% |
+| Nested item/modifier payloads | 2 | 9,284 | 3.49 | 27.8% |
+| Realtime change feed | 2 | 1,100,091 | 2.64 | 21.1% |
+| POS staff login RPC | 1 | 1,903 | 0.36 | 2.9% |
+| KDS tickets RPC | 1 | 3,978 | 0.11 | 0.9% |
+
+Key statements:
+
+- The highest-cost nested order payload ran `1,066` times, consumed
+  `9,005,198 ms`, averaged `8,447.65 ms`, and touched approximately `157,104`
+  shared buffers per call.
+- A nested `order_items` plus `order_item_modifiers` query ran `7,421` times,
+  consumed `8,871,311 ms`, and averaged `1,195.43 ms` despite filtering one
+  `order_id` and `is_voided = false`.
+- `get_kds_tickets_v2` ran `3,978` times, consumed `393,445 ms`, and averaged
+  `98.91 ms`. Its mean is acceptable, but its cumulative cost and worst cases
+  justify the location-bounded rewrite already identified statically.
+- `pos_staff_login_v2` ran `1,903` times and averaged `684.86 ms`, making login
+  a separate P1 latency investigation after active order hydration.
+- The two Realtime change-feed statements ran about `1.1M` times. Their
+  individual means were approximately `8.55-9.20 ms`, but frequency made them
+  `21.1%` of top-25 database time.
+
+`track_io_timing` is off, and the dominant nested order statements reported no
+shared-block reads while recording very high shared-buffer hits. This points to
+CPU/query-shape and JSON aggregation overhead on cache-hot data, not a storage
+or Redis miss problem.
+
+The repository already prefers `get_active_orders_v1` and falls back to the
+deep embed only when that function is unavailable. Because the counters have no
+known start time, a before/after delta during current-app QA is required to
+separate old-client traffic from a current fallback deployment problem.
+
+### Live index findings
+
+The inventory also found probable duplicate or overlapping indexes:
+
+- `idx_orders_location_created_at` and
+  `idx_orders_location_created_at_desc` have the same key definition.
+- `idx_unique_order_number_per_merchant` and
+  `orders_order_number_merchant_key` enforce the same unique key.
+- `kds_item_status` has overlapping full and partial display/item uniqueness
+  indexes.
+
+Do not remove them solely from this inventory. First identify constraint-owned
+indexes, capture a clean usage window, and test dependent plans. Index cleanup
+reduces write amplification and storage but will not fix the multi-second order
+payloads.
+
+Six priority-table foreign keys had no leading supporting index: merchant on
+`floor_plan_objects`, acknowledgement actor on `kds_item_status`, location on
+`menu_items`, service-charge rule on `orders`, and closed-by/merchant on
+`table_sessions`. These are review candidates for parent-row maintenance and
+tenant predicates, not automatic additions; current table size and query plans
+must prove value.
 
 ### Migration layout
 
@@ -262,6 +412,12 @@ good. However, it currently uses:
 - Per-order correlated aggregates for items, payments, and discounts.
 - Per-item correlated modifier aggregates.
 
+Live evidence also shows deep PostgREST active/history payloads averaging from
+approximately `1.2` to `10` seconds. One shape matches the legacy fallback in
+`useOrdersQuery`; other shapes map to previous orders, online orders, and
+service/store fetches. A controlled delta must establish which current screens
+still issue each query before replacing call sites.
+
 Recommended `get_active_orders_v2`:
 
 - Select an explicit, client-consumed header column list.
@@ -315,6 +471,12 @@ Recommended:
 The POS uses private Supabase Broadcast channels and already coalesces client
 updates. Database-side trigger cost still matters because row-level bulk
 updates can emit multiple broadcasts and build JSON for each changed row.
+
+Live evidence confirms frequency is material: two change-feed statements made
+approximately `1.1M` calls and consumed `2.64` cumulative database-hours,
+`21.1%` of the top-25 total. This does not prove a Realtime defect, but it makes
+subscription count, trigger fan-out, and payload coalescing first-wave evidence
+targets.
 
 The live trigger/publication inventory must establish:
 
@@ -454,6 +616,8 @@ No behavior or schema changes.
 
 ### Wave 1: Low-risk index and payload corrections
 
+- Do not add modifier/discount indexes; the expected indexes already exist and
+  are heavily used.
 - Add only advisor/plan-proven missing foreign-key/composite/partial indexes.
 - Remove provably duplicate/unused indexes in a separate migration.
 - Replace high-volume `SELECT *` calls with explicit columns.
@@ -538,32 +702,42 @@ Completed:
 - Critical table planned-count estimates recorded.
 - Hot function source review for active orders, order details, KDS, and reports.
 - Read-only SQL collector created.
+- Core staging relation statistics received and ranked.
+- Single-result read-only follow-up collector created.
+- Statement-cost, live-index, and unsupported-foreign-key evidence received.
+- Initial missing modifier/discount index hypothesis rejected from live data.
+- Focused read-only workload delta collector created.
 
 Pending:
 
-- Run `supabase/audits/20260731_database_performance_readonly.sql`.
+- Capture before/after workload snapshots around current-app QA.
 - Export live definitions of missing hot RPCs.
 - Capture execution plans with real staging IDs.
-- Rank candidates by total database time, not code size.
+- Map each incrementing nested query ID to its current POS call site.
 - Approve the first migration wave with a senior/backend reviewer.
 
 ## Files
 
 - `tasks/database-performance-architecture-audit.md`
 - `supabase/audits/20260731_database_performance_readonly.sql`
+- `supabase/audits/20260731_database_hotspots_followup_readonly.sql`
+- `supabase/audits/20260731_database_workload_delta_readonly.sql`
 - `tasks/ticket-log.md`
 
 ## Open QA
 
-1. Run the collector in staging SQL Editor.
-2. Export all result grids as CSV/JSON or attach screenshots.
-3. Supply one staging `location_id`, `station_id`, `kds_display_id`,
+1. Run the workload delta collector before current-app QA.
+2. Exercise active-order login/hydration, Previous Orders, one order detail,
+   KDS refresh, and one staff login; then run the same collector again.
+3. Export both result grids as CSV/JSON.
+4. Supply one staging `location_id`, `station_id`, `kds_display_id`,
    representative `order_id`, and business-day start for read-only plans.
-4. Run the four commented `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)`
-   templates one at a time during a quiet staging window.
-5. Record current Supabase compute size and Database Reports CPU/RAM/Disk I/O
+5. Send the representative staging IDs to the implementer. The four read-only
+   execution-plan statements will then be supplied and run one at a time during
+   a quiet staging window.
+6. Record current Supabase compute size and Database Reports CPU/RAM/Disk I/O
    screenshots.
-6. Repeat the app performance baseline before and after each approved wave.
+7. Repeat the app performance baseline before and after each approved wave.
 
 ## References
 
@@ -581,4 +755,3 @@ Pending:
   `https://supabase.com/docs/guides/platform/read-replicas`
 - Redis caching guidance:
   `https://redis.io/docs/latest/develop/clients/client-side-caching/`
-

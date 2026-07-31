@@ -3,12 +3,12 @@
 -- Target: run in the Supabase SQL Editor as postgres.
 --
 -- READ-ONLY CONTRACT
--- This script contains SELECT statements only. It does not create extensions,
--- indexes, functions, views, policies, or other persistent database objects.
--- Save/export every result grid so it can be compared after optimizations.
+-- This script contains SELECT statements only and does not modify persistent
+-- database objects or application data. Save/export every result grid so it
+-- can be compared after optimizations.
 --
--- pg_stat_statements is cumulative. Record the stats-reset timestamp before
--- interpreting the results. Do not reset statistics as part of this audit.
+-- pg_stat_statements is cumulative. Record its collection-window timestamp
+-- before interpreting the results. This audit leaves statistics unchanged.
 
 -- ============================================================================
 -- 1. Environment and database settings
@@ -236,7 +236,7 @@ ORDER BY s.total_exec_time DESC
 LIMIT 100;
 
 -- ============================================================================
--- 4. Cache hit, table size, scans, churn, and vacuum health
+-- 4. Cache hit, table size, scans, churn, and maintenance health
 -- ============================================================================
 
 SELECT
@@ -353,11 +353,13 @@ WITH index_defs AS (
     t.relname AS table_name,
     i.indexrelid,
     ic.relname AS index_name,
-    regexp_replace(
-      pg_get_indexdef(i.indexrelid),
-      '^CREATE (UNIQUE )?INDEX [^ ]+ ',
-      'CREATE \1INDEX '
-    ) AS normalized_definition
+    i.indisunique,
+    i.indkey,
+    i.indclass,
+    i.indcollation,
+    i.indoption,
+    pg_get_expr(i.indexprs, i.indrelid) AS index_expressions,
+    pg_get_expr(i.indpred, i.indrelid) AS index_predicate
   FROM pg_catalog.pg_index i
   JOIN pg_catalog.pg_class t ON t.oid = i.indrelid
   JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
@@ -367,11 +369,26 @@ WITH index_defs AS (
 SELECT
   schema_name,
   table_name,
-  normalized_definition,
+  indisunique,
+  indkey,
+  indclass,
+  indcollation,
+  indoption,
+  index_expressions,
+  index_predicate,
   array_agg(index_name ORDER BY index_name) AS duplicate_indexes,
   COUNT(*) AS duplicate_count
 FROM index_defs
-GROUP BY schema_name, table_name, normalized_definition
+GROUP BY
+  schema_name,
+  table_name,
+  indisunique,
+  indkey,
+  indclass,
+  indcollation,
+  indoption,
+  index_expressions,
+  index_predicate
 HAVING COUNT(*) > 1
 ORDER BY duplicate_count DESC, schema_name, table_name;
 
@@ -595,34 +612,4 @@ WHERE relname IN (
   'idempotency_keys'
 )
 ORDER BY relname;
-
--- ============================================================================
--- 9. EXPLAIN templates (intentionally commented out)
--- ============================================================================
-
--- Replace placeholders with staging IDs and run these separately. These are
--- read-only functions, but EXPLAIN ANALYZE executes the SELECT and can add
--- load, so run one at a time during a quiet staging window.
---
--- EXPLAIN (ANALYZE, BUFFERS, WAL, VERBOSE, FORMAT JSON)
--- SELECT public.get_kds_tickets_v2(
---   '<location_id>'::uuid,
---   ARRAY['sent', 'preparing', 'ready'],
---   '<kds_display_id>'::uuid
--- );
---
--- EXPLAIN (ANALYZE, BUFFERS, WAL, VERBOSE, FORMAT JSON)
--- SELECT *
--- FROM public.get_active_orders_v1(
---   '<location_id>'::uuid,
---   '<station_id>'::uuid,
---   '<business_day_start>'::timestamptz,
---   200
--- );
---
--- EXPLAIN (ANALYZE, BUFFERS, WAL, VERBOSE, FORMAT JSON)
--- SELECT public.get_order_details('<order_id>'::uuid);
---
--- EXPLAIN (ANALYZE, BUFFERS, WAL, VERBOSE, FORMAT JSON)
--- SELECT public.get_floor_plan_status('<location_id>'::uuid);
 
