@@ -33,6 +33,7 @@ Website repo coordination:
 | [POS/Web] Location POS Settings + station overrides | POS/schema + web coordination | POS/schema side implemented; web UI/settings side separate | Ali QA + web branch | High |
 | Timesheets manual hour adjustment + configurable auto clock-out | POS/backend + web coordination | POS/backend auto clock-out implemented; website manual adjustment is separate | Ali QA + migration apply | High |
 | QA: Table Merge & Transfer + POS Dates/Calendars | POS/backend QA | Transfer/merge safety migration + POS client guard added; full tablet/Supabase QA still pending | Ali QA | High |
+| [POS-KDS] Rushed/prioritized tickets do not sort to top | POS/KDS + Supabase RPC | Implemented with migration and source regression test; needs staging migration and KDS screen recording | Ali QA | High |
 | [DATA] Owner mis-provisioned - Bay Ridge owner relink | Data/admin | Not POS code; needs senior/prod-authorized repair | Senior/prod repair | Low/Medium |
 | P0 cash payment records `$0.00` / Paid with balance | POS/backend | Not implemented in this branch | Owner branch / new work | High |
 | POS offline order never syncs / pay-after-paid / clipped New Order | POS/offline | Not implemented in this branch | POS owner / new work | High |
@@ -47,6 +48,7 @@ Run these in Supabase before testing the migration-backed tickets:
 - `supabase/migrations/20260630120000_station_pos_config_overrides.sql`
 - `supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql`
 - `supabase/migrations/20260710120000_table_transfer_session_safety.sql`
+- `supabase/migrations/20260712120000_kds_rush_priority_sort.sql`
 
 Important:
 

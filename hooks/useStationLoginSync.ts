@@ -1,5 +1,8 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { getPinAuthFailure } from "@/lib/authFlow";
 import { getDeviceName } from "@/lib/deviceName";
+import { getPosAccessFailure } from "@/lib/posAccessControl";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { PosStaffLoginResponse } from "@/types/station";
@@ -47,6 +50,25 @@ export function useStationLoginSync() {
         });
 
         const response = data as PosStaffLoginResponse | null;
+        const accessFailure = getPosAccessFailure({
+          error: response?.error,
+          errorCode: response?.error_code,
+        });
+
+        if (!error && response && !response.success && accessFailure) {
+          const authFailure = getPinAuthFailure({
+            error: response.error,
+            errorCode: response.error_code,
+          });
+          const employeeStore = useEmployeeStore.getState();
+          employeeStore.removeStationLoginFromQueue(action.id);
+          employeeStore.rollbackSignIn();
+          employeeStore.signOut();
+          employeeStore.setPendingAuthError(authFailure.message);
+          useStoreSettingsStore.getState().clearSelectedStation();
+          replaceRoute("(auth)", "station-select");
+          return;
+        }
 
         // Success OR logic error (INVALID_PIN etc.): remove from queue
         if (!error || response?.error_code) {

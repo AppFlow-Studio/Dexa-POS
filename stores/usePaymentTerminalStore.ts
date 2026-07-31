@@ -12,10 +12,14 @@ interface PaymentTerminal {
   name: string;
   model?: string;
   terminalType?: string;
-  /** Castles terminal IP address */
+  /** Castles / Valor terminal IP address */
   ipAddress?: string;
-  /** Castles terminal port */
+  /** Castles terminal port (8080) / Valor transaction port (5000) */
   port?: number;
+  /** Valor cancel port (5001) — cancel-before-card second socket */
+  cancelPort?: number;
+  /** Valor EPI (merchant/device identifier) */
+  epi?: string;
   /** Connection type: local_socket (TCP/WiFi) or usb */
   connectionType?: "local_socket" | "usb";
   isActive: boolean;

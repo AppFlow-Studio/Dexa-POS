@@ -3,8 +3,8 @@ import { Shift, ShiftHistoryEntry } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import BottomSheet from "@gorhom/bottom-sheet";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import BottomSheet from "@/components/ui/bottomSheet";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import {
   addDays,
   differenceInDays,

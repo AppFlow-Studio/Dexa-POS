@@ -12,6 +12,9 @@ import {
 } from "@/services/offlineSyncService";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import { VALOR_USB_VENDOR_ID } from "@/services/terminals/valor-transport-usb";
+import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
 import { listDevices } from "@/modules/castles-usb";
 
 const CASTLES_VENDOR_ID = 0x0ca6;
@@ -48,8 +51,12 @@ let toastShownForCurrentFailureStreak = false;
 async function performHealthCheck(): Promise<void> {
   if (!currentSupabase || !currentTerminalId || !currentPaymentTerminal) return;
 
+  const terminalType = currentPaymentTerminal.terminal_type;
+
   // Don't fight the suspend — probing a closed/closing socket is wasted work.
-  if (getSharedCastlesService().isSuspended()) return;
+  // Check only the service that owns this terminal type.
+  if (terminalType === "castles" && getSharedCastlesService().isSuspended()) return;
+  if (terminalType === "valor" && getSharedValorService().isSuspended()) return;
 
   // Skip if a payment is currently being processed
   const isProcessing = usePaymentTerminalStore.getState().isProcessingPayment;
@@ -58,10 +65,70 @@ async function performHealthCheck(): Promise<void> {
     return;
   }
 
-  if (currentPaymentTerminal.terminal_type === "castles") {
+  if (terminalType === "castles") {
     await performCastlesHealthCheck();
+  } else if (terminalType === "valor") {
+    await performValorHealthCheck();
   } else {
     await performDejavooHealthCheck();
+  }
+}
+
+async function performValorHealthCheck(): Promise<void> {
+  const service = getSharedValorService();
+  const isUsb = currentPaymentTerminal?.connection_type === "usb";
+
+  // Single-session safe (mirrors the Castles fix): the Valor terminal accepts
+  // one TCP session. If the shared singleton is already connected, DON'T open a
+  // second probe socket — that wedges the terminal. Trust the open connection.
+  if (service.isConnected()) {
+    handleSuccess();
+    return;
+  }
+
+  if (isUsb) {
+    // USB (Qualcomm CDC, VID 0x1E0E): read-only presence check via listDevices —
+    // don't open the port (that would steal it from the shared singleton used for
+    // sales). Same approach as the Castles USB health check above.
+    try {
+      const devices = await listDevices();
+      const found = devices.some((d) => d.vendorId === VALOR_USB_VENDOR_ID);
+      if (found) {
+        handleSuccess();
+      } else {
+        handleFailure("USB terminal not detected (cable unplugged or terminal powered off)");
+      }
+    } catch (err) {
+      handleFailure(
+        err instanceof Error ? err.message : "USB device enumeration failed",
+      );
+    }
+    return;
+  }
+
+  const host = currentPaymentTerminal?.ip_address;
+  if (!host) {
+    handleFailure("Valor terminal IP address not configured");
+    return;
+  }
+  const port = currentPaymentTerminal?.port ?? VALOR_DEFAULT_PORT;
+
+  if (service.isSuspended()) service.resume();
+  try {
+    await service.connect({
+      connectionType: "local_socket",
+      host,
+      port,
+      cancelPort: currentPaymentTerminal?.cancel_port,
+      epi: currentPaymentTerminal?.epi,
+      timeout: VALOR_SALE_TIMEOUT_MS,
+      terminalId: currentTerminalId!,
+    });
+    const q = await service.terminalQuery();
+    if (q.success) handleSuccess();
+    else handleFailure(q.error || "Terminal unreachable");
+  } catch (err) {
+    handleFailure(err instanceof Error ? err.message : "Terminal unreachable");
   }
 }
 

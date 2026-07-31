@@ -90,6 +90,75 @@ export const KEY_RT_CHANNEL_SUBSCRIBED = internKey("rt.channel_subscribed");
 /** Wall time between losing SUBSCRIBED and regaining it. */
 export const KEY_RT_DISCONNECTED_MS = internKey("rt.disconnected_ms");
 
+// --------------------------------------------------------------------------
+// Global overlay mount/render accounting (hooks/useOverlayTelemetry.ts).
+//
+// The acceptance number for W0-x is `overlay.render_closed.<name>`: renders a
+// persistently-mounted overlay performed while it was CLOSED. Target 0 during
+// an order-mutation burst — anything above that is a subscription the overlay
+// shouldn't be holding while hidden.
+//
+// `overlay.mount.<name>` counts how many times the heavy body actually mounted
+// in the session (1 per open when the controller unmounts on close), and
+// `overlay.open_ms.<name>` is the tap → first-committed-frame duration that
+// decides unmount-on-close vs retain-after-first-open.
+// --------------------------------------------------------------------------
+export interface OverlayKeyIds {
+  /** Renders performed while `isOpen` was false. Target: 0. */
+  renderClosed: number;
+  /** Renders performed while open — informational, not a budget. */
+  renderOpen: number;
+  /** Body mounts (count = mounts this session). */
+  mount: number;
+  /** Open request → first committed frame of the body, ms. */
+  openMs: number;
+}
+
+const overlayKeyCache: Record<string, OverlayKeyIds> = Object.create(null);
+
+export function overlayKeyIds(name: string): OverlayKeyIds {
+  let ids = overlayKeyCache[name];
+  if (ids === undefined) {
+    ids = {
+      renderClosed: internKey(`overlay.render_closed.${name}`),
+      renderOpen: internKey(`overlay.render_open.${name}`),
+      mount: internKey(`overlay.mount.${name}`),
+      openMs: internKey(`overlay.open_ms.${name}`),
+    };
+    overlayKeyCache[name] = ids;
+  }
+  return ids;
+}
+
+// --------------------------------------------------------------------------
+// Screen mount/render cost (hooks/useScreenRenderTelemetry.ts).
+//
+// Phase-1 audit item 6: attribute the Tables / table-detail stall to mount vs
+// re-render. `screen.mount_ms` is time from the first render call to the first
+// committed frame; `screen.render_ms` is the same for every subsequent commit;
+// `screen.renders` is the raw commit count for the screen.
+// --------------------------------------------------------------------------
+export interface ScreenKeyIds {
+  mountMs: number;
+  renderMs: number;
+  renders: number;
+}
+
+const screenKeyCache: Record<string, ScreenKeyIds> = Object.create(null);
+
+export function screenKeyIds(name: string): ScreenKeyIds {
+  let ids = screenKeyCache[name];
+  if (ids === undefined) {
+    ids = {
+      mountMs: internKey(`screen.mount_ms.${name}`),
+      renderMs: internKey(`screen.render_ms.${name}`),
+      renders: internKey(`screen.renders.${name}`),
+    };
+    screenKeyCache[name] = ids;
+  }
+  return ids;
+}
+
 const resumeBucketCache: Record<string, number> = Object.create(null);
 
 /** Per-bucket completion span id (`resume.bucket_ms.<bucket>`). */

@@ -7,8 +7,8 @@ import BottomSheet, {
     BottomSheetBackdrop,
     BottomSheetFlatList,
     BottomSheetTextInput,
-} from "@gorhom/bottom-sheet";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+} from "@/components/ui/bottomSheet";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Search, X } from "lucide-react-native";
 import React, {
     useCallback,

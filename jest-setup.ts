@@ -161,6 +161,56 @@ jest.mock("@sentry/react-native", () => ({
   },
 }));
 
+// react-native-tcp-socket instantiates a NativeEventEmitter at module load
+// (Globals.js), which throws under jest (null native module). Mock it so any
+// module that transitively imports valor-service (→ valor-transport-tcp) can
+// load. Tests exercising real TCP behavior mock valor-transport-factory higher up.
+jest.mock("react-native-tcp-socket", () => {
+  const makeSocket = () => ({
+    on: jest.fn(),
+    once: jest.fn(),
+    write: jest.fn(),
+    end: jest.fn(),
+    destroy: jest.fn(),
+    setNoDelay: jest.fn(),
+    setKeepAlive: jest.fn(),
+    removeAllListeners: jest.fn(),
+  });
+  return {
+    __esModule: true,
+    default: {
+      createConnection: jest.fn(() => makeSocket()),
+      createServer: jest.fn(() => ({
+        listen: jest.fn(),
+        close: jest.fn(),
+        on: jest.fn(),
+      })),
+    },
+  };
+});
+
+// modules/castles-usb calls requireNativeModule('CastlesUsbModule') at load,
+// which throws under jest. Mock it so anything importing valor-transport-usb
+// (→ valor-service → usePaymentVerification) or terminalHealthCheck can load.
+// Tests with their own castles-usb mock override this per-file.
+jest.mock("@/modules/castles-usb", () => {
+  const sub = { remove: jest.fn() };
+  return {
+    __esModule: true,
+    listDevices: jest.fn(async () => []),
+    requestPermission: jest.fn(async () => false),
+    open: jest.fn(async () => {}),
+    write: jest.fn(async () => {}),
+    close: jest.fn(async () => {}),
+    isOpen: jest.fn(() => false),
+    diagnoseUsb: jest.fn(async () => ({})),
+    addDataListener: jest.fn(() => sub),
+    addErrorListener: jest.fn(() => sub),
+    addDetachedListener: jest.fn(() => sub),
+    addAttachedListener: jest.fn(() => sub),
+  };
+});
+
 // ============================================================================
 // GLOBAL TEST UTILITIES
 // ============================================================================

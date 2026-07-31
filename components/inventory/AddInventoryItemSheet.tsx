@@ -9,7 +9,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { forwardRef, useMemo, useState } from "react";
 import {
   FlatList,

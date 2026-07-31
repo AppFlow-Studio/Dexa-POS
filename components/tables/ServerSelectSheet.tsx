@@ -7,7 +7,7 @@ import {
   BottomSheetSectionList,
   BottomSheetTextInput,
   BottomSheetView
-} from '@gorhom/bottom-sheet'
+} from '@/components/ui/bottomSheet'
 import { Check, Search, X } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
