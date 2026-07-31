@@ -2,6 +2,7 @@
 
 | Date | Ticket | Status | Summary | Task File |
 | --- | --- | --- | --- | --- |
+| 2026-07-31 | Database performance and architecture audit | Phase 1 complete - pending live SQL collector and execution plans | Inventoried the deployed Supabase contract, migration drift, POS query/RPC surface, hot operational/reporting paths, and Redis suitability; added a read-only SQL collector and evidence-gated optimization roadmap. | `tasks/database-performance-architecture-audit.md` |
 | 2026-06-20 | Timeclock Daily Shift Report - calendar date off-by-one | Code implemented - pending manual QA | Reworked Daily Shift Report date selection around local date keys and merchant-local day fetch bounds so selected calendar days no longer shift to the previous day. | `tasks/pos-ticket-senior-summary-2026-06-27.md` |
 | 2026-06-20 | End of Day - Review staff unresolved deep link | Code implemented - pending manual QA | Routed EOD unresolved staff review actions to Timeclock with focus params so blocker rows can be highlighted and surfaced directly. | `tasks/pos-ticket-senior-summary-2026-06-27.md` |
 | 2026-06-20 | POS printed receipt - remove unused dual-pricing alt line | Code complete - pending physical verification | Collapsed printed receipt totals to the actual charged pricing mode so the alternate `If paid by ...` style total is no longer rendered on finalized receipts. | `tasks/receipt-print-remove-alt-total-line.md` |
