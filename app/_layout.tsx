@@ -126,8 +126,8 @@ Sentry.init({
   // Offline: cache up to 100 envelopes on disk (default 30)
   maxCacheItems: 100,
 
-  // 100% in dev for debugging, 30% in production to reduce overhead
-  tracesSampleRate: __DEV__ ? 1.0 : 0.3,
+  
+  tracesSampleRate: 0.1,
 
   // Native crash + hang capture. Android ANRs are captured by the native SDK by
   // default; we additionally enable iOS app-hang tracking and are explicit about
