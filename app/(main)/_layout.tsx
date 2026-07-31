@@ -28,6 +28,7 @@ import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchSt
 import { useNotificationSheetStore } from '@/stores/useNotificationSheetStore'
 import {
   getOrderStoreSupabaseClient,
+  shouldSuppressOwnEchoBroadcast,
   useOrderStore
 } from '@/stores/useOrderStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
@@ -215,7 +216,19 @@ export default function MainLayout () {
 
   const handleOrderChange = useCallback((payload: OrderPayload) => {
     const broadcastPayload = payload as unknown as OrderBroadcastPayload
-    if (__DEV__) {
+
+    // Own-echo fast path: an UPDATE broadcast that is just the server echoing
+    // this station's own mutation back (inside the mutation window, no status
+    // advance) carries nothing any consumer needs — the RPC ack already
+    // reconciled local state. The order store additionally gates internally,
+    // but running the previous-orders and KDS handlers for these echoes was
+    // two extra merge passes per echo, twice per add, mid-burst. Route it to
+    // the order store only (which marks detail stale and returns) and skip
+    // the rest — including the dev log, which was itself measurable spam
+    // during a rapid ordering burst.
+    const suppressedEcho = shouldSuppressOwnEchoBroadcast(broadcastPayload)
+
+    if (__DEV__ && !suppressedEcho) {
       console.log('🔔 [MainLayout] Broadcast received:', {
         operation: broadcastPayload.operation,
         orderId: broadcastPayload.data?.order?.id,
@@ -229,6 +242,7 @@ export default function MainLayout () {
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload)
       const t1 = performance.now()
       recordSpan(KEY_FANOUT_ORDER_STORE_MS, t1 - t0)
+      if (suppressedEcho) return
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload)
       const t2 = performance.now()
       recordSpan(KEY_FANOUT_PREV_ORDERS_MS, t2 - t1)

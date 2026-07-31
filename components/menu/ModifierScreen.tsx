@@ -9,6 +9,11 @@ import {
   getLastModifierOpenStartedAt,
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
+import {
+  getModifierSelectionCounts,
+  getModifierSelections,
+  useModifierSelectionStore,
+} from "@/stores/useModifierSelectionStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 
@@ -16,10 +21,10 @@ import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { FlashList } from "@shopify/flash-list";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -53,6 +58,13 @@ const generateCustomModifierId = () =>
   `custom_mod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 const MODIFIER_PRICE_DELTA_COLOR = "#15803D";
+
+/** Stable empty array so the options FlashList keeps a constant data identity
+ *  when no category is active (avoids a full re-layout on every render). */
+const EMPTY_OPTIONS: ModifierCategory["options"] = [];
+
+/** Columns in the modifier-option grid. */
+const OPTION_COLUMNS = 5;
 
 const nowMs = () =>
   typeof performance !== "undefined" && typeof performance.now === "function"
@@ -153,9 +165,11 @@ const ModifierOption = memo(
       className="rounded-lg border py-2 px-2 items-center justify-center"
       style={[
         {
-          flexBasis: "18%",
-          flexGrow: 0,
-          flexShrink: 0,
+          // Sized by the FlashList column container (numColumns={5}); fill it
+          // rather than flex-basing off the parent row width.
+          flex: 1,
+          marginHorizontal: 4,
+          marginBottom: 8,
           minHeight: 52,
         },
         isNo
@@ -217,6 +231,113 @@ const ModifierOption = memo(
       )}
     </TouchableOpacity>
   ),
+);
+
+/**
+ * Option cell that subscribes to its OWN selection value in
+ * useModifierSelectionStore. A tap flips state in that store; only the cells
+ * whose value changed re-render (plus the Done total). The main screen tree
+ * is not involved at all.
+ */
+const SessionModifierOption = memo(
+  ({
+    option,
+    categoryId,
+    isUnavailable,
+    isReadOnly,
+    onToggle,
+    onLongPress,
+  }: {
+    option: any;
+    categoryId: string;
+    isUnavailable: boolean;
+    isReadOnly: boolean;
+    onToggle: (categoryId: string, optionId: string) => void;
+    onLongPress: (categoryId: string, optionId: string) => void;
+  }) => {
+    const selVal = useModifierSelectionStore(
+      (s) => s.selections[categoryId]?.[option.id],
+    );
+    return (
+      <ModifierOption
+        option={option}
+        categoryId={categoryId}
+        isSelected={selVal === true || selVal === "no"}
+        isNo={selVal === "no"}
+        isUnavailable={isUnavailable}
+        isReadOnly={isReadOnly}
+        onToggle={onToggle}
+        onLongPress={onLongPress}
+      />
+    );
+  },
+);
+
+/**
+ * Category tab that subscribes to its own has-selection flag. Selecting an
+ * option updates the dot on the affected tab only.
+ */
+const SessionCategoryTab = memo(
+  ({
+    category,
+    isActive,
+    onPress,
+  }: {
+    category: ModifierCategory;
+    isActive: boolean;
+    onPress: (categoryId: string) => void;
+  }) => {
+    const hasSelection = useModifierSelectionStore(
+      (s) => (s.selectionCounts[category.id] ?? 0) > 0,
+    );
+    return (
+      <CategoryTab
+        category={category}
+        isActive={isActive}
+        hasSelection={hasSelection}
+        onPress={onPress}
+      />
+    );
+  },
+);
+
+/**
+ * Live "Done · $total" label. Subscribes to the selection store and recomputes
+ * the session total per selection change — one tiny Text re-render instead of
+ * the whole screen. Base price, quantity and custom modifiers arrive as props
+ * (they change rarely and re-render the parent anyway when they do).
+ */
+const SessionDoneTotal = memo(
+  ({
+    basePrice,
+    quantity,
+    customModifiersTotal,
+    optionsById,
+  }: {
+    basePrice: number;
+    quantity: number;
+    customModifiersTotal: number;
+    optionsById: Map<
+      string,
+      { option: any; categoryId: string; categoryName: string }
+    >;
+  }) => {
+    const total = useModifierSelectionStore((s) => {
+      let baseTotal = basePrice + customModifiersTotal;
+      for (const categorySelections of Object.values(s.selections)) {
+        for (const [optionId, isSelected] of Object.entries(
+          categorySelections,
+        )) {
+          if (isSelected && isSelected !== "no") {
+            const optionData = optionsById.get(optionId);
+            if (optionData) baseTotal += optionData.option.price;
+          }
+        }
+      }
+      return baseTotal * quantity;
+    });
+    return <>Done · ${total.toFixed(2)}</>;
+  },
 );
 
 /**
@@ -304,10 +425,11 @@ const NotesInput = memo(
 // REDUCER
 // ============================================================================
 
+// NOTE: modifier SELECTIONS are deliberately NOT in this reducer. They live
+// in useModifierSelectionStore so an option tap re-renders only the tapped
+// cells + the Done total — not this entire screen. See that store's header.
 type State = {
   quantity: number;
-  modifierSelections: ModifierSelection;
-  selectionCounts: Record<string, number>;
   notes: string;
   isToGo: boolean;
   activeCategory: string | null;
@@ -322,7 +444,6 @@ type State = {
 
 type Action =
   | { type: "SET_QUANTITY"; payload: number }
-  | { type: "SET_MODIFIER_SELECTIONS"; payload: ModifierSelection }
   | { type: "SET_NOTES"; payload: string }
   | { type: "SET_TOGO"; payload: boolean }
   | { type: "SET_ACTIVE_CATEGORY"; payload: string | null }
@@ -331,22 +452,6 @@ type Action =
   | { type: "SET_QUANTITY_INPUT"; payload: string }
   | { type: "INITIALIZE"; payload: Partial<State> }
   | { type: "TOGGLE_SEAT_PICKER" }
-  | {
-      type: "TOGGLE_MODIFIER";
-      payload: {
-        categoryId: string;
-        optionId: string;
-        category: ModifierCategory;
-      };
-    }
-  | {
-      type: "TOGGLE_NO_MODIFIER";
-      payload: {
-        categoryId: string;
-        optionId: string;
-        category: ModifierCategory;
-      };
-    }
   | { type: "OPEN_CUSTOM_MODIFIER_MODAL" }
   | { type: "CLOSE_CUSTOM_MODIFIER_MODAL" }
   | { type: "SET_CUSTOM_MODIFIER_NAME"; payload: string }
@@ -357,29 +462,10 @@ type Action =
     }
   | { type: "REMOVE_CUSTOM_MODIFIER"; payload: string };
 
-const computeSelectionCounts = (
-  selections: ModifierSelection,
-): Record<string, number> => {
-  const counts: Record<string, number> = {};
-  for (const catId in selections) {
-    let count = 0;
-    const catSelections = selections[catId];
-    for (const key in catSelections) {
-      if (catSelections[key] === true || catSelections[key] === "no") count++;
-    }
-    counts[catId] = count;
-  }
-  return counts;
-};
-
 const immerReducer = (state: State, action: Action): void => {
   switch (action.type) {
     case "SET_QUANTITY":
       state.quantity = action.payload;
-      return;
-    case "SET_MODIFIER_SELECTIONS":
-      state.modifierSelections = action.payload;
-      state.selectionCounts = computeSelectionCounts(action.payload);
       return;
     case "SET_NOTES":
       state.notes = action.payload;
@@ -403,88 +489,10 @@ const immerReducer = (state: State, action: Action): void => {
       return;
     case "INITIALIZE":
       Object.assign(state, action.payload);
-      if (action.payload.modifierSelections) {
-        state.selectionCounts = computeSelectionCounts(
-          action.payload.modifierSelections,
-        );
-      }
       return;
     case "TOGGLE_SEAT_PICKER":
       state.isSeatPickerOpen = !state.isSeatPickerOpen;
       return;
-    case "TOGGLE_MODIFIER": {
-      const { categoryId, optionId, category } = action.payload;
-      if (!state.modifierSelections[categoryId]) {
-        state.modifierSelections[categoryId] = {};
-      }
-      const currentCount = state.selectionCounts[categoryId] ?? 0;
-      const currentVal = state.modifierSelections[categoryId][optionId];
-      // Tapping a "NO" modifier deselects it entirely
-      if (currentVal === "no") {
-        state.modifierSelections[categoryId][optionId] = false;
-        state.selectionCounts[categoryId] = currentCount - 1;
-        return;
-      }
-      if (category.selectionType === "single") {
-        const wasSelected = !!currentVal;
-        Object.keys(state.modifierSelections[categoryId]).forEach((key) => {
-          state.modifierSelections[categoryId][key] = false;
-        });
-        state.modifierSelections[categoryId][optionId] = !wasSelected;
-        state.selectionCounts[categoryId] = wasSelected ? 0 : 1;
-      } else {
-        const isCurrentlySelected = currentVal;
-        if (
-          !isCurrentlySelected &&
-          category.maxSelections &&
-          currentCount >= category.maxSelections
-        ) {
-          return;
-        }
-        state.modifierSelections[categoryId][optionId] = !isCurrentlySelected;
-        state.selectionCounts[categoryId] = isCurrentlySelected
-          ? currentCount - 1
-          : currentCount + 1;
-      }
-      return;
-    }
-    case "TOGGLE_NO_MODIFIER": {
-      const { categoryId, optionId, category } = action.payload;
-      if (!state.modifierSelections[categoryId]) {
-        state.modifierSelections[categoryId] = {};
-      }
-      const currentCount = state.selectionCounts[categoryId] ?? 0;
-      const currentVal = state.modifierSelections[categoryId][optionId];
-      if (currentVal === "no") {
-        // Already NO → deselect
-        state.modifierSelections[categoryId][optionId] = false;
-        state.selectionCounts[categoryId] = currentCount - 1;
-      } else {
-        // Unselected or true → set to NO
-        if (category.selectionType === "single") {
-          // Clear other selections first
-          Object.keys(state.modifierSelections[categoryId]).forEach((key) => {
-            state.modifierSelections[categoryId][key] = false;
-          });
-          state.modifierSelections[categoryId][optionId] = "no";
-          state.selectionCounts[categoryId] = 1;
-        } else {
-          const wasSelected = currentVal === true;
-          if (
-            !wasSelected &&
-            category.maxSelections &&
-            currentCount >= category.maxSelections
-          ) {
-            return;
-          }
-          state.modifierSelections[categoryId][optionId] = "no";
-          state.selectionCounts[categoryId] = wasSelected
-            ? currentCount
-            : currentCount + 1;
-        }
-      }
-      return;
-    }
     case "OPEN_CUSTOM_MODIFIER_MODAL":
       state.isCustomModifierModalOpen = true;
       state.customModifierNameInput = "";
@@ -615,18 +623,26 @@ const persistToGoIfChanged = (
 // MAIN COMPONENT
 // ============================================================================
 
-interface ModifierScreenContentProps {
-  keepMountedDuringClose?: boolean;
-}
-
-const ModifierScreenContent = ({
-  keepMountedDuringClose = false,
-}: ModifierScreenContentProps) => {
+const ModifierScreenContent = () => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const store = useModifierSidebarStore(
+    // NOTE: `isOpen` is deliberately NOT selected here.
+    //
+    // This screen does not need to know it is closing — ModifierScreenOverlay
+    // owns hiding it (a Reanimated transform on the UI thread). Subscribing to
+    // `isOpen` meant every DONE/Cancel press synchronously re-rendered this
+    // entire tree — tabs, option grid, quantity, notes, both Modals — on the
+    // exact frame that also runs the close animation and the cart mutation.
+    // That was the stall you feel on DONE.
+    //
+    // With `isOpen` out of the selector, close() produces an identical
+    // selector result, useShallow bails out, and pressing DONE costs this
+    // screen zero renders. It re-renders only when a new item is opened
+    // (openSeq changes). This is only safe because the screen is now
+    // permanently mounted.
     useShallow((s) => ({
-      isOpen: s.isOpen,
+      openSeq: s.openSeq,
       mode: s.mode,
       menuItem: s.menuItem,
       cartItem: s.cartItem,
@@ -649,7 +665,7 @@ const ModifierScreenContent = ({
   );
 
   const {
-    isOpen,
+    openSeq,
     mode,
     menuItem,
     cartItem,
@@ -669,7 +685,6 @@ const ModifierScreenContent = ({
     seatCount,
     showSeatPicker,
   } = store;
-  const shouldPaintScreen = isOpen || keepMountedDuringClose;
 
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
 
@@ -684,11 +699,6 @@ const ModifierScreenContent = ({
   const removeItemFromActiveOrder = useCallback(
     (itemId: string, voidReason?: string) =>
       useOrderStore.getState().removeItemFromActiveOrder(itemId, voidReason),
-    [],
-  );
-  const removeDraftItem = useCallback(
-    (draftItemId: string) =>
-      useOrderStore.getState().removeDraftItem(draftItemId),
     [],
   );
   const removeDraftItems = useCallback(
@@ -719,13 +729,13 @@ const ModifierScreenContent = ({
     immerReducer,
     undefined as void,
     (): State => {
-      const selections = storeInitialSelections ?? {};
+      // Selections are seeded into useModifierSelectionStore by the session
+      // effect below; only non-selection UI state lives in this reducer.
+      useModifierSelectionStore.getState().init(storeInitialSelections ?? {});
       return {
         quantity: cartItem?.quantity ?? 1,
         notes: cartItem?.customizations?.notes ?? "",
         isToGo: cartItem?.is_to_go ?? false,
-        modifierSelections: selections,
-        selectionCounts: computeSelectionCounts(selections),
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
         quantityInput: "",
@@ -751,24 +761,23 @@ const ModifierScreenContent = ({
   // modifier screen's stale opened-at value. When true, the modifier's qty
   // wins. Reset on session change (new item or new cart entry).
   const userTouchedQtyRef = useRef(false);
-  const [visibleOptionCount, setVisibleOptionCount] = useState(8);
-  const [showSecondarySections, setShowSecondarySections] = useState(false);
-  const [hasInteractedSinceOpen, setHasInteractedSinceOpen] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
-  const deferSecondarySectionsAggressively = Platform.OS === "android";
 
-  // When the store opens a new item session (different item or cart entry),
-  // reinitialize local reducer state without unmounting the component.
-  const sessionId = isOpen
-    ? `${precomputedForItemId ?? ""}_${cartItem?.id ?? ""}_${mode}`
-    : null;
-  const prevSessionRef = useRef<string | null>(null);
+  // When the store opens a new item session, reinitialize local reducer state
+  // without unmounting the component.
+  //
+  // Keyed off the store's monotonic `openSeq`, NOT a derived
+  // `itemId_cartItemId_mode` string. That string is identical when the same
+  // item is opened twice in a row, so the re-init below was skipped and the
+  // second open inherited the first session's quantity, notes and selections.
+  const sessionId = openSeq;
+  const prevSessionRef = useRef<number | null>(null);
   const shouldShowSeatPicker =
     showSeatPicker &&
     (state.isSeatPickerOpen || sessionId !== prevSessionRef.current);
 
   useEffect(() => {
-    if (!sessionId) {
+    if (sessionId === null) {
       prevSessionRef.current = null;
       return;
     }
@@ -789,14 +798,15 @@ const ModifierScreenContent = ({
     draftItemIdRef.current = null;
     lastDraftMenuItemIdRef.current = null;
     userTouchedQtyRef.current = false;
-    const selections = storeInitialSelections ?? {};
+    // Seed the selection store for this session (option cells subscribe to it
+    // directly; nothing in this component re-renders from selection taps).
+    useModifierSelectionStore.getState().init(storeInitialSelections ?? {});
     dispatch({
       type: "INITIALIZE",
       payload: {
         quantity: cartItem?.quantity ?? 1,
         notes: cartItem?.customizations?.notes ?? "",
         isToGo: cartItem?.is_to_go ?? false,
-        modifierSelections: selections,
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
         quantityInput: "",
@@ -810,13 +820,6 @@ const ModifierScreenContent = ({
       },
     });
 
-    // Render the first batch immediately. React 19 auto-batches these
-    // sync setStates with the dispatch above into a single render.
-    // showModifierOptions stays `true` across session changes so the new
-    // item's options paint on the first frame instead of after a defer.
-    setVisibleOptionCount(8);
-    setHasInteractedSinceOpen(false);
-    setShowSecondarySections(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
@@ -838,40 +841,14 @@ const ModifierScreenContent = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, cartItem?.quantity]);
 
-  useEffect(() => {
-    if (!isOpen || showSecondarySections) return;
-
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let revealHandle: { cancel: () => void } | null = null;
-
-    const scheduleReveal = () => {
-      revealHandle = InteractionManager.runAfterInteractions(() => {
-        if (cancelled) return;
-        setShowSecondarySections(true);
-      });
-    };
-
-    if (!deferSecondarySectionsAggressively || hasInteractedSinceOpen) {
-      scheduleReveal();
-    } else {
-      // Brief Android-only defer so image/allergens don't compete with the
-      // open animation. Was 900ms; lowered now that preWarm + faster slide
-      // cover the cost. Keep the "show on first interaction" path above.
-      timeoutId = setTimeout(scheduleReveal, 80);
-    }
-
-    return () => {
-      cancelled = true;
-      revealHandle?.cancel();
-      if (timeoutId !== null) clearTimeout(timeoutId);
-    };
-  }, [
-    deferSecondarySectionsAggressively,
-    hasInteractedSinceOpen,
-    isOpen,
-    showSecondarySections,
-  ]);
+  // NOTE: the old progressive-reveal effect for the image/allergens block
+  // lived here. It ran through InteractionManager.runAfterInteractions, which
+  // is starved while the user keeps tapping — so during a rapid ordering burst
+  // these reveals were postponed and then all flushed at once when the user
+  // finally paused, which is what read as "it gets laggy when I go fast".
+  // With the screen permanently mounted there is nothing to defer: the header
+  // image is already prefetched by the store's preWarm and the allergens block
+  // is a handful of pills. Both now render on the first frame.
 
   useEffect(() => {
     const showEvent =
@@ -940,10 +917,10 @@ const ModifierScreenContent = ({
 
   const resolvedImageSource = useMemo(
     () =>
-      showMenuImages && shouldPaintScreen
+      showMenuImages
         ? resolveMenuItemImageSource(currentItem?.image)
         : undefined,
-    [showMenuImages, shouldPaintScreen, currentItem?.image],
+    [showMenuImages, currentItem?.image],
   );
 
   type MenuItemWithModifiers = typeof baseMenuItem & {
@@ -956,7 +933,6 @@ const ModifierScreenContent = ({
   } | null>(null);
 
   const menuItemForModifiers = useMemo((): MenuItemWithModifiers | null => {
-    if (!shouldPaintScreen) return null;
     if (!baseMenuItem) return null;
     if (precomputedModifiers) {
       const cached = menuItemForModifiersRef.current;
@@ -982,7 +958,7 @@ const ModifierScreenContent = ({
       .getState()
       .getModifierGroupsByIds(baseMenuItem.modifierGroupIds);
     return { ...baseMenuItem, modifiers } as MenuItemWithModifiers;
-  }, [shouldPaintScreen, baseMenuItem, precomputedModifiers]);
+  }, [baseMenuItem, precomputedModifiers]);
 
   const { modifierCategoriesById, optionsById } = useMemo(() => {
     const emptyCategories = new Map<string, ModifierCategory>();
@@ -990,11 +966,6 @@ const ModifierScreenContent = ({
       string,
       { option: any; categoryId: string; categoryName: string }
     >();
-    if (!shouldPaintScreen)
-      return {
-        modifierCategoriesById: emptyCategories,
-        optionsById: emptyOptions,
-      };
     if (precomputedCategoriesById && precomputedOptionsById) {
       return {
         modifierCategoriesById: precomputedCategoriesById,
@@ -1016,148 +987,55 @@ const ModifierScreenContent = ({
       optionsById: emptyOptions,
     };
   }, [
-    shouldPaintScreen,
     precomputedCategoriesById,
     precomputedOptionsById,
     menuItemForModifiers?.modifiers,
   ]);
 
-  const total = useMemo(() => {
-    if (!shouldPaintScreen || !currentItem) return 0;
-    let baseTotal = getCurrentItemPrice(currentItem);
-    Object.values(state.modifierSelections).forEach((categorySelections) => {
-      Object.entries(categorySelections).forEach(([optionId, isSelected]) => {
+  // Session total is computed on demand from the selection store (see
+  // computeSessionTotal). It is NOT derived in this component so option taps
+  // don't re-render the tree; the Done button subscribes to selections itself
+  // and shows the live figure.
+  const basePrice = currentItem ? getCurrentItemPrice(currentItem) : 0;
+  const customModifiersTotal = useMemo(() => {
+    let sum = 0;
+    for (const m of state.customModifiers) sum += m.price;
+    return sum;
+  }, [state.customModifiers]);
+  const computeSessionTotal = useCallback(() => {
+    const { state: st, optionsById: opts } = latestStateRef.current;
+    const selections = getModifierSelections();
+    let baseTotal = latestStateRef.current.currentItem
+      ? latestStateRef.current.basePrice
+      : 0;
+    for (const categorySelections of Object.values(selections)) {
+      for (const [optionId, isSelected] of Object.entries(
+        categorySelections,
+      )) {
         if (isSelected && isSelected !== "no") {
-          const optionData = optionsById.get(optionId);
+          const optionData = opts.get(optionId);
           if (optionData) baseTotal += optionData.option.price;
         }
-      });
-    });
-    for (const m of state.customModifiers) {
+      }
+    }
+    for (const m of st.customModifiers) {
       baseTotal += m.price;
     }
-    return baseTotal * state.quantity;
-  }, [
-    shouldPaintScreen,
-    state.quantity,
-    state.modifierSelections,
-    state.customModifiers,
-    currentItem,
-    optionsById,
-    getCurrentItemPrice,
-  ]);
-
-  useEffect(() => {
-    if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
-    const stableDraftId = `draft_${currentItem.id}`;
-    const storeDraftId = useModifierSidebarStore.getState().draftCreatedId;
-    if (storeDraftId) {
-      draftItemIdRef.current = storeDraftId;
-      lastDraftMenuItemIdRef.current = currentItem.id;
-      return;
-    }
-    const { activeOrderId, ordersById } = useOrderStore.getState();
-    const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-    const existingDraft = activeOrder?.items.find(
-      (i) => i.id === stableDraftId,
-    );
-    if (existingDraft) {
-      draftItemIdRef.current = existingDraft.id;
-      lastDraftMenuItemIdRef.current = currentItem.id;
-      return;
-    }
-    const existingItem = activeOrder?.items.find((i) => {
-      if (i.menuItemId !== currentItem.id) return false;
-      const hasModifiers =
-        i.customizations.modifiers && i.customizations.modifiers.length > 0;
-      const hasNotes =
-        i.customizations.notes && i.customizations.notes.trim() !== "";
-      const hasSent = i.kitchen_status === "sent";
-      return !hasModifiers && !hasNotes && !hasSent;
-    });
-    if (existingItem) return;
-
-    // Defer the draft cart-write past the rapid-DONE window. If the user
-    // confirms or cancels within ~220ms, the timer is cleared and we never
-    // pay for a placeholder cart write that would just trigger re-renders.
-    // Mirrors the store-side deferral in useModifierSidebarStore.open().
-    const expectedItemId = currentItem.id;
-    const timer = setTimeout(() => {
-      const store = useModifierSidebarStore.getState();
-      if (
-        !store.isOpen ||
-        store.cartItem ||
-        store.menuItem?.id !== expectedItemId
-      ) {
-        return;
-      }
-      // Re-fetch latest active-order snapshot — another flow may have added
-      // an identical unsent item while we were waiting.
-      const latest = useOrderStore.getState();
-      const latestOrder = latest.activeOrderId
-        ? latest.ordersById[latest.activeOrderId]
-        : null;
-      const dupe = latestOrder?.items.find(
-        (i) => i.id === stableDraftId || i.menuItemId === expectedItemId,
-      );
-      if (dupe) {
-        if (dupe.isDraft) draftItemIdRef.current = dupe.id;
-        return;
-      }
-      const itemPrice = getCurrentItemPrice(currentItem);
-      const cashPrice = getCurrentItemCashPrice(currentItem);
-      const draftItem = {
-        id: stableDraftId,
-        menuItemId: currentItem.id,
-        name: currentItem.name,
-        quantity: 1,
-        originalPrice: cashPrice || itemPrice,
-        price: itemPrice,
-        unitPrice: currentItem.price,
-        cashPrice: cashPrice || itemPrice,
-        image: currentItem.image,
-        isDraft: true,
-        seatNumber: seatOverride ?? undefined,
-        customizations: { modifiers: [], notes: "" },
-        availableDiscount: currentItem.availableDiscount,
-        appliedDiscount: null,
-        paidQuantity: 0,
-        addedFromCategoryId: categoryId || null,
-        addedFromMenuId: menuId || null,
-      };
-      addItemToActiveOrder(draftItem);
-      draftItemIdRef.current = draftItem.id;
-      lastDraftMenuItemIdRef.current = currentItem.id;
-    }, 220);
-
-    return () => clearTimeout(timer);
-  }, [isOpen, currentItem?.id, mode, cartItem, seatOverride]);
-
-  const sessionKeyRef = useRef<string>("closed");
-  sessionKeyRef.current = !isOpen
-    ? "closed"
-    : `${cartItem?.id ?? ""}_${menuItem?.id ?? ""}_${mode}`;
-
-  useEffect(() => {
-    return () => {
-      if (!actionHandledRef.current && draftItemIdRef.current) {
-        removeDraftItem(draftItemIdRef.current);
-        draftItemIdRef.current = null;
-      }
-      const store = useModifierSidebarStore.getState();
-      const currentSessionKey = !store.isOpen
-        ? "closed"
-        : `${store.cartItem?.id ?? ""}_${store.menuItem?.id ?? ""}_${
-            store.mode
-          }`;
-      if (
-        sessionKeyRef.current !== "closed" &&
-        sessionKeyRef.current === currentSessionKey
-      ) {
-        store.close();
-      }
-    };
+    return baseTotal * st.quantity;
   }, []);
+
+  // NOTE: the deferred draft-item effect lived here (220ms timer → write a
+  // placeholder CartItem into the active order). It has been removed. The
+  // modifier screen is fullscreen, so the cart is never visible while a draft
+  // would be alive — the write and its matching removal on close produced only
+  // cart re-renders, landing inside the open/close animation. handleSave's
+  // real add performs the whole mutation in one step.
+
+  // NOTE: the unmount-cleanup effect that lived here (close the store session
+  // and drop a dangling draft if this component unmounted mid-session) is gone
+  // along with the unmount itself — the screen is now permanently mounted, so
+  // the cleanup could only ever run on a full screen teardown, at which point
+  // the store is being reset anyway.
 
   useEffect(() => {
     const previousDraftMenuItemId = lastDraftMenuItemIdRef.current;
@@ -1173,7 +1051,7 @@ const ModifierScreenContent = ({
 
   const latestStateRef = useRef({
     state,
-    total,
+    basePrice,
     menuItem,
     cartItem,
     menuItemForModifiers,
@@ -1192,7 +1070,7 @@ const ModifierScreenContent = ({
 
   latestStateRef.current = {
     state,
-    total,
+    basePrice,
     menuItem,
     cartItem,
     menuItemForModifiers,
@@ -1215,10 +1093,7 @@ const ModifierScreenContent = ({
       if (isReadOnly) return;
       const category = modifierCategoriesById.get(catId);
       if (!category) return;
-      dispatch({
-        type: "TOGGLE_MODIFIER",
-        payload: { categoryId: catId, optionId, category },
-      });
+      useModifierSelectionStore.getState().toggle(catId, optionId, category);
     },
     [],
   );
@@ -1229,10 +1104,7 @@ const ModifierScreenContent = ({
       if (isReadOnly) return;
       const category = modifierCategoriesById.get(catId);
       if (!category) return;
-      dispatch({
-        type: "TOGGLE_NO_MODIFIER",
-        payload: { categoryId: catId, optionId, category },
-      });
+      useModifierSelectionStore.getState().toggleNo(catId, optionId, category);
     },
     [],
   );
@@ -1283,10 +1155,6 @@ const ModifierScreenContent = ({
     dispatch({ type: "SET_QUANTITY", payload: currentState.quantity + 1 });
   }, []);
 
-  const handleInitialInteraction = useCallback(() => {
-    setHasInteractedSinceOpen((prev) => (prev ? prev : true));
-  }, []);
-
   const handleOpenCustomModifierModal = useCallback(() => {
     const { isReadOnly } = latestStateRef.current;
     if (isReadOnly) return;
@@ -1320,7 +1188,6 @@ const ModifierScreenContent = ({
     actionHandledRef.current = true;
     const {
       state: currentState,
-      total: currentTotal,
       menuItem: currentMenuItem,
       cartItem: currentCartItem,
       menuItemForModifiers: modifiersItem,
@@ -1336,6 +1203,12 @@ const ModifierScreenContent = ({
       seatOverride: seatVal,
     } = latestStateRef.current;
 
+    // Snapshot the session selections + total NOW — the store is reused by
+    // the next open() and must not be read after closeModal().
+    const sessionSelections = getModifierSelections();
+    const sessionSelectionCounts = getModifierSelectionCounts();
+    const currentTotal = computeSessionTotal();
+
     const baseItem = currentMenuItem || modifiersItem;
     const isOpenItem =
       currentCartItem?.is_open_item === true ||
@@ -1350,7 +1223,7 @@ const ModifierScreenContent = ({
       const hasRequiredSelections = modifiersItem.modifiers.every(
         (category) => {
           if (category.type === "required")
-            return (currentState.selectionCounts[category.id] ?? 0) > 0;
+            return (sessionSelectionCounts[category.id] ?? 0) > 0;
           return true;
         },
       );
@@ -1474,7 +1347,7 @@ const ModifierScreenContent = ({
         safeCashPrice ?? getCurrentItemCashPrice(baseItem);
 
       const selectedModifiers = modifiersItem?.modifiers
-        ? Object.entries(currentState.modifierSelections)
+        ? Object.entries(sessionSelections)
             .map(([cId, selections]) => {
               const category = categoriesMap.get(cId);
               const selectedOptions = Object.entries(selections)
@@ -1671,48 +1544,48 @@ const ModifierScreenContent = ({
     ? (modifierCategoriesById.get(state.activeCategory) ?? null)
     : null;
 
-  const visibleOptions = useMemo(() => {
-    if (!currentCategory) return [] as ModifierCategory["options"];
-    return currentCategory.options.slice(0, visibleOptionCount);
-  }, [currentCategory, visibleOptionCount]);
+  const optionsForCategory = currentCategory?.options ?? EMPTY_OPTIONS;
 
-  const visibleOptionRows = useMemo(() => {
-    const rows: ModifierCategory["options"][] = [];
-    for (let index = 0; index < visibleOptions.length; index += 5) {
-      rows.push(visibleOptions.slice(index, index + 5));
-    }
-    return rows;
-  }, [visibleOptions]);
+  // NOTE: the progressive option-reveal staircase (visibleOptionCount growing
+  // 8 → 20 → 32 → … via InteractionManager + a 24ms timer) lived here and has
+  // been removed. It restarted on EVERY open — including re-opening an item
+  // that was just closed — and, like the secondary-sections reveal, its
+  // runAfterInteractions callbacks were starved while the user kept tapping.
+  // The FlashList below windows and recycles cells natively, so switching
+  // items is a prop update over already-realized views instead of a mount.
 
-  // Progressively reveal options in chunks instead of mounting all options in one frame.
-  useEffect(() => {
-    if (!isOpen || !currentCategory) return;
-    const totalOptions = currentCategory.options.length;
-    if (visibleOptionCount >= totalOptions) return;
-    const chunkSize = Math.max(12, Math.ceil(totalOptions / 4));
+  const activeCategoryId = currentCategory?.id ?? null;
 
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const growHandle = InteractionManager.runAfterInteractions(() => {
-      timeoutId = setTimeout(() => {
-        if (cancelled) return;
-        setVisibleOptionCount((prev) =>
-          Math.min(totalOptions, prev + chunkSize),
-        );
-      }, 24);
-    });
+  // Each cell subscribes to ITS OWN selection value in the selection store
+  // (see SessionModifierOption) — a tap re-renders only the affected cells,
+  // never this tree and never the whole list. renderOption therefore has no
+  // selection dependency and stays referentially stable across taps.
+  const renderOption = useCallback(
+    ({ item: option }: { item: ModifierCategory["options"][number] }) => {
+      if (!activeCategoryId) return null;
+      return (
+        <SessionModifierOption
+          option={option}
+          categoryId={activeCategoryId}
+          isUnavailable={option.isAvailable === false}
+          isReadOnly={isReadOnly}
+          onToggle={handleModifierToggle}
+          onLongPress={handleNoModifierToggle}
+        />
+      );
+    },
+    [
+      activeCategoryId,
+      isReadOnly,
+      handleModifierToggle,
+      handleNoModifierToggle,
+    ],
+  );
 
-    return () => {
-      cancelled = true;
-      growHandle.cancel();
-      if (timeoutId !== null) clearTimeout(timeoutId);
-    };
-  }, [
-    isOpen,
-    currentCategory?.id,
-    currentCategory?.options.length,
-    visibleOptionCount,
-  ]);
+  const optionKeyExtractor = useCallback(
+    (option: ModifierCategory["options"][number]) => option.id,
+    [],
+  );
 
   const hasModifiers = !!(
     menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0
@@ -1843,8 +1716,6 @@ const ModifierScreenContent = ({
     );
   }
 
-  if (!shouldPaintScreen) return null;
-
   if (!currentItem) {
     return (
       <View
@@ -1861,7 +1732,6 @@ const ModifierScreenContent = ({
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
       style={{ backgroundColor: colors.screen }}
-      onTouchStart={handleInitialInteraction}
     >
       {/* ── Top Bar ─────────────────────────────────────────────────────── */}
       <View
@@ -1917,7 +1787,12 @@ const ModifierScreenContent = ({
               className="text-sm font-semibold"
               style={{ color: colors.onSolid }}
             >
-              Done · ${total.toFixed(2)}
+              <SessionDoneTotal
+                basePrice={basePrice}
+                quantity={state.quantity}
+                customModifiersTotal={customModifiersTotal}
+                optionsById={optionsById}
+              />
             </Text>
           </TouchableOpacity>
         </View>
@@ -1949,7 +1824,7 @@ const ModifierScreenContent = ({
                 borderColor: colors.border,
               }}
             >
-              {showSecondarySections && resolvedImageSource ? (
+              {resolvedImageSource ? (
                 <OptimizedListImage
                   source={resolvedImageSource}
                   style={{ width: s(48), height: s(48) }}
@@ -2035,20 +1910,14 @@ const ModifierScreenContent = ({
             style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
           >
             {hasModifiers &&
-              menuItemForModifiers!.modifiers.map((category) => {
-                const hasSelection =
-                  (state.selectionCounts[category.id] ?? 0) > 0;
-                const isActive = state.activeCategory === category.id;
-                return (
-                  <CategoryTab
-                    key={category.id}
-                    category={category}
-                    isActive={isActive}
-                    hasSelection={hasSelection}
-                    onPress={handleCategoryTabPress}
-                  />
-                );
-              })}
+              menuItemForModifiers!.modifiers.map((category) => (
+                <SessionCategoryTab
+                  key={category.id}
+                  category={category}
+                  isActive={state.activeCategory === category.id}
+                  onPress={handleCategoryTabPress}
+                />
+              ))}
             {!isReadOnly && (
               <TouchableOpacity
                 onPressIn={handleOpenCustomModifierModal}
@@ -2108,51 +1977,24 @@ const ModifierScreenContent = ({
                 </View>
               </View>
 
-              {/* Options grid */}
-              <View style={{ maxHeight: 320 }}>
-                <ScrollView
+              {/* Options grid — FlashList recycles cells, so switching items
+                  reuses the realized option views instead of mounting a new
+                  set. No extraData: each cell subscribes to its own
+                  selection in useModifierSelectionStore, so taps never
+                  re-run the list. */}
+              <View style={{ height: 320 }}>
+                <FlashList
+                  data={optionsForCategory}
+                  numColumns={OPTION_COLUMNS}
+                  renderItem={renderOption}
+                  keyExtractor={optionKeyExtractor}
+                  estimatedItemSize={60}
+                  showsVerticalScrollIndicator={
+                    optionsForCategory.length > OPTION_COLUMNS * 2
+                  }
                   nestedScrollEnabled
-                  showsVerticalScrollIndicator={visibleOptions.length > 9}
-                  contentContainerStyle={{
-                    paddingBottom: s(2),
-                  }}
-                >
-                  {visibleOptionRows.map((row, rowIndex) => (
-                    <View
-                      key={`modifier-row-${rowIndex}`}
-                      style={{
-                        flexDirection: "row",
-                        gap: s(8),
-                        justifyContent: "flex-start",
-                        marginBottom: s(8),
-                      }}
-                    >
-                      {row.map((option) => {
-                        const selVal =
-                          state.modifierSelections[currentCategory.id]?.[
-                            option.id
-                          ];
-                        const isSelected = selVal === true || selVal === "no";
-                        const isNo = selVal === "no";
-                        const isUnavailable = option.isAvailable === false;
-
-                        return (
-                          <ModifierOption
-                            key={option.id}
-                            option={option}
-                            categoryId={currentCategory.id}
-                            isSelected={isSelected}
-                            isNo={isNo}
-                            isUnavailable={isUnavailable}
-                            isReadOnly={isReadOnly}
-                            onToggle={handleModifierToggle}
-                            onLongPress={handleNoModifierToggle}
-                          />
-                        );
-                      })}
-                    </View>
-                  ))}
-                </ScrollView>
+                  contentContainerStyle={{ paddingBottom: s(2) }}
+                />
               </View>
             </View>
           )}
@@ -2298,8 +2140,7 @@ const ModifierScreenContent = ({
         </View>
 
         {/* ── Allergens ──────────────────────────────────────────────────── */}
-        {showSecondarySections &&
-          menuItemForModifiers?.allergens &&
+        {menuItemForModifiers?.allergens &&
           menuItemForModifiers.allergens.length > 0 && (
             <View
               className="px-4 pb-3 border-t"
@@ -2336,7 +2177,7 @@ const ModifierScreenContent = ({
       <Modal
         visible={state.isQuantityModalOpen}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={handleQuantityCancel}
       >
         <View
@@ -2404,7 +2245,7 @@ const ModifierScreenContent = ({
       <Modal
         visible={state.isCustomModifierModalOpen}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={handleCloseCustomModifierModal}
       >
         <View
@@ -2528,16 +2369,8 @@ const ModifierScreenContent = ({
   );
 };
 
-interface ModifierScreenProps {
-  keepMountedDuringClose?: boolean;
-}
-
-const ModifierScreen = ({
-  keepMountedDuringClose = false,
-}: ModifierScreenProps) => {
-  return (
-    <ModifierScreenContent keepMountedDuringClose={keepMountedDuringClose} />
-  );
+const ModifierScreen = () => {
+  return <ModifierScreenContent />;
 };
 
 export default memo(ModifierScreen);
