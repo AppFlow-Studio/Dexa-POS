@@ -8,6 +8,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { getTerminalMatchInfo } from "@/utils/terminalMatchGuard";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import {
     ChefHat,
     DollarSign,
@@ -331,15 +332,6 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
           <Pressable
             className="rounded-lg overflow-hidden min-w-[220px] border"
             onPress={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: colors.panel,
-              borderColor: menuBorder,
-              shadowColor: colors.screen,
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.28,
-              shadowRadius: 20,
-              elevation: 20,
-            }}
             style={
               position
                 ? {

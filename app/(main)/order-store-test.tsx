@@ -356,13 +356,25 @@ const OrderStoreTest = () => {
             return;
         }
         try {
+            const price = parseFloat(itemPrice) || 10.0;
+            const quantity = parseInt(itemQuantity) || 1;
             const newItem: CartItem = {
                 id: storeActions.generateCartItemId("test-item", { notes: "" }),
                 menuItemId: "test-item",
                 name: "Test Item",
-                price: parseFloat(itemPrice) || 10.0,
-                originalPrice: parseFloat(itemPrice) || 10.0,
-                quantity: parseInt(itemQuantity) || 1,
+                price,
+                originalPrice: price,
+                unitPrice: price,
+                cashPrice: price,
+                baseCardPrice: price,
+                baseCashPrice: price,
+                quantity,
+                paidQuantity: 0,
+                subtotal: price * quantity,
+                cashSubtotal: price * quantity,
+                taxRate: 0,
+                taxAmount: 0,
+                cashTaxAmount: 0,
                 customizations: {
                     notes: "Test item from debug screen",
                 },

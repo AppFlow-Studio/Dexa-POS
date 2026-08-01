@@ -29,7 +29,7 @@ export function ClerkVerificationScreen() {
     newDetails['clerk_loaded'] = isLoaded ? 'Clerk SDK is loaded' : 'Waiting for Clerk to load...'
 
     // Check 2: User signed in
-    newChecks['signed_in'] = isSignedIn
+    newChecks['signed_in'] = !!isSignedIn
     newDetails['signed_in'] = isSignedIn ? `Signed in as user: ${userId}` : 'Not signed in'
 
     // Check 3: User object available

@@ -288,7 +288,6 @@ export async function increaseTab(
       toastService.show({
         title: "Tab Amount Updated",
         message: `Hold tracking updated to $${newAmount.toFixed(2)}. Processor will attempt capture at final amount.`,
-        type: "info",
         duration: 5000,
       });
     }
@@ -320,14 +319,14 @@ export async function increaseTab(
 
 /**
  * Poll for db_payment_id to appear on a payment (set by syncPreAuthToBackend).
- * Returns the db_payment_id or null if timeout expires.
+ * Returns the db_payment_id or undefined if timeout expires.
  */
 async function waitForDbPaymentId(
   orderId: string,
   paymentId: string,
   timeoutMs = 5000,
   intervalMs = 200,
-): Promise<string | null> {
+): Promise<string | undefined> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const order = useOrderStore.getState().ordersById[orderId];
@@ -335,7 +334,7 @@ async function waitForDbPaymentId(
     if (pmt?.db_payment_id) return pmt.db_payment_id;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  return null;
+  return undefined;
 }
 
 // ============================================================
@@ -461,11 +460,11 @@ export async function closeTab(
     }
 
     // 4. If fully paid, dispatch FULL_PAYMENT session action (local, no await needed)
-    if (orderFullyPaid && order.tableId) {
+    if (orderFullyPaid && order.service_location_id) {
       const { useTableSessionStore } = require("@/stores/useTableSessionStore");
       useTableSessionStore.getState().dispatchAction?.({
         type: "FULL_PAYMENT",
-        tableId: order.tableId,
+        tableId: order.service_location_id,
       });
     }
 

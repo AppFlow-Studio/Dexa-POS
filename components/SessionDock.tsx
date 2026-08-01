@@ -291,7 +291,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   if (isActive) {
     return (
       <>
-        <DropdownMenu open={isMenuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenu onOpenChange={setMenuOpen}>
           <View className="flex-row items-center gap-2">
             {/* Avatar circle — tapping opens dropdown */}
             <DropdownMenuTrigger

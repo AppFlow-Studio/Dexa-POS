@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Platform } from 'react-native'
 import { useSignIn, useAuth } from '@clerk/clerk-expo'
 import * as SecureStore from 'expo-secure-store'
 
@@ -102,13 +103,11 @@ export function useClerkDebugger() {
       console.log('  ✅ Sign-in created in', duration, 'ms')
       console.log('  Status:', result.status)
       console.log('  Session ID:', result.createdSessionId)
-      console.log('  User ID:', result.createdUserId)
-      
+
       // Step 3: Check result details
       console.log('\n🔍 Step 3: Result Analysis')
       console.log('  First factor:', JSON.stringify(result.firstFactorVerification, null, 2))
       console.log('  Second factor:', JSON.stringify(result.secondFactorVerification, null, 2))
-      console.log('  Missing requirements:', JSON.stringify(result.missingRequirements, null, 2))
       
       // Step 4: Activate session
       if (result.status === 'complete') {

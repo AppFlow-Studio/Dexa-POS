@@ -7,6 +7,13 @@ import { LineChart } from "@/components/charts/LazyGiftedCharts";
 
 const screenWidth = Dimensions.get("window").width;
 
+interface ChartDataPoint {
+  date?: string;
+  value?: number;
+  revenue?: number;
+  quantity?: number;
+}
+
 const getXAxisLabelInterval = (dataLength: number) => {
   if (dataLength <= 14) return 1;
   if (dataLength <= 60) return 7;
@@ -16,7 +23,7 @@ const getXAxisLabelInterval = (dataLength: number) => {
 export default function GiftedChartsSalesTrendChart() {
   const { currentReportData, isLoading, error } = useAnalyticsStore();
 
-  const rawData = currentReportData?.chartData || [];
+  const rawData: ChartDataPoint[] = currentReportData?.chartData || [];
 
   const processedData = rawData
     .map((item) => {

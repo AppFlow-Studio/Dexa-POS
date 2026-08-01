@@ -355,7 +355,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
       }))
 
       return result.sessionId
-        ? { session_id: result.sessionId, order_id: result.orderId }
+        ? { session_id: result.sessionId, order_id: result.orderId ?? undefined }
         : null
     } catch (err: any) {
       console.error('Failed to seat from waitlist:', err)
@@ -395,10 +395,15 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
   },
 
   updateWaitlistEntryAsync: async (entryId, updates) => {
-    // Optimistic local update
+    // Optimistic local update. `updates` may carry `null` to tell the backend to
+    // clear a nullable column; the local WaitlistEntry type uses `undefined` for
+    // "unset", so normalize before merging into state.
+    const localUpdates = Object.fromEntries(
+      Object.entries(updates).map(([key, value]) => [key, value ?? undefined])
+    ) as Partial<WaitlistEntry>
     set(state => ({
       waitlist: state.waitlist.map(entry =>
-        entry.id === entryId ? { ...entry, ...updates } : entry
+        entry.id === entryId ? { ...entry, ...localUpdates } : entry
       )
     }))
     try {

@@ -94,10 +94,6 @@ export interface OrderVoidedEvent {
   reason?: string;
 }
 
-// Re-export OrderArchivedEvent for use in subscribers
-// (Defined above but needs explicit export)
-export type { OrderArchivedEvent };
-
 // ============================================================================
 // EVENT BUS IMPLEMENTATION
 // ============================================================================
@@ -139,7 +135,9 @@ class EventBus {
 
     this.subscriptions.get(event)!.push(subscription);
 
-    console.log(`[EventBus] Subscribed to: ${event} (total: ${this.subscriptions.get(event)!.length})`);
+    console.log(
+      `[EventBus] Subscribed to: ${event} (total: ${this.subscriptions.get(event)!.length})`,
+    );
 
     // Return unsubscribe function
     return () => this.off(event, callback);
@@ -183,7 +181,9 @@ class EventBus {
     const index = subs.findIndex((sub) => sub.callback === callback);
     if (index !== -1) {
       subs.splice(index, 1);
-      console.log(`[EventBus] Unsubscribed from: ${event} (remaining: ${subs.length})`);
+      console.log(
+        `[EventBus] Unsubscribed from: ${event} (remaining: ${subs.length})`,
+      );
     }
 
     // Clean up empty subscription lists
@@ -314,3 +314,4 @@ export const eventBus = new EventBus();
  * Export the EventBus class for testing purposes
  */
 export { EventBus };
+

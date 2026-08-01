@@ -416,10 +416,10 @@ export function usePaymentTerminal() {
       if (result.success && result.data) {
         return {
           success: true,
-          transactionId: result.data.TransactionId,
+          transactionId: result.data.TransactionNumber,
           authCode: result.data.AuthCode,
-          cardType: result.data.CardType,
-          lastFour: result.data.CardNumber.slice(-4),
+          cardType: result.data.CardData.CardType,
+          lastFour: result.data.CardData.Last4,
         };
       } else {
         return {
@@ -492,7 +492,7 @@ export function usePaymentTerminal() {
 
       return {
         success: result.success,
-        transactionId: result.data?.TransactionId,
+        transactionId: result.data?.TransactionNumber,
         error: result.error,
       };
     } catch (err) {

@@ -32,16 +32,18 @@ const ProfileCard = () => {
     : MOCK_USER_PROFILE;
 
   // 2. Get the live timeclock state and actions from the store
-  const { status, currentShift, clockIn, clockOut } = useTimeclockStore();
+  const { getSession, clockIn, clockOut } = useTimeclockStore();
+  const employeeId = activeEmployee?.id;
+  const currentShift = employeeId ? getSession(employeeId) : undefined;
   const [shiftDuration, setShiftDuration] = useState("0 h 00 m");
 
   // 3. Effect to update the duration timer every second, but only if clocked in
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (status === "clockedIn" && currentShift?.clockInTime) {
+    if (currentShift?.status === "clockedIn" && currentShift.clockInTime) {
       interval = setInterval(() => {
         const durationMs =
-          new Date().getTime() - currentShift.clockInTime!.getTime();
+          new Date().getTime() - currentShift.clockInTime.getTime();
         setShiftDuration(formatDuration(durationMs));
       }, 1000);
     } else {
@@ -50,10 +52,10 @@ const ProfileCard = () => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [status, currentShift]);
+  }, [currentShift]);
 
   const renderShiftStatus = () => {
-    if (status === "clockedIn" || status === "onBreak") {
+    if (currentShift?.status === "clockedIn" || currentShift?.status === "onBreak") {
       return (
         <View className="w-full mt-4 p-4 bg-panel border border-gray-700 rounded-lg">
           <View className="flex-row justify-between items-center">
@@ -85,7 +87,7 @@ const ProfileCard = () => {
             </View>
           </View>
           <TouchableOpacity
-            onPress={clockOut}
+            onPress={() => employeeId && clockOut(employeeId)}
             className="w-full mt-4 py-2.5 bg-red-600 rounded-lg items-center"
           >
             <Text className="font-bold text-white text-base">Clock Out</Text>
@@ -97,7 +99,7 @@ const ProfileCard = () => {
     return (
       <View className="w-full mt-4 p-4 items-center">
         <TouchableOpacity
-          onPress={clockIn}
+          onPress={() => employeeId && clockIn(employeeId)}
           className="w-full py-3 bg-blue-600 rounded-lg items-center"
         >
           <Text className="font-bold text-white text-lg">Clock In</Text>
