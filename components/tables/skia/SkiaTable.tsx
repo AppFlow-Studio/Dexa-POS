@@ -14,10 +14,12 @@ import { TableDrawData } from "./tableDrawStore";
 const num = (v: number, fallback: number): number =>
   Number.isFinite(v) ? v : fallback;
 
-const SkiaTable: React.FC<{ draw: TableDrawData; isSelected: boolean }> = ({
-  draw,
-  isSelected,
-}) => {
+const SkiaTable: React.FC<{
+  draw: TableDrawData;
+  isSelected: boolean;
+  /** Forwarded to SkiaTableContent to break memo when fonts finish loading. */
+  fontsReady: boolean;
+}> = ({ draw, isSelected, fontsReady }) => {
   // Sanitize geometry before it reaches the Group transform. A non-finite x/y/
   // width/height/rotation (bad backend row, in-flight resize, division edge) baked
   // into a Skia matrix can fault the whole surface (this is the class behind the
@@ -54,6 +56,7 @@ const SkiaTable: React.FC<{ draw: TableDrawData; isSelected: boolean }> = ({
         shapeId={draw.shapeId}
         lines={draw.lines}
         badges={draw.badges}
+        fontsReady={fontsReady}
       />
     </Group>
   );

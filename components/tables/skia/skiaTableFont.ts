@@ -33,6 +33,7 @@ let loadPromise: Promise<TableTypefaces> | null = null;
 
 const readTypefaceFromModule = async (
   mod: number,
+  label: string,
 ): Promise<SkTypeface | null> => {
   try {
     const asset = Asset.fromModule(mod);
@@ -40,34 +41,70 @@ const readTypefaceFromModule = async (
     // hitting the network in a release build; in dev it caches to the local FS.
     await asset.downloadAsync();
     const uri = asset.localUri ?? asset.uri;
-    if (!uri) return null;
+    if (!uri) {
+      console.warn(`[skiaTableFont] ${label}: no localUri/uri after downloadAsync`);
+      return null;
+    }
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
     const data = Skia.Data.fromBase64(base64);
-    return Skia.Typeface.MakeFreeTypeFaceFromData(data);
-  } catch {
+    const tf = Skia.Typeface.MakeFreeTypeFaceFromData(data);
+    if (!tf) console.warn(`[skiaTableFont] ${label}: MakeFreeTypeFaceFromData returned null`);
+    return tf;
+  } catch (e) {
+    console.warn(`[skiaTableFont] ${label}: failed to load`, e);
     return null;
   }
 };
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// A cold-start asset copy (APK asset → app storage on first access) or a busy JS/FS
+// thread can transiently fail this load — the historical symptom was fonts silently
+// missing until the user switched floor plans, which just happened to remount
+// SkiaTableLayer and call loadTableTypefaces() again. Retrying internally here means
+// text recovers on its own without needing an unrelated remount to give it another
+// chance.
+const MAX_ATTEMPTS = 4;
+const RETRY_DELAY_MS = 300;
 
 /**
  * Load the floor-plan typefaces from bundled bytes (network-free). Idempotent —
  * safe to call from every SkiaTableLayer mount; the first call does the work, the
  * rest await the same promise. On success sets the module `current` so getTableFont
- * works immediately.
+ * works immediately. Retries a few times on transient failure before giving up.
  */
 export const loadTableTypefaces = (): Promise<TableTypefaces> => {
   if (current.regular && current.bold) return Promise.resolve(current);
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
-    const [regular, bold] = await Promise.all([
-      readTypefaceFromModule(require("@/assets/fonts/Inter-Medium.ttf")),
-      readTypefaceFromModule(require("@/assets/fonts/Inter-Bold.ttf")),
-    ]);
-    current = { regular, bold };
-    // If either failed (shouldn't for a bundled asset), allow a later retry.
-    if (!regular || !bold) loadPromise = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const [regular, bold] = await Promise.all([
+        readTypefaceFromModule(
+          require("@/assets/fonts/Inter-Medium.ttf"),
+          "Inter-Medium",
+        ),
+        readTypefaceFromModule(
+          require("@/assets/fonts/Inter-Bold.ttf"),
+          "Inter-Bold",
+        ),
+      ]);
+      if (regular && bold) {
+        current = { regular, bold };
+        return current;
+      }
+      if (attempt < MAX_ATTEMPTS) {
+        console.warn(
+          `[skiaTableFont] load attempt ${attempt} incomplete (regular=${!!regular} bold=${!!bold}), retrying`,
+        );
+        await delay(RETRY_DELAY_MS * attempt);
+      }
+    }
+    console.warn("[skiaTableFont] all load attempts failed, will retry on next call");
+    // Allow a later retry (e.g. a floor switch remount calling loadTableTypefaces
+    // again) instead of caching the failure forever.
+    loadPromise = null;
     return current;
   })();
   return loadPromise;
