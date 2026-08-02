@@ -24,6 +24,18 @@ const layerSource = fs.readFileSync(
   path.join(process.cwd(), "components", "tables", "skia", "SkiaTableLayer.tsx"),
   "utf8",
 );
+const tableSource = fs.readFileSync(
+  path.join(process.cwd(), "components", "tables", "skia", "SkiaTable.tsx"),
+  "utf8",
+);
+const contentSource = fs.readFileSync(
+  path.join(process.cwd(), "components", "tables", "skia", "SkiaTableContent.tsx"),
+  "utf8",
+);
+const structureSource = fs.readFileSync(
+  path.join(process.cwd(), "components", "tables", "skia", "SkiaStructure.tsx"),
+  "utf8",
+);
 
 describe("skiaTableFont network-free loading regression", () => {
   it("loads typefaces from bundled bytes, not over the network", () => {
@@ -53,5 +65,41 @@ describe("skiaTableFont network-free loading regression", () => {
     // Safe degradation: skip a text node instead of building a font on a null
     // typeface (shapes/structures still paint; text waits for the load).
     expect(fontSource).toContain("if (!tf) return null;");
+  });
+});
+
+/**
+ * Regression: "only some tables have text until I switch floor plans".
+ *
+ * getTableFont() reads module-level typefaces, so when the async load finishes it
+ * changes NO React prop. SkiaTable / SkiaTableContent / SkiaStructure are all
+ * React.memo, so a re-render of SkiaTableLayer alone bails out on every child and
+ * their already-computed textless output (every text node returned null while the
+ * fonts were loading) is kept forever. Only tables whose draw data happened to
+ * change after the load — or a full remount, i.e. a floor switch — got text.
+ *
+ * The fix is to thread `fontsReady` down as a real prop so memo is invalidated.
+ * These tests assert the prop is actually PASSED, not merely referenced.
+ */
+describe("fonts-ready must invalidate the memoized Skia children", () => {
+  it("SkiaTableLayer passes fontsReady down to both memoized children", () => {
+    expect(layerSource).toMatch(/fontsReady=\{fontsReady\}/);
+    // Both consumers of getTableFont must receive it: tables and structures.
+    const passes = layerSource.match(/fontsReady=\{fontsReady\}/g) ?? [];
+    expect(passes.length).toBeGreaterThanOrEqual(2);
+    // `void fontsReady` was the broken no-op: it re-rendered only the layer.
+    expect(layerSource).not.toMatch(/void\s+fontsReady/);
+  });
+
+  it("SkiaTable forwards fontsReady to SkiaTableContent", () => {
+    expect(tableSource).toMatch(/fontsReady:\s*boolean/);
+    expect(tableSource).toMatch(/fontsReady=\{fontsReady\}/);
+  });
+
+  it("memoized font consumers declare a fontsReady prop", () => {
+    // Without the prop in the signature, memo has nothing to compare and the
+    // textless render sticks.
+    expect(contentSource).toMatch(/fontsReady:\s*boolean/);
+    expect(structureSource).toMatch(/fontsReady:\s*boolean/);
   });
 });

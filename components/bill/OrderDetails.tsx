@@ -446,10 +446,7 @@ const OrderDetailsComponent: React.FC<{
                     borderWidth: 0,
                     borderRadius: 0,
                     minHeight: s(54),
-                    paddingHorizontal: 0,
-                    fontWeight: '600',
-                    fontSize: s(12),
-                    color: colors.heading
+                    paddingHorizontal: 0
                   }}
                   dropdownPosition='below'
                 />

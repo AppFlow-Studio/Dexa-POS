@@ -91,7 +91,6 @@ const EditTemplateScreen = () => {
       tempId: `temp_${Date.now()}`,
       employeeId,
       dayOfWeek,
-      role: employee.role,
     });
     setIsShiftEditorOpen(true);
   };

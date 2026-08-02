@@ -20,7 +20,13 @@ const PaymentModal: React.FC = () => {
       case "review":
         return;
       case "cardOptions": // New case
-        return <CardPaymentOptions />;
+        return (
+          <CardPaymentOptions
+            onSelectManual={() => usePaymentStore.getState().setView("manual")}
+            onSelectTerminal={() => usePaymentStore.getState().setView("card")}
+            onCancel={close}
+          />
+        );
       case "card":
         return <CardPaymentView />;
       case "manual": // New case for manual entry

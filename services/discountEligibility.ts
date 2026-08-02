@@ -3,7 +3,7 @@ import {
   getLocalMenuItemDiscounts,
   MenuItemDiscountRecord,
 } from "@/services/discountSync";
-import { round2 } from '@/utils/money';
+import { round2 } from "@/utils/money";
 
 export type DiscountType = "percentage" | "fixed_amount";
 
@@ -82,7 +82,8 @@ export function calculateDiscountAmount(
     amount = applicableAmount * (discount.discount_value / 100);
     if (
       "max_discount_amount" in discount &&
-      discount.max_discount_amount !== null
+      discount.max_discount_amount !== null &&
+      discount.max_discount_amount !== undefined
     ) {
       amount = Math.min(amount, discount.max_discount_amount);
     }

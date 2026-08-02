@@ -6,13 +6,7 @@
 import {
     DEJAVOO_ERROR_CODES,
     DejavooCredentials,
-    DejavooRefundRequest,
-    DejavooResponse,
-    DejavooSaleRequest,
     DejavooSaleResponse,
-    DejavooSettleRequest,
-    DejavooTipAdjustRequest,
-    DejavooVoidRequest,
     PaymentType
 } from "@/types/dejavoo-spin-api";
 import * as Sentry from "@sentry/react-native";
@@ -177,8 +171,8 @@ export class DejavooService {
     }
 
     try {
-      const request: DejavooSaleRequest = {
-        PaymentType: params.paymentType || "Card",
+      const request: Record<string, any> = {
+        PaymentType: params.paymentType || "Credit",
         TransactionType: "Sale",
         Amount: params.amount,
         TipAmount: params.tipAmount,
@@ -237,7 +231,7 @@ export class DejavooService {
     paymentType?: PaymentType;
   }): Promise<{
     success: boolean;
-    data?: DejavooResponse;
+    data?: Record<string, any>;
     error?: string;
   }> {
     if (!this.credentials) {
@@ -245,8 +239,8 @@ export class DejavooService {
     }
 
     try {
-      const request: DejavooVoidRequest = {
-        PaymentType: params.paymentType || "Card",
+      const request: Record<string, any> = {
+        PaymentType: params.paymentType || "Credit",
         TransactionType: "Void",
         ReferenceId: params.referenceId,
         ...this.getAuthParams(),
@@ -265,7 +259,7 @@ export class DejavooService {
         );
       }
 
-      const data: DejavooResponse = await voidResponse.json();
+      const data: Record<string, any> = await voidResponse.json();
 
       return {
         success: data.GeneralResponse.ResultCode === "Ok",
@@ -305,7 +299,7 @@ export class DejavooService {
     }
 
     try {
-      const request: DejavooRefundRequest = {
+      const request: Record<string, any> = {
         PaymentType: params.paymentType || "Credit",
         TransactionType: "Refund",
         Amount: params.amount,
@@ -358,7 +352,7 @@ export class DejavooService {
     referenceId: string;
   }): Promise<{
     success: boolean;
-    data?: DejavooResponse;
+    data?: Record<string, any>;
     error?: string;
   }> {
     if (!this.credentials) {
@@ -366,7 +360,7 @@ export class DejavooService {
     }
 
     try {
-      const request: DejavooTipAdjustRequest = {
+      const request: Record<string, any> = {
         PaymentType: "Credit",
         Amount: params.originalAmount,
         TipAmount: params.newTipAmount,
@@ -381,7 +375,7 @@ export class DejavooService {
         body: JSON.stringify(request),
       });
 
-      const data: DejavooResponse = await response.json();
+      const data: Record<string, any> = await response.json();
 
       return {
         success: data.GeneralResponse.ResultCode === "Ok",
@@ -509,7 +503,7 @@ export class DejavooService {
    */
   async settleBatch(paymentType?: PaymentType): Promise<{
     success: boolean;
-    data?: DejavooResponse;
+    data?: Record<string, any>;
     error?: string;
   }> {
     if (!this.credentials) {
@@ -517,7 +511,7 @@ export class DejavooService {
     }
 
     try {
-      const request: DejavooSettleRequest = {
+      const request: Record<string, any> = {
         PaymentType: paymentType,
         ...this.getAuthParams(),
       };
@@ -529,7 +523,7 @@ export class DejavooService {
         body: JSON.stringify(request),
       });
 
-      const data: DejavooResponse = await response.json();
+      const data: Record<string, any> = await response.json();
 
       return {
         success: data.GeneralResponse.ResultCode === "Ok",
@@ -616,7 +610,7 @@ export class DejavooService {
         body: JSON.stringify(request),
       });
 
-      const data: DejavooResponse = await response.json();
+      const data: Record<string, any> = await response.json();
 
       return {
         success: data.GeneralResponse.ResultCode === "Ok",

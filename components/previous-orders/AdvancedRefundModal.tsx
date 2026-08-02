@@ -541,7 +541,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
     show({
       title: "Refund Discarded",
       message: "The refund attempt has been marked as not completed.",
-      type: "info",
+      type: "warning",
     });
   };
 

@@ -54,6 +54,17 @@ const SkiaTableContent: React.FC<{
   shapeId: string;
   lines: TableTextLine[];
   badges: TableBadge[];
+  /**
+   * Typefaces-loaded flag. NOT read here — getTableFont() reads the module-level
+   * typefaces directly. It exists purely so React.memo sees a changed prop when the
+   * async font load completes and re-runs this component. Without it, a table whose
+   * draw data never changes after mount keeps its memoized (textless) output forever:
+   * every text node bailed to null while the fonts were still loading, and nothing
+   * ever invalidated the memo. That was the "only some tables have text until I
+   * switch floor plans" bug — a floor switch remounts everything, which is the only
+   * reason it appeared to fix itself.
+   */
+  fontsReady: boolean;
 }> = ({ width, height, shapeId, lines, badges }) => {
   // Shape-aware content area — mirrors useTableCardData's textFit calculation.
   const shapeIdLower = shapeId?.toLowerCase() ?? "";

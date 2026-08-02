@@ -99,10 +99,11 @@ export interface DejavooSaleRequest {
   PaymentType: PaymentType;
 
   /**
-   * Must be set to "Sale" for sale transactions
+   * Transaction subtype - "Sale" for sale transactions, "Auth" for
+   * pre-authorizations, "Capture" for capturing a prior pre-auth
    * @required
    */
-  TransType: 'Sale';
+  TransType: 'Sale' | 'Auth' | 'Capture';
 
   /**
    * Terminal identifier / Register ID (50 chars max)
@@ -993,6 +994,11 @@ export interface DejavooSaleResponse {
    * Transaction type (should be "Sale")
    */
   TransactionType: string;
+
+  /**
+   * Authorization code from processor
+   */
+  AuthCode: string;
 
   /**
    * Reference ID from the request

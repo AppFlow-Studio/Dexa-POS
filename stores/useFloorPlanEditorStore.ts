@@ -9,7 +9,7 @@ const editorStorage = createMMKV({
 const mmkvStorage = {
   getItem: (name: string) => editorStorage.getString(name) ?? null,
   setItem: (name: string, value: string) => editorStorage.set(name, value),
-  removeItem: (name: string) => editorStorage.delete(name)
+  removeItem: (name: string) => editorStorage.remove(name)
 }
 
 type FloorPlanEditorState = {

@@ -100,8 +100,18 @@ export const useSyncStatusStore = create<SyncStatusState>((set, get) => ({
 
       if (error) {
         newErrorMap.set(itemId, error)
-      } else if (status === 'synced') {
-        // Clear error when synced
+      } else if (status !== 'failed') {
+        // Clear any stale error on every non-failed transition, not just
+        // 'synced'. Cart item ids are deterministic
+        // (generateCartItemId(menuItemId, customizations)), so re-adding the
+        // same item+modifier combo on a new order reuses an old id and would
+        // otherwise inherit that id's previous error string.
+        //
+        // Covering 'pending' here is what lets addItemToActiveOrder drop its
+        // separate clearSyncStatus() call: that call cloned all three Maps and
+        // committed the store purely to be overwritten by this setSyncStatus a
+        // few lines later — two commits and six Map clones per added item, on
+        // the DONE press.
         newErrorMap.delete(itemId)
       }
 

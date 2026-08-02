@@ -39,7 +39,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
   const translateX = useRef(new Animated.Value(0)).current;
 
   const panResponder = useRef(
-    new PanResponder.create({
+    PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) =>
         Math.abs(gestureState.dx) > 10 &&
         Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
@@ -135,7 +135,10 @@ const CustomToast: React.FC<CustomToastProps> = ({
               paddingVertical: 6,
             }}
           >
-            {React.cloneElement(Icon as React.ReactElement, { size: 14 })}
+            {React.cloneElement(
+              Icon as React.ReactElement<{ size?: number; color?: string }>,
+              { size: 14 }
+            )}
             <View style={{ flex: 1, marginLeft: 6 }}>
               <Text
                 style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}
