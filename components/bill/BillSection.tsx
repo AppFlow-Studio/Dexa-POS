@@ -41,7 +41,8 @@ import type {
   ServerSection,
   TableSession,
 } from "@/types/db-floor-plan-types";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
+import { useBillPanelLayoutStore } from "@/stores/useBillPanelLayoutStore";
 import { useRouter } from "expo-router";
 import {
     AlertTriangle,
@@ -2014,6 +2015,14 @@ const BillSectionContent = ({
         borderRightWidth: 2,
         borderColor: colors.border,
       }}
+      // Publish the FULL bill-column geometry so PanelSheet (More Options,
+      // Breakdown, Discount, Service Charge) anchors to the whole column — not
+      // the inner bill-content sub-section.
+      onLayout={(e) =>
+        useBillPanelLayoutStore
+          .getState()
+          .setLayout(e.nativeEvent.layout.width, e.nativeEvent.layout.height)
+      }
     >
       <View
         className="px-3 pt-2 pb-1"

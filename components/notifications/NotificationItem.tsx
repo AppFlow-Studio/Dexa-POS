@@ -2,9 +2,8 @@ import { Notification } from "@/lib/types";
 import { colors } from "@/lib/theme";
 import { formatDistanceToNow } from "date-fns";
 import { getNotificationAppearance } from "@/lib/notificationUtils";
-import { PanGestureHandler } from "react-native-gesture-handler";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  useAnimatedGestureHandler,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -22,11 +21,18 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onDel
 
   const translateX = useSharedValue(0);
   const itemHeight = useSharedValue(76);
+  const startX = useSharedValue(0);
 
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, ctx: any) => { ctx.startX = translateX.value; },
-    onActive: (event, ctx: any) => { translateX.value = ctx.startX + event.translationX; },
-    onEnd: () => {
+  // reanimated 4 removed useAnimatedGestureHandler; use the gesture-handler v3
+  // Gesture API. The old `ctx` context object is replaced by a shared value.
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      startX.value = translateX.value;
+    })
+    .onUpdate((event) => {
+      translateX.value = startX.value + event.translationX;
+    })
+    .onEnd(() => {
       if (translateX.value < -100) {
         translateX.value = withTiming(-500);
         itemHeight.value = withTiming(0, undefined, (isFinished) => {
@@ -35,8 +41,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onDel
       } else {
         translateX.value = withTiming(0);
       }
-    },
-  });
+    });
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -46,7 +51,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onDel
   }));
 
   return (
-    <PanGestureHandler onGestureEvent={gestureHandler}>
+    <GestureDetector gesture={panGesture}>
       <Animated.View style={animatedStyle}>
         <View
           style={{
@@ -74,7 +79,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onDel
           </View>
         </View>
       </Animated.View>
-    </PanGestureHandler>
+    </GestureDetector>
   );
 };
 

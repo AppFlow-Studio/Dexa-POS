@@ -10,6 +10,7 @@ import {
   useModifierSidebarStore
 } from '@/stores/useModifierSidebarStore'
 import MyProfilePanel from '@/components/profile/MyProfilePanel'
+import { PanelSheetHostContext } from '@/components/ui/PanelSheet'
 import { PortalHost } from '@rn-primitives/portal'
 import { LocationRealtimeProvider } from '@/contexts/LocationRealtimeProvider'
 import { useKdsOnlineOrdersBootstrap } from '@/hooks/pos/useKdsOnlineOrdersBootstrap'
@@ -37,7 +38,7 @@ import { useProfileOverlayStore } from '@/stores/useProfileOverlayStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import type { OrderPayload, PaymentPayload } from '@/types/real-time'
 import { useAuth } from '@clerk/clerk-expo'
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { BottomSheetMethods } from '@/components/ui/bottomSheet'
 import { Redirect, Slot, usePathname } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import React, { useCallback, useEffect, useRef } from 'react'
@@ -62,6 +63,13 @@ import {
   setCurrentRoute
 } from '@/lib/telemetry/registry'
 import { SafeAreaView } from 'react-native-safe-area-context'
+/**
+ * Hoisted so the reference is stable across renders. This layout re-renders on
+ * every navigation (usePathname), and an inline `() => {}` would be a new prop
+ * each time, defeating React.memo on the sheet it's passed to.
+ */
+const NOOP = () => {}
+
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
   useOrderSyncRecovery(locationId)
@@ -91,7 +99,12 @@ export default function MainLayout () {
   const menuSearchSheetRef = useRef<BottomSheetMethods>(null)
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
   const clearSheetRef = useNotificationSheetStore(state => state.clearSheetRef)
-  const { setSearchSheetRef, clearSearchSheetRef } = useMenuManagementSearchStore()
+  // Selector-scoped: calling useMenuManagementSearchStore() bare subscribes this
+  // layout to the WHOLE store, so an unrelated `setActiveTab` (menu-management
+  // sidebar) re-rendered the entire app shell — Header, every persistent sheet
+  // and the <Slot/> subtree. These two actions are stable store functions.
+  const setSearchSheetRef = useMenuManagementSearchStore(s => s.setSearchSheetRef)
+  const clearSearchSheetRef = useMenuManagementSearchStore(s => s.clearSearchSheetRef)
 
   // Complementary mitigation to the screens animation fix (lib/screenConfig.ts):
   // hint a GC after every navigation so native cleaners drain promptly.
@@ -385,7 +398,7 @@ export default function MainLayout () {
             bottomSheetRef={
               notificationSheetRef as React.RefObject<BottomSheetMethods>
             }
-            onClose={() => {}}
+            onClose={NOOP}
           />
           <PaymentBottomSheet />
           <View
@@ -439,8 +452,14 @@ export default function MainLayout () {
             presentationStyle='fullScreen'
             onRequestClose={closeProfile}
           >
-            <MyProfilePanel onClose={closeProfile} />
-            <PortalHost name='profile-overlay' />
+            {/* Sheets opened inside the profile Modal must portal into a host that
+                lives *inside* the Modal, or they'd render behind this fullScreen
+                window. The context makes every PanelSheet in this subtree default to
+                the 'profile-overlay' host. */}
+            <PanelSheetHostContext.Provider value='profile-overlay'>
+              <MyProfilePanel onClose={closeProfile} />
+              <PortalHost name='profile-overlay' />
+            </PanelSheetHostContext.Provider>
           </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>

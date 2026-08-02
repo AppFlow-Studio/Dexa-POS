@@ -2,7 +2,7 @@ import { ApplyMode } from "@/lib/types";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { CheckCircle2 } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";

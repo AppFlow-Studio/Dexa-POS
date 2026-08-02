@@ -5,7 +5,7 @@ import { BrushCleaning, Lock } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
 import { GestureDetector, GestureType } from "react-native-gesture-handler";
-import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import Animated, { SharedValue, useAnimatedStyle } from "react-native-reanimated";
 import { TableCardData } from "./useTableCardData";
 
 /**
@@ -90,7 +90,7 @@ export const PulsingBorder = React.memo(function PulsingBorder({
 const DraggingBorder = React.memo(function DraggingBorder({
   sharedValue,
 }: {
-  sharedValue: Animated.SharedValue<boolean>;
+  sharedValue: SharedValue<boolean>;
 }) {
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: sharedValue.value ? 1 : 0,
@@ -122,7 +122,7 @@ interface TableCardContentProps {
   isTableType: boolean;
   isWall: boolean;
   isSelected: boolean;
-  isDragging?: Animated.SharedValue<boolean>;
+  isDragging?: SharedValue<boolean>;
   isEditMode: boolean;
   isLocked: boolean;
   sectionColor?: string;

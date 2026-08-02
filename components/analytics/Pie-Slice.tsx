@@ -2,9 +2,9 @@ import { Path, Skia } from "@shopify/react-native-skia";
 import {
     SharedValue,
     useDerivedValue,
+    WithSpringConfig,
     withSpring,
 } from "react-native-reanimated";
-import { SpringConfig } from "react-native-reanimated/lib/typescript/animation/springUtils";
 
 import { runOnJS } from "react-native-reanimated";
 
@@ -207,7 +207,7 @@ export const calculateAngle = (args: {
 };
 // Animation configuration
 
-export const SPRING_CONFIG: SpringConfig = {
+export const SPRING_CONFIG: WithSpringConfig = {
     mass: 1,
     damping: 15,
     stiffness: 130,

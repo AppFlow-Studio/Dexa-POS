@@ -9,7 +9,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { Menu, Schedule } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
-import BottomSheet from "@gorhom/bottom-sheet";
+import BottomSheet from "@/components/ui/bottomSheet";
 import { router } from "expo-router";
 import {
   ArrowLeft,

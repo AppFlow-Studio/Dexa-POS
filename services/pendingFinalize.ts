@@ -25,6 +25,12 @@ export interface PendingFinalizeEntry {
   batchUuid: string;
   merchantId: string;
   terminalId: string;
+  /** Which finalize RPC to replay. Defaults to 'castles' for legacy entries. */
+  processor?: "castles" | "valor";
+  /**
+   * The terminal close response to replay into finalize. Kept as `castlesResponse`
+   * for back-compat; for Valor this holds the Valor settlement response.
+   */
   castlesResponse: any;
   savedAt: string; // ISO
 }
@@ -62,6 +68,7 @@ export async function addPendingFinalize(
 ): Promise<void> {
   writeMmkv(entry);
   if (!supabase) return;
+  const processor = entry.processor ?? "castles";
   const { error } = await supabase
     .from("pending_finalize_journal")
     .upsert(
@@ -69,7 +76,11 @@ export async function addPendingFinalize(
         batch_uuid: entry.batchUuid,
         merchant_id: entry.merchantId,
         terminal_id: entry.terminalId,
-        castles_response: entry.castlesResponse,
+        processor,
+        // `response` is the generic column; keep `castles_response` populated for
+        // Castles rows so existing readers/reports stay intact.
+        response: entry.castlesResponse,
+        castles_response: processor === "castles" ? entry.castlesResponse : null,
         saved_at: entry.savedAt,
       },
       { onConflict: "batch_uuid" },
@@ -111,7 +122,7 @@ export async function listPendingFinalizes(
 
   const { data, error } = await supabase
     .from("pending_finalize_journal")
-    .select("batch_uuid, merchant_id, terminal_id, castles_response, saved_at")
+    .select("batch_uuid, merchant_id, terminal_id, processor, response, castles_response, saved_at")
     .order("saved_at", { ascending: true });
 
   if (error) {
@@ -126,7 +137,8 @@ export async function listPendingFinalizes(
     batchUuid: r.batch_uuid,
     merchantId: r.merchant_id,
     terminalId: r.terminal_id,
-    castlesResponse: r.castles_response,
+    processor: (r.processor as "castles" | "valor") ?? "castles",
+    castlesResponse: r.response ?? r.castles_response,
     savedAt: r.saved_at,
   }));
 
@@ -151,11 +163,18 @@ export async function retryPendingFinalize(
   supabase: SupabaseClient,
   entry: PendingFinalizeEntry,
 ): Promise<RetryFinalizeOutput> {
-  const { data, error } = await supabase.rpc("finalize_castles_settlement", {
-    p_batch_uuid: entry.batchUuid,
-    p_merchant_id: entry.merchantId,
-    p_castles_response: entry.castlesResponse,
-  });
+  const { data, error } =
+    (entry.processor ?? "castles") === "valor"
+      ? await supabase.rpc("finalize_valor_settlement", {
+          p_batch_uuid: entry.batchUuid,
+          p_merchant_id: entry.merchantId,
+          p_valor_response: entry.castlesResponse,
+        })
+      : await supabase.rpc("finalize_castles_settlement", {
+          p_batch_uuid: entry.batchUuid,
+          p_merchant_id: entry.merchantId,
+          p_castles_response: entry.castlesResponse,
+        });
 
   if (error) {
     // The 'already settled' guard means a previous retry actually

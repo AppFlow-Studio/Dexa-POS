@@ -41,7 +41,7 @@ import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
 import { CreditCard } from "lucide-react-native";
@@ -436,8 +436,26 @@ const TableOrderView = React.forwardRef<
   // in PaymentSuccessView.handleDone now, not here, so the operator stays on
   // the table while the success view is open.
   const hadSessionRef = useRef(!!session);
+  const sessionGoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (hadSessionRef.current && !session) {
+    // Session present (or came back): cancel any pending close, remember we had one.
+    if (session) {
+      if (sessionGoneTimerRef.current) {
+        clearTimeout(sessionGoneTimerRef.current);
+        sessionGoneTimerRef.current = null;
+      }
+      hadSessionRef.current = true;
+      return;
+    }
+    // Session absent. Do NOT navigate away immediately: a realtime sessions
+    // refresh (orders/tables broadcast) can momentarily drop this table's entry,
+    // and closing on that transient flicker made the order view open-then-
+    // instantly-close. Debounce and re-check — only leave if it STAYS gone
+    // (a genuine remote Clear/void by another station).
+    if (!hadSessionRef.current || sessionGoneTimerRef.current) return;
+    sessionGoneTimerRef.current = setTimeout(() => {
+      sessionGoneTimerRef.current = null;
+      if (useTableSessionStore.getState().sessions[currentTableId]) return; // flicker — stay
       isNavigatingAwayRef.current = true;
       usePaymentStore.getState().close();
       markNavigatingAway();
@@ -448,11 +466,16 @@ const TableOrderView = React.forwardRef<
       } else {
         router.back();
       }
-      const timeoutId = setTimeout(hideLoading, 300);
-      return () => clearTimeout(timeoutId);
-    }
-    hadSessionRef.current = !!session;
-  }, [session, markNavigatingAway, router, hideLoading, onClose]);
+      setTimeout(hideLoading, 300);
+    }, 600);
+  }, [session, markNavigatingAway, router, hideLoading, onClose, currentTableId]);
+  // Clear the pending-close timer on unmount so it can't fire after teardown.
+  useEffect(
+    () => () => {
+      if (sessionGoneTimerRef.current) clearTimeout(sessionGoneTimerRef.current);
+    },
+    [],
+  );
   useEffect(() => {
     if (!__DEV__) return;
     console.log(

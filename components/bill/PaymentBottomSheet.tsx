@@ -345,4 +345,6 @@ const getStyles = () =>
     }
   })
 
-export default PaymentBottomSheet
+// Persistently mounted in the (main) layout, which re-renders on every
+// navigation. Takes no props at all, so memo makes screen changes free here.
+export default React.memo(PaymentBottomSheet)

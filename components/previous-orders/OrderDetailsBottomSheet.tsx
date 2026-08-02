@@ -3,8 +3,8 @@ import { useOrderDetails } from "@/hooks/orders/useOrderDetails";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
-import type { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+} from "@/components/ui/bottomSheet";
+import type { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import {
   FileText,
   Info,
@@ -62,6 +62,8 @@ const OrderDetailsBottomSheet = forwardRef<
     collapse: () => bottomSheetRef.current?.collapse(),
     close: () => bottomSheetRef.current?.close(),
     forceClose: () => bottomSheetRef.current?.forceClose(),
+    present: () => bottomSheetRef.current?.present(),
+    dismiss: () => bottomSheetRef.current?.dismiss(),
   }));
 
   const renderBackdrop = (props: any) => (

@@ -2844,6 +2844,16 @@ const syncPaymentToBackend = async (
       return details.castlesTransaction as Record<string, unknown>;
     }
 
+    // Valor: pre-built JSONB from buildValorTerminalResponse() — pass through directly
+    if (details.valorTransaction) {
+      return details.valorTransaction as Record<string, unknown>;
+    }
+
+    // ATOM: pre-built JSONB from buildAtomTerminalResponse() — pass through directly
+    if (details.atomTransaction) {
+      return details.atomTransaction as Record<string, unknown>;
+    }
+
     const tx = details.dejavooTransaction;
     const entryType = tx?.entryType ?? tx?.entryMode;
     const amounts = tx?.amounts || {
@@ -3027,11 +3037,13 @@ const syncPaymentToBackend = async (
       //                            pay-for-items client paths already scale
       //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      // v16 — split-payment fully-paid requires ALL portions captured (drops
-      // v15's `balance <= 0.02` dust fallback that flipped a tiny split to paid
-      // after the first portion). MUST match orderService.processPayment, which
-      // also calls v16 — this is the direct (non-OrderService) payment path.
-      "process_payment_v16",
+      // v17 — forks v16 byte-identical + a valor_transaction branch that funnels
+      // Valor's nested card fields (cardLast4/rrn/approvalCode/entryMode) into the
+      // order_payments columns and stamps terminal_type='valor'. Without it the
+      // client called v16 (no valor arm) so Valor payments persisted with null
+      // last4/rrn/auth and a 'dejavoo' label. MUST match
+      // orderService.processPayment, which also calls v17.
+      "process_payment_v17",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -4409,6 +4421,10 @@ function mergeTransactionDetails(
       broadcast.castlesTransaction ?? local.castlesTransaction,
     dejavooTransaction:
       broadcast.dejavooTransaction ?? local.dejavooTransaction,
+    valorTransaction:
+      broadcast.valorTransaction ?? local.valorTransaction,
+    atomTransaction:
+      broadcast.atomTransaction ?? local.atomTransaction,
   };
 }
 
@@ -15531,6 +15547,14 @@ export const useOrderStore = create<OrderState>()(
                       const castlesTxn =
                         terminalResponse?.castles_transaction as
                           Record<string, any> | undefined;
+                      // Valor blob lives in processor_response; read both columns.
+                      const valorTxn = ((p as any).processor_response
+                        ?.valor_transaction ??
+                        terminalResponse?.valor_transaction) as
+                          Record<string, any> | undefined;
+                      const terminalVendor = (terminalResponse?.terminal_vendor ??
+                        (p as any).processor_response?.terminal_vendor) as
+                          string | undefined;
 
                       // Refund evidence: take max across DB + local. Apply
                       // refund didn't always advance `status`, so we have to
@@ -15615,19 +15639,26 @@ export const useOrderStore = create<OrderState>()(
                         ...(isPreAuth
                           ? {
                               preAuthAmount: p.amount,
-                              preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                              preAuthRrn:
+                                (p as any).rrn || castlesTxn?.rrn || valorTxn?.rrn,
                               preAuthStan: castlesTxn?.stan,
+                              preAuthTranNo:
+                                valorTxn?.tranNo || (p as any).transaction_id,
                               preAuthAuthCode:
                                 (p as any).authorization_code ||
-                                castlesTxn?.approvalCode,
+                                castlesTxn?.approvalCode ||
+                                valorTxn?.approvalCode,
                               preAuthReferenceId:
                                 (p as any).reference_number ||
-                                castlesTxn?.referenceId,
+                                castlesTxn?.referenceId ||
+                                valorTxn?.reqTxnId,
                               preAuthTerminalType:
-                                (terminalResponse?.terminal_vendor === "castles"
+                                (terminalVendor === "castles"
                                   ? "castles"
+                                  : terminalVendor === "valor"
+                                  ? "valor"
                                   : "dejavoo") as
-                                  "dejavoo" | "castles" | undefined,
+                                  "dejavoo" | "castles" | "valor" | undefined,
                             }
                           : {}),
                       };
@@ -15914,6 +15945,14 @@ export const useOrderStore = create<OrderState>()(
                     Record<string, any> | undefined;
                   const castlesTxn = terminalResponse?.castles_transaction as
                     Record<string, any> | undefined;
+                  // Valor blob lives in processor_response; read both columns.
+                  const valorTxn = ((p as any).processor_response
+                    ?.valor_transaction ??
+                    terminalResponse?.valor_transaction) as
+                    Record<string, any> | undefined;
+                  const terminalVendor = (terminalResponse?.terminal_vendor ??
+                    (p as any).processor_response?.terminal_vendor) as
+                    string | undefined;
 
                   return {
                     id: `payment_${p.id}`,
@@ -15961,18 +16000,26 @@ export const useOrderStore = create<OrderState>()(
                     ...(isPreAuth
                       ? {
                           preAuthAmount: p.amount,
-                          preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                          preAuthRrn:
+                            (p as any).rrn || castlesTxn?.rrn || valorTxn?.rrn,
                           preAuthStan: castlesTxn?.stan,
+                          preAuthTranNo:
+                            valorTxn?.tranNo || (p as any).transaction_id,
                           preAuthAuthCode:
                             (p as any).authorization_code ||
-                            castlesTxn?.approvalCode,
+                            castlesTxn?.approvalCode ||
+                            valorTxn?.approvalCode,
                           preAuthReferenceId:
                             (p as any).reference_number ||
-                            castlesTxn?.referenceId,
+                            castlesTxn?.referenceId ||
+                            valorTxn?.reqTxnId,
                           preAuthTerminalType:
-                            (terminalResponse?.terminal_vendor === "castles"
+                            (terminalVendor === "castles"
                               ? "castles"
-                              : "dejavoo") as "dejavoo" | "castles" | undefined,
+                              : terminalVendor === "valor"
+                              ? "valor"
+                              : "dejavoo") as
+                              "dejavoo" | "castles" | "valor" | undefined,
                         }
                       : {}),
                   };
@@ -17048,6 +17095,16 @@ export const useOrderStore = create<OrderState>()(
                       Record<string, any> | undefined;
                     const dejavooTxn = terminalResp?.dejavoo_transaction as
                       Record<string, any> | undefined;
+                    // Valor stores its blob in processor_response (not
+                    // terminal_response): { terminal_vendor, valor_transaction }.
+                    const atomTxn = (payment.processor_response as any)
+                      ?.atom_transaction as Record<string, any> | undefined;
+                    // Read both columns: process_preauth stores the blob in
+                    // terminal_response; capture/sale dual-store in processor_response.
+                    const valorTxn = ((payment.processor_response as any)
+                      ?.valor_transaction ??
+                      (terminalResp as any)?.valor_transaction) as
+                      Record<string, any> | undefined;
 
                     return {
                       // Core identifiers
@@ -17187,10 +17244,14 @@ export const useOrderStore = create<OrderState>()(
                         cardType:
                           payment.card_type ??
                           castlesTxn?.cardType ??
+                          valorTxn?.cardType ??
+                          atomTxn?.cardType ??
                           dejavooTxn?.CardType,
                         last4:
                           payment.card_last_four ??
                           castlesTxn?.cardLast4 ??
+                          valorTxn?.cardLast4 ??
+                          atomTxn?.cardLast4 ??
                           dejavooTxn?.Last4,
                         transactionId: payment.transaction_id,
                         amountTendered: payment.amount_tendered,
@@ -17201,15 +17262,38 @@ export const useOrderStore = create<OrderState>()(
                         dejavooTransaction:
                           payment.processor_response?.dejavoo_transaction,
                         // Additional terminal fields
-                        rrn: payment.rrn,
+                        rrn: payment.rrn ?? valorTxn?.rrn ?? atomTxn?.rrn,
                         batchNumber:
-                          payment.batch_number || payment.dejavoo_batch_number,
+                          payment.batch_number ||
+                          payment.dejavoo_batch_number ||
+                          valorTxn?.batchNumber,
                         invoiceNumber: payment.dejavoo_invoice_number,
                         entryMode:
                           payment.processor_response?.dejavoo_transaction
-                            ?.entryMode ?? castlesTxn?.entryMode,
+                            ?.entryMode ??
+                          castlesTxn?.entryMode ??
+                          valorTxn?.entryMode ??
+                          atomTxn?.entryMode,
                         referenceId: payment.reference_number,
                         castlesTransaction: castlesTxn,
+                        // Full Valor blob for the detail sheet (reads
+                        // valorTransaction.valor_transaction.*). Only set for
+                        // actual Valor payments so Dejavoo/NMI processor_response
+                        // blobs don't get misread as card data.
+                        valorTransaction:
+                          (payment.processor_response as any)
+                            ?.terminal_vendor === "valor"
+                            ? payment.processor_response
+                            : undefined,
+                        // Full ATOM blob for the detail sheet (reads
+                        // atomTransaction.atom_transaction.*). Only set for
+                        // actual ATOM payments so other processor_response blobs
+                        // aren't misread as card data.
+                        atomTransaction:
+                          (payment.processor_response as any)
+                            ?.terminal_vendor === "atom"
+                            ? payment.processor_response
+                            : undefined,
                       },
 
                       // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)
@@ -17217,18 +17301,26 @@ export const useOrderStore = create<OrderState>()(
                       ...(payment.status === "authorized"
                         ? {
                             preAuthAmount: payment.amount,
-                            preAuthRrn: payment.rrn || castlesTxn?.rrn,
+                            preAuthRrn:
+                              payment.rrn || castlesTxn?.rrn || valorTxn?.rrn,
                             preAuthStan: castlesTxn?.stan,
+                            preAuthTranNo:
+                              valorTxn?.tranNo ||
+                              (payment as any).transaction_id,
                             preAuthAuthCode:
                               payment.authorization_code ||
-                              castlesTxn?.approvalCode,
+                              castlesTxn?.approvalCode ||
+                              valorTxn?.approvalCode,
                             preAuthReferenceId:
                               payment.reference_number ||
-                              castlesTxn?.referenceId,
+                              castlesTxn?.referenceId ||
+                              valorTxn?.reqTxnId,
                             preAuthTerminalType: (payment.terminal_type ===
                             "castles"
                               ? "castles"
-                              : "dejavoo") as "castles" | "dejavoo",
+                              : payment.terminal_type === "valor" || valorTxn
+                              ? "valor"
+                              : "dejavoo") as "castles" | "dejavoo" | "valor",
                           }
                         : {}),
 

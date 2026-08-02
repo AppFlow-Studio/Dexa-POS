@@ -29,7 +29,8 @@ export interface StationPaymentTerminal {
     | "square"
     | "stripe_terminal"
     | "castles"
-    | "valor";
+    | "valor"
+    | "atom";
   terminal_model: string | null;
   is_connected: boolean;
   /** Castles/Valor terminal IP address */
@@ -128,6 +129,11 @@ export interface PosStaffLoginResponse {
     | "INVALID_PIN"
     | "STATION_NOT_FOUND"
     | "STATION_IN_USE"
+    | "SUBSCRIPTION_SUSPENDED"
+    | "BILLING_SUSPENDED"
+    | "PAYMENT_REQUIRED"
+    | "STATION_QUOTA_EXCEEDED"
+    | "STATION_LIMIT_REACHED"
     | "LOCKOUT_5MIN"
     | "LOCKOUT_30MIN";
   staff?: {

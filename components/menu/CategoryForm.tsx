@@ -17,7 +17,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
   BottomSheetTextInput
-} from '@gorhom/bottom-sheet'
+} from '@/components/ui/bottomSheet'
 import { router } from 'expo-router'
 import {
   Check,

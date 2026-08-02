@@ -1,7 +1,7 @@
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import React, { forwardRef, useMemo } from "react";
 import { Text, View } from "react-native";
 import { BarChart } from "@/components/charts/LazyGiftedCharts";

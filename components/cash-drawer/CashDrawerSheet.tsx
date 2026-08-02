@@ -36,7 +36,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import {
   ArrowDownCircle,
   ArrowUpCircle,
