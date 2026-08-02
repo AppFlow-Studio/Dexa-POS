@@ -80,9 +80,9 @@ Expected:
 
 - `services/floorPlanService.ts`
 - `supabase/migrations/20260710120000_table_transfer_session_safety.sql`
-- `tasks/table-merge-transfer-date-calendar-integrity.md`
-- `tasks/ticket-log.md`
-- `tasks/in-progress-ticket-testing-sweep-2026-07-02.md`
+- `docs/quality/qa-tracking/table-merge-transfer-date-calendar-integrity.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/quality/qa-tracking/in-progress-ticket-testing-sweep-2026-07-02.md`
 
 ## Open QA
 

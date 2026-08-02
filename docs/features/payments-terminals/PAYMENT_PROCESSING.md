@@ -579,5 +579,5 @@ const totals = calculateOrderTotals({
 
 ## Related Documentation
 
-- [ORDERS_LIFECYCLE.md](./ORDERS_LIFECYCLE.md) - Order flow details
-- [STATE_MANAGEMENT.md](./STATE_MANAGEMENT.md) - Store architecture
+- [ORDERS_LIFECYCLE.md](../orders/ORDERS_LIFECYCLE.md) - Order flow details
+- [STATE_MANAGEMENT.md](../../engineering/architecture/STATE_MANAGEMENT.md) - Store architecture

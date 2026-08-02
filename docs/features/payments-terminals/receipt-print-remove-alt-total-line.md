@@ -46,8 +46,8 @@
 ## Files
 
 - `AGENTS.md`
-- `tasks/ticket-log.md`
-- `tasks/receipt-print-remove-alt-total-line.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/features/payments-terminals/receipt-print-remove-alt-total-line.md`
 - `types/printer.ts`
 - `services/printing/PrinterService.ts`
 - `services/printing/templates/ReceiptDocumentTemplate.ts`

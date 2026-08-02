@@ -42,7 +42,7 @@ Out of scope:
 - Added `any_rush` to `types/kds.ts`.
 - Updated `stores/useKDSStore.ts` to derive elevated tickets from `any_rush`, item `rush`, ticket `prioritized`, item `is_prioritized`, and local prioritized IDs.
 - Updated `app/(main)/kds.tsx` final layout sort to keep elevated tickets above normal tickets.
-- Updated `tasks/ticket-log.md`.
+- Updated `docs/tickets/ALL-TICKETS-REFERENCE.md`.
 
 ## Verification
 
@@ -84,8 +84,8 @@ Manual QA still required:
 - `stores/useKDSStore.ts`
 - `app/(main)/kds.tsx`
 - `__tests__/kdsRushPrioritySort.test.ts`
-- `tasks/kds-rush-priority-sort.md`
-- `tasks/ticket-log.md`
+- `docs/features/kds/kds-rush-priority-sort.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
 
 ## Open QA
 

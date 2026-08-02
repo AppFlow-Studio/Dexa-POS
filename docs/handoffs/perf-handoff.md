@@ -16,7 +16,7 @@ Branch `feat/perf-and-bug`. A prior session shipped (working tree, **uncommitted
 **Reference docs:**
 - Full plan + per-wave detail: `~/.claude/plans/so-far-we-have-imperative-ritchie.md`
 - Approved 4-phase roadmap (Phases 0–3 shipped): `~/.claude/plans/role-objective-cryptic-dusk.md`
-- Baseline protocol: `docs/perf-baseline-protocol.md`; instrumentation: `lib/perf.ts` (spans `pos.add_to_cart`, `pos.open_payment`, `pos.floor_switch`, `pos.table_open`, `pos.boot_to_order`, `pos.queue_flush`).
+- Baseline protocol: `docs/engineering/performance/perf-baseline-protocol.md`; instrumentation: `lib/perf.ts` (spans `pos.add_to_cart`, `pos.open_payment`, `pos.floor_switch`, `pos.table_open`, `pos.boot_to_order`, `pos.queue_flush`).
 
 ## Standing guardrails (apply to ALL items below)
 

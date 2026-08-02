@@ -157,9 +157,9 @@ ORDER BY sp.account_type;
 
 - `app/(auth)/pin-login.tsx` inspected only.
 - `app/(auth)/store-select.tsx` inspected only.
-- `tasks/bay-ridge-owner-misprovisioned-relink.md`
-- `tasks/ticket-log.md`
-- `tasks/in-progress-ticket-testing-sweep-2026-07-02.md`
+- `docs/features/identity-access/bay-ridge-owner-misprovisioned-relink.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/quality/qa-tracking/in-progress-ticket-testing-sweep-2026-07-02.md`
 
 ## Open QA
 

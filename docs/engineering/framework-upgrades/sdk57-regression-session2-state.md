@@ -1,6 +1,6 @@
 # SDK 53→57 Regression — Session 2 state & handoff
 
-Continues `tasks/sdk57-regression-plan.md`. Branch `feat/landi-pay`. Device: Landi P30 (serial `264EAPTW0078`, pkg `com.temurappflowstudios.dexapos`). Staff PIN: **1388** (manager "Temur").
+Continues `docs/engineering/framework-upgrades/sdk57-regression-plan.md`. Branch `feat/landi-pay`. Device: Landi P30 (serial `264EAPTW0078`, pkg `com.temurappflowstudios.dexapos`). Staff PIN: **1388** (manager "Temur").
 
 ## TL;DR
 - **Toast fix (moti → reanimated): DONE, applied, NOT yet verified.** Low risk.

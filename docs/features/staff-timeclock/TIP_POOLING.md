@@ -388,6 +388,6 @@ Restaurant pools a portion of tips for BOH staff using a points system.
 
 ## Related Documentation
 
-- [Payment Processing](PAYMENT_PROCESSING.md) — How tips are captured during payment
-- [Orders Lifecycle](ORDERS_LIFECYCLE.md) — Order states and payment flow
-- [State Management](STATE_MANAGEMENT.md) — Zustand store patterns used by tip distribution store
+- [Payment Processing](../payments-terminals/PAYMENT_PROCESSING.md) — How tips are captured during payment
+- [Orders Lifecycle](../orders/ORDERS_LIFECYCLE.md) — Order states and payment flow
+- [State Management](../../engineering/architecture/STATE_MANAGEMENT.md) — Zustand store patterns used by tip distribution store

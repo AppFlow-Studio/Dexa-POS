@@ -68,7 +68,7 @@ piece is intentionally being saved for last.
 
 ### Deeper performance pass
 A larger performance/optimization effort. **The plan is already written — next step is
-to apply it.** (See `docs/bad-wifi-deeper-optimizations.md` and `tasks/perf-handoff.md`.)
+to apply it.** (See `docs/features/offline-sync/bad-wifi-deeper-optimizations.md` and `docs/handoffs/perf-handoff.md`.)
 
 ---
 

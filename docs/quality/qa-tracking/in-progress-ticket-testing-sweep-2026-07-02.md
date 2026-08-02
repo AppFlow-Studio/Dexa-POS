@@ -158,7 +158,7 @@ Ticket title:
 
 Implemented in POS repo:
 
-- `tasks/receipt-print-remove-alt-total-line.md`
+- `docs/features/payments-terminals/receipt-print-remove-alt-total-line.md`
 - Receipt composer/print changes already documented in the task file.
 
 Scope:
@@ -215,7 +215,7 @@ Ticket title:
 
 Implemented in POS repo:
 
-- `tasks/menu-grid-dessert-duplicate-card.md`
+- `docs/features/menu-management/menu-grid-dessert-duplicate-card.md`
 - Menu sync/grid dedupe guard documented in the task file.
 
 Scope:
@@ -260,7 +260,7 @@ Ticket title:
 
 Implemented in POS repo:
 
-- `tasks/pos-platform-logo-kds-previous-orders.md`
+- `docs/features/orders/pos-platform-logo-kds-previous-orders.md`
 - Shared POS platform resolver and POS surface wiring documented in the task file.
 
 Scope:
@@ -302,7 +302,7 @@ Ticket title:
 
 Implemented in POS repo:
 
-- `tasks/dual-pricing-stale-manual-cash-price-reprice.md`
+- `docs/features/menu-management/dual-pricing-stale-manual-cash-price-reprice.md`
 - `supabase/migrations/20260623120000_reprice_charcoal_gardenia_stale_cash_prices.sql`
 
 Scope:
@@ -364,7 +364,7 @@ Ticket title:
 
 Implemented in POS repo:
 
-- `tasks/kds-ticket-server-name.md`
+- `docs/features/kds/kds-ticket-server-name.md`
 - `supabase/migrations/20260629120000_kds_ticket_server_name.sql`
 - KDS ticket header render updates documented in the task file.
 
@@ -417,7 +417,7 @@ Ticket title:
 
 Implemented in POS repo:
 
-- `tasks/order-number-local-midnight-previous-orders-sort.md`
+- `docs/features/orders/order-number-local-midnight-previous-orders-sort.md`
 - `supabase/migrations/20260629130000_order_numbers_location_timezone.sql`
 
 Scope:
@@ -468,7 +468,7 @@ Ticket title:
 
 Implemented in POS repo:
 
-- `tasks/pos-effective-config-station-overrides.md`
+- `docs/features/pos-settings/pos-effective-config-station-overrides.md`
 - `supabase/migrations/20260630120000_station_pos_config_overrides.sql`
 - POS effective-config hydration and station-switch rehydrate documented in the task file.
 
@@ -525,7 +525,7 @@ Ticket title:
 
 Implemented in POS repo:
 
-- `tasks/timesheets-auto-clock-out-pos.md`
+- `docs/features/staff-timeclock/timesheets-auto-clock-out-pos.md`
 - `supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql`
 - POS timeclock hydration now calls the safe backend RPC before loading active sessions.
 
@@ -661,7 +661,7 @@ Ticket title:
 Status:
 
 - Not POS code.
-- Data/admin runbook added: `tasks/bay-ridge-owner-misprovisioned-relink.md`.
+- Data/admin runbook added: `docs/features/identity-access/bay-ridge-owner-misprovisioned-relink.md`.
 - Requires senior/prod-authorized Clerk and Supabase repair.
 - POS is only affected indirectly through shared staff/member identity.
 - POS PIN login reads `location_members` + `staff_profiles`; the Staff Directory reactivate failure is not in this repo.

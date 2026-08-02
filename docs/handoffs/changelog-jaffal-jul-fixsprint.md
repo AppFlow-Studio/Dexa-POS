@@ -23,7 +23,7 @@ staging merge `654063bd`.
   expo-keep-awake (JS path fails silently when the native module is missing from an older
   binary under OTA JS updates). ⚠️ Do NOT add any JS keep-awake hook to the root tree —
   expo-keep-awake clears that same flag when its last tag releases.
-  Inventory doc: `tasks/appstate-netinfo-listener-inventory.md`.
+  Inventory doc: `docs/engineering/performance/appstate-netinfo-listener-inventory.md`.
 - `877bce1b` floor fallback poll backed off (was a flat 5s cadence causing 6 full floor loads /
   10 min, ~2MB MMKV writes on a Tab S6 Lite); stopped persisting discarded session data.
   → `stores/useFloorPlanStore.ts`, `hooks/realtime/useFloorRealtime.ts`.
@@ -64,8 +64,8 @@ Auth + access-control + KDS: `lib/posAccessControl.ts`, `services/posAccessServi
 `lib/authFlow.ts`, `hooks/useSessionKickListener.ts`, `KickedOutModal`, `ClerkSessionKeeper`,
 station-select/pin-login; KDS server-authoritative "done"
 (`utils/supabase/migrations/20260717120000_kds_server_authoritative_done.sql`,
-`stores/useKDSStore.ts`), KDS rush priority sort. Docs in `tasks/kds-server-authoritative-done.md`,
-`tasks/billing-pos-suspended-access.md`.
+`stores/useKDSStore.ts`), KDS rush priority sort. Docs in `docs/features/kds/kds-server-authoritative-done.md`,
+`docs/features/billing/billing-pos-suspended-access.md`.
 
 ## Known gaps
 

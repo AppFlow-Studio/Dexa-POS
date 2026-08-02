@@ -67,7 +67,7 @@ Manual/Supabase QA:
 9. Recall from Done and confirm it re-enters the correct active column on both tablets.
 
 ## Files
-- `tasks/kds-server-authoritative-done.md`
+- `docs/features/kds/kds-server-authoritative-done.md`
 - `supabase/migrations/20260717120000_kds_server_authoritative_done.sql`
 - `stores/useKDSStore.ts`
 - `types/kds.ts`

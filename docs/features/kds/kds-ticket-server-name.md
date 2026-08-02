@@ -43,8 +43,8 @@ Out of scope:
 - Added `server_id` and `server_name` to `types/kds.ts`.
 - Updated KDS ticket normalization/equality in `stores/useKDSStore.ts` so newly returned server names are not ignored by ticket reference reuse.
 - Updated active and done KDS card headers in `app/(main)/kds.tsx`.
-- Updated `tasks/ticket-log.md`.
-- Updated `tasks/pos-ticket-senior-summary-2026-06-27.md`.
+- Updated `docs/tickets/ALL-TICKETS-REFERENCE.md`.
+- Updated `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`.
 - Targeted KDS Jest checks passed on 2026-06-29.
 
 ## Verification
@@ -71,9 +71,9 @@ Manual QA still required:
 - `types/kds.ts`
 - `stores/useKDSStore.ts`
 - `app/(main)/kds.tsx`
-- `tasks/kds-ticket-server-name.md`
-- `tasks/ticket-log.md`
-- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+- `docs/features/kds/kds-ticket-server-name.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`
 
 ## Open QA
 

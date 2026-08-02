@@ -43,7 +43,7 @@ Phase 2 shrank under verification: of the audit's three structural render findin
 
 ## Perf Roadmap — Phase 1: Quick wins (code complete)
 
-Plan: `~/.claude/plans/role-objective-cryptic-dusk.md` · Verify each item against Phase 0 baselines per `docs/perf-baseline-protocol.md`
+Plan: `~/.claude/plans/role-objective-cryptic-dusk.md` · Verify each item against Phase 0 baselines per `docs/engineering/performance/perf-baseline-protocol.md`
 
 - [x] F1 — `useOrderPayments` staleTime 0 → 60s (`hooks/orders/useOrderPayments.ts`) **+ realtime gate fix**: payments-query invalidation in `useOrdersRealtime.ts` was online-orders-only; now fires for all orders (unmounted = mark-stale only, no network) so the 60s cache has no cross-station freshness gap. Prefetch stays online-only.
 - [x] F2 — POS boot block in `app/_layout.tsx` (draft cleanup, PrinterService start, payment/refund journal scans) moved from `useIsomorphicLayoutEffect` (blocked first paint) into `InteractionManager.runAfterInteractions`, with cancel on unmount.
@@ -69,7 +69,7 @@ Plan: `~/.claude/plans/role-objective-cryptic-dusk.md` (approved 2026-06-11)
 - [x] Instrument `pos.open_payment` (usePaymentStore.open — guards → set({isOpen}) → paint; tags `method`, `view`)
 - [x] Instrument `pos.boot_to_order` (markStart at pin-login success → markEnd at order-processing renderStage 2; TTL-cancels on KDS routes)
 - [x] Instrument `pos.queue_flush` (offlineSyncService.processQueue — real flushes only; tags ready/blocked/pending counts, success/fail counts)
-- [x] Write repeatable Landi baseline protocol doc (`docs/perf-baseline-protocol.md`)
+- [x] Write repeatable Landi baseline protocol doc (`docs/engineering/performance/perf-baseline-protocol.md`)
 - [x] Type check + lint (0 errors; only pre-existing warnings) + 26 tests pass (offlineSyncBlocking, wave26AddItem, payment-store-sc)
 - [ ] (User/on-device) run baseline protocol on Landi, fill budget-table baselines
 - [ ] (User/Sentry UI) confirm slow/frozen frames per transaction; build `transaction.op:pos.interaction` dashboard

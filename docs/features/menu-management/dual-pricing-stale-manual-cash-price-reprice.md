@@ -41,7 +41,7 @@ Out of scope:
 
 ## Progress
 
-- Created this task record and added it to `tasks/ticket-log.md`.
+- Created this task record and added it to `docs/tickets/ALL-TICKETS-REFERENCE.md`.
 - Added a guarded Supabase data migration for the 4 known stale Milk Shakes rows:
   - `supabase/migrations/20260623120000_reprice_charcoal_gardenia_stale_cash_prices.sql`
 - After the first Supabase run found no matching Charcoal Gardenia target rows, adjusted the migration to no-op with a notice when target data is absent in that environment. It still aborts on partial/ambiguous matches.
@@ -197,8 +197,8 @@ Manual QA still required:
 
 ## Files
 
-- `tasks/dual-pricing-stale-manual-cash-price-reprice.md`
-- `tasks/ticket-log.md`
+- `docs/features/menu-management/dual-pricing-stale-manual-cash-price-reprice.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
 - `supabase/migrations/20260623120000_reprice_charcoal_gardenia_stale_cash_prices.sql`
 
 ## Open QA

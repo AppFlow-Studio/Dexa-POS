@@ -135,8 +135,8 @@ Expected behavior: finalized printed receipts should show only the actual charge
 - `services/printing/templates/ReceiptDocumentTemplate.ts`
 - `services/printing/templates/ReceiptTemplate.ts`
 - `__tests__/receipt-print-pricing-mode.test.ts`
-- `tasks/receipt-print-remove-alt-total-line.md`
-- `tasks/ticket-log.md`
+- `docs/features/payments-terminals/receipt-print-remove-alt-total-line.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
 
 ## Migration
 
@@ -178,8 +178,8 @@ Root hypothesis: the sync payload can return duplicate rows for the same `menu_i
 - `lib/menuSyncDedupe.ts`
 - `stores/useMenuStore.ts`
 - `__tests__/menu-sync-dedupe.test.ts`
-- `tasks/menu-grid-dessert-duplicate-card.md`
-- `tasks/ticket-log.md`
+- `docs/features/menu-management/menu-grid-dessert-duplicate-card.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
 
 ## Migration
 
@@ -231,8 +231,8 @@ Root issue: stored manual cash prices override the automatic 4% discount read pa
 
 ## Files
 
-- `tasks/dual-pricing-stale-manual-cash-price-reprice.md`
-- `tasks/ticket-log.md`
+- `docs/features/menu-management/dual-pricing-stale-manual-cash-price-reprice.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
 - `supabase/migrations/20260623120000_reprice_charcoal_gardenia_stale_cash_prices.sql`
 
 ## Migration
@@ -286,8 +286,8 @@ Root issue: `orders.created_by_staff_id`, `orders.assigned_server_id`, and `kds_
 - `types/kds.ts`
 - `stores/useKDSStore.ts`
 - `app/(main)/kds.tsx`
-- `tasks/kds-ticket-server-name.md`
-- `tasks/ticket-log.md`
+- `docs/features/kds/kds-ticket-server-name.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
 
 ## Migration
 
@@ -344,9 +344,9 @@ Previous Orders sort was inspected in this POS repo. The current branch already 
 ## Files
 
 - `supabase/migrations/20260629130000_order_numbers_location_timezone.sql`
-- `tasks/order-number-local-midnight-previous-orders-sort.md`
-- `tasks/ticket-log.md`
-- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+- `docs/features/orders/order-number-local-midnight-previous-orders-sort.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`
 
 ## Migration
 
@@ -407,9 +407,9 @@ This is client-only. No schema or RPC migration is required.
 - `stores/useKDSStore.ts`
 - `app/(main)/kds.tsx`
 - `__tests__/order-platform-resolver.test.ts`
-- `tasks/pos-platform-logo-kds-previous-orders.md`
-- `tasks/ticket-log.md`
-- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+- `docs/features/orders/pos-platform-logo-kds-previous-orders.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`
 
 ## Migration
 
@@ -467,9 +467,9 @@ This branch covers the POS/schema side. Web dashboard settings UI is intentional
 - `app/(main)/kds.tsx`
 - `database.types.ts`
 - `__tests__/pos-config-resolution.test.ts`
-- `tasks/pos-effective-config-station-overrides.md`
-- `tasks/ticket-log.md`
-- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+- `docs/features/pos-settings/pos-effective-config-station-overrides.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`
 
 ## Migration
 
@@ -527,7 +527,7 @@ Ticket: prevent forgotten POS clock-outs from running indefinitely by adding a p
 - `stores/useTimeclockStore.ts`
 - `database.types.ts`
 - `types/locationConfig.ts`
-- `tasks/timesheets-auto-clock-out-pos.md`
+- `docs/features/staff-timeclock/timesheets-auto-clock-out-pos.md`
 
 ## Migration
 

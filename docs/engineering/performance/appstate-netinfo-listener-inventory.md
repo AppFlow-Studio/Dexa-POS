@@ -35,19 +35,19 @@ foreground path, i.e. competes with the first tap.
 
 | # | Site | Work on `active` | Gated? |
 |---|---|---|---|
-| 1 | [ClerkSessionKeeper.tsx:66](components/auth/ClerkSessionKeeper.tsx#L66) | `getToken({ skipCache: true })` — full refresh-token exchange | Online-only ([:41](components/auth/ClerkSessionKeeper.tsx#L41)). **No staleness gate** — fires on every resume |
-| 2 | [useRealtimechannel.ts:366](hooks/realtime/useRealtimechannel.ts#L366) **×3** | If channel dead: full re-subscribe after 1000ms. If SUBSCRIBED: `realtime.setAuth()` | Per-channel state only |
-| 3 | [offlineSyncService.ts:676](services/offlineSyncService.ts#L676) | `NetInfo.fetch()` → `handleNetworkChange` → may drain the offline queue | `connectionQuality.reset()` gated on `appForegroundResetMs` |
-| 4 | [heartbeat.ts:177](services/hardware/heartbeat.ts#L177) → [:118](services/hardware/heartbeat.ts#L118) | Immediate `sendHeartbeat()` (Supabase write) + restart 60s interval | Only that interval was paused |
-| 5 | [terminalHealthCheck.ts:370](services/hardware/terminalHealthCheck.ts#L370) → [:317](services/hardware/terminalHealthCheck.ts#L317) | Immediate `performHealthCheck()` (terminal TCP/HTTP probe) + restart interval | Only that interval was paused |
-| 6 | [starPrinterHealthCheck.ts:534](services/hardware/starPrinterHealthCheck.ts#L534) → [:495](services/hardware/starPrinterHealthCheck.ts#L495) | Immediate `performHealthCheckRound()` — probes **every** known printer + restart interval | Only that interval was paused |
-| 7 | [useOrderReconcile.ts:86](hooks/useOrderReconcile.ts#L86) | `fire('foreground')` → debounced order reconcile | Internal debounce |
-| 8 | [useSessionKickListener.ts:344](hooks/useSessionKickListener.ts#L344) → [:335](hooks/useSessionKickListener.ts#L335) | `validateSession()` after 500ms | 5-min staleness gate ✅ |
-| 9 | [useBusinessDayRollover.ts:73](hooks/pos/useBusinessDayRollover.ts#L73) | `checkRollover()` → `refreshPreviousOrders({force:true})` **only if the business day changed** | Day-boundary gate ✅ — but the overnight-resume QA case is exactly when it fires |
-| 10 | [PosSyncProvider.tsx:807](contexts/PosSyncProvider.tsx#L807) | Five separate items, see below | Mixed |
+| 1 | [ClerkSessionKeeper.tsx:66](../../../components/auth/ClerkSessionKeeper.tsx#L66) | `getToken({ skipCache: true })` — full refresh-token exchange | Online-only ([:41](../../../components/auth/ClerkSessionKeeper.tsx#L41)). **No staleness gate** — fires on every resume |
+| 2 | [useRealtimechannel.ts:366](../../../hooks/realtime/useRealtimechannel.ts#L366) **×3** | If channel dead: full re-subscribe after 1000ms. If SUBSCRIBED: `realtime.setAuth()` | Per-channel state only |
+| 3 | [offlineSyncService.ts:676](../../../services/offlineSyncService.ts#L676) | `NetInfo.fetch()` → `handleNetworkChange` → may drain the offline queue | `connectionQuality.reset()` gated on `appForegroundResetMs` |
+| 4 | [heartbeat.ts:177](../../../services/hardware/heartbeat.ts#L177) → [:118](../../../services/hardware/heartbeat.ts#L118) | Immediate `sendHeartbeat()` (Supabase write) + restart 60s interval | Only that interval was paused |
+| 5 | [terminalHealthCheck.ts:370](../../../services/hardware/terminalHealthCheck.ts#L370) → [:317](../../../services/hardware/terminalHealthCheck.ts#L317) | Immediate `performHealthCheck()` (terminal TCP/HTTP probe) + restart interval | Only that interval was paused |
+| 6 | [starPrinterHealthCheck.ts:534](../../../services/hardware/starPrinterHealthCheck.ts#L534) → [:495](../../../services/hardware/starPrinterHealthCheck.ts#L495) | Immediate `performHealthCheckRound()` — probes **every** known printer + restart interval | Only that interval was paused |
+| 7 | [useOrderReconcile.ts:86](../../../hooks/useOrderReconcile.ts#L86) | `fire('foreground')` → debounced order reconcile | Internal debounce |
+| 8 | [useSessionKickListener.ts:344](../../../hooks/useSessionKickListener.ts#L344) → [:335](../../../hooks/useSessionKickListener.ts#L335) | `validateSession()` after 500ms | 5-min staleness gate ✅ |
+| 9 | [useBusinessDayRollover.ts:73](../../../hooks/pos/useBusinessDayRollover.ts#L73) | `checkRollover()` → `refreshPreviousOrders({force:true})` **only if the business day changed** | Day-boundary gate ✅ — but the overnight-resume QA case is exactly when it fires |
+| 10 | [PosSyncProvider.tsx:807](../../../contexts/PosSyncProvider.tsx#L807) | Five separate items, see below | Mixed |
 
 **PosSyncProvider is itself a mini-coordinator** and the closest existing thing to
-the target design ([:713-787](contexts/PosSyncProvider.tsx#L713-L787)):
+the target design ([:713-787](../../../contexts/PosSyncProvider.tsx#L713-L787)):
 
 - `refreshSelectedStore` — 5-min staleness gate ✅
 - `refreshEmployeesIfStale` — 5-min staleness gate ✅
@@ -59,13 +59,13 @@ the target design ([:713-787](contexts/PosSyncProvider.tsx#L713-L787)):
 
 | # | Site | Work on `active` |
 |---|---|---|
-| 11 | [app/_layout.tsx:879](app/_layout.tsx#L879) | `startDraftCleanup()` — **synchronously runs `cleanupAbandonedDrafts()` + `clearInactiveOrders()` over the whole order store** ([useOrderStore.ts:12809-12811](stores/useOrderStore.ts#L12809-L12811)), plus `PrinterService.startProcessing()` + `startSessionPrune()` |
-| 12 | [StarPrinterDiscoveryService.ts:147](services/printing/discovery/StarPrinterDiscoveryService.ts#L147) | Restarts the 5-min interval only — does **not** scan immediately ✅ (already background-shaped) |
-| 13 | [useTableTimerTick.ts:78](hooks/useTableTimerTick.ts#L78) | Clears a `backgrounded` flag, resumes tick fan-out |
-| 14 | [useLiveClock.ts:44](hooks/useLiveClock.ts#L44) | Restarts clock interval |
-| 15 | [useKDSTimer.ts:42](hooks/useKDSTimer.ts#L42) | Restarts KDS tick interval (KDS only) |
-| 16 | [SkiaTableLayer.tsx:100](components/tables/skia/SkiaTableLayer.tsx#L100) | Updates `appStateRef` to gate the redraw interval |
-| 17 | [telemetry/init.ts:96](lib/telemetry/init.ts#L96) | Long-task watcher + flush lifecycle |
+| 11 | [app/_layout.tsx:879](../../../app/_layout.tsx#L879) | `startDraftCleanup()` — **synchronously runs `cleanupAbandonedDrafts()` + `clearInactiveOrders()` over the whole order store** ([useOrderStore.ts:12809-12811](../../../stores/useOrderStore.ts#L12809-L12811)), plus `PrinterService.startProcessing()` + `startSessionPrune()` |
+| 12 | [StarPrinterDiscoveryService.ts:147](../../../services/printing/discovery/StarPrinterDiscoveryService.ts#L147) | Restarts the 5-min interval only — does **not** scan immediately ✅ (already background-shaped) |
+| 13 | [useTableTimerTick.ts:78](../../../hooks/useTableTimerTick.ts#L78) | Clears a `backgrounded` flag, resumes tick fan-out |
+| 14 | [useLiveClock.ts:44](../../../hooks/useLiveClock.ts#L44) | Restarts clock interval |
+| 15 | [useKDSTimer.ts:42](../../../hooks/useKDSTimer.ts#L42) | Restarts KDS tick interval (KDS only) |
+| 16 | [SkiaTableLayer.tsx:100](../../../components/tables/skia/SkiaTableLayer.tsx#L100) | Updates `appStateRef` to gate the redraw interval |
+| 17 | [telemetry/init.ts:96](../../../lib/telemetry/init.ts#L96) | Long-task watcher + flush lifecycle |
 
 Item 11 is worth calling out: it is the only resume-path item that does unbounded
 **synchronous** work over the order store before yielding. On a station carrying a
@@ -75,15 +75,15 @@ shift's worth of orders that lands directly on the first-tap path.
 
 | # | Site | Work |
 |---|---|---|
-| 18 | [app/_layout.tsx:853](app/_layout.tsx#L853) | `flushAllPendingWrites()` on background/inactive |
-| 19 | [useCFDWSClient.ts:294](hooks/useCFDWSClient.ts#L294) | CFD socket lifecycle — CFD route only, never on a POS station |
+| 18 | [app/_layout.tsx:853](../../../app/_layout.tsx#L853) | `flushAllPendingWrites()` on background/inactive |
+| 19 | [useCFDWSClient.ts:294](../../../hooks/useCFDWSClient.ts#L294) | CFD socket lifecycle — CFD route only, never on a POS station |
 
 `PosSyncProvider`'s `background` branch also runs `clearInactiveOrders()` and a
-graceful Castles `suspend()` ([:786-800](contexts/PosSyncProvider.tsx#L786-L800)).
+graceful Castles `suspend()` ([:786-800](../../../contexts/PosSyncProvider.tsx#L786-L800)).
 
 ### 2d. Leak note
 
-[telemetry/init.ts:96](lib/telemetry/init.ts#L96) registers its listener with **no
+[telemetry/init.ts:96](../../../lib/telemetry/init.ts#L96) registers its listener with **no
 stored subscription and no removal path** — every `initTelemetry()` call adds
 another. It is idempotent-guarded upstream, so today it's one listener, but it is
 the one site with no teardown.
@@ -94,27 +94,27 @@ the one site with no teardown.
 
 | # | Site | Reacts to | Work |
 |---|---|---|---|
-| 1 | [offlineSyncService.ts:657](services/offlineSyncService.ts#L657) | all changes | Canonical handler — owns `NetInfo.configure()` ([:463](services/offlineSyncService.ts#L463)), drives `getRawIsOnline()`, queue replay |
-| 2 | [useRealtimechannel.ts:312](hooks/realtime/useRealtimechannel.ts#L312) **×3** | `isConnected && !SUBSCRIBED` | Immediate re-subscribe, resets reconnect budget |
-| 3 | [terminalHealthCheck.ts:376](services/hardware/terminalHealthCheck.ts#L376) | false→true edge | Immediate `performHealthCheck()` |
-| 4 | [starPrinterHealthCheck.ts:539](services/hardware/starPrinterHealthCheck.ts#L539) | false→true edge | Immediate `performHealthCheckRound()` |
-| 5 | [useCFDWSClient.ts:317](hooks/useCFDWSClient.ts#L317) | all, skips initial emission | CFD reconnect (CFD only) |
+| 1 | [offlineSyncService.ts:657](../../../services/offlineSyncService.ts#L657) | all changes | Canonical handler — owns `NetInfo.configure()` ([:463](../../../services/offlineSyncService.ts#L463)), drives `getRawIsOnline()`, queue replay |
+| 2 | [useRealtimechannel.ts:312](../../../hooks/realtime/useRealtimechannel.ts#L312) **×3** | `isConnected && !SUBSCRIBED` | Immediate re-subscribe, resets reconnect budget |
+| 3 | [terminalHealthCheck.ts:376](../../../services/hardware/terminalHealthCheck.ts#L376) | false→true edge | Immediate `performHealthCheck()` |
+| 4 | [starPrinterHealthCheck.ts:539](../../../services/hardware/starPrinterHealthCheck.ts#L539) | false→true edge | Immediate `performHealthCheckRound()` |
+| 5 | [useCFDWSClient.ts:317](../../../hooks/useCFDWSClient.ts#L317) | all, skips initial emission | CFD reconnect (CFD only) |
 
-`NetInfo.fetch()` one-shots: [offlineSyncService.ts:485](services/offlineSyncService.ts#L485),
-[:666](services/offlineSyncService.ts#L666), [:691](services/offlineSyncService.ts#L691),
-[useStationLoginSync.ts:28](hooks/useStationLoginSync.ts#L28),
-[useTimeclock.ts:73](hooks/useTimeclock.ts#L73) & [:329](hooks/useTimeclock.ts#L329),
-[useTerminalStatus.ts:375](hooks/useTerminalStatus.ts#L375),
-[speedTest.ts:61](lib/speedTest.ts#L61).
+`NetInfo.fetch()` one-shots: [offlineSyncService.ts:485](../../../services/offlineSyncService.ts#L485),
+[:666](../../../services/offlineSyncService.ts#L666), [:691](../../../services/offlineSyncService.ts#L691),
+[useStationLoginSync.ts:28](../../../hooks/useStationLoginSync.ts#L28),
+[useTimeclock.ts:73](../../../hooks/useTimeclock.ts#L73) & [:329](../../../hooks/useTimeclock.ts#L329),
+[useTerminalStatus.ts:375](../../../hooks/useTerminalStatus.ts#L375),
+[speedTest.ts:61](../../../lib/speedTest.ts#L61).
 
 ### Polling timers touching network state
 
 | Interval | Site |
 |---|---|
-| 10s | `NetInfo.fetch()` poll — [offlineSyncService.ts:664](services/offlineSyncService.ts#L664) |
-| 60s | Periodic sync fallback — [offlineSyncService.ts:559](services/offlineSyncService.ts#L559) |
-| 5s | Floor realtime fallback poll — [useFloorRealtime.ts:62](hooks/realtime/useFloorRealtime.ts#L62) |
-| 10min | Realtime auth refresh ×3 — [useRealtimechannel.ts:296](hooks/realtime/useRealtimechannel.ts#L296) |
+| 10s | `NetInfo.fetch()` poll — [offlineSyncService.ts:664](../../../services/offlineSyncService.ts#L664) |
+| 60s | Periodic sync fallback — [offlineSyncService.ts:559](../../../services/offlineSyncService.ts#L559) |
+| 5s | Floor realtime fallback poll — [useFloorRealtime.ts:62](../../../hooks/realtime/useFloorRealtime.ts#L62) |
+| 10min | Realtime auth refresh ×3 — [useRealtimechannel.ts:296](../../../hooks/realtime/useRealtimechannel.ts#L296) |
 
 The 10s `NetInfo.fetch()` poll runs unconditionally — it does not check whether
 connectivity is uncertain or whether queued work exists. That is the specific
@@ -142,8 +142,8 @@ satisfied, all firing without coordination:
 
 Every one is on the same tick, and every network item independently calls
 `getCachedAccessToken()` — which, after idle, is past `cachedTokenExpMs`
-([useSupabaseClient.ts:56](hooks/useSupabaseClient.ts#L56)). The in-flight
-coalescing at [:59](hooks/useSupabaseClient.ts#L59) means they collapse to one
+([useSupabaseClient.ts:56](../../../hooks/useSupabaseClient.ts#L56)). The in-flight
+coalescing at [:59](../../../hooks/useSupabaseClient.ts#L59) means they collapse to one
 Clerk call rather than N, but **all of them block behind it**, and the
 ClerkSessionKeeper refresh at item 1 is a *separate* exchange that does not
 populate that cache.
@@ -226,8 +226,8 @@ transient interruptions.
 
 - No before/after request counts (criterion 3) — needs the telemetry span, which
   is a behavior change and belongs in the next PR.
-- Castles-internal timers ([castles-service.ts:1609](services/terminals/castles-service.ts#L1609)
-  watchdog, [castlesConnectionSupervisor.ts:127](services/terminals/castlesConnectionSupervisor.ts#L127)
+- Castles-internal timers ([castles-service.ts:1609](../../../services/terminals/castles-service.ts#L1609)
+  watchdog, [castlesConnectionSupervisor.ts:127](../../../services/terminals/castlesConnectionSupervisor.ts#L127)
   probe) are not AppState/NetInfo subscribers and are excluded, but they do
   contend for the same resume window.
 - Component-level `setInterval` sites (~70 across the app) are out of scope

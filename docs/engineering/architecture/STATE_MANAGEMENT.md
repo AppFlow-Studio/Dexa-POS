@@ -686,6 +686,6 @@ return <DataView data={data} />;
 
 ## Related Documentation
 
-- [ORDERS_LIFECYCLE.md](./ORDERS_LIFECYCLE.md) - Order flow details
-- [PAYMENT_PROCESSING.md](./PAYMENT_PROCESSING.md) - Payment system
-- [offline-mode.md](./offline-mode.md) - Offline capabilities
+- [ORDERS_LIFECYCLE.md](../../features/orders/ORDERS_LIFECYCLE.md) - Order flow details
+- [PAYMENT_PROCESSING.md](../../features/payments-terminals/PAYMENT_PROCESSING.md) - Payment system
+- [offline-mode.md](../../features/offline-sync/offline-mode.md) - Offline capabilities

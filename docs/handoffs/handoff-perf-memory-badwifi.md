@@ -34,7 +34,7 @@ A cache-hit-**fresh** (<30s) switch was still firing a redundant background `loa
 
 ## 5. Memory / state leak fixes (shift-long stability)
 
-Audit in `tasks/memory-state-audit.md`. The codebase was largely mature; the real leaks were per-order/item module state never released on order removal.
+Audit in `docs/engineering/performance/memory-state-audit.md`. The codebase was largely mature; the real leaks were per-order/item module state never released on order removal.
 
 - **`stores/useOrderStore.ts` — Group A:** new `releaseOrderState(order, storeKey?)` fan-out wired into `removeOrder` / `clearInactiveOrders` / `cleanupAbandonedDrafts`. Extends `_cleanupOrderModuleState` (now clears `orderRefreshTimeouts`+clearTimeout / `pendingItemsBlockStart` / `lastLocalMutationAt`), deletes per-item `quantitySyncGenerations`, prunes `pendingBackendUpdates`, and lazily clears `useCoursingStore`/`useSeatingStore`.`clearOrder` + `useSyncStatusStore.clearAllForOrder`.
 - **`stores/useKDSStore.ts` — B2:** recalled-ticket Sets (`_recalledTicketIds` + `_recalledCycleTicketIds`) get a 4h TTL via `_recalledTicketAt` + `cullExpiredRecalls` (wired into `overlayPendingActions`), cleared in `_cleanup`, timestamps seeded on rehydrate. Pure `isRecallExpired` in `lib/kdsAutomation.ts`.
@@ -55,9 +55,9 @@ Cross-checked + senior-persona reviewed (the review **reshaped the plan** — ha
 ---
 
 ## Reference docs (this session)
-- `tasks/memory-state-audit.md` — full memory/leak audit + what shipped.
-- `tasks/perf-nav-kds-results.md` — floor-plan persistence + KDS perf (streams 1, 3, 4).
-- `tasks/sustained-perf-and-badwifi.md` — floor-switch speed headroom, long-session soak design, bad-WiFi coverage + Wave 2.
+- `docs/engineering/performance/memory-state-audit.md` — full memory/leak audit + what shipped.
+- `docs/engineering/performance/perf-nav-kds-results.md` — floor-plan persistence + KDS perf (streams 1, 3, 4).
+- `docs/engineering/performance/sustained-perf-and-badwifi.md` — floor-switch speed headroom, long-session soak design, bad-WiFi coverage + Wave 2.
 
 ## Top open items for the next session (priority order)
 1. **Remove the D6 `console.count` in `app/(main)/kds.tsx`** after a 50-card profile + threshold-color screenshot-diff; keep or revert D6 from the number.

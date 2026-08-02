@@ -107,7 +107,7 @@ CastlesPay can wedge on USB too (though less common than TCP). To repro reliably
 
 For each merchant onboarding:
 
-- [ ] Tablet model, OS version, OTG cable model recorded in `tasks/castles-usb-compatibility.md`
+- [ ] Tablet model, OS version, OTG cable model recorded in `docs/features/payments-terminals/castles-usb-compatibility.md`
 - [ ] Tests 1–5 pass
 - [ ] Test 6 (mock wedge) passes — proves the supervisor works on the deployed build
 - [ ] No new errors in Sentry under tag `source: castles_*` during the test window

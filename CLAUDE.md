@@ -165,7 +165,7 @@ Implementation: `contexts/CFDProvider.tsx`, gated by `cfdLoyaltyDisabled` near l
 
 ### 3. Self-Improvement Loop
 
-- After ANY correction from the user: update `tasks/lessons.md` with the pattern
+- After ANY correction from the user: update `docs/engineering/developer-experience/lessons.md` with the pattern
 - Write rules for yourself that prevent the same mistake
 - Review lessons at session start for relevant context
 
@@ -187,12 +187,12 @@ Implementation: `contexts/CFDProvider.tsx`, gated by `cfdLoyaltyDisabled` near l
 
 ## Task Management
 
-1. Plan First: Write plan to `tasks/todo.md` with checkable items
+1. Plan First: update the owning feature document with checkable items; use `docs/engineering/performance/todo.md` only for the existing performance program
 2. Verify Plan: Check in before starting implementation
 3. Track Progress: Mark items complete as you go
 4. Explain Changes: High-level summary at each step
-5. Document Results: Add review section to `tasks/todo.md`
-6. Capture Lessons: Update `tasks/lessons.md` after corrections
+5. Document Results: add a review section to the owning feature document
+6. Capture Lessons: update `docs/engineering/developer-experience/lessons.md` after corrections
 
 ## Core Principles
 

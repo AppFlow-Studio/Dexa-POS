@@ -61,8 +61,8 @@ Out of scope:
   - `app/(main)/kds.tsx`
 - Added targeted test:
   - `__tests__/order-platform-resolver.test.ts`
-- Updated `tasks/ticket-log.md`.
-- Updated `tasks/pos-ticket-senior-summary-2026-06-27.md`.
+- Updated `docs/tickets/ALL-TICKETS-REFERENCE.md`.
+- Updated `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`.
 
 ## Verification
 
@@ -92,9 +92,9 @@ Manual QA still required:
 - `stores/useKDSStore.ts`
 - `app/(main)/kds.tsx`
 - `__tests__/order-platform-resolver.test.ts`
-- `tasks/pos-platform-logo-kds-previous-orders.md`
-- `tasks/ticket-log.md`
-- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+- `docs/features/orders/pos-platform-logo-kds-previous-orders.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`
 
 ## Open QA
 

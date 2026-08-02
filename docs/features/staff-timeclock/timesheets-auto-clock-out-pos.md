@@ -114,10 +114,10 @@ Expected:
 - `stores/useTimeclockStore.ts`
 - `database.types.ts`
 - `types/locationConfig.ts`
-- `tasks/timesheets-auto-clock-out-pos.md`
-- `tasks/ticket-log.md`
-- `tasks/in-progress-ticket-testing-sweep-2026-07-02.md`
-- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+- `docs/features/staff-timeclock/timesheets-auto-clock-out-pos.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/quality/qa-tracking/in-progress-ticket-testing-sweep-2026-07-02.md`
+- `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`
 
 ## Website Contract
 

@@ -663,11 +663,11 @@ This approach improves performance while preserving the POS requirements that ma
 
 ## Supporting Repository Evidence
 
-- `PERF-AUDIT-B-REALTIME.md`
-- `PERF-AUDIT-C-HARDWARE.md`
-- `docs/perf-baseline-protocol.md`
-- `tasks/todo.md`
-- `tasks/perf-handoff.md`
-- `tasks/perf-nav-kds-results.md`
-- `tasks/sustained-perf-and-badwifi.md`
-- `tasks/memory-state-audit.md`
+- `docs/engineering/performance/PERF-AUDIT-B-REALTIME.md`
+- `docs/engineering/performance/PERF-AUDIT-C-HARDWARE.md`
+- `docs/engineering/performance/perf-baseline-protocol.md`
+- `docs/engineering/performance/todo.md`
+- `docs/handoffs/perf-handoff.md`
+- `docs/engineering/performance/perf-nav-kds-results.md`
+- `docs/engineering/performance/sustained-perf-and-badwifi.md`
+- `docs/engineering/performance/memory-state-audit.md`

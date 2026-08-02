@@ -107,8 +107,8 @@ This means the visible UI bug can still be caused by a backend duplicate row eve
 - `lib/menuSyncDedupe.ts`
 - `stores/useMenuStore.ts`
 - `__tests__/menu-sync-dedupe.test.ts`
-- `tasks/menu-grid-dessert-duplicate-card.md`
-- `tasks/ticket-log.md`
+- `docs/features/menu-management/menu-grid-dessert-duplicate-card.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
 
 ## Notes
 

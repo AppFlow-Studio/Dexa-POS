@@ -72,9 +72,9 @@ SELECT public.get_effective_pos_config('<station_id>'::uuid);
 - `app/(main)/kds.tsx`
 - `database.types.ts`
 - `__tests__/pos-config-resolution.test.ts`
-- `tasks/pos-effective-config-station-overrides.md`
-- `tasks/ticket-log.md`
-- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+- `docs/features/pos-settings/pos-effective-config-station-overrides.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`
 
 ## Open QA
 

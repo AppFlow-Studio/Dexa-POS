@@ -1,5 +1,11 @@
 # DEXA POS
 
+## Documentation
+
+POS documentation is organized by product area under [`docs/`](docs/README.md).
+Every feature change should update the canonical document in its owning
+`docs/features/<feature-name>/` folder.
+
 Welcome to **DEXA POS** – the next-generation Point of Sale system designed for modern businesses. DEXA POS combines powerful features, intuitive design, and seamless integrations to help you run your business efficiently, whether you’re managing a bustling restaurant, a cozy café, or a retail store.
 
 ## 🚀 Key Features

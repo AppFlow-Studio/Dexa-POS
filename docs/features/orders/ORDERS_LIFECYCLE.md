@@ -364,6 +364,6 @@ Table Available → Order Created → Session Started → Order Paid → Session
 
 ## Related Documentation
 
-- [PAYMENT_PROCESSING.md](./PAYMENT_PROCESSING.md) - Payment flow details
-- [STATE_MANAGEMENT.md](./STATE_MANAGEMENT.md) - Store architecture
-- [offline-mode.md](./offline-mode.md) - Offline capabilities
+- [PAYMENT_PROCESSING.md](../payments-terminals/PAYMENT_PROCESSING.md) - Payment flow details
+- [STATE_MANAGEMENT.md](../../engineering/architecture/STATE_MANAGEMENT.md) - Store architecture
+- [offline-mode.md](../offline-sync/offline-mode.md) - Offline capabilities

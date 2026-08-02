@@ -45,8 +45,8 @@ Out of scope:
   - `app/(main)/previous-orders.tsx` defaults to date descending.
 - Added migration:
   - `supabase/migrations/20260629130000_order_numbers_location_timezone.sql`
-- Updated `tasks/ticket-log.md`.
-- Updated `tasks/pos-ticket-senior-summary-2026-06-27.md`.
+- Updated `docs/tickets/ALL-TICKETS-REFERENCE.md`.
+- Updated `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`.
 
 ## Verification
 
@@ -84,9 +84,9 @@ Manual QA still required:
 ## Files
 
 - `supabase/migrations/20260629130000_order_numbers_location_timezone.sql`
-- `tasks/order-number-local-midnight-previous-orders-sort.md`
-- `tasks/ticket-log.md`
-- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+- `docs/features/orders/order-number-local-midnight-previous-orders-sort.md`
+- `docs/tickets/ALL-TICKETS-REFERENCE.md`
+- `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md`
 
 ## Open QA
 
