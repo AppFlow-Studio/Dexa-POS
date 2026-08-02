@@ -1,4 +1,5 @@
 import { useUiScale } from '@/lib/uiScale'
+import InKindLogo from '@/components/brand/InKindLogo'
 import { INKIND_LABEL } from '@/lib/paymentMethod'
 import { colors } from '@/lib/theme'
 import {
@@ -82,22 +83,29 @@ const getStyles = (scale: number) => {
     methodTitleActive: { color: colors.heading },
     methodDesc: { fontSize: s(11), color: colors.muted, marginTop: 1 },
     methodDescActive: { color: colors.teal },
-    // ── inKind: black/yellow field pair from the palette (dark = black field
-    // + yellow on; light inverts). Overrides the shared teal treatment in
-    // BOTH resting and selected states so the tile is unmistakable — it
-    // settles a check without taking money.
-    inKindCard: {
-      backgroundColor: colors.inKindField,
-      borderColor: colors.inKindOn
-    },
+    // ── inKind: normal panel with a BRAND GOLD border, and the lockup on its
+    // own black chip. The tile is not a black slab — that read as a hole
+    // punched in the light UI — the gold border plus the logo carry the
+    // identity instead, which works in both themes.
+    inKindCard: { borderColor: colors.inKindOn },
     inKindCardActive: {
-      backgroundColor: colors.inKindField,
       borderColor: colors.inKindOn,
-      borderWidth: 2
+      borderWidth: 2,
+      backgroundColor: `${colors.inKindOn}14`
     },
-    inKindIconBox: { backgroundColor: `${colors.inKindOn}22` },
-    inKindTitle: { color: colors.inKindOn, fontWeight: "700" as const },
-    inKindDesc: { color: `${colors.inKindOn}B3` },
+    // Black chip: the lockup is gold-on-black and only reads on a dark field.
+    inKindLogoChip: {
+      backgroundColor: colors.inKindField,
+      borderRadius: s(8),
+      paddingHorizontal: s(7),
+      paddingVertical: s(6),
+      marginRight: s(12),
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const
+    },
+    // Description keeps the normal muted colour: the gold is bright enough
+    // to read on-brand as a border, which puts it well under the 4.5:1 an
+    // 11px label needs. The gold border + logo carry the identity instead.
     inKindRadio: { borderColor: colors.inKindOn },
     radio: {
       width: s(18),
@@ -302,13 +310,10 @@ const PaymentMethodSelectionView: React.FC = () => {
           {availableMethods.map(method => {
             const isSelected = selectedMethod === method.name
             const Icon = method.icon
-            // inKind carries its own black/yellow identity in every state.
+            // inKind shows the brand lockup instead of a generic icon +
+            // title: the logo IS the name, so rendering both would repeat it.
             const isInKind = method.name === INKIND_LABEL
-            const iconColor = isInKind
-              ? colors.inKindOn
-              : isSelected
-                ? colors.teal
-                : colors.label
+            const iconColor = isSelected ? colors.teal : colors.label
             return (
               <TouchableOpacity
                 key={method.name}
@@ -321,30 +326,34 @@ const PaymentMethodSelectionView: React.FC = () => {
                   isInKind && isSelected && styles.inKindCardActive
                 ]}
               >
-                <View
-                  style={[
-                    styles.iconBox,
-                    isSelected && styles.iconBoxActive,
-                    isInKind && styles.inKindIconBox
-                  ]}
-                >
-                  <Icon color={iconColor} size={s(16)} strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.methodTitle,
-                      isSelected && styles.methodTitleActive,
-                      isInKind && styles.inKindTitle
-                    ]}
+                {isInKind ? (
+                  <View style={styles.inKindLogoChip}>
+                    <InKindLogo width={s(52)} />
+                  </View>
+                ) : (
+                  <View
+                    style={[styles.iconBox, isSelected && styles.iconBoxActive]}
                   >
-                    {method.title}
-                  </Text>
+                    <Icon color={iconColor} size={s(16)} strokeWidth={2} />
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  {/* Title omitted for inKind — the lockup already reads
+                      "inKind", so a text title would duplicate it. */}
+                  {!isInKind && (
+                    <Text
+                      style={[
+                        styles.methodTitle,
+                        isSelected && styles.methodTitleActive
+                      ]}
+                    >
+                      {method.title}
+                    </Text>
+                  )}
                   <Text
                     style={[
                       styles.methodDesc,
-                      isSelected && styles.methodDescActive,
-                      isInKind && styles.inKindDesc
+                      isSelected && styles.methodDescActive
                     ]}
                   >
                     {method.description}

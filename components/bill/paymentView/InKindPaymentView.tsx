@@ -1,4 +1,5 @@
 import { round2 } from "@/lib/order-calculator";
+import InKindLogo from "@/components/brand/InKindLogo";
 import { INKIND_LABEL } from "@/lib/paymentMethod";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
@@ -8,7 +9,7 @@ import {
   useActiveOrderTotals,
 } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { AlertTriangle, ArrowLeft, HandHeart } from "lucide-react-native";
+import { AlertTriangle, ArrowLeft } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -183,9 +184,10 @@ const InKindPaymentView = () => {
           {/* Amount being written off */}
           <View
             style={{
-              // inKind field/on pair from the palette: black-on-yellow in
-              // dark, inverted in light so it doesn't punch a hole in the UI.
-              backgroundColor: colors.inKindField,
+              // Normal panel with a brand-gold border, not a black slab —
+              // the lockup below carries the identity, so this reads
+              // correctly in both themes.
+              backgroundColor: colors.panel,
               borderRadius: s(12),
               borderWidth: 1.5,
               borderColor: colors.inKindOn,
@@ -194,27 +196,25 @@ const InKindPaymentView = () => {
               gap: s(6),
             }}
           >
+            {/* Black chip: the lockup is gold-on-black and only reads on a
+                dark field, so the chip stays black in both themes. */}
             <View
               style={{
-                width: s(52),
-                height: s(52),
-                borderRadius: s(13),
-                backgroundColor: `${colors.inKindOn}22`,
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: s(6),
+                backgroundColor: colors.inKindField,
+                borderRadius: s(10),
+                paddingHorizontal: s(14),
+                paddingVertical: s(11),
+                marginBottom: s(10),
               }}
             >
-              <HandHeart size={s(26)} color={colors.inKindOn} strokeWidth={2.2} />
+              <InKindLogo width={s(104)} />
             </View>
-            <Text style={[labelStyle, { color: `${colors.inKindOn}B3` }]}>
-              Amount Settled
-            </Text>
+            <Text style={labelStyle}>Amount Settled</Text>
             <Text
               style={{
                 fontSize: s(34),
                 fontWeight: "800",
-                color: colors.inKindOn,
+                color: colors.heading,
               }}
             >
               ${displayTotal.toFixed(2)}
@@ -222,7 +222,7 @@ const InKindPaymentView = () => {
             <Text
               style={{
                 fontSize: s(11),
-                color: `${colors.inKindOn}B3`,
+                color: colors.muted,
                 textAlign: "center",
               }}
             >
@@ -383,14 +383,15 @@ const InKindPaymentView = () => {
             justifyContent: "center",
             flexDirection: "row",
             gap: s(7),
-            // Step 1 (Continue) uses the tile's own field/on pair. Step 2
-            // SWAPS them so the irreversible action reads as the loudest
-            // thing on screen. Because the pair is semantic rather than a
-            // literal black/yellow, the swap stays correct in both themes:
-            // dark goes black->yellow fill, light goes yellow->near-black.
-            backgroundColor: isConfirming
-              ? colors.inKindOn
-              : colors.inKindField,
+            // Step 1 (Continue) is outlined in brand gold with normal heading
+            // text; step 2 FILLS with the gold so the irreversible action is
+            // the loudest thing on screen.
+            // The label is never gold-on-light: at step 1 it is heading
+            // colour, at step 2 it is inKindField (black) sitting on the gold
+            // fill. That keeps both states readable in both themes, which
+            // gold text would not — the gold is bright enough to be on-brand,
+            // which puts it around 2:1 on white.
+            backgroundColor: isConfirming ? colors.inKindOn : "transparent",
             borderWidth: 1.5,
             borderColor: colors.inKindOn,
             opacity: isProcessing || total <= 0 ? 0.35 : 1,
@@ -400,7 +401,7 @@ const InKindPaymentView = () => {
             style={{
               fontWeight: "700",
               fontSize: s(13),
-              color: isConfirming ? colors.inKindField : colors.inKindOn,
+              color: isConfirming ? colors.inKindField : colors.heading,
             }}
           >
             {isProcessing
