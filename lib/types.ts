@@ -734,7 +734,19 @@ export interface TrackedOrder {
   totalItems: number;
 }
 
-export type PaymentType = "Card" | "Cash" | "Split";
+/**
+ * UI-level payment method.
+ *
+ * "InKind" is a NON-TENDER settlement: the check is marked fully paid at
+ * CARD pricing while no money is collected (donated meals, promo/staff
+ * comps that must still post revenue at menu price). It is deliberately
+ * neither Card nor Cash — it must not reach the expected cash drawer or a
+ * card settlement batch. Maps to the DB `payment_method` enum value
+ * 'inkind'; use `toDbPaymentMethod` / `fromDbPaymentMethod` in
+ * `lib/paymentMethod.ts` to cross that boundary rather than comparing
+ * strings inline.
+ */
+export type PaymentType = "Card" | "Cash" | "Split" | "InKind";
 
 /**
  * Item coverage detail for a payment.

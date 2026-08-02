@@ -20,6 +20,7 @@ import {
 } from "@/hooks/useRefundFraudGuard";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
+import { paymentTypeLabel } from "@/lib/paymentMethod";
 import { computeItemRefundAmount } from "@/lib/refundScShare";
 import { colors } from "@/lib/theme";
 import type {
@@ -623,13 +624,17 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                 c.itemId === item.db_order_item_id,
             );
             if (covered && !payment.isVoided) {
-              const method =
-                payment.method?.toLowerCase() === "card" ? "Card" : "Cash";
+              // payment.method is already a PaymentType. The previous
+              // `=== "card" ? "Card" : "Cash"` coercion labelled every
+              // non-card method as Cash — the inverse of what the rest of
+              // the app does — so an in-kind settlement would have read
+              // "Paid — Cash" here while other screens showed "Card".
+              const method = paymentTypeLabel(payment.method);
               const last4 =
                 payment.last4 ||
                 payment.transactionDetails?.dejavooTransaction?.cardLast4;
               const desc =
-                method === "Card" && last4
+                payment.method === "Card" && last4
                   ? `Paid — ${payment.cardBrand || "Card"} ••••${last4}`
                   : `Paid — ${method}`;
               entries.push({

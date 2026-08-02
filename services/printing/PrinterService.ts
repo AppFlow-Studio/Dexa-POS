@@ -4,6 +4,7 @@ import {
   calculateOrderTotals,
   round2
 } from '@/lib/order-calculator'
+import { INKIND_LABEL } from '@/lib/paymentMethod'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -1837,7 +1838,12 @@ function getPaymentMethodName (method: string | undefined): string {
     'Debit Card': 'Card',
     gift_card: 'Gift Card',
     GiftCard: 'Gift Card',
-    house_account: 'House Account'
+    house_account: 'House Account',
+    // Non-tender settlement. Mapped explicitly so the receipt reads
+    // the spec label rather than the raw "InKind"/"inkind" the fallback below
+    // would print (it only replaces underscores).
+    InKind: INKIND_LABEL,
+    inkind: INKIND_LABEL
   }
   return methods[method] || method.replace('_', ' ')
 }

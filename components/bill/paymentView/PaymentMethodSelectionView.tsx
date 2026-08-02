@@ -1,4 +1,5 @@
 import { useUiScale } from '@/lib/uiScale'
+import { INKIND_LABEL } from '@/lib/paymentMethod'
 import { colors } from '@/lib/theme'
 import {
   useActiveOrder,
@@ -15,6 +16,7 @@ import {
   CheckCircle2,
   Columns,
   CreditCard,
+  HandHeart,
   Keyboard,
   Lock
 } from 'lucide-react-native'
@@ -32,6 +34,7 @@ type PaymentMethod =
   | 'Manual Key-in'
   | 'Split'
   | 'Cash'
+  | typeof INKIND_LABEL
   | 'Open Tab'
   | 'Close Tab'
 
@@ -79,6 +82,23 @@ const getStyles = (scale: number) => {
     methodTitleActive: { color: colors.heading },
     methodDesc: { fontSize: s(11), color: colors.muted, marginTop: 1 },
     methodDescActive: { color: colors.teal },
+    // ── inKind: black/yellow field pair from the palette (dark = black field
+    // + yellow on; light inverts). Overrides the shared teal treatment in
+    // BOTH resting and selected states so the tile is unmistakable — it
+    // settles a check without taking money.
+    inKindCard: {
+      backgroundColor: colors.inKindField,
+      borderColor: colors.inKindOn
+    },
+    inKindCardActive: {
+      backgroundColor: colors.inKindField,
+      borderColor: colors.inKindOn,
+      borderWidth: 2
+    },
+    inKindIconBox: { backgroundColor: `${colors.inKindOn}22` },
+    inKindTitle: { color: colors.inKindOn, fontWeight: "700" as const },
+    inKindDesc: { color: `${colors.inKindOn}B3` },
+    inKindRadio: { borderColor: colors.inKindOn },
     radio: {
       width: s(18),
       height: s(18),
@@ -203,6 +223,17 @@ const PaymentMethodSelectionView: React.FC = () => {
       description: 'Standard cash transaction',
       view: 'cash' as PaymentView
     },
+    // Non-tender settlement: closes the check at card pricing with no money
+    // collected. Hidden during a split — an in-kind portion of a split check
+    // has no defined meaning here, and the split branch would price and
+    // report it inconsistently.
+    {
+      name: INKIND_LABEL as PaymentMethod,
+      icon: HandHeart,
+      title: INKIND_LABEL,
+      description: 'Settle at menu price — no payment collected',
+      view: 'inkind' as PaymentView
+    },
     ...(!hasPreAuth && preAuthEnabled && !openTabDisabledForTerminal
       ? [
           {
@@ -220,7 +251,10 @@ const PaymentMethodSelectionView: React.FC = () => {
     m =>
       !(
         activeSplit &&
-        (m.name === 'Split' || m.name === 'Open Tab' || m.name === 'Close Tab')
+        (m.name === 'Split' ||
+          m.name === INKIND_LABEL ||
+          m.name === 'Open Tab' ||
+          m.name === 'Close Tab')
       )
   )
 
@@ -268,30 +302,40 @@ const PaymentMethodSelectionView: React.FC = () => {
           {availableMethods.map(method => {
             const isSelected = selectedMethod === method.name
             const Icon = method.icon
+            // inKind carries its own black/yellow identity in every state.
+            const isInKind = method.name === INKIND_LABEL
+            const iconColor = isInKind
+              ? colors.inKindOn
+              : isSelected
+                ? colors.teal
+                : colors.label
             return (
               <TouchableOpacity
                 key={method.name}
                 onPress={() => setSelectedMethod(method.name)}
                 activeOpacity={0.8}
-                style={[styles.card, isSelected && styles.cardActive]}
+                style={[
+                  styles.card,
+                  isSelected && styles.cardActive,
+                  isInKind && styles.inKindCard,
+                  isInKind && isSelected && styles.inKindCardActive
+                ]}
               >
                 <View
                   style={[
                     styles.iconBox,
-                    isSelected && styles.iconBoxActive
+                    isSelected && styles.iconBoxActive,
+                    isInKind && styles.inKindIconBox
                   ]}
                 >
-                  <Icon
-                    color={isSelected ? colors.teal : colors.label}
-                    size={s(16)}
-                    strokeWidth={2}
-                  />
+                  <Icon color={iconColor} size={s(16)} strokeWidth={2} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
                     style={[
                       styles.methodTitle,
-                      isSelected && styles.methodTitleActive
+                      isSelected && styles.methodTitleActive,
+                      isInKind && styles.inKindTitle
                     ]}
                   >
                     {method.title}
@@ -299,7 +343,8 @@ const PaymentMethodSelectionView: React.FC = () => {
                   <Text
                     style={[
                       styles.methodDesc,
-                      isSelected && styles.methodDescActive
+                      isSelected && styles.methodDescActive,
+                      isInKind && styles.inKindDesc
                     ]}
                   >
                     {method.description}
@@ -309,12 +354,14 @@ const PaymentMethodSelectionView: React.FC = () => {
                   {isSelected ? (
                     <CheckCircle2
                       size={s(18)}
-                      color={colors.teal}
-                      fill={colors.teal}
-                      stroke={colors.screen}
+                      color={isInKind ? colors.inKindOn : colors.teal}
+                      fill={isInKind ? colors.inKindOn : colors.teal}
+                      stroke={isInKind ? colors.inKindField : colors.screen}
                     />
                   ) : (
-                    <View style={styles.radio} />
+                    <View
+                      style={[styles.radio, isInKind && styles.inKindRadio]}
+                    />
                   )}
                 </View>
               </TouchableOpacity>
