@@ -10,30 +10,46 @@
 
 // Minimal react-native surface — the real module drags in native bindings the
 // node test env has no business loading.
-// NOTE: no TS type annotations inside this factory — babel-plugin-jest-hoist
-// scans the factory body for out-of-scope identifiers and mistakes generic
-// parameter names (`Set<(s: string) => void>`) for variable access.
+// NOTE: the factory below only ever type-annotates via a bare Mock-prefixed
+// identifier (e.g. `Set<MockResumeCallback>`), never an inline `(x: T) => ...`
+// literal — babel-plugin-jest-hoist scans the factory body for out-of-scope
+// identifiers and mistakes an inline function-type literal's parameter name
+// for a variable reference. A named type declared outside the factory and
+// referenced by a single "Mock"-prefixed identifier sidesteps that.
+type MockResumeCallback = (state: string) => void;
+type MockAppStateModule = {
+  currentState: string;
+  addEventListener: (
+    type: string,
+    cb: MockResumeCallback
+  ) => { remove: () => void };
+  __emit: (state: string) => void;
+  __listenerCount: () => number;
+};
+type MockInteractionManagerModule = {
+  runAfterInteractions: (cb: () => void) => { cancel: () => void };
+};
+
 jest.mock("react-native", () => {
-  const listeners = new Set();
-  return {
-    AppState: {
-      currentState: "active",
-      addEventListener: (_type, cb) => {
-        listeners.add(cb);
-        return { remove: () => listeners.delete(cb) };
-      },
-      __emit: (state) => {
-        for (const l of Array.from(listeners)) l(state);
-      },
-      __listenerCount: () => listeners.size,
+  const listeners = new Set<MockResumeCallback>();
+  const AppState: MockAppStateModule = {
+    currentState: "active",
+    addEventListener: (_type, cb) => {
+      listeners.add(cb);
+      return { remove: () => listeners.delete(cb) };
     },
-    InteractionManager: {
-      runAfterInteractions: (cb) => {
-        const id = setTimeout(cb, 0);
-        return { cancel: () => clearTimeout(id) };
-      },
+    __emit: (state) => {
+      for (const l of Array.from(listeners)) l(state);
+    },
+    __listenerCount: () => listeners.size,
+  };
+  const InteractionManager: MockInteractionManagerModule = {
+    runAfterInteractions: (cb) => {
+      const id = setTimeout(cb, 0);
+      return { cancel: () => clearTimeout(id) };
     },
   };
+  return { AppState, InteractionManager };
 });
 
 import { AppState } from "react-native";
@@ -59,7 +75,6 @@ beforeAll(() => {
   if (typeof globalThis.requestAnimationFrame !== "function") {
     // @ts-expect-error test shim
     globalThis.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
-    // @ts-expect-error test shim
     globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id);
   }
 });

@@ -689,7 +689,10 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
         'seated'
       )
 
-      return { session_id: result.sessionId, order_id: result.orderId }
+      return {
+        session_id: result.sessionId,
+        order_id: result.orderId ?? undefined
+      }
     } catch (err: any) {
       console.error('Failed to seat reservation:', err)
       throw err // Re-throw so caller knows it failed

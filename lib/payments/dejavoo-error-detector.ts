@@ -1,4 +1,4 @@
-import type { DejavooAPIResponse, DejavooBaseResponse } from '@/types/dejavoo-spin-api';
+import type { DejavooAPIResponse } from '@/lib/payments/dejavoo-spin-api';
 
 /**
  * Error types categorization for Dejavoo API responses

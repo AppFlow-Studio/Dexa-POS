@@ -950,6 +950,28 @@ const pendingItemAdditions: Map<string, Promise<boolean>> = new Map();
 // Per-order serial chain to prevent concurrent ensureOrderCreated calls
 const orderAdditionChains = new Map<string, Promise<any>>();
 
+/**
+ * Run `fn` after the current frame has been handed to the renderer.
+ *
+ * requestAnimationFrame fires before the frame is committed, so the nested
+ * setTimeout(0) is what actually pushes the work into the following task —
+ * past the React commit and paint triggered by the caller's store write. Used
+ * by addItemToActiveOrder to keep the cart write alone on the DONE frame.
+ *
+ * Deliberately NOT InteractionManager.runAfterInteractions: that queue is
+ * starved while the user keeps tapping, so during a rapid ordering burst the
+ * deferred work would pile up and then flush all at once on the first pause.
+ */
+const scheduleAfterPaint = (fn: () => void): void => {
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(() => {
+      setTimeout(fn, 0);
+    });
+    return;
+  }
+  setTimeout(fn, 0);
+};
+
 // Global per-order sync dedupe to prevent duplicate fetch/hydration work.
 const inFlightDbOrderSyncs = new Map<string, Promise<string | null>>();
 const inFlightOrderDetailSyncs = new Map<string, Promise<void>>();
@@ -4182,6 +4204,86 @@ const nextPendingPaymentSeq = () => ++_pendingPaymentSeqCounter;
 const lastLocalMutationAt: Record<string, number> = {};
 const OWN_STATION_MUTATION_WINDOW_MS = 3000;
 
+// --- Merge-quantity sync coalescer (see the isMergeOperation branch in
+// addItemToActiveOrder). Keyed by cart-item id; each pending entry holds the
+// barrier resolvers of every tap folded into the window so kitchen-send /
+// payment barriers observe the coalesced RPC's real outcome.
+const pendingMergeQtySyncs = new Map<
+  string,
+  {
+    timer: ReturnType<typeof setTimeout>;
+    resolvers: Array<(ok: boolean) => void>;
+  }
+>();
+// Trailing window per item: long enough to fold a fast tap-DONE-tap cadence
+// on the same item into one RPC, short enough that the sync indicator still
+// settles promptly after the burst.
+const MERGE_QTY_SYNC_COALESCE_MS = 250;
+
+// --- Deferred-totals bookkeeping (module state, deliberately NOT store
+// state — see _scheduleTotalsRecompute). Cleared for an order when it is
+// removed; a leaked entry is harmless (ensureTotalsFresh no-ops on a missing
+// order and deletes the flag).
+const pendingTotalsRecalc = new Set<string>();
+const pendingTotalsTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Trailing debounce for the totals pass. 120ms puts the recompute in the gap
+// BETWEEN two human taps (a fast cycle is ~200-500ms/item) instead of on the
+// DONE frame itself, and coalesces adds that land closer together than that.
+// Commit points flush synchronously via _ensureTotalsFresh, so a payment or
+// kitchen-send never sees stale totals no matter how fast the taps were.
+const TOTALS_RECALC_DEBOUNCE_MS = 120;
+
+// Status ranking shared by the own-echo suppression gate (and mirroring the
+// rank table used for status-advance refresh decisions further down): an
+// own-station echo inside the mutation window is only allowed through when
+// the backend status outranks the local one.
+const ORDER_STATUS_RANK_FOR_ECHO: Record<string, number> = {
+  draft: 0,
+  accepted: 1,
+  sent_to_kitchen: 1,
+  preparing: 1,
+  ready: 2,
+  closed: 3,
+  declined: 4,
+  void: 4,
+};
+
+/**
+ * Same predicate as the own-echo gate inside _handleOrderBroadcast, exported
+ * for the fan-out layer (app/(main)/_layout.tsx). The order store drops these
+ * echoes itself, but the fan-out was still running the previous-orders AND
+ * KDS handlers for every one — two more merge passes per echo, twice per add
+ * during a burst. The fan-out calls this once and skips both when true.
+ * (_handleOrderBroadcast keeps its internal gate so no caller can regress it.)
+ */
+export function shouldSuppressOwnEchoBroadcast(
+  payload: OrderBroadcastPayload,
+): boolean {
+  if (payload?.operation !== "UPDATE") return false;
+  const backendOrder = payload.data?.order;
+  const dbOrderId = backendOrder?.id;
+  if (!dbOrderId) return false;
+  const state = useOrderStore.getState();
+  if (
+    !state.currentStationId ||
+    backendOrder.station_id !== state.currentStationId
+  ) {
+    return false;
+  }
+  const localOrderKey = state.dbOrderIdIndex[dbOrderId] ?? dbOrderId;
+  const localOrder = state.ordersById[localOrderKey];
+  if (!localOrder) return false;
+  const ts =
+    lastLocalMutationAt[dbOrderId] ?? lastLocalMutationAt[localOrderKey];
+  if (ts == null || Date.now() - ts >= OWN_STATION_MUTATION_WINDOW_MS) {
+    return false;
+  }
+  const localRank =
+    ORDER_STATUS_RANK_FOR_ECHO[localOrder.order_status ?? ""] ?? 0;
+  const backendRank = ORDER_STATUS_RANK_FOR_ECHO[backendOrder.status ?? ""] ?? 0;
+  return backendRank <= localRank;
+}
+
 // Clear per-order broadcast-throttle module state when an order leaves
 // ordersById, so these dicts don't grow unbounded across a long shift (an
 // order is created+archived many times per day). The throttle dicts are keyed
@@ -4794,11 +4896,10 @@ export const useOrderStore = create<OrderState>()(
           tableOrderIdIndex: {},
           persistableOrderIds: {},
 
-          // Orders whose cached totals fields are stale because addItemToActiveOrder /
-          // incrementItemQuantity took the deferred fast-path. Drained by
-          // `_scheduleTotalsRecompute` (setTimeout 0, coalesces rapid adds into one
-          // recompute) or synchronously by `_ensureTotalsFresh` (called at commit
-          // points like kitchen-send and payment).
+          // Legacy field — the pending-totals flag now lives in the
+          // module-level `pendingTotalsRecalc` Set (see below). Kept in state
+          // shape only so persisted snapshots from older builds hydrate
+          // cleanly; nothing reads it.
           _pendingTotalsRecalc: {} as Record<string, true>,
 
           // === WORKING SET (Phase 5) ===
@@ -4809,29 +4910,46 @@ export const useOrderStore = create<OrderState>()(
           paymentSyncStatus: "idle",
 
           // --- DEFERRED TOTALS (perf: rapid-add coalescing) ---
+          //
+          // The dirty flag is module state (`pendingTotalsRecalc`), NOT store
+          // state. As store state, arming and clearing it were two extra
+          // zustand commits per add — each one running every mounted selector
+          // and the persist partialize — purely for internal bookkeeping no
+          // component reads. An add is now exactly one commit (items) plus one
+          // coalesced totals commit per burst.
+          //
+          // Debounced TRAILING at TOTALS_RECALC_DEBOUNCE_MS: during a rapid
+          // tap-DONE-tap burst each add re-arms the timer, so the whole burst
+          // pays ONE calculateOrderTotals + ONE commit instead of one per
+          // item. Correctness is unchanged — every commit point that needs
+          // fresh numbers (kitchen-send, payment, discount, present-check)
+          // already calls `_ensureTotalsFresh(orderId)`, which flushes
+          // synchronously regardless of the timer.
           _scheduleTotalsRecompute: (orderId: string) => {
-            const s = get();
-            if (s._pendingTotalsRecalc[orderId]) return;
-            set((state) => {
-              state._pendingTotalsRecalc[orderId] = true as const;
-            });
-            // setTimeout(0) — not queueMicrotask — so React commits the items-only
-            // update and paints before this fires. Coalesces all adds within one
-            // event-loop turn into a single recompute.
-            setTimeout(() => {
-              if (!get()._pendingTotalsRecalc[orderId]) return; // flushed already
-              get()._ensureTotalsFresh(orderId);
-            }, 0);
+            pendingTotalsRecalc.add(orderId);
+            const existing = pendingTotalsTimers.get(orderId);
+            if (existing) clearTimeout(existing);
+            pendingTotalsTimers.set(
+              orderId,
+              setTimeout(() => {
+                pendingTotalsTimers.delete(orderId);
+                if (!pendingTotalsRecalc.has(orderId)) return; // flushed already
+                get()._ensureTotalsFresh(orderId);
+              }, TOTALS_RECALC_DEBOUNCE_MS),
+            );
           },
 
           _ensureTotalsFresh: (orderId: string) => {
             const s = get();
-            if (!s._pendingTotalsRecalc[orderId]) return;
+            if (!pendingTotalsRecalc.has(orderId)) return;
+            pendingTotalsRecalc.delete(orderId);
+            const timer = pendingTotalsTimers.get(orderId);
+            if (timer) {
+              clearTimeout(timer);
+              pendingTotalsTimers.delete(orderId);
+            }
             const order = s.ordersById[orderId];
             if (!order) {
-              set((state) => {
-                delete state._pendingTotalsRecalc[orderId];
-              });
               return;
             }
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -4856,7 +4974,6 @@ export const useOrderStore = create<OrderState>()(
             set((state) => {
               const o = state.ordersById[orderId];
               if (!o) {
-                delete state._pendingTotalsRecalc[orderId];
                 return;
               }
               if (itemsForState !== order.items) o.items = itemsForState;
@@ -4914,7 +5031,6 @@ export const useOrderStore = create<OrderState>()(
                 state.activeOrderOutstandingCash =
                   totals.cash_outstanding_total;
               }
-              delete state._pendingTotalsRecalc[orderId];
             });
 
             // Service charge: fire the server-authoritative sync if our
@@ -5183,6 +5299,52 @@ export const useOrderStore = create<OrderState>()(
             // DECISION POINT 1: Is this our own station's order?
             const isOwnStationOrder =
               backendOrder.station_id === currentStationId;
+
+            // ═══════════════════════════════════════════════════════════════
+            // OWN-ECHO SUPPRESSION (the "eventual echo fix" the Wave-0
+            // KEY_RT_OWN_ECHO_SLIP telemetry was capturing for).
+            //
+            // Every local mutation RPC makes the server emit UPDATE broadcasts
+            // that come straight back to this station — often two per add (the
+            // item RPC and the totals bump). The RPC acknowledgement has
+            // already reconciled local state by then, so the echo carries
+            // nothing we need; but 67-79% of echoes slipped past the
+            // noMeaningfulChange compare (deferred local totals vs server
+            // totals, pending item ids, …) and ran the FULL merge pipeline —
+            // item-level diff, immer commit, previous-orders + KDS fan-out —
+            // on the JS thread mid-burst. That is exactly the "lag when adding
+            // items fast" window.
+            //
+            // Inside OWN_STATION_MUTATION_WINDOW_MS of a local mutation, drop
+            // own-station UPDATE echoes outright — UNLESS the backend reports
+            // a status the local order hasn't reached yet (rank-advance), the
+            // one own-echo case that can carry genuinely new information
+            // (e.g. an auto-transition performed server-side). Cross-station
+            // broadcasts (different station_id) are untouched, as are
+            // INSERT/DELETE.
+            if (isOwnStationOrder && operation === "UPDATE" && localOrder) {
+              const _echoMutationTs =
+                lastLocalMutationAt[dbOrderId] ??
+                lastLocalMutationAt[localOrderKey];
+              if (
+                _echoMutationTs != null &&
+                Date.now() - _echoMutationTs < OWN_STATION_MUTATION_WINDOW_MS
+              ) {
+                const localRank =
+                  ORDER_STATUS_RANK_FOR_ECHO[localOrder.order_status ?? ""] ??
+                  0;
+                const backendRank =
+                  ORDER_STATUS_RANK_FOR_ECHO[backendOrder.status ?? ""] ?? 0;
+                if (backendRank <= localRank) {
+                  recordCount(KEY_RT_OWN_ECHO);
+                  // Header fields may still have drifted (server-computed
+                  // totals land via the RPC ack; anything else reconciles on
+                  // the next out-of-window broadcast or bulk fetch).
+                  markOrderDetailStale(dbOrderId);
+                  return;
+                }
+              }
+            }
 
             // PERFORMANCE FIX: Skip broadcast processing while user has pending local changes
             // This prevents cascading re-renders during rapid item additions
@@ -8169,22 +8331,26 @@ export const useOrderStore = create<OrderState>()(
               // 4. New item: add to cart
               syncItemId = newItem.id;
 
-              // Wave 2.6: clear stale sync state for this id BEFORE we attach
-              // the cart item. `generateCartItemId(menuItemId, customizations)`
-              // (in ModifierScreen) is deterministic, so adding the same menu
-              // item with the same modifier combo on a NEW order reuses an old
+              // Wave 2.6: clear stale sync state for this id.
+              // `generateCartItemId(menuItemId, customizations)` (in
+              // ModifierScreen) is deterministic, so adding the same menu item
+              // with the same modifier combo on a NEW order reuses an old
               // cart-item id. Without this cleanup, the old order's failed
-              // `useSyncStatusStore` entry — or a dead-lettered op persisted
-              // in MMKV — surfaces on the new cart line as
+              // `useSyncStatusStore` entry — or a dead-lettered op persisted in
+              // MMKV — surfaces on the new cart line as
               // "Add failed — Failed N times — N attempts just now".
-              // Both calls are no-ops when no stale state exists.
-              useSyncStatusStore.getState().clearSyncStatus(syncItemId);
-              dropQueuedOpsForItem(syncItemId).catch((err) =>
-                console.error(
-                  "[addItemToActiveOrder] dropQueuedOpsForItem failed:",
-                  err,
-                ),
-              );
+              //
+              // The explicit clearSyncStatus() call that used to sit here is
+              // gone: setSyncStatus(syncItemId, 'pending') below already
+              // overwrites the status, drops itemFailedAt, and (since the
+              // non-failed branch in useSyncStatusStore) drops the stale error.
+              // The old pair cloned all three status Maps twice and committed
+              // the store twice per added item — on the DONE frame — to reach
+              // the same end state one commit reaches.
+              //
+              // dropQueuedOpsForItem is deferred with the rest of the sync work
+              // below; it only touches persisted queue state that nothing on
+              // this frame reads.
 
               const newCartItem: CartItem = {
                 ...newItem,
@@ -8235,10 +8401,6 @@ export const useOrderStore = create<OrderState>()(
                 : mergeCandidate || newItem;
 
             if (!itemToSync.isDraft) {
-              // Phase 7D: Set pending status in sync store for BillItem indicator
-              useSyncStatusStore
-                .getState()
-                .setSyncStatus(syncItemId, "pending");
               const orderToSync = get().ordersById[activeOrderId];
               if (orderToSync) {
                 const updateItemSyncStatusAction = get().updateItemSyncStatus;
@@ -8264,56 +8426,139 @@ export const useOrderStore = create<OrderState>()(
 
                 const setOrderDbIdAction = applySetOrderDbId;
 
-                // Create and track the sync promise - wrapped in queue to serialize additions
-                // Pass isMerge flag for merge candidates that already have db_order_item_id
-                const syncPromise = queueItemAddition(currentOrderId, () =>
-                  addItemToBackend(
-                    orderToSync,
-                    itemToSync,
-                    setOrderDbIdAction,
-                    markItemFailedAction, // Changed from removeItemAction
-                    undefined, // No need to recalculate - already done synchronously
-                    {
-                      isMerge: isMergeOperation,
-                      addedQuantity: newItem.quantity,
-                    },
-                  ),
-                )
-                  .then((success) => {
-                    // Resolve current order ID (may have been re-keyed)
-                    const resolvedOrderId = get().ordersById[currentOrderId]
-                      ? currentOrderId
-                      : get().activeOrderId || currentOrderId;
-                    if (!success) {
-                      updateItemSyncStatusAction(
-                        resolvedOrderId,
-                        syncItemId,
-                        "failed",
-                        "Backend sync failed",
-                      );
-                    }
-                    return success;
-                  })
-                  .catch((err) => {
-                    console.error("Background sync failed:", err);
-                    const resolvedOrderId = get().ordersById[currentOrderId]
-                      ? currentOrderId
-                      : get().activeOrderId || currentOrderId;
-                    updateItemSyncStatusAction(
-                      resolvedOrderId,
-                      syncItemId,
-                      "failed",
-                      err?.message || "Unknown error",
-                    );
-                    return false;
-                  })
-                  .finally(() => {
-                    // Unregister the sync operation when done
-                    unregisterSyncOp(syncItemId);
-                  });
-
-                // Register the sync promise for barrier tracking
+                // ============================================================
+                // Everything below is off the DONE frame.
+                //
+                // The cart write above is the only part the user needs to see.
+                // The sync-status commit, the offline-queue scan and the
+                // add_order_item RPC kickoff (which itself awaits
+                // ensureOrderCreated) all used to run in the same task as that
+                // write, so a single DONE press stacked several store commits
+                // and a network kickoff onto one frame — and during a rapid
+                // ordering burst each press landed inside the previous one's
+                // work. None of it is read by anything painting this frame.
+                //
+                // The barrier promise is registered SYNCHRONOUSLY via a
+                // deferred resolver, so waitForPendingSyncs (kitchen-send,
+                // payment) still sees this item as in-flight from the instant
+                // it enters the cart. Only the work moves; the visibility of
+                // that work to the barriers does not.
+                let resolveSync!: (success: boolean) => void;
+                const syncPromise = new Promise<boolean>((resolve) => {
+                  resolveSync = resolve;
+                });
                 registerSyncOp(syncItemId, syncPromise);
+
+                scheduleAfterPaint(() => {
+                  // Phase 7D: pending status drives the BillItem indicator.
+                  useSyncStatusStore
+                    .getState()
+                    .setSyncStatus(syncItemId, "pending");
+
+                  // Wave 2.5/2.6: drop stale queued ops bound to this
+                  // (deterministic) cart-item id. Fast-paths to a no-op when
+                  // nothing matches.
+                  dropQueuedOpsForItem(syncItemId).catch((err) =>
+                    console.error(
+                      "[addItemToActiveOrder] dropQueuedOpsForItem failed:",
+                      err,
+                    ),
+                  );
+
+                  // Fire the backend sync. The item is re-resolved LIVE at
+                  // fire time (not the tap-time snapshot): for coalesced
+                  // merges the snapshot quantity is stale by design — later
+                  // taps bumped it — and for all paths a fresher
+                  // db_order_item_id narrows the merge-while-in-flight race.
+                  const fireSync = (): Promise<boolean> =>
+                    queueItemAddition(currentOrderId, () => {
+                      const liveState = useOrderStore.getState();
+                      const liveKey = liveState.ordersById[currentOrderId]
+                        ? currentOrderId
+                        : liveState.activeOrderId || currentOrderId;
+                      const liveOrder = liveState.ordersById[liveKey];
+                      const liveItem = liveOrder?.items.find(
+                        (i) => i.id === syncItemId,
+                      );
+                      if (!liveOrder || !liveItem) {
+                        // Removed/voided before the sync fired — nothing to do.
+                        return Promise.resolve(true);
+                      }
+                      return addItemToBackend(
+                        liveOrder,
+                        liveItem,
+                        setOrderDbIdAction,
+                        markItemFailedAction, // Changed from removeItemAction
+                        undefined, // No need to recalculate - already done synchronously
+                        {
+                          isMerge: isMergeOperation,
+                          addedQuantity: newItem.quantity,
+                        },
+                      );
+                    })
+                      .then((success) => {
+                        // Resolve current order ID (may have been re-keyed)
+                        const resolvedOrderId = get().ordersById[currentOrderId]
+                          ? currentOrderId
+                          : get().activeOrderId || currentOrderId;
+                        if (!success) {
+                          updateItemSyncStatusAction(
+                            resolvedOrderId,
+                            syncItemId,
+                            "failed",
+                            "Backend sync failed",
+                          );
+                        }
+                        return success;
+                      })
+                      .catch((err) => {
+                        console.error("Background sync failed:", err);
+                        const resolvedOrderId = get().ordersById[currentOrderId]
+                          ? currentOrderId
+                          : get().activeOrderId || currentOrderId;
+                        updateItemSyncStatusAction(
+                          resolvedOrderId,
+                          syncItemId,
+                          "failed",
+                          err?.message || "Unknown error",
+                        );
+                        return false;
+                      })
+                      .finally(() => {
+                        // Unregister the sync operation when done
+                        unregisterSyncOp(syncItemId);
+                      });
+
+                  if (isMergeOperation) {
+                    // MERGE COALESCING: rapid same-item taps each produce a
+                    // merge carrying an ABSOLUTE quantity, and §4 parallel
+                    // mode fired them concurrently — several
+                    // updateOrderItemQuantity RPCs contending on the same
+                    // row. Under a fast enough burst one hits its deadline,
+                    // the item flips to "failed", and the user's Retry
+                    // succeeds trivially because the contention is gone.
+                    // Coalescing turns N taps inside the window into ONE RPC
+                    // that reads the final quantity at fire time. Every tap's
+                    // barrier promise resolves with that single result, so
+                    // kitchen-send/payment barriers still cover the item.
+                    const existing = pendingMergeQtySyncs.get(syncItemId);
+                    if (existing) clearTimeout(existing.timer);
+                    const resolvers = existing?.resolvers ?? [];
+                    resolvers.push(resolveSync);
+                    const timer = setTimeout(() => {
+                      pendingMergeQtySyncs.delete(syncItemId);
+                      fireSync().then(
+                        (ok) => resolvers.forEach((r) => r(ok)),
+                        () => resolvers.forEach((r) => r(false)),
+                      );
+                    }, MERGE_QTY_SYNC_COALESCE_MS);
+                    pendingMergeQtySyncs.set(syncItemId, { timer, resolvers });
+                  } else {
+                    // Settle the barrier promise registered synchronously
+                    // above; fireSync's finally has already unregistered.
+                    fireSync().then(resolveSync, () => resolveSync(false));
+                  }
+                });
               }
             }
 

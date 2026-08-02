@@ -69,24 +69,16 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
   const resolvePaymentConflict = useConflictStore(
     (state) => state.resolvePaymentConflict
   );
-  const refreshOrderFromBackend = useOrderStore(
-    (state) => state._refreshOrderFromBackend
-  );
 
   // Use first unresolved conflict
   const conflict = paymentConflicts[0];
   const isVisible = propIsVisible ?? (conflict != null);
 
-  const handleRefreshOrder = async () => {
+  const handleRefreshOrder = () => {
     if (!conflict) return;
 
     // Resolve the conflict by accepting server state
     resolvePaymentConflict(conflict.orderId, "accept_server");
-
-    // Refresh the order from backend to get latest state
-    if (refreshOrderFromBackend) {
-      await refreshOrderFromBackend(conflict.orderId);
-    }
 
     onClose?.();
   };

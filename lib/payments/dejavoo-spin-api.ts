@@ -9,7 +9,6 @@ import { toastService } from "@/lib/toastService";
 import {
     DEJAVOO_ERROR_CODES,
     DEJAVOO_TIMEOUTS,
-    DejavooBaseResponse,
     DejavooCredentials,
     DejavooEnvironment,
     DejavooReturnRequest,
@@ -38,7 +37,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
  * Enhanced response type with parsed data and type guards
  * Provides structured access to transaction results
  */
-export interface DejavooAPIResponse<T extends DejavooBaseResponse> {
+export interface DejavooAPIResponse<T extends Record<string, any>> {
   /** Whether the transaction was successful */
   success: boolean;
   /** Response data (only present on success) */
@@ -55,14 +54,6 @@ export interface DejavooAPIResponse<T extends DejavooBaseResponse> {
   helpers?: {
     // Transaction identifiers
     getTransactionType(): string | undefined;
-    getTransactionDate(): string | undefined;
-    getTransactionTime(): string | undefined;
-    getTransactionAmount(): number | undefined;
-    getTransactionTip(): number | undefined;
-    getTransactionFee(): number | undefined;
-    getTransactionTax(): number | undefined;
-    getTransactionTotal(): number | undefined;
-    getTransactionStatus(): string | undefined;
     getReferenceId(): string | undefined;
     getTransactionNumber(): string | undefined;
     getInvoiceNumber(): string | undefined;

@@ -425,13 +425,47 @@ const BillSectionContent = ({
   const activeOrderOutstandingCash = useOrderStore(
     (s) => s.activeOrderOutstandingCash ?? 0,
   );
-  // Items-array reference: used for the cart-derived useMemos below. This
-  // selector still re-renders on every add (intentional — the component
-  // updates badges and button-disabled state). Memoized children skip via
-  // their own subscriptions.
-  const activeOrderItems = useOrderStore(
+  // Cart-derived PRIMITIVES — deliberately not the items array reference.
+  // Subscribing to the array meant every item mutation re-rendered this whole
+  // shell, including quantity-merge adds (the rapid same-item tap path) where
+  // none of these badge values change. Primitive selectors run on each commit
+  // but only re-render when the value itself flips; the row list has its own
+  // id-level subscription in BillItemsAndTotals.
+  const cartLength = useOrderStore(
     (s) =>
-      (s.activeOrderId ? s.ordersById[s.activeOrderId]?.items : null) ?? null,
+      (s.activeOrderId ? s.ordersById[s.activeOrderId]?.items.length : 0) ?? 0,
+  );
+  const hasDraftItems = useOrderStore((s) => {
+    const items = s.activeOrderId ? s.ordersById[s.activeOrderId]?.items : null;
+    return !!items?.some((item) => item.isDraft);
+  });
+  const hasNonDraftItems = useOrderStore((s) => {
+    const items = s.activeOrderId ? s.ordersById[s.activeOrderId]?.items : null;
+    return !!items?.some((item) =>
+      ["sent", "preparing", "ready", "served"].includes(
+        item.kitchen_status ?? "",
+      ),
+    );
+  });
+  const newItemsCount = useOrderStore((s) => {
+    const items = s.activeOrderId ? s.ordersById[s.activeOrderId]?.items : null;
+    if (!items) return 0;
+    let count = 0;
+    for (const item of items) {
+      if (item.kitchen_status === "new" || !item.kitchen_status) count++;
+    }
+    return count;
+  });
+  // Id array for sync-count tracking: useShallow keeps the ref stable across
+  // merges (same ids), so only genuine add/remove re-renders through here.
+  const nonDraftItemIds = useOrderStore(
+    useShallow((s) => {
+      const items = s.activeOrderId
+        ? s.ordersById[s.activeOrderId]?.items
+        : null;
+      if (!items) return EMPTY_CART_ITEM_IDS;
+      return items.filter((item) => !item.isDraft).map((item) => item.id);
+    }),
   );
 
   const {
@@ -455,15 +489,30 @@ const BillSectionContent = ({
       updateActiveOrderDetails: s.updateActiveOrderDetails,
     })),
   );
-  // Deliberately whole-object, unlike the ~20 field selectors above. This one
-  // feeds the async handlers (assign-to-table, close-check, void) which need a
-  // consistent snapshot of the order rather than a field, and it is read at
-  // ~80 sites. Splitting it would trade one subscription for dozens without
-  // reducing renders: BillSection is the visible bill on order-processing, so
-  // it is *supposed* to re-render when the active order changes. The waste this
-  // wave targets is hidden overlays, not this component.
-  const activeOrder = useOrderStore((s) =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
+  // Scalar pick of the active order — NOT the full order object. Subscribing
+  // to the whole object re-rendered this entire component on every commit that
+  // touched the order at all: the per-add items write, the deferred totals
+  // write, even the last_activity_at bump. With useShallow over these scalars
+  // the previous snapshot is returned (referentially stable, so the dep arrays
+  // below keep working) unless one of the picked fields actually changed.
+  // Cart-driven re-renders happen only when a badge-relevant primitive below
+  // actually changes — this removes the whole-object triggers stacked on top.
+  const activeOrder = useOrderStore(
+    useShallow((s) => {
+      const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+      if (!o) return null;
+      return {
+        id: o.id,
+        db_order_id: o.db_order_id,
+        check_status: o.check_status,
+        created_by_staff_profile_id: o.created_by_staff_profile_id,
+        notes: o.notes,
+        guest_count: o.guest_count,
+        session_id: o.session_id,
+        order_type: o.order_type,
+        paid_status: o.paid_status,
+      };
+    }),
   );
 
   // Per-order PIN attribution gate. When `requirePinPerOrder` is on, the
@@ -554,36 +603,9 @@ const BillSectionContent = ({
   );
   const deviceId = useMemo(() => getDeviceId(), []);
 
-  // Memoize computed values to prevent unnecessary recalculations
-  const cart = useMemo(() => activeOrderItems || [], [activeOrderItems]);
-  const hasDraftItems = useMemo(
-    () => cart.some((item) => item.isDraft),
-    [cart],
-  );
-  const hasNonDraftItems = useMemo(
-    () =>
-      cart.some((item) =>
-        ["sent", "preparing", "ready", "served"].includes(
-          item.kitchen_status ?? "",
-        ),
-      ),
-    [cart],
-  );
-  const newItemsCount = useMemo(
-    () =>
-      cart.filter(
-        (item) => item.kitchen_status === "new" || !item.kitchen_status,
-      ).length,
-    [cart],
-  );
-
   // Get sync counts for the active order's non-draft items.
   // useOrderSyncCounts only re-renders BillSection when the actual counts change,
   // not on every individual item sync status transition.
-  const nonDraftItemIds = useMemo(
-    () => cart.filter((item) => !item.isDraft).map((item) => item.id),
-    [cart],
-  );
   const syncStatus = useOrderSyncCounts(nonDraftItemIds);
   const hasPendingSyncs = syncStatus.pending > 0;
   const hasFailedSyncs = syncStatus.failed > 0;
@@ -639,9 +661,13 @@ const BillSectionContent = ({
 
   const isCurrentOrderEmptyDraft = useMemo(() => {
     if (!activeOrder) return false;
-    if (cart.length > 0) return false;
-    return isReusableEmptyDraftOrder(activeOrder);
-  }, [activeOrder, cart]);
+    if (cartLength > 0) return false;
+    // Read the FULL order snapshot on demand — isReusableEmptyDraftOrder needs
+    // financial fields we deliberately don't subscribe to (see the scalar pick
+    // above). cartLength changes on every add/remove, keeping this memo fresh.
+    const fullOrder = useOrderStore.getState().ordersById[activeOrder.id];
+    return isReusableEmptyDraftOrder(fullOrder);
+  }, [activeOrder, cartLength]);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const isPaymentSheetOpen = usePaymentStore((state) => state.isOpen);
@@ -707,11 +733,11 @@ const BillSectionContent = ({
   const isPayButtonDisabled = useMemo(
     () =>
       !activeOrderId ||
-      cart.length === 0 ||
+      cartLength === 0 ||
       displayBalanceDue <= 0 ||
       isProcessing ||
       isReadOnly,
-    [activeOrderId, cart.length, displayBalanceDue, isProcessing, isReadOnly],
+    [activeOrderId, cartLength, displayBalanceDue, isProcessing, isReadOnly],
   );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
   const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false);
@@ -1250,7 +1276,7 @@ const BillSectionContent = ({
       const isCurrentlyAssigned =
         table.id === activeOrderServiceLocation ||
         table.name === activeOrderServiceLocation;
-      const isEmpty = cart.length === 0;
+      const isEmpty = cartLength === 0;
       const canTryDineInTableTransfer = activeOrderType === "dine_in";
 
       // Switching tables is blocked once items have been sent to the kitchen
@@ -1304,7 +1330,7 @@ const BillSectionContent = ({
       activeOrderId,
       activeOrderServiceLocation,
       activeOrderType,
-      cart.length,
+      cartLength,
       clearSelectedTable,
       closeTableSelector,
       ensureDineInOrderTableSession,
@@ -1710,7 +1736,12 @@ const BillSectionContent = ({
     }
 
     const dineInTargetTable = selectedTable ?? displayedTable;
-    const pendingKitchenItems = cart.filter(
+    // Read LIVE items at call time — the shell no longer holds the array.
+    const _liveItems =
+      useOrderStore.getState().ordersById[
+        useOrderStore.getState().activeOrderId ?? ""
+      ]?.items ?? [];
+    const pendingKitchenItems = _liveItems.filter(
       (item) => !item.kitchen_status || item.kitchen_status === "new",
     );
 
@@ -2080,12 +2111,12 @@ const BillSectionContent = ({
 
             <TouchableOpacity
               onPress={handleClearCart}
-              disabled={!activeOrderId || cart.length === 0 || isReadOnly}
+              disabled={!activeOrderId || cartLength === 0 || isReadOnly}
               className="h-8 w-8 rounded-lg items-center justify-center"
               style={{
                 backgroundColor: "#F87171",
                 opacity:
-                  !activeOrderId || cart.length === 0 || isReadOnly ? 0.45 : 1,
+                  !activeOrderId || cartLength === 0 || isReadOnly ? 0.45 : 1,
               }}
             >
               <Trash2 color={colors.screen} size={s(13)} />

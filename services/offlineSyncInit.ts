@@ -1732,13 +1732,6 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const store = _getOrderStore().getState();
         const selectedStore = useStoreSettingsStore.getState().selectedStore;
 
-        console.log(`[OfflineSync:create_order] ====== CREATING ORDER ======`);
-        console.log(`[OfflineSync:create_order] Local ID: ${localOrderId}`);
-        console.log(
-          `[OfflineSync:create_order] Params:`,
-          JSON.stringify(createOrderParams, null, 2),
-        );
-
         if (!selectedStore) {
           console.error(
             "[OfflineSync:create_order] FAILED - No store selected",

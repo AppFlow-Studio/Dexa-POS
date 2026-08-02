@@ -12,14 +12,23 @@ import { useSettingsStore } from './useSettingsStore'
  * preWarm so a tap on an item that wasn't in MenuSection's bulk prefetch
  * window still warms the disk/memory cache before the modifier screen
  * renders the image. No-op for non-http(s) sources.
+ *
+ * Deduped per session: preWarm fires on EVERY press-in (even on modifier
+ * cache hits), and each Image.prefetch is a native bridge round-trip. Once a
+ * URL has been requested this session, expo-image's own memory-disk cache
+ * covers it — re-requesting per tap bought nothing.
  */
+const prefetchedImageUrls = new Set<string>()
+
 function prefetchMenuItemImage (image: string | undefined): void {
   if (!image || typeof image !== 'string') return
   const trimmed = image.trim()
-  if (!trimmed) return
+  if (!trimmed || prefetchedImageUrls.has(trimmed)) return
   try {
     const u = new URL(trimmed)
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return
+    if (prefetchedImageUrls.size > 1000) prefetchedImageUrls.clear()
+    prefetchedImageUrls.add(trimmed)
     void Image.prefetch([trimmed], { cachePolicy: 'memory-disk' }).catch(
       () => {},
     )
@@ -49,28 +58,6 @@ const nowMs = () =>
     : Date.now()
 
 let lastModifierOpenStartedAt = 0
-let deferredModifierResetTimer: ReturnType<typeof setTimeout> | null = null
-let deferredDraftTimer: ReturnType<typeof setTimeout> | null = null
-
-// Drafts only become visible to the user after the modifier screen closes,
-// so a press-DONE-fast flow never benefits from the draft having been
-// written to the cart. This delay skips the draft cart-write entirely
-// on the rapid path while still showing a placeholder for users who dwell.
-const DRAFT_CREATION_DELAY_MS = 220
-
-const clearDeferredModifierResetTimer = () => {
-  if (deferredModifierResetTimer) {
-    clearTimeout(deferredModifierResetTimer)
-    deferredModifierResetTimer = null
-  }
-}
-
-const clearDeferredDraftTimer = () => {
-  if (deferredDraftTimer) {
-    clearTimeout(deferredDraftTimer)
-    deferredDraftTimer = null
-  }
-}
 
 export const getLastModifierOpenStartedAt = () => lastModifierOpenStartedAt
 
@@ -135,6 +122,14 @@ interface ItemPosition {
 
 interface ModifierSidebarState {
   isOpen: boolean
+  /**
+   * Monotonic counter bumped on every open(). ModifierScreen keys its
+   * per-item session re-initialization off this instead of a derived
+   * `itemId_cartItemId_mode` string: that string is identical when the same
+   * item is opened twice in a row, so the re-init was skipped and the second
+   * open silently inherited the first session's quantity and selections.
+   */
+  openSeq: number
   mode: 'add' | 'edit' | 'view' | 'fullscreen'
   menuItem: MenuItemType | null
   cartItem: CartItem | null
@@ -395,82 +390,10 @@ function precomputeModifierData (
   }
 }
 
-/**
- * Create a draft item immediately during open() for instant cart feedback.
- * Mirrors the logic from ModifierScreen's draft useEffect but runs synchronously in the store.
- * Returns the draft ID if created, null otherwise.
- */
-function _createDraftInOpen (
-  sourceItem: MenuItemType,
-  itemPrice: number,
-  itemCashPrice: number,
-  categoryId: string | undefined,
-  menuId: string | undefined
-): string | null {
-  const { useOrderStore } = require('./useOrderStore')
-  const { activeOrderId, ordersById, addItemToActiveOrder } =
-    useOrderStore.getState()
-
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : null
-  if (!activeOrder) return null
-
-  const { useSeatingStore } = require('./useSeatingStore')
-  const activeSeat = useSeatingStore.getState().getActiveSeat(activeOrderId)
-
-  const stableDraftId = `draft_${sourceItem.id}`
-
-  // Check if draft already exists
-  const existingDraft = activeOrder.items.find(
-    (i: any) => i.id === stableDraftId
-  )
-  if (existingDraft) return existingDraft.id
-
-  // Check for existing identical unsent item (no modifiers, no notes, not sent)
-  const existingItem = activeOrder.items.find((i: any) => {
-    if (i.menuItemId !== sourceItem.id) return false
-    const hasModifiers =
-      i.customizations.modifiers && i.customizations.modifiers.length > 0
-    const hasNotes =
-      i.customizations.notes && i.customizations.notes.trim() !== ''
-    const hasSent = i.kitchen_status === 'sent'
-    return !hasModifiers && !hasNotes && !hasSent
-  })
-
-  if (existingItem) return null
-
-  const cashPrice = itemCashPrice || itemPrice
-  const draftItem = {
-    id: stableDraftId,
-    menuItemId: sourceItem.id,
-    name: sourceItem.name,
-    quantity: 1,
-    originalPrice: cashPrice,
-    price: itemPrice,
-    unitPrice: sourceItem.price,
-    cashPrice: cashPrice,
-    // Base prices (no modifiers) — required so addItemToBackend sends correct
-    // p_unit_price/p_cash_unit_price. Without baseCashPrice, the server's
-    // 4% fallback fires and stores a wrong cash_price (e.g., 3.95 × 0.96 = 3.79).
-    baseCardPrice: itemPrice,
-    baseCashPrice: cashPrice,
-    image: sourceItem.image,
-    isDraft: true,
-    seatNumber: activeSeat ?? undefined,
-    customizations: { modifiers: [], notes: '' },
-    availableDiscount: sourceItem.availableDiscount,
-    appliedDiscount: null,
-    paidQuantity: 0,
-    addedFromCategoryId: categoryId || null,
-    addedFromMenuId: menuId || null
-  }
-
-  addItemToActiveOrder(draftItem)
-  return stableDraftId
-}
-
 export const useModifierSidebarStore = create<ModifierSidebarState>(
   (set, get) => ({
     isOpen: false,
+    openSeq: 0,
     mode: 'add',
     menuItem: null,
     cartItem: null,
@@ -537,9 +460,6 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
     },
 
     open: config => {
-      clearDeferredModifierResetTimer()
-      clearDeferredDraftTimer()
-
       const {
         menuItem: menuItemParam,
         cartItem: cartItemParam,
@@ -656,8 +576,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         const stateMenuItem =
           menuItemParam || includeMenuItemInState ? sourceItem : null
 
-        set({
+        set(s => ({
           isOpen: true,
+          openSeq: s.openSeq + 1,
           isMenuBlocked: true,
           mode: 'fullscreen',
           menuItem: stateMenuItem,
@@ -677,42 +598,14 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           seatOverride: initialSeatOverride,
           seatCount,
           showSeatPicker
-        })
+        }))
 
-        // Draft creation is deferred past the rapid-DONE window. If the
-        // user closes within DRAFT_CREATION_DELAY_MS, the draft is never
-        // written to the cart — handleSave's real addItem covers the full
-        // mutation in one step. clearDeferredDraftTimer fires from close()
-        // and from the start of the next open().
-        if (menuItemParam && !cartItemParam) {
-          const expectedItemId = precomputed.forItemId
-          deferredDraftTimer = setTimeout(() => {
-            deferredDraftTimer = null
-            const state = get()
-            if (
-              !state.isOpen ||
-              state.cartItem ||
-              state.precomputedForItemId !== expectedItemId
-            ) {
-              return
-            }
-            const draftCreatedId = _createDraftInOpen(
-              sourceItem,
-              precomputed.itemPrice,
-              precomputed.itemCashPrice,
-              resolvedCatId,
-              resolvedMenuId
-            )
-            const after = get()
-            if (
-              after.isOpen &&
-              !after.cartItem &&
-              after.precomputedForItemId === expectedItemId
-            ) {
-              set({ draftCreatedId })
-            }
-          }, DRAFT_CREATION_DELAY_MS)
-        }
+        // NOTE: no draft item is written to the cart on open. The modifier
+        // screen is fullscreen, so a draft placeholder is never visible while
+        // it is up — the write only ever produced cart re-renders (and a
+        // matching removal on close) that landed inside the open/close
+        // animation. handleSave's real add covers the whole mutation in one
+        // step.
       } else if (cartItemParam) {
         // Fallback: no menu item found, use cart item data directly
         const { useOrderStore: uos } = require('./useOrderStore')
@@ -729,8 +622,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
               )
           : null
 
-        set({
+        set(s => ({
           isOpen: true,
+          openSeq: s.openSeq + 1,
           isMenuBlocked: true,
           mode: 'fullscreen',
           menuItem: null,
@@ -754,7 +648,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
             !!fallbackOrderId &&
             !!uos.getState().ordersById[fallbackOrderId]?.service_location_id &&
             useSeatingStore.getState().getSeatCount(fallbackOrderId) > 0
-        })
+        }))
       }
     },
 
@@ -772,13 +666,6 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
       get().open({ cartItem: item, includeMenuItemInState: true }),
 
     close: () => {
-      // Cache persisted for re-tap speed; TTL evicts stale entries
-
-      // Cancel any deferred draft creation — if it hasn't fired yet, the
-      // user pressed DONE/Cancel before the dwell threshold and we skip
-      // the cart write entirely.
-      clearDeferredDraftTimer()
-
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
       if (__DEV__ && lastModifierOpenStartedAt > 0) {
@@ -797,44 +684,16 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         activeEditingItemId: null // Clear active item highlight
       })
 
-      // Phase 2: release the heavy precomputed maps once ModifierScreenOverlay
-      // has actually unmounted the screen (it keeps it mounted+subscribed for
-      // 1.5s via keepMountedDuringClose for fast repeat edits). Resetting these
-      // any sooner forces a full re-render of the still-mounted ModifierScreen
-      // (menuItemForModifiers/optionsById/total all recompute) right as the
-      // close slide and cart-mutation re-render are happening — the combo reads
-      // as a freeze on Android. open() calls clearDeferredModifierResetTimer()
-      // before any state writes, so a rapid re-open cancels this timer cleanly.
-      // The double guard below covers the off-by-a-tick case where the timer
-      // task was already dispatched when the next open() ran.
-      //
-      // Lightweight scalars (mode, seatCount, etc.) are NOT cleared here —
-      // they get overwritten by the next open() and clearing them now just
-      // adds re-render fan-out on the keep-mounted ModifierScreen.
-      clearDeferredModifierResetTimer()
-      const closedAt = nowMs()
-      deferredModifierResetTimer = setTimeout(() => {
-        deferredModifierResetTimer = null
-        const state = get()
-        if (state.isOpen) return
-        // A new open() landed but its timer-clear hasn't been reflected yet.
-        if (lastModifierOpenStartedAt > closedAt) return
-        set({
-          precomputedModifiers: null,
-          precomputedCategoriesById: null,
-          precomputedOptionsById: null,
-          initialSelections: null,
-          precomputedForItemId: null
-        })
-      }, 1600)
+      // NOTE: the precomputed payload is deliberately NOT cleared here. The
+      // modifier screen is now permanently mounted, so nulling these would
+      // tear its whole subtree down to an empty state 1.6s after every close
+      // and rebuild it on the next open — exactly the per-cycle mount cost
+      // this rewrite removes. The payload is one item's modifier groups
+      // (bounded, and already resident in the pre-warm cache), and the next
+      // open() overwrites it wholesale.
     },
 
     cancelAndRemoveDraft: () => {
-      // Cache persisted for re-tap speed; TTL evicts stale entries
-
-      // Cancel any pending deferred draft creation before tearing down.
-      clearDeferredDraftTimer()
-
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
 
@@ -863,41 +722,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         }
       }
 
-      // Close the modal immediately, then clear heavier payload once
-      // ModifierScreenOverlay has actually unmounted the screen (see close()
-      // for why this can't happen at 90ms while keepMountedDuringClose is true).
+      // Close immediately. As in close(), the precomputed payload is left in
+      // place — the screen is permanently mounted and the next open()
+      // overwrites it, so clearing it would only buy a teardown/rebuild.
       set({
         isOpen: false,
         isMenuBlocked: false,
         selectedItemPosition: null,
         activeEditingItemId: null
       })
-
-      clearDeferredModifierResetTimer()
-      deferredModifierResetTimer = setTimeout(() => {
-        deferredModifierResetTimer = null
-        const latest = get()
-        if (latest.isOpen) return
-        set({
-          mode: 'add',
-          menuItem: null,
-          cartItem: null,
-          categoryId: null,
-          menuId: null,
-          precomputedModifiers: null,
-          precomputedCategoriesById: null,
-          precomputedOptionsById: null,
-          initialSelections: null,
-          itemPrice: 0,
-          itemCashPrice: 0,
-          activeModifierCategory: null,
-          precomputedForItemId: null,
-          draftCreatedId: null,
-          seatOverride: null,
-          seatCount: 0,
-          showSeatPicker: false
-        })
-      }, 1600)
     },
 
     setSelectedItemPosition: (position: ItemPosition | null) => {
