@@ -707,6 +707,14 @@ Completed:
 - Statement-cost, live-index, and unsupported-foreign-key evidence received.
 - Initial missing modifier/discount index hypothesis rejected from live data.
 - Focused read-only workload delta collector created.
+- Website source findings reconciled into one corrected cross-repository audit.
+- Shared implementation backlog organized by priority, owner, dependency,
+  migration requirement, rollout wave, and definition of done.
+- Deployed staging OpenAPI contract refreshed read-only on 2026-08-01:
+  541 RPC paths, 239 exposed relation/view definitions, and 3,855 properties.
+- Canonical audit expanded with specialist lenses, strict critical findings,
+  advanced architecture options, industry patterns, 10x/100x modeling, and
+  confidence-bounded structural gain estimates.
 
 Pending:
 
@@ -740,6 +748,13 @@ Pending:
 7. Repeat the app performance baseline before and after each approved wave.
 
 ## References
+
+Cross-repository canonical artifacts in the sibling DexaPOS-Website repository:
+
+- `docs/AUDIT-2026-07-31-SHARED-DATABASE-PERFORMANCE-COMBINED.md`
+- `docs/SENIOR-SUMMARY-2026-07-31-SHARED-DATABASE-PERFORMANCE.md`
+- `docs/IMPLEMENTATION-BACKLOG-2026-08-01-SHARED-DATABASE-PERFORMANCE.md`
+- `docs/SQL-READONLY-2026-07-31-DATABASE-PERFORMANCE-AUDIT.sql`
 
 - Supabase query optimization:
   `https://supabase.com/docs/guides/database/query-optimization`
