@@ -189,12 +189,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Tabs */}
         <View
           style={{
-            padding: s(8),
+            paddingHorizontal: s(4),
+            paddingTop: s(6),
             flexShrink: 0,
-            borderBottomWidth: isExpanded ? 1 : 0,
-            borderBottomColor: colors.border,
             flexDirection: isExpanded ? "row" : "column",
-            gap: s(4),
+            gap: s(2),
+            backgroundColor: colors.panel,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
           }}
         >
           {navItems.map((item) => {
@@ -221,24 +223,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  height: s(40),
+                  height: s(44),
                   gap: s(3),
                   borderRadius: s(8),
-                  borderWidth: 1,
-                  backgroundColor: isActive
-                    ? colors.teal + "20"
-                    : "transparent",
-                  borderColor: isActive ? colors.teal + "40" : "transparent",
+                  borderBottomWidth: isActive ? s(3) : 0,
+                  borderBottomColor: colors.teal,
                 }}
               >
                 <item.icon
-                  size={s(13)}
+                  size={s(16)}
                   color={isActive ? colors.teal : colors.label}
                 />
                 {isExpanded && (
                   <Text
                     style={{
-                      fontSize: s(10),
+                      fontSize: s(11),
                       fontWeight: "600",
                       color: isActive ? colors.teal : colors.label,
                     }}
@@ -265,16 +264,17 @@ const Sidebar: React.FC<SidebarProps> = ({
           {isExpanded && renderPanel()}
         </View>
 
-        {/* Live Status Indicator */}
+        {/* Live Status Indicator — iOS footer style */}
         <TouchableOpacity
           style={{
-            paddingVertical: s(10),
-            paddingHorizontal: s(12),
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
+            paddingVertical: s(8),
+            paddingHorizontal: s(14),
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
+            borderTopWidth: 1,
+            borderTopColor: colors.border + "40",
+            backgroundColor: colors.panel,
           }}
           onPress={!floor.isConnected ? handleManualReconnect : undefined}
           activeOpacity={!floor.isConnected ? 0.7 : 1}

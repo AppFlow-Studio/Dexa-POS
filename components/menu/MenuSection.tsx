@@ -208,7 +208,7 @@ const SeatingBlockingOverlay = React.memo(
         <BlurView
           intensity={22}
           tint="dark"
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
         <View
           style={{
@@ -216,9 +216,17 @@ const SeatingBlockingOverlay = React.memo(
             backgroundColor: colors.background + "66",
           }}
         />
+        {/* absoluteFill, NOT flex:1. This layer's parent is itself absolutely
+            positioned (top/left/right/bottom: 0), and a flex:1 child only fills
+            such a parent if the parent's height resolves from its insets before
+            the child measures — which Fabric does not guarantee. When it didn't,
+            this box collapsed to its content height and, laid out after the two
+            absolutely-positioned siblings, the card sat low in the column
+            instead of centered. Pinning to the parent's box makes the centering
+            depend on nothing. */}
         <View
           style={{
-            flex: 1,
+            ...StyleSheet.absoluteFillObject,
             alignItems: "center",
             justifyContent: "center",
             paddingHorizontal: s(24),

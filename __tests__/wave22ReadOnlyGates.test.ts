@@ -34,7 +34,10 @@ function read (relPath: string): string {
 }
 
 const orderBadgeSrc = read('components/order/OrderBadge.tsx')
-const paymentSheetSrc = read('components/menu/PaymentDetailBottomSheet.tsx')
+// The sheet was split into a thin controller (PaymentDetailBottomSheet.tsx,
+// subscribes to `isOpen` only) and the lazily-mounted body below. All the
+// read-only gating this suite asserts on lives in the body.
+const paymentSheetSrc = read('components/menu/PaymentDetailBottomSheetBody.tsx')
 const moreOptionsSrc = read('components/bill/MoreOptionsBottomSheet.tsx')
 const customerSheetSrc = read('components/bill/CustomerSheet.tsx')
 const orderDetailsSrc = read('components/bill/OrderDetails.tsx')
@@ -131,7 +134,7 @@ describe('Wave 2.2 — MoreOptionsBottomSheet menu items', () => {
 
   it('Void Order subtitle reflects the read-only reason', () => {
     expect(moreOptionsSrc).toMatch(
-      /isReadOnlyForStation\s*\?\s*'Owned by another station'\s*:\s*'This action cannot be undone'/
+      /isReadOnlyForStation\s*\?\s*["']Owned by another station["']\s*:\s*["']This action cannot be undone["']/
     )
   })
 

@@ -1,6 +1,12 @@
 import { Skia, PaintStyle } from "@shopify/react-native-skia";
 import * as FileSystem from "expo-file-system/legacy";
 import { Asset } from "expo-asset";
+import { Mutex } from "async-mutex";
+import { startInteraction } from "@/lib/perf";
+import {
+  TEMP_IMAGE_PREFIX,
+  nextTempImageSeq,
+} from "../utils/tempImageCleanup";
 
 // ============================================================================
 // TYPES
@@ -128,6 +134,39 @@ export async function renderTextBlocksToImage(
   printWidthDots: number,
 ): Promise<string> {
   if (blocks.length === 0) return "";
+  // Single-permit semaphore: Skia draw + the synchronous `encodeToBase64` PNG
+  // encode are the heaviest JS-thread work in the print path. A multi-copy
+  // receipt, a burst of kitchen tickets, and a split-receipt fan-out can all
+  // land in flight at once (each chunk is an await point, so interleaving is
+  // real). Serializing keeps peak native surface memory to one chunk and keeps
+  // the stall a sequence of short blocks instead of one long compound one.
+  return rasterSemaphore.runExclusive(() =>
+    rasterizeTextBlocks(blocks, printWidthDots),
+  );
+}
+
+const rasterSemaphore = new Mutex();
+
+async function rasterizeTextBlocks(
+  blocks: TextBlock[],
+  printWidthDots: number,
+): Promise<string> {
+  const perf = startInteraction("pos.print.raster", {
+    blocks: blocks.length,
+    widthDots: printWidthDots,
+  });
+  try {
+    return await rasterizeTextBlocksInner(blocks, printWidthDots, perf);
+  } finally {
+    perf.end();
+  }
+}
+
+async function rasterizeTextBlocksInner(
+  blocks: TextBlock[],
+  printWidthDots: number,
+  perf: ReturnType<typeof startInteraction>,
+): Promise<string> {
 
   // Ensure custom typeface is loaded before rasterizing text
   await loadCustomTypeface();
@@ -169,6 +208,7 @@ export async function renderTextBlocksToImage(
     return "";
   }
   console.log(`[SkiaTicketRenderer] Surface created: ${printWidthDots}x${surfaceHeight}, ${blocks.length} text blocks`);
+  perf.setAttributes({ heightPx: surfaceHeight });
 
   // Every per-call native Skia object (Paint/Font, plus the Surface and Image)
   // must be dispose()'d on EVERY exit path — native GPU/EGL memory is not
@@ -370,7 +410,12 @@ export async function renderTextBlocksToImage(
     return '';
   }
 
-  const fileName = `star-ticket-${Date.now()}.png`;
+  perf.setAttributes({ pngBytes: Math.round(base64.length * 0.75) });
+
+  // Timestamp prefix is load-bearing: the orphan sweep (tempImageCleanup)
+  // ages files by the name, not a per-file getInfoAsync round trip. The
+  // sequence suffix keeps names unique when two renders share a millisecond.
+  const fileName = `${TEMP_IMAGE_PREFIX}${Date.now()}-${nextTempImageSeq()}.png`;
   const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
   await FileSystem.writeAsStringAsync(fileUri, base64, {
     encoding: FileSystem.EncodingType.Base64,

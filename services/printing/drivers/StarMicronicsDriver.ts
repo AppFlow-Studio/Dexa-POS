@@ -9,6 +9,7 @@ import {
 } from "../starPrinterFactory";
 import { getStarPrinterMutex } from "../starPrinterMutex";
 import { recordStarSuccess } from "../starPrintActivity";
+import { deleteTempImages } from "../utils/tempImageCleanup";
 import { PrinterDriver } from "./PrinterDriver";
 
 // Exponential-backoff retry schedule for StarIO10InUseError (printer is held
@@ -209,7 +210,7 @@ export class StarMicronicsDriver implements PrinterDriver {
       `[StarMicronicsDriver] graphicsOnly=${this.config.graphicsOnly}, model=${this.config.printerModel}, maxCharsPerLine=${this.config.maxCharsPerLine}, addr=${this.config.networkAddress}`,
     );
 
-    const commands = await renderDocumentToStarCommands(doc, {
+    const { commands, tempFiles } = await renderDocumentToStarCommands(doc, {
       supportsAutoCut: this.config.supportsAutoCut,
       maxCharsPerLine: this.config.maxCharsPerLine,
       graphicsOnly: this.config.graphicsOnly ?? false,
@@ -220,33 +221,40 @@ export class StarMicronicsDriver implements PrinterDriver {
     );
 
     const mutex = getStarPrinterMutex(this.config.networkAddress!);
-    await mutex.runExclusive(() =>
-      this.withInUseRetry(async () => {
-        const printer = createStarPrinterInstance(this.config!.networkAddress!, "print");
-        try {
-          await printer.open();
+    try {
+      await mutex.runExclusive(() =>
+        this.withInUseRetry(async () => {
+          const printer = createStarPrinterInstance(this.config!.networkAddress!, "print");
+          try {
+            await printer.open();
 
-          // Pre-print status check — surface descriptive errors early
-          const status = await printer.getStatus();
-          if (status.paperEmpty) throw new Error("Paper empty");
-          if (status.coverOpen) throw new Error("Cover open");
+            // Pre-print status check — surface descriptive errors early
+            const status = await printer.getStatus();
+            if (status.paperEmpty) throw new Error("Paper empty");
+            if (status.coverOpen) throw new Error("Cover open");
 
-          await printer.print(commands);
-          await printer.close();
-          this.connected = true;
-          this.lastSuccessAt = Date.now();
-          recordStarSuccess(this.config!.networkAddress!);
-        } catch (e: any) {
-          this.connected = false;
-          try { await printer.close(); } catch { /* ignore */ }
-          // Let InUseError propagate for retry
-          if (e instanceof StarIO10InUseError) throw e;
-          throw new Error(`Star print failed: ${e.message}`);
-        } finally {
-          await disposeQuietly(printer);
-        }
-      }, "printDocument"),
-    );
+            await printer.print(commands);
+            await printer.close();
+            this.connected = true;
+            this.lastSuccessAt = Date.now();
+            recordStarSuccess(this.config!.networkAddress!);
+          } catch (e: any) {
+            this.connected = false;
+            try { await printer.close(); } catch { /* ignore */ }
+            // Let InUseError propagate for retry
+            if (e instanceof StarIO10InUseError) throw e;
+            throw new Error(`Star print failed: ${e.message}`);
+          } finally {
+            await disposeQuietly(printer);
+          }
+        }, "printDocument"),
+      );
+    } finally {
+      // The SDK reads the rendered PNGs by path inside print(); this is the
+      // first moment they're safe to unlink. The failure path deletes too — a
+      // retry re-renders from the document, it never reuses these files.
+      await deleteTempImages(tempFiles);
+    }
   }
 
   async printRaw(_data: Uint8Array): Promise<void> {

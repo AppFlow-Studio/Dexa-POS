@@ -18,7 +18,7 @@ import ModifierScreen from "./ModifierScreen";
  * ModifierScreenOverlay - Slides up from the bottom.
  *
  * SIZING: The overlay is mounted inside MenuSection (a flex column), so it must
- * NOT rely on inset-only `StyleSheet.absoluteFillObject` (top/left/right/bottom:0
+ * NOT rely on inset-only `StyleSheet.absoluteFill` (top/left/right/bottom:0
  * with no width/height). On the New Architecture (Fabric) an inset-only absolute
  * box can collapse to its content size when the parent flex column doesn't hand
  * it a resolved height — which rendered the whole ModifierScreen as a tiny box in

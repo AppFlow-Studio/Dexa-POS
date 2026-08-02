@@ -1147,7 +1147,6 @@ const VendorDetailsScreen = () => {
                 </Text>
               </View>
             }
-            enableFooterMarginAdjustment
           />
         </BottomSheet>
       )}

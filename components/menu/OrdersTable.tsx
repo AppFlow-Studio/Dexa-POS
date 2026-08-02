@@ -5,7 +5,6 @@ import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { formatPaymentStatus } from "@/utils/orderStatusHelpers";
-import { FlashList } from "@shopify/flash-list";
 
 import {
     ArrowDown,
@@ -14,8 +13,15 @@ import {
     MoreVertical,
     XCircle,
 } from "lucide-react-native";
-import React, { memo, useCallback, useMemo } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+    ActivityIndicator,
+    RefreshControl,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
 
 export type SortColumn = "order" | "time" | "staff" | "total" | "status";
@@ -51,6 +57,16 @@ const columns: ColumnConfig[] = [
   { key: "actions", label: "", sortable: false, width: "w-[48px]" },
 ];
 
+/**
+ * Columns the backend can order by. In `serverSorted` mode the rest are shown
+ * but not tappable: sorting by them would reorder only the current page, which
+ * looks like a working sort while quietly lying about the rest of the result
+ * set. `order` is excluded because display_number sorts lexically, so it
+ * disagrees with the true chronological order the merchant expects from an
+ * order-number column.
+ */
+const SERVER_SORTABLE_COLUMNS = new Set<SortColumn>(["time", "total"]);
+
 interface OrdersTableProps {
   orders: OrderProfile[];
   sortColumn: SortColumn;
@@ -62,11 +78,20 @@ interface OrdersTableProps {
   ) => void;
   refreshing?: boolean;
   onRefresh?: () => void;
-  onEndReached?: () => void;
-  isLoadingMore?: boolean;
   /** True while the initial history fetch is in flight (shows a spinner in
    *  place of the "No orders found" empty state). */
   isInitialLoading?: boolean;
+  /**
+   * Set when `orders` is one page of a server-sorted result set. Suppresses the
+   * local re-sort, which would otherwise reorder just the visible page and
+   * contradict the column header.
+   */
+  serverSorted?: boolean;
+  /** Rendered after the last row — used for the pagination bar. */
+  ListFooter?: React.ReactElement | null;
+  /** Scrolls the body back to the top whenever this value changes — pass the
+   *  page index so a page turn starts from the first row. */
+  resetScrollKey?: number;
 }
 
 // Status pill config — follows design_theme.md: bg=color+'20', border=color+'50'
@@ -495,14 +520,34 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   onMoreClick,
   refreshing,
   onRefresh,
-  onEndReached,
-  isLoadingMore,
   isInitialLoading,
+  serverSorted = false,
+  ListFooter = null,
+  resetScrollKey,
 }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  // Sort orders based on current sort column and direction
+  const scrollRef = useRef<ScrollView>(null);
+
+  // A new page starting mid-scroll would look like the list simply grew —
+  // jump back to the top whenever the caller's page key changes.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [resetScrollKey]);
+
+  /**
+   * Rows arrive already ordered.
+   *
+   * `serverSorted` means the caller paginates server-side, so `orders` is one
+   * page of a globally-sorted result set and re-sorting it here would only
+   * reorder those 50 rows — showing, say, the largest total on THIS page under
+   * a header claiming the largest overall. The header still reflects the active
+   * sort; the caller translates a header tap into a server sort.
+   *
+   * Callers that pass the full result set (no pagination) keep the local sort.
+   */
   const sortedOrders = useMemo(() => {
+    if (serverSorted) return orders;
     return [...orders].sort((a, b) => {
       let aVal: any;
       let bVal: any;
@@ -539,14 +584,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
       if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
-  }, [orders, sortColumn, sortDirection]);
-
-  const renderItem = useCallback(
-    ({ item }: { item: OrderProfile }) => (
-      <OrderRow order={item} onMoreClick={onMoreClick} />
-    ),
-    [onMoreClick],
-  );
+  }, [orders, sortColumn, sortDirection, serverSorted]);
 
   return (
     <View
@@ -566,11 +604,18 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
           borderBottomColor: colors.border,
         }}
       >
-        {columns.map((column) => (
+        {columns.map((column) => {
+          // In server-sorted mode only the columns the backend can order by
+          // stay interactive — see SERVER_SORTABLE_COLUMNS.
+          const isSortable =
+            column.sortable &&
+            (!serverSorted ||
+              SERVER_SORTABLE_COLUMNS.has(column.key as SortColumn));
+          return (
           <TouchableOpacity
             key={column.key}
-            onPress={() => column.sortable && onSort(column.key as SortColumn)}
-            disabled={!column.sortable}
+            onPress={() => isSortable && onSort(column.key as SortColumn)}
+            disabled={!isSortable}
             className={`py-2 px-3 flex-row items-center gap-x-1 ${
               column.flex || ""
             } ${column.width || ""}`}
@@ -594,7 +639,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
             >
               {column.label}
             </Text>
-            {column.sortable &&
+            {isSortable &&
               sortColumn === column.key &&
               (sortDirection === "asc" ? (
                 <ArrowUp size={s(10)} color={colors.teal} />
@@ -602,23 +647,34 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
                 <ArrowDown size={s(10)} color={colors.teal} />
               ))}
           </TouchableOpacity>
-        ))}
+          );
+        })}
       </View>
 
-      {/* Table Body — FlashList recycles row cells instead of mount/unmount
-          on fling scroll (matches the menu grid's Perf F8 migration). Rows are
-          uniform-height, so `disableAutoLayout` is safe and avoids the New-Arch
-          AutoLayout "dark rectangle" artifact. FlatList batching props
-          (initialNumToRender/windowSize/etc.) have no FlashList equivalent. */}
-      <FlashList
-        data={sortedOrders}
-        renderItem={renderItem}
-        keyExtractor={(item: OrderProfile) => item.id}
-        estimatedItemSize={53}
-        disableAutoLayout
-        drawDistance={500}
-        contentContainerStyle={{ backgroundColor: colors.screen }}
-        ListEmptyComponent={() =>
+      {/* Table Body — one server page of rows in a plain ScrollView, no
+          virtualization (same rationale as the full Previous Orders screen):
+          at 50 rows per page the whole page is cheap to mount, and mounting
+          every row outright avoids FlashList's cell-recycling scroll feel.
+          Paging, not scrolling, is how the merchant moves through the set. */}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{
+          backgroundColor: colors.screen,
+          flexGrow: 1,
+        }}
+        showsVerticalScrollIndicator={true}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={!!refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.teal}
+              colors={[colors.teal]}
+            />
+          ) : undefined
+        }
+      >
+        {sortedOrders.length === 0 ? (
           isInitialLoading ? (
             <View className="py-20 items-center justify-center">
               <ActivityIndicator size="small" color={colors.teal} />
@@ -636,20 +692,15 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
               </Text>
             </View>
           )
-        }
-        showsVerticalScrollIndicator={true}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        onEndReached={onEndReached}
-        onEndReachedThreshold={0.3}
-        ListFooterComponent={
-          isLoadingMore ? (
-            <View style={{ paddingVertical: 16, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={colors.teal} />
-            </View>
-          ) : null
-        }
-      />
+        ) : (
+          <>
+            {sortedOrders.map((item) => (
+              <OrderRow key={item.id} order={item} onMoreClick={onMoreClick} />
+            ))}
+            {ListFooter}
+          </>
+        )}
+      </ScrollView>
     </View>
   );
 };

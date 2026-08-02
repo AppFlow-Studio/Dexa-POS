@@ -1,3 +1,4 @@
+import { runAfterPaint } from "@/lib/afterPaint";
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import { calculateEvenSplitSpread } from "@/lib/order-calculator";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
@@ -1258,18 +1259,23 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             justPaid &&
             claimAutoPrint(justPaid.id)
           ) {
-            const { PrinterService } =
-              require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
-            PrinterService.printSplitPaymentReceipt(
-              afterOrder,
-              justPaid,
-              selectedStore,
-            ).catch((e: unknown) =>
-              console.warn(
-                "[PaymentStore] split receipt auto-print failed:",
-                e,
-              ),
-            );
+            // Deferred past the next painted frame — the Star raster is
+            // synchronous JS work and would otherwise stall the split-success
+            // transition that follows this call. See runAfterPaint.
+            runAfterPaint(() => {
+              const { PrinterService } =
+                require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
+              PrinterService.printSplitPaymentReceipt(
+                afterOrder,
+                justPaid,
+                selectedStore,
+              ).catch((e: unknown) =>
+                console.warn(
+                  "[PaymentStore] split receipt auto-print failed:",
+                  e,
+                ),
+              );
+            });
           }
         }
       } catch (e) {
@@ -1490,18 +1496,21 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             (p) => !prePaymentPaymentIds.has(p.id),
           );
           if (selectedStore && justPaid && claimAutoPrint(justPaid.id)) {
-            const { PrinterService } =
-              require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
-            PrinterService.printSplitPaymentReceipt(
-              afterOrder,
-              justPaid,
-              selectedStore,
-            ).catch((e: unknown) =>
-              console.warn(
-                "[PaymentStore] settlement receipt auto-print failed:",
-                e,
-              ),
-            );
+            // Deferred past the next painted frame — see runAfterPaint.
+            runAfterPaint(() => {
+              const { PrinterService } =
+                require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
+              PrinterService.printSplitPaymentReceipt(
+                afterOrder,
+                justPaid,
+                selectedStore,
+              ).catch((e: unknown) =>
+                console.warn(
+                  "[PaymentStore] settlement receipt auto-print failed:",
+                  e,
+                ),
+              );
+            });
           }
         }
       } catch (e) {

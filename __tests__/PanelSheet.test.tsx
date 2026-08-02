@@ -13,6 +13,11 @@
  * completion synchronously, so close → onClose is observable without timers.
  */
 
+// react-test-renderer under React 19 (SDK 53) requires the act-environment flag,
+// or updates driven through act() aren't flushed synchronously and report
+// "not wrapped in act(...)". jest-setup.ts doesn't set it globally.
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
 jest.mock("@/lib/theme", () => ({
   colors: { panel: "#111827", muted: "#888888", border: "#333333" },
 }));
@@ -75,6 +80,7 @@ import PanelSheet, { type BottomSheetMethods } from "@/components/ui/PanelSheet"
 import { useBillPanelLayoutStore } from "@/stores/useBillPanelLayoutStore";
 import React from "react";
 import { BackHandler, Text } from "react-native";
+// @ts-ignore — react-test-renderer ships no bundled types on SDK 53
 import TestRenderer, { act } from "react-test-renderer";
 
 interface HarnessProps {
@@ -113,10 +119,10 @@ function renderSheet(props: HarnessProps) {
      * renders null.
      */
     isOpen: () =>
-      root.findAll((n) => n.props?.children === "PANEL_BODY").length > 0,
+      root.findAll((n: any) => n.props?.children === "PANEL_BODY").length > 0,
     pressBackdrop: () => {
       const backdrop = root.findAll(
-        (n) => n.props?.testID === "sheet-backdrop",
+        (n: any) => n.props?.testID === "sheet-backdrop",
       );
       act(() => backdrop[0]?.props?.onPress?.());
     },
@@ -203,7 +209,7 @@ describe("PanelSheet — presentation, snap index, footer, modal", () => {
     const root = r.root;
     return {
       has: (text: string) =>
-        root.findAll((n) => n.props?.children === text).length > 0,
+        root.findAll((n: any) => n.props?.children === text).length > 0,
     };
   }
 

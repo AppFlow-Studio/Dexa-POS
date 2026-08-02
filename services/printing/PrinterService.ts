@@ -62,6 +62,7 @@ import {
   VoidOrderReceiptData
 } from './templates/VoidOrderDocumentTemplate'
 import { safeTimeString } from './utils/sanitizeText'
+import { sweepOrphanTempImages } from './utils/tempImageCleanup'
 
 let processingStarted = false
 // Per-printer drain state. Each printer drains independently so a stuck or
@@ -879,7 +880,25 @@ async function drainPrinter (printerId: string): Promise<void> {
   } finally {
     processingPrinters.delete(printerId)
     printerJobStartedAt.delete(printerId)
+    runIdleHousekeeping()
   }
+}
+
+// Retention work, run when a drain finishes rather than on a background timer:
+// it costs nothing during a rush (the next enqueue re-enters the drain anyway)
+// and guarantees a pass right after each burst, which is when there is
+// something to reclaim. Both halves are self-throttling and never throw.
+function runIdleHousekeeping (): void {
+  if (processingPrinters.size > 0) return
+  try {
+    const pruned = usePrintQueueStore.getState().pruneJobs()
+    if (pruned > 0) {
+      console.log(`[PrinterService] Pruned ${pruned} retained print jobs`)
+    }
+  } catch (e) {
+    console.warn('[PrinterService] Job prune failed:', e)
+  }
+  void sweepOrphanTempImages()
 }
 
 interface ProcessJobResult {
