@@ -836,6 +836,15 @@ export class OrderService {
       // order (e.g. a $0.02 custom item split 2 ways) that fallback flipped the
       // order to `paid` after the FIRST $0.01 portion — amount_paid=$0.01 with a
       // real portion still owed — and enforce_order_math rejected it (P0005).
+      //
+      // NOTE: in-kind payments need NO process_payment change. 'inkind' is not
+      // 'cash', so every version from v12 up already routes it down the
+      // card-pricing path — which is exactly the desired behaviour. The
+      // tender-metadata corrections (zero fees, terminal_type 'none', no
+      // phantom settlement batch) are applied by the
+      // trg_inkind_normalize BEFORE INSERT trigger on order_payments, which is
+      // version-independent and therefore survives the next fork of this
+      // lineage. See 20260802100100_order_payments_inkind_normalize_trigger.sql.
       "process_payment_v16",
       params,
       {

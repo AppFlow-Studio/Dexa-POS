@@ -6,6 +6,7 @@ import {
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { isNothingLeftToCollect } from "@/lib/paymentGuards";
+import { toDbPaymentMethod } from "@/lib/paymentMethod";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
@@ -2938,7 +2939,9 @@ const syncPaymentToBackend = async (
     // Build payment params for process_payment_v8 (will be resolved when order syncs)
     const paymentParams = {
       p_order_id: order.id, // Will be resolved to db_order_id at sync time
-      p_payment_method: isCash ? "cash" : "card",
+      // Canonical mapping so a queued OFFLINE in-kind payment replays as
+      // 'inkind' rather than being flattened to a card sale on sync.
+      p_payment_method: toDbPaymentMethod(paymentDetails.method),
       p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
       p_tip_amount: paymentDetails.tipAmount || 0,
       p_amount_tendered: isCash
@@ -2981,7 +2984,11 @@ const syncPaymentToBackend = async (
   try {
     // Determine if this is a cash or card payment
     const isCash = paymentDetails.method === "Cash";
-    const paymentMethod = isCash ? "cash" : "card";
+    // Canonical mapping — NOT `isCash ? "cash" : "card"`. In-kind must reach
+    // the backend as 'inkind'; collapsing it to 'card' here would record a
+    // phantom card sale, inflate the card settlement total, and defeat
+    // trg_inkind_normalize (which keys off the method).
+    const paymentMethod = toDbPaymentMethod(paymentDetails.method);
     const terminalResponse = buildTerminalResponse();
 
     // Build item allocations for per-item payments (convert to backend format)
@@ -3283,7 +3290,8 @@ const syncPaymentToBackend = async (
 
       const paymentParams = {
         p_order_id: order.db_order_id,
-        p_payment_method: isCashRetry ? "cash" : "card",
+        // Canonical mapping — a retried in-kind payment must stay 'inkind'.
+        p_payment_method: toDbPaymentMethod(paymentDetails.method),
         p_amount: isFullRemainingPaymentRetry ? null : paymentDetails.amount,
         p_tip_amount: paymentDetails.tipAmount || 0,
         p_amount_tendered: isCashRetry

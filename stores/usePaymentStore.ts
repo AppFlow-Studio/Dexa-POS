@@ -67,6 +67,7 @@ export type PaymentView =
   | "split-payment-success"
   | "pay-for-items"
   | "pre-auth" // Pre-authorization (open/increase/close tab)
+  | "inkind" // Non-tender settlement: card-priced, no money collected
   | "verifying"; // Wave Cat-B: deadline/40001 outcome — recovery flow active
 
 export interface Split {
@@ -101,6 +102,7 @@ const paymentViewToStepMap: Record<PaymentView, number> = {
   "split-custom-amount": 2,
   "pay-for-items": 2, // NEW: Split review step
   "pre-auth": 2, // Pre-auth step
+  inkind: 2, // Same rank as the other tender screens
   verifying: 2, // Wave Cat-B: same step rank as card/manual — keeps progress bar stable
   "split-payment-success": 3,
   review: 3,

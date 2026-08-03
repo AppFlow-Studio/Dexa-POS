@@ -1,5 +1,6 @@
 import { isTransientRpcError } from "@/lib/network/idempotencyKey";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { isInKindMethod } from "@/lib/paymentMethod";
 import { computeItemRefundAmount } from "@/lib/refundScShare";
 import { OrderService } from "@/services/orderService";
 import {
@@ -1309,6 +1310,15 @@ export class RefundService {
   }> {
     // Cash payments don't go through the terminal — just succeed immediately
     if (payment.paymentMethod?.toLowerCase() === "cash") {
+      return { success: true };
+    }
+
+    // In-kind is a non-tender settlement: no processor ever saw it, and it
+    // carries no terminal_id, reference_id or auth code. Routed like cash so
+    // the reversal is recorded in the DB only. Without this it would fall
+    // through to the terminal path below and fail the missing-reference guard
+    // — leaving the payment un-reversible.
+    if (isInKindMethod(payment.paymentMethod)) {
       return { success: true };
     }
 
