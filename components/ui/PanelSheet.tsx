@@ -267,6 +267,13 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
       portalNameRef.current = `panel-sheet-${portalSeq++}`;
     }
     const progress = useSharedValue(startsOpen ? 1 : 0);
+    /**
+     * 1 while a close animation owns the panel. Worklet-readable counterpart to
+     * `closedRef`: the timing callback needs it to tell a close interrupted by a
+     * deliberate re-open/drag (leave mounted) from one interrupted by anything
+     * else (must still unmount). See `close()`.
+     */
+    const closingSV = useSharedValue(0);
     const panelHeightSV = useSharedValue(panelHeight);
     useEffect(() => {
       panelHeightSV.value = panelHeight;
@@ -309,12 +316,16 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
     const open = useCallback(
       (notifyIndex: number) => {
         closedRef.current = false;
+        // Release any in-flight close claim BEFORE the write that cancels its
+        // animation, so the cancelled callback doesn't unmount the panel we are
+        // about to show. Shared-value writes from JS keep their order.
+        closingSV.value = 0;
         setTargetIdx(Math.max(0, notifyIndex));
         setIsOpen(true);
         progress.value = withTiming(1, { duration: OPEN_MS });
         onChangeRef.current?.(notifyIndex);
       },
-      [progress],
+      [progress, closingSV],
     );
 
     const close = useCallback(() => {
@@ -324,11 +335,26 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
       // guard that starts a second close animation on the already-unmounted panel,
       // which fatally crashes Reanimated on the New Architecture (app drops to home).
       if (closedRef.current) return;
+      // Claim the close; open() and the drag gesture release the claim when they
+      // take the panel back over.
+      closingSV.value = 1;
       progress.value = withTiming(0, { duration: CLOSE_MS }, (finished) => {
         "worklet";
-        if (finished) runOnJS(finishClose)();
+        // An INTERRUPTED close (finished === false) must unmount too. Only
+        // open() and the drag gesture legitimately interrupt a close, and both
+        // clear closingSV first — so a still-set claim means the animation died
+        // for some other reason (a racing write, Reanimated teardown) with the
+        // panel already dismissed. Bailing there stranded the sheet mounted at
+        // progress 0: panel translated off-screen, scrim fully transparent, but
+        // its absolute-fill Pressable still swallowing every touch in the app —
+        // the screen looks completely normal and is completely dead. Sheets with
+        // enablePanDownToClose self-healed on the next tap (the backdrop press
+        // re-ran close()); the rest needed an app restart.
+        if (closingSV.value !== 1) return;
+        closingSV.value = 0;
+        runOnJS(finishClose)();
       });
-    }, [progress, finishClose]);
+    }, [progress, finishClose, closingSV]);
 
     // Android hardware back / back-gesture. The native ModalBottomSheet consumed
     // this implicitly (back = dismiss); an in-tree overlay does not, so without this
@@ -378,6 +404,9 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
           .onUpdate((e) => {
             "worklet";
             if (e.translationY > 0) {
+              // The drag takes the panel over from any in-flight close, so the
+              // cancelled close callback must not unmount it out from under us.
+              closingSV.value = 0;
               const h = panelHeightSV.value || 1;
               progress.value = Math.max(0, 1 - e.translationY / h);
             }
@@ -391,7 +420,7 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
               progress.value = withTiming(1, { duration: 160 });
             }
           }),
-      [enablePanDownToClose, close, progress, panelHeightSV],
+      [enablePanDownToClose, close, progress, panelHeightSV, closingSV],
     );
 
     if (!isOpen) return null;
