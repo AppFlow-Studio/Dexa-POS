@@ -1082,7 +1082,14 @@ const TablesScreen = () => {
           )}
 
           {/* Map Container */}
+          {/* While the TableContextSheet is open, disable floor-plan touches so
+              react-native-gesture-handler (the table Tap gestures) can't intercept
+              a tap underneath the PanelSheet backdrop. Without this, RNGH "sees
+              through" the plain-RN backdrop Pressable, selects another table, and
+              cancels the backdrop's dismiss. pointerEvents:"none" makes RNGH skip
+              this subtree, so the backdrop receives the tap and dismisses. */}
           <View
+            pointerEvents={contextTable ? "none" : "auto"}
             style={{
               flex: 1,
               backgroundColor: colors.screen,
