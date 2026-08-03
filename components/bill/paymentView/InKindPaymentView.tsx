@@ -383,17 +383,16 @@ const InKindPaymentView = () => {
             justifyContent: "center",
             flexDirection: "row",
             gap: s(7),
-            // Step 1 (Continue) is outlined in brand gold with normal heading
-            // text; step 2 FILLS with the gold so the irreversible action is
-            // the loudest thing on screen.
-            // The label is never gold-on-light: at step 1 it is heading
-            // colour, at step 2 it is inKindField (black) sitting on the gold
-            // fill. That keeps both states readable in both themes, which
-            // gold text would not — the gold is bright enough to be on-brand,
-            // which puts it around 2:1 on white.
-            backgroundColor: isConfirming ? colors.inKindOn : "transparent",
-            borderWidth: 1.5,
-            borderColor: colors.inKindOn,
+            // Brand gold fill in BOTH steps. The label carries the step
+            // difference ("Continue" -> "Yes, Settle as inKind"), and step 2
+            // deepens the border so the irreversible action still reads as
+            // the heavier of the two without changing colour identity.
+            // Label is inKindField (black) on the gold — 9.4:1 in light and
+            // 11.3:1 in dark. Gold is never used AS text: at ~2:1 on white it
+            // is a fill/border colour only.
+            backgroundColor: colors.inKindOn,
+            borderWidth: isConfirming ? 2.5 : 1.5,
+            borderColor: isConfirming ? colors.inKindField : colors.inKindOn,
             opacity: isProcessing || total <= 0 ? 0.35 : 1,
           }}
         >
@@ -401,7 +400,7 @@ const InKindPaymentView = () => {
             style={{
               fontWeight: "700",
               fontSize: s(13),
-              color: isConfirming ? colors.inKindField : colors.heading,
+              color: colors.inKindField,
             }}
           >
             {isProcessing

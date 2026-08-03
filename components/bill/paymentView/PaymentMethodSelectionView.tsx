@@ -83,17 +83,20 @@ const getStyles = (scale: number) => {
     methodTitleActive: { color: colors.heading },
     methodDesc: { fontSize: s(11), color: colors.muted, marginTop: 1 },
     methodDescActive: { color: colors.teal },
-    // ── inKind: normal panel with a BRAND GOLD border, and the lockup on its
-    // own black chip. The tile is not a black slab — that read as a hole
-    // punched in the light UI — the gold border plus the logo carry the
-    // identity instead, which works in both themes.
-    inKindCard: { borderColor: colors.inKindOn },
-    inKindCardActive: {
-      borderColor: colors.inKindOn,
-      borderWidth: 2,
-      backgroundColor: `${colors.inKindOn}14`
+    // ── inKind: solid brand-gold tile. Everything on it is black, which is
+    // legible on gold in both themes (9.4:1 light, 11.3:1 dark) — so unlike
+    // the earlier black-slab version this needs no light/dark inversion.
+    inKindCard: {
+      backgroundColor: colors.inKindOn,
+      borderColor: colors.inKindOn
     },
-    // Black chip: the lockup is gold-on-black and only reads on a dark field.
+    inKindCardActive: {
+      backgroundColor: colors.inKindOn,
+      borderColor: colors.inKindField,
+      borderWidth: 2
+    },
+    // Black chip: the lockup is gold-on-black, so it needs a dark field to
+    // read — it cannot sit directly on the gold tile.
     inKindLogoChip: {
       backgroundColor: colors.inKindField,
       borderRadius: s(8),
@@ -103,10 +106,9 @@ const getStyles = (scale: number) => {
       alignItems: 'center' as const,
       justifyContent: 'center' as const
     },
-    // Description keeps the normal muted colour: the gold is bright enough
-    // to read on-brand as a border, which puts it well under the 4.5:1 an
-    // 11px label needs. The gold border + logo carry the identity instead.
-    inKindRadio: { borderColor: colors.inKindOn },
+    // Black, not muted: muted grey on gold fails contrast.
+    inKindDesc: { color: colors.inKindField },
+    inKindRadio: { borderColor: colors.inKindField },
     radio: {
       width: s(18),
       height: s(18),
@@ -178,6 +180,9 @@ const PaymentMethodSelectionView: React.FC = () => {
   )
 
   const activeSplit = splits.find(s => s.id === activeSplitId)
+
+  // Drives the Proceed CTA's brand-gold treatment in the footer.
+  const isInKindSelected = selectedMethod === INKIND_LABEL
 
   const paymentMethods: Array<{
     name: PaymentMethod
@@ -353,7 +358,8 @@ const PaymentMethodSelectionView: React.FC = () => {
                   <Text
                     style={[
                       styles.methodDesc,
-                      isSelected && styles.methodDescActive
+                      isSelected && styles.methodDescActive,
+                      isInKind && styles.inKindDesc
                     ]}
                   >
                     {method.description}
@@ -363,9 +369,11 @@ const PaymentMethodSelectionView: React.FC = () => {
                   {isSelected ? (
                     <CheckCircle2
                       size={s(18)}
-                      color={isInKind ? colors.inKindOn : colors.teal}
-                      fill={isInKind ? colors.inKindOn : colors.teal}
-                      stroke={isInKind ? colors.inKindField : colors.screen}
+                      // Black disc with a gold tick on the gold tile — the
+                      // teal treatment would vanish against it.
+                      color={isInKind ? colors.inKindField : colors.teal}
+                      fill={isInKind ? colors.inKindField : colors.teal}
+                      stroke={isInKind ? colors.inKindOn : colors.screen}
                     />
                   ) : (
                     <View
@@ -390,12 +398,24 @@ const PaymentMethodSelectionView: React.FC = () => {
             {activeSplit ? 'Back' : 'Cancel'}
           </Text>
         </TouchableOpacity>
+        {/* Proceed adopts the brand gold once inKind is the selected method,
+            so the CTA matches the tile the cashier just picked instead of
+            staying teal. Label flips to inKindField (black) on the gold —
+            9.4:1 in light, 11.3:1 in dark. onSolid would be white in light
+            mode and unreadable on gold. */}
         <TouchableOpacity
-          style={styles.proceedBtn}
+          style={[
+            styles.proceedBtn,
+            isInKindSelected && { backgroundColor: colors.inKindOn }
+          ]}
           onPress={handleProceed}
         >
           <Text
-            style={{ color: colors.onSolid, fontWeight: '700', fontSize: s(13) }}
+            style={{
+              color: isInKindSelected ? colors.inKindField : colors.onSolid,
+              fontWeight: '700',
+              fontSize: s(13)
+            }}
           >
             Proceed
           </Text>
