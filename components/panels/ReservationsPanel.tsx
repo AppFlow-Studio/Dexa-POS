@@ -286,6 +286,12 @@ const DrumColumn: React.FC<{
       />
       <ScrollView
         ref={ref}
+        // This wheel is a vertical ScrollView nested inside the modal's outer
+        // vertical ScrollView. On Android the parent captures every vertical
+        // drag unless the child opts into nested scrolling — without this the
+        // wheel can't be spun at all and the user is stuck using the < / >
+        // buttons. Harmless (and default behaviour) on iOS.
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
         snapToInterval={TIME_ITEM_H}
         decelerationRate="fast"
@@ -714,6 +720,11 @@ const AddReservationModal: React.FC<{
                 style={{ maxHeight: s(520) }}
                 contentContainerStyle={{ padding: s(14), gap: s(10) }}
                 keyboardShouldPersistTaps="handled"
+                // Parent of the time-wheel ScrollViews. Enabling nested
+                // scrolling lets the wheels take the gesture when dragged and
+                // hands the drag back to this container everywhere else, so the
+                // form body scrolls from any non-input area on Android.
+                nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
               >
                 {/* Customer search — full width at top */}
