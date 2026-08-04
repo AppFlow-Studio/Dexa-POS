@@ -1,6 +1,7 @@
+import { INKIND_LABEL, isInKindMethod } from '@/lib/paymentMethod'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
-import { CreditCard, DollarSign, X } from 'lucide-react-native'
+import { CreditCard, DollarSign, HandCoins, X } from 'lucide-react-native'
 import React, { useMemo } from 'react'
 import { Text, View } from 'react-native'
 
@@ -26,7 +27,10 @@ const PaymentCard: React.FC<{
   isLast: boolean
 }> = React.memo(({ payment, index, isLast }) => {
   const isVoided = payment.isVoided || false
-  const paymentMethod = payment.method || 'Cash'
+  const rawMethod = payment.method || 'Cash'
+  const isInKind = isInKindMethod(rawMethod)
+  const isCardMethod = !isInKind && rawMethod.toLowerCase().includes('card')
+  const paymentMethodLabel = isInKind ? INKIND_LABEL : rawMethod
   const totalAmount = (payment.amount || 0) + (payment.tip_amount || 0)
 
   // Format timestamp
@@ -61,7 +65,9 @@ const PaymentCard: React.FC<{
           <View>
             {isVoided ? (
               <X color={colors.danger} size={16} />
-            ) : paymentMethod.toLowerCase().includes('card') ? (
+            ) : isInKind ? (
+              <HandCoins color={colors.inKindOn} size={16} />
+            ) : isCardMethod ? (
               <CreditCard color={colors.teal} size={16} />
             ) : (
               <DollarSign color={colors.teal} size={16} />
@@ -153,10 +159,14 @@ const PaymentCard: React.FC<{
               <Text
                 style={{
                   fontSize: 12,
-                  color: isVoided ? colors.muted : colors.label
+                  color: isVoided
+                    ? colors.muted
+                    : isInKind
+                      ? colors.inKindOn
+                      : colors.label
                 }}
               >
-                {paymentMethod}
+                {paymentMethodLabel}
                 {payment.cardBrand &&
                   payment.last4 &&
                   ` - ${payment.cardBrand} ****${payment.last4}`}
