@@ -1872,8 +1872,8 @@ const ModifierScreenContent = () => {
           </View>
         )}
 
-        {/* ── Category Pill Tabs (fixed) + flexing options area ───────────── */}
-        <View className="flex-1">
+        {/* ── Category Pill Tabs + options ────────────────────────────────── */}
+        <View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1914,9 +1914,9 @@ const ModifierScreenContent = () => {
             )}
           </ScrollView>
 
-          {/* ── Active Category Options (flex-fills to keep qty/notes on-screen) ── */}
-          {currentCategory ? (
-            <View className="flex-1 px-4 pt-3 pb-2">
+          {/* ── Active Category Options ──────────────────────────────── */}
+          {currentCategory && (
+            <View className="px-4 pt-3 pb-2">
               {/* Sub-header row */}
               <View className="flex-row items-center justify-between mb-3">
                 <Text
@@ -1958,11 +1958,12 @@ const ModifierScreenContent = () => {
                   selection in useModifierSelectionStore, so taps never
                   re-run the list.
 
-                  flex-1 (was a fixed 320px): the grid now takes exactly the
-                  space between the tabs and the pinned quantity/notes footer,
-                  scrolling internally, instead of a hardcoded height that
-                  overflowed tall/hi-scale screens and pushed qty/notes off. */}
-              <View className="flex-1">
+                  Bounded height (NOT flex): the option cells use flex:1 for
+                  their column WIDTH (5 per row), so a flex-filled grid on a
+                  tall screen stretched them vertically into big ovals. A fixed
+                  height keeps cells their natural size and scrolls internally;
+                  the flex spacer below pins quantity/notes to the bottom. */}
+              <View style={{ height: 320 }}>
                 <FlashList
                   data={optionsForCategory}
                   numColumns={OPTION_COLUMNS}
@@ -1977,11 +1978,14 @@ const ModifierScreenContent = () => {
                 />
               </View>
             </View>
-          ) : (
-            /* No modifiers: keep the footer pinned to the bottom. */
-            <View className="flex-1" />
           )}
         </View>
+
+        {/* Spacer: absorbs leftover vertical space so quantity/notes stay
+            pinned to the bottom (always visible without scrolling), no matter
+            how tall the screen is — while the options grid keeps its natural,
+            un-stretched size above. */}
+        <View className="flex-1" />
 
         {/* ── Custom Modifiers ─────────────────────────────────────────────── */}
         {state.customModifiers.length > 0 && (
