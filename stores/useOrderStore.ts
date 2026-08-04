@@ -439,6 +439,18 @@ function calculateOrderTotals(
   });
 }
 
+/**
+ * Order-aware live totals for surfaces that must recompute an order's totals
+ * OUTSIDE the store subscription (e.g. the Previous Orders overlay). Resolves the
+ * service-charge inputs (rule + party size + server-confirmed fallback) from the
+ * live stores, then computes via the module calculator (TTL-cached). Mirrors what
+ * useOrderTotals shows, so recomputing here matches the table view / payment sheet
+ * on the FIRST render — before _ensureTotalsFresh has refreshed the persisted
+ * `service_charge` / `total_amount` scalars (which only happens once the order is
+ * opened).
+ */
+export const calculateOrderTotalsForOrder = calculateOrderTotals;
+
 // ============================================================================
 // HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
 // ============================================================================

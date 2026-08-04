@@ -28,7 +28,10 @@ import {
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
-import { useOrderStore } from "@/stores/useOrderStore";
+import {
+  calculateOrderTotalsForOrder,
+  useOrderStore,
+} from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -327,6 +330,8 @@ const PreviousOrdersScreen = () => {
     setExpandedOrderId(null);
   }, [pageIndex]);
 
+  const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
+
   // Server-fetched history mapped to OrderProfile. Online: exactly the
   // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
   // pending orders) is prepended so open/unpaid offline orders show too.
@@ -385,19 +390,33 @@ const PreviousOrdersScreen = () => {
         liveOpenById[mapped.id] ??
         (mapped.db_order_id ? liveOpenById[mapped.db_order_id] : undefined);
       if (!live) return mapped;
+      // RECOMPUTE the live totals (same path as useOrderTotals) rather than read
+      // live.service_charge / live.total_amount — those persisted scalars are
+      // stale until _ensureTotalsFresh runs (which only happens once the order is
+      // opened), so reading them showed the wrong SC on the first fetch. Computing
+      // from the fresh items + live SC inputs matches the table view immediately.
+      const t = calculateOrderTotalsForOrder(
+        live.items,
+        live.checkDiscount,
+        live.payments ?? [],
+        taxRatesMap,
+        live,
+      );
       return {
         ...mapped,
         items: live.items,
-        service_charge: live.service_charge,
+        service_charge: t.service_charge,
         service_charge_name:
-          live.service_charge_name ?? mapped.service_charge_name,
+          t.service_charge_name ||
+          live.service_charge_name ||
+          mapped.service_charge_name,
         service_charge_rate:
           live.service_charge_rate ?? mapped.service_charge_rate,
-        total_amount: live.total_amount,
-        total_cash_amount: live.total_cash_amount ?? mapped.total_cash_amount,
-        total_tax: live.total_tax,
-        total_discount: live.total_discount ?? mapped.total_discount,
-        amount_due: live.amount_due ?? mapped.amount_due,
+        total_amount: t.total_amount,
+        total_cash_amount: t.cash_total_amount,
+        total_tax: t.tax_amount,
+        total_discount: t.discount_amount,
+        amount_due: t.outstanding_total,
         amount_paid: live.amount_paid ?? mapped.amount_paid,
         session_id: live.session_id ?? mapped.session_id,
       };
@@ -417,7 +436,7 @@ const PreviousOrdersScreen = () => {
         !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id)),
     );
     return [...offlineLiveOrders, ...historyMinusLive];
-  }, [previousOrders, offlineLiveOrders, liveOpenById]);
+  }, [previousOrders, offlineLiveOrders, liveOpenById, taxRatesMap]);
 
   // The server already applied every filter and the sort — render as-is.
   // No client-side filter/sort/search pass exists any more; adding one back
