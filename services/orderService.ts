@@ -836,6 +836,15 @@ export class OrderService {
       // order (e.g. a $0.02 custom item split 2 ways) that fallback flipped the
       // order to `paid` after the FIRST $0.01 portion — amount_paid=$0.01 with a
       // real portion still owed — and enforce_order_math rejected it (P0005).
+      //
+      // NOTE: in-kind payments need NO process_payment change. 'inkind' is not
+      // 'cash', so every version from v12 up already routes it down the
+      // card-pricing path — which is exactly the desired behaviour. The
+      // tender-metadata corrections (zero fees, terminal_type 'none', no
+      // phantom settlement batch) are applied by the
+      // trg_inkind_normalize BEFORE INSERT trigger on order_payments, which is
+      // version-independent and therefore survives the next fork of this
+      // lineage. See 20260802100100_order_payments_inkind_normalize_trigger.sql.
       "process_payment_v16",
       params,
       {
@@ -2307,6 +2316,51 @@ export class OrderService {
     }
 
     return result;
+  }
+
+  /**
+   * Wave B — atomically close the check AND free the dine-in session via the
+   * close_and_free_session RPC, so the terminal transitions route through the
+   * event projector (stamping paid_at + emitting payment_complete/table_cleared/
+   * table_cleaned). Idempotent + replay-safe: returns { already_freed: true }
+   * when the session was already freed by a prior attempt or another station.
+   */
+  static async closeAndFreeSession(
+    client: SupabaseClient,
+    orderId: string,
+    sessionId: string,
+    staffId?: string | null,
+    idempotencyKey?: string | null,
+  ): Promise<{ success: boolean; already_freed?: boolean; error?: string }> {
+    const { data, error } = await _runWithDeadline<any>(
+      "close_and_free_session",
+      DEADLINES.closeCheck,
+      async (signal) => {
+        const { data: d, error: e } = await client
+          .rpc("close_and_free_session", {
+            p_order_id: orderId,
+            p_session_id: sessionId,
+            p_staff_id: staffId || null,
+            p_idempotency_key: idempotencyKey || null,
+          })
+          .abortSignal(signal);
+        return { data: d, error: e };
+      },
+    );
+
+    if (error) {
+      console.error("[OrderService:closeAndFreeSession] RPC error:", error);
+      return { success: false, error: error.message };
+    }
+
+    const result = (data ?? {}) as {
+      success?: boolean;
+      already_freed?: boolean;
+    };
+    return {
+      success: result.success === true,
+      already_freed: result.already_freed === true,
+    };
   }
 
   /**

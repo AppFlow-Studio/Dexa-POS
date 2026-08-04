@@ -73,7 +73,6 @@ const CreateTemplateScreen = () => {
       tempId: uuid.v4() as string, // Ensure unique tempId for new shifts
       employeeId,
       dayOfWeek,
-      role: employee.role,
     });
     setIsShiftEditorOpen(true);
   };

@@ -65,7 +65,7 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
             disabled={isLoading}
             className="flex-row items-center p-4 rounded-xl"
             style={{
-              backgroundColor: colors.surface,
+              backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
               opacity: isLoading ? 0.5 : 1,
@@ -96,7 +96,7 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
             disabled={isLoading}
             className="flex-row items-center p-4 rounded-xl"
             style={{
-              backgroundColor: colors.surface,
+              backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.danger + "35",
               opacity: isLoading ? 0.5 : 1,

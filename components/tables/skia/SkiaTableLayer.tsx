@@ -195,9 +195,11 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
   // Skia floor plan offline while fonts were fetched over the network.
   if (!viewportEverValid.current && !viewportValid) return null;
 
-  // Referenced so React re-renders once fonts finish loading (text starts drawing).
-  void fontsReady;
-
+  // `fontsReady` is passed DOWN as a prop (not just referenced here). Re-rendering
+  // this layer alone is not enough: SkiaTable/SkiaTableContent/SkiaStructure are all
+  // React.memo, and the font load changes none of their data props — so they'd all
+  // bail out and keep their memoized textless output. Threading the flag through is
+  // what actually invalidates their memo and makes getTableFont run again.
   return (
     <Canvas
       key={surfaceKey}
@@ -213,6 +215,7 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
             table={s}
             darkMode={darkMode}
             wallEdgeFlags={wallEdgeFlagsById[s.id]}
+            fontsReady={fontsReady}
           />
         ))}
         {tables.map((table) => {
@@ -225,6 +228,7 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
               key={table.id}
               draw={draw}
               isSelected={selectedTableIds.has(table.id)}
+              fontsReady={fontsReady}
             />
           );
         })}

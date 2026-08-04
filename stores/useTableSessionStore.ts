@@ -119,8 +119,8 @@ export function startSessionPrune(): void {
       const terminal =
         session.status === "available" || session.status === "cleaning";
       if (!terminal) continue;
-      const updatedAt = session.updated_at
-        ? new Date(session.updated_at).getTime()
+      const updatedAt = session.seated_at
+        ? new Date(session.seated_at).getTime()
         : 0;
       if (now - updatedAt < SESSION_PRUNE_AGE_MS) continue;
       toDelete.push(tableId);

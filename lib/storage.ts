@@ -311,6 +311,25 @@ export function flushPendingWrite(name: string): void {
 const lazyWriters: Record<string, ReturnType<typeof debounce>> = {};
 
 /**
+ * Per-key persist debounce tuning. The default 300ms is right for small
+ * stores, but for the order store it sits exactly inside a rapid-ordering tap
+ * cadence (~400ms/item): every add re-armed the writer and the debounce
+ * expired between taps, so EVERY item paid the full 50-300KB stringify on the
+ * JS thread mid-burst. 900ms rides out the burst; maxWait caps how long a
+ * sustained burst can defer durability (a stringify lands at least every 3s).
+ * flushAllPendingWrites / flushPendingWrite still force synchronous writes on
+ * app-background and critical commits, so the crash-loss window only grows
+ * for the case where the process dies mid-burst with no background signal —
+ * and every non-draft item is already on the backend via its add RPC.
+ */
+const PERSIST_DEBOUNCE_OVERRIDES: Record<
+  string,
+  { delay: number; maxWait: number }
+> = {
+  "order-store-storage": { delay: 900, maxWait: 3000 },
+};
+
+/**
  * Last persisted slice reference per key. If the next setItem carries the
  * *same* partialized-slice reference (Immer structural sharing means an
  * unchanged slice keeps its identity), we can skip JSON.stringify entirely —
@@ -347,9 +366,10 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
   lastPersistedValue[name] = slice;
   recordCount(persistKeyIds(name).arm);
 
-  const delay = 300;
+  const override = PERSIST_DEBOUNCE_OVERRIDES[name];
+  const delay = override?.delay ?? 300;
   if (!lazyWriters[name]) {
-    lazyWriters[name] = debounce((v: unknown) => {
+    const writer = (v: unknown) => {
       const stringifyStart = performance.now();
       const str = JSON.stringify(v);
       // Prime suspect in the rush-lag model: full-slice stringify wall time
@@ -370,7 +390,10 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
           storage.set(name, str);
         });
       }
-    }, delay);
+    };
+    lazyWriters[name] = override
+      ? debounce(writer, delay, { maxWait: override.maxWait })
+      : debounce(writer, delay);
   }
   lazyWriters[name](value);
 }

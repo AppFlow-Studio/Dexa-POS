@@ -54,11 +54,12 @@ export const formatAddress = (
     let parsed: unknown = address;
     // Unwrap string layers (handles double-encoded JSON from json/jsonb column)
     while (typeof parsed === "string") {
+      const current = parsed;
       try {
-        parsed = JSON.parse(parsed);
+        parsed = JSON.parse(current);
       } catch {
         // Not valid JSON — treat as plain text address
-        return parsed;
+        return current;
       }
     }
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {

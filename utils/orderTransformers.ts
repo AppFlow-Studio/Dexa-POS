@@ -11,6 +11,7 @@ import type {
   BroadcastOrderItemData,
   BroadcastOrderPaymentData
 } from '@/hooks/realtime/useOrdersRealtime'
+import { fromDbPaymentMethod, isInKindMethod } from '@/lib/paymentMethod'
 import { resolveInboundToGo } from '@/lib/pendingToGo'
 import { normalizePlatform } from '@/lib/platformAliases'
 import type {
@@ -412,8 +413,9 @@ function transformBroadcastPaymentToProfile (
           payment.is_cash_priced
         )
 
-  // Determine PaymentType for UI
-  const method = payment.payment_method === 'cash' ? 'Cash' : 'Card'
+  // Determine PaymentType for UI. Canonical converter: resolves 'inkind'
+  // to "InKind" rather than mislabelling a non-tender settlement as Card.
+  const method = fromDbPaymentMethod(payment.payment_method)
 
   // Calculate cash savings — falls back to order-level ratio when original_amount is missing
   const cashSavings = deriveCashSavings(payment, orderCardTotal, orderCashTotal)
@@ -1137,9 +1139,16 @@ function normalizeFetchedItems (
 function normalizeFetchedPayment (
   payment: FetchedOrderPayment
 ): BroadcastOrderPaymentData {
-  // Simplify payment_method to 'cash' | 'card'
-  const normalizedMethod: 'cash' | 'card' =
-    payment.payment_method === 'cash' ? 'cash' : 'card'
+  // Simplify payment_method to 'cash' | 'card' | 'inkind'.
+  // in-kind is preserved rather than collapsed into 'card': it is a
+  // non-tender settlement, and a receiving station must not render it as a
+  // real card payment.
+  const normalizedMethod: BroadcastOrderPaymentData['payment_method'] =
+    payment.payment_method === 'cash'
+      ? 'cash'
+      : isInKindMethod(payment.payment_method)
+        ? 'inkind'
+        : 'card'
 
   // Normalize status to simplified enum
   const normalizedStatus = ((): BroadcastOrderPaymentData['status'] => {

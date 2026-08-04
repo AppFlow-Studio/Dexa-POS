@@ -78,8 +78,11 @@ export interface BroadcastOrderPaymentData {
   id: string
   order_id: string
 
-  // Payment basics (normalized with non-null defaults)
-  payment_method: 'cash' | 'card'
+  // Payment basics (normalized with non-null defaults).
+  // 'inkind' is a non-tender settlement (card-priced, no money collected).
+  // It must survive the broadcast intact: collapsing it to 'card' here would
+  // make a receiving station show a phantom card payment for a comped check.
+  payment_method: 'cash' | 'card' | 'inkind'
   amount: number
   tip_amount: number
   total_amount: number

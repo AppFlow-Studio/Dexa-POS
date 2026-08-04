@@ -1,4 +1,8 @@
-import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
+import {
+  PrintDocument,
+  PrintNode,
+  PrintTextFormat,
+} from "@/types/print-document";
 
 /**
  * Renders a PrintDocument to Dejavoo XML markup for the SPIN P terminal printer.
@@ -30,12 +34,14 @@ function renderNode(node: PrintNode, defaultLineWidth: number): string {
     }
 
     case "text_line": {
-      return wrapText(escapeXml(node.content), node.align, node.format) + "<BR />";
+      return (
+        wrapText(escapeXml(node.content), node.align, node.format) + "<BR />"
+      );
     }
 
     case "two_column": {
       // Dejavoo has no native column support — use space-padded left-aligned line
-      const w = node.lineWidth;
+      const w = node.lineWidth ?? defaultLineWidth;
       const left = node.left;
       const right = node.right;
       const padding = Math.max(1, w - left.length - right.length);
@@ -108,7 +114,8 @@ function wrapText(
   if (format?.condensed) result = `<CD>${result}</CD>`;
   if (format?.bold) result = `<B>${result}</B>`;
   if (format?.inverted) result = `<INV>${result}</INV>`;
-  if (format?.doubleHeight || format?.doubleWidth) result = `<LG>${result}</LG>`;
+  if (format?.doubleHeight || format?.doubleWidth)
+    result = `<LG>${result}</LG>`;
 
   // Apply alignment
   switch (align) {

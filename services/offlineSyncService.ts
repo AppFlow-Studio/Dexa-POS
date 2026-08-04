@@ -60,6 +60,7 @@ export type OperationType =
   // Check status operations
   | "close_check" // Close check (lock from edits)
   | "reopen_check" // Reopen closed check
+  | "close_and_free_session" // Wave B: atomic close-check + free-session (replay-safe)
   // Coursing operations
   | "fire_course"
   | "remove_course"
@@ -115,6 +116,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   // Check status operations (after items/payments)
   close_check: 4, // Close check
   reopen_check: 4, // Reopen check
+  close_and_free_session: 4, // Wave B: atomic close-check + free-session
 
   // Pre-auth operations (process before capture)
   process_preauth: 4,
@@ -1879,6 +1881,20 @@ export async function retrySyncForItem(itemId: string): Promise<number> {
 export async function dropQueuedOpsForItem(itemId: string): Promise<number> {
   let count = 0;
   const before = pendingOperations.length;
+
+  // Fast path: this is called on EVERY item add (to clear stale state from a
+  // deterministic cart-item id collision), but in the overwhelmingly common
+  // case nothing matches. Bail before the two filter passes and, critically,
+  // before the onQueueChange notification below — that notification commits a
+  // store update and re-renders every queue-count subscriber, and it was
+  // firing once per added item even with a zero-length result.
+  if (
+    !pendingOperations.some((op) => op.localItemId === itemId) &&
+    !deadLetterQueue.some((op) => op.localItemId === itemId)
+  ) {
+    return 0;
+  }
+
   pendingOperations = pendingOperations.filter((op) => {
     if (op.localItemId === itemId) {
       removeFromIndex(op);

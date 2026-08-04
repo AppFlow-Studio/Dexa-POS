@@ -57,6 +57,13 @@ const SkiaStructure: React.FC<{
   table: FloorPlanObject;
   darkMode: boolean;
   wallEdgeFlags?: WallEdgeFlags;
+  /**
+   * Typefaces-loaded flag — not read, exists only to invalidate React.memo when the
+   * async font load finishes. `label-text` structures below bail to no-text while
+   * getTableFont() returns null; without this prop their memoized textless output
+   * would never be recomputed. Same bug as SkiaTableContent.
+   */
+  fontsReady: boolean;
 }> = ({ table, darkMode, wallEdgeFlags }) => {
   const shapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
   // `?? … ?? 100` only guards null/undefined — a NaN width from a bad row would

@@ -37,7 +37,7 @@ function renderNode(b: EscPosBuilder, node: PrintNode): void {
 
     case "two_column": {
       applyFormat(b, node.format);
-      b.twoColumnRow(node.left, node.right, node.lineWidth);
+      b.twoColumnRow(node.left, node.right, node.lineWidth ?? 32);
       resetFormat(b, node.format);
       break;
     }
