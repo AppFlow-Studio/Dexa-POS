@@ -349,6 +349,7 @@ const PreviousOrdersScreen = () => {
           payments: po.payments,
           order_source: po.order_source ?? null,
           delivery_platform: po.delivery_platform ?? null,
+          platform_order_number: po.platform_order_number ?? null,
           _isOnlineOrder: po._isOnlineOrder,
           reversals: po.reversals,
           order_refund_items: po.order_refund_items,

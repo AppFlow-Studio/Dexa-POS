@@ -78,29 +78,66 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.alignLeft();
   b.solidLine(w);
 
-  // ── Prominent Order Number ──
-  b.emptyLine();
-  b.alignCenter();
-  b.bold(true);
-  b.inverted(true);
-  b.doubleSize(true);
-  b.textLine(`${data.orderNumber} `);
-  b.doubleSize(false);
-  b.inverted(false);
-  b.bold(false);
-  b.alignLeft();
-  b.emptyLine();
-  b.solidLine(w);
-
-  // ── Order Info ──
-  // Order type and table on separate rows
-  if (cfg?.showOrderType !== false) {
-    b.bold(true);
-    b.textLine(data.orderType);
-    if (data.tableName) {
-      b.textLine(`Table: ${data.tableName}`);
+  if (data.isOnlineOrder) {
+    // ── Bag-label header (online): platform → type → customer → code ──
+    // Mirrors the delivery-app's own bag label so staff can match the order.
+    b.emptyLine();
+    b.alignCenter();
+    if (data.onlinePlatformLabel) {
+      b.bold(true);
+      b.doubleSize(true);
+      b.textLine(data.onlinePlatformLabel.toUpperCase());
+      b.doubleSize(false);
+      b.bold(false);
     }
+    if (cfg?.showOrderType !== false && data.orderType) {
+      b.bold(true);
+      b.textLine(data.orderType);
+      b.bold(false);
+    }
+    if (data.customerName) {
+      b.emptyLine();
+      b.bold(true);
+      b.doubleSize(true);
+      b.textLine(data.customerName);
+      b.doubleSize(false);
+      b.bold(false);
+    }
+    if (data.platformShortCode) {
+      b.bold(true);
+      b.doubleSize(true);
+      b.textLine(`Code: ${data.platformShortCode}`);
+      b.doubleSize(false);
+      b.bold(false);
+    }
+    b.alignLeft();
+    b.emptyLine();
+    b.solidLine(w);
+  } else {
+    // ── Prominent Order Number ──
+    b.emptyLine();
+    b.alignCenter();
+    b.bold(true);
+    b.inverted(true);
+    b.doubleSize(true);
+    b.textLine(`${data.orderNumber} `);
+    b.doubleSize(false);
+    b.inverted(false);
     b.bold(false);
+    b.alignLeft();
+    b.emptyLine();
+    b.solidLine(w);
+
+    // ── Order Info ──
+    // Order type and table on separate rows
+    if (cfg?.showOrderType !== false) {
+      b.bold(true);
+      b.textLine(data.orderType);
+      if (data.tableName) {
+        b.textLine(`Table: ${data.tableName}`);
+      }
+      b.bold(false);
+    }
   }
 
   // ── Split-payment header (per-portion receipts only) ──
@@ -118,12 +155,13 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     b.alignLeft();
   }
 
-  if (data.customerName) {
+  // Online orders headline the customer name at the top, so skip the row here.
+  if (!data.isOnlineOrder && data.customerName) {
     b.bold(true);
     b.twoColumnRow("Customer:", data.customerName, w);
     b.bold(false);
   }
-  if (cfg?.showServerName !== false && data.serverName) {
+  if (!data.isOnlineOrder && cfg?.showServerName !== false && data.serverName) {
     b.bold(true);
     b.textLine(`Server: ${data.serverName}`);
     b.bold(false);
@@ -192,8 +230,8 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     b.twoColumnRow("Cash Total", formatCurrency(data.cashTotal), w);
   }
 
-  // ── Tip line (blank for customer to fill in — skip if tip already collected) ──
-  if (cfg?.showTipLine !== false && data.tip <= 0) {
+  // ── Tip line (blank for customer to fill in — skip if collected, or online) ──
+  if (cfg?.showTipLine !== false && data.tip <= 0 && !data.isOnlineOrder) {
     b.solidLine(w);
     b.bold(true);
     b.twoColumnRow("Tip:", "________", w);
@@ -279,19 +317,23 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.emptyLine();
 
   b.bold(true);
-  if (data.backendOrderNumber) {
-    b.twoColumnRow("Order #", data.backendOrderNumber, w);
-  } else {
-    b.twoColumnRow("Order #", data.orderNumber, w);
+  // Online orders headline platform/customer/code at the top; the footer trims
+  // to Ordered + Phone (Order #/Printed/Server/Customer drop).
+  if (!data.isOnlineOrder) {
+    if (data.backendOrderNumber) {
+      b.twoColumnRow("Order #", data.backendOrderNumber, w);
+    } else {
+      b.twoColumnRow("Order #", data.orderNumber, w);
+    }
   }
   b.twoColumnRow("Ordered", `${data.orderDate}, ${data.orderTime}`, w);
-  if (data.printDate && data.printTime) {
+  if (!data.isOnlineOrder && data.printDate && data.printTime) {
     b.twoColumnRow("Printed", `${data.printDate}, ${data.printTime}`, w);
   }
-  if (data.serverName) {
+  if (!data.isOnlineOrder && data.serverName) {
     b.twoColumnRow("Server", data.serverName, w);
   }
-  if (data.customerName) {
+  if (!data.isOnlineOrder && data.customerName) {
     b.twoColumnRow("Customer", data.customerName, w);
   }
   if (cfg?.showCustomerPhone !== false && data.customerPhone) {

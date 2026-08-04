@@ -11,6 +11,8 @@ import {
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
 import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
+import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
@@ -424,6 +426,32 @@ const KDSSkeletonCard = () => {
 };
 
 // ─── Order Type Helpers ───────────────────────────────────────────
+/**
+ * Ticket header label: the delivery-platform short code (e.g. "C424D") for
+ * online orders, else the Dexa display number / last-4 of the order number.
+ */
+function kdsTicketLabel(ticket: KDSTicket | null | undefined): string {
+  if (!ticket) return "----";
+  // Prefer platform_order_number carried on the ticket (broadcast path, or the
+  // RPC once the get_kds_tickets_v2 migration lands). Fall back to the order
+  // store by db_order_id so a POS-hosted KDS still shows the short code before
+  // that migration is applied. (Dedicated KDS devices skip order-store bootstrap
+  // — they rely on the RPC field.)
+  const platformNumber =
+    ticket.platform_order_number ??
+    useOrderStore.getState().getOrderByDbId(ticket.db_order_id)
+      ?.platform_order_number ??
+    null;
+  const shortCode = onlineOrderShortCode({
+    id: ticket.order_id,
+    db_order_id: ticket.db_order_id,
+    platform_order_number: platformNumber,
+  });
+  return (
+    shortCode || ticket.display_number || ticket.order_number?.slice(-4) || "----"
+  );
+}
+
 function getOrderTypeLabel(type: string | null): string {
   const t = (type || "").toLowerCase();
   if (t === "delivery") return "DELIVERY";
@@ -1155,9 +1183,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       }}
                       numberOfLines={1}
                     >
-                      {ticket.display_number ||
-                        ticket.order_number?.slice(-4) ||
-                        "----"}
+                      {kdsTicketLabel(ticket)}
                     </Text>
                     {(ticket.status === "pending" ||
                       ticket.status === "cooking") &&
@@ -2037,10 +2063,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                       }}
                       numberOfLines={1}
                     >
-                      #
-                      {ticket.display_number ||
-                        ticket.order_number?.slice(-4) ||
-                        "----"}
+                      {kdsTicketLabel(ticket)}
                     </Text>
                     <DeliveryPlatformBadge
                       deliveryPlatform={ticket.delivery_platform}
@@ -2595,8 +2618,7 @@ const KitchenDisplayScreen = () => {
       const pendingTickets = useKDSStore.getState().ticketsByStatus.pending;
       pendingTickets.forEach((ticket) => {
         if (!shouldAutoFire(ticket.start_time_epoch, now, delayMs)) return;
-        const displayNum =
-          ticket.display_number ?? ticket.order_number?.slice(-4) ?? "?";
+        const displayNum = kdsTicketLabel(ticket);
         toast.show({
           title: `${displayNum} auto-fired`,
           message: `Started preparing after ${kdsAutoFireDelayMinutes}m`,
@@ -2643,8 +2665,7 @@ const KitchenDisplayScreen = () => {
           isTicketRecalled(ticket.ticket_id);
         if (!shouldAutoBump(ticket.start_time_epoch, now, delayMs, recalled))
           return;
-        const displayNum =
-          ticket.display_number ?? ticket.order_number?.slice(-4) ?? "?";
+        const displayNum = kdsTicketLabel(ticket);
         toast.show({
           title: `${displayNum} auto-bumped`,
           message: `Ticket served after ${autoBumpMinutes}m`,
@@ -3009,8 +3030,7 @@ const KitchenDisplayScreen = () => {
     ) => {
       // Read ticket data before advancing (advance mutates the store)
       const ticket = useKDSStore.getState()._ticketsById[ticketId];
-      const displayNum =
-        ticket?.display_number || ticket?.order_number?.slice(-4) || "----";
+      const displayNum = kdsTicketLabel(ticket);
       const statusLabel =
         newStatus === "preparing"
           ? "Cooking"
@@ -3927,10 +3947,7 @@ const KitchenDisplayScreen = () => {
           }}
         >
           {(() => {
-            const orderLabel =
-              actionMenu.ticket.display_number ||
-              actionMenu.ticket.order_number?.slice(-4) ||
-              "----";
+            const orderLabel = kdsTicketLabel(actionMenu.ticket);
             const statusText =
               actionMenu.ticket.status === "pending"
                 ? "Pending"
@@ -4276,8 +4293,7 @@ const KitchenDisplayScreen = () => {
         (() => {
           const ticket =
             useKDSStore.getState()._ticketsById[confirmBump.ticketId];
-          const label =
-            ticket?.display_number || ticket?.order_number?.slice(-4) || "----";
+          const label = kdsTicketLabel(ticket);
           const undoneCount = ticket ? countUndoneItems(ticket) : 0;
           return (
             <ConfirmBumpModal

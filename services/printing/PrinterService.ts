@@ -4,6 +4,9 @@ import {
   calculateOrderTotals,
   round2
 } from '@/lib/order-calculator'
+import { onlineOrderShortCode } from '@/lib/onlineOrderLabel'
+import { isOnlineOrderSource } from '@/lib/orderSource'
+import { resolveOrderPlatformLogo } from '@/lib/orderPlatformResolver'
 import { INKIND_LABEL } from '@/lib/paymentMethod'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
@@ -1657,6 +1660,21 @@ function buildReceiptTemplateData (
     }
   }
 
+  // ── Online / delivery-platform receipt (bag-label header) ─────────────
+  // Delivery-app orders print a clean bag label: big platform + customer +
+  // short pickup code, and no tip write-in (the platform already collected).
+  const isOnlineOrder =
+    order._isOnlineOrder === true || isOnlineOrderSource(order.order_source)
+  const onlinePlatformLabel = isOnlineOrder
+    ? resolveOrderPlatformLogo({
+        deliveryPlatform: order.delivery_platform,
+        orderSource: order.order_source
+      }).label
+    : null
+  const receiptPlatformShortCode = isOnlineOrder
+    ? onlineOrderShortCode(order)
+    : null
+
   return {
     storeName: location.name,
     storeAddress: addressParts.join(', '),
@@ -1705,7 +1723,10 @@ function buildReceiptTemplateData (
     printTime: printTimeStr,
     splitLabel,
     splitPayerName,
-    isPartialSplitReceipt
+    isPartialSplitReceipt,
+    isOnlineOrder,
+    onlinePlatformLabel,
+    platformShortCode: receiptPlatformShortCode
   }
 }
 

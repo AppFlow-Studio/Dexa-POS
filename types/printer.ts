@@ -277,6 +277,13 @@ export interface ReceiptTemplateData {
   splitLabel?: string;             // e.g. "Split 2 of 3"
   splitPayerName?: string;         // payer name (from transactionDetails.splitLabel)
   isPartialSplitReceipt?: boolean; // even/custom split → "Partial payment - full check below"
+
+  // Online / delivery-platform receipt (bag-label layout). When isOnlineOrder
+  // is true the header shows the platform + customer + short pickup code and
+  // the tip write-in line is suppressed (payment was collected by the platform).
+  isOnlineOrder?: boolean;
+  onlinePlatformLabel?: string | null; // e.g. "Uber Eats" | "DoorDash" | "Online"
+  platformShortCode?: string | null;   // last-5 of platform_order_number, e.g. "C424D"
 }
 
 export interface ReceiptItemData {

@@ -172,6 +172,15 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
     ? order.items!.reduce((n, i) => n + (i.quantity || 0), 0)
     : (order._broadcastItemCount ?? 0);
   const label = resolveOrderLabel(order);
+  // When a platform short code (e.g. "C424D") is the primary label, keep the
+  // Dexa number visible as a small secondary reference so staff can look it up.
+  const dexaNumber = order.display_number || order.order_number || null;
+  const dexaLabel = dexaNumber
+    ? dexaNumber.startsWith("#")
+      ? dexaNumber
+      : `#${dexaNumber}`
+    : null;
+  const showDexaSecondary = !!dexaLabel && dexaLabel !== label;
   const total = order.total_amount ?? 0;
   const canCancel = variant !== "done"; // New + In Kitchen + Ready
   // Mark-ready only for delivery-platform (OrderOut) orders in the kitchen lane —
@@ -260,6 +269,14 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           >
             {label}
           </Text>
+          {showDexaSecondary ? (
+            <Text
+              style={{ fontSize: s(11), color: colors.muted }}
+              numberOfLines={1}
+            >
+              {dexaLabel}
+            </Text>
+          ) : null}
           <Text
             style={{ fontSize: s(14), color: colors.label }}
             numberOfLines={1}
