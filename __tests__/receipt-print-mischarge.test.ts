@@ -21,7 +21,9 @@ jest.mock("uuid", () => ({
 import {
   buildReceiptTemplateData,
   reconcileReceiptTotals,
+  resolveFullOrder,
 } from "@/services/printing/PrinterService";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { CartItem, OrderProfile } from "@/lib/types";
 import { PrinterConfig } from "@/types/printer";
 import {
@@ -264,6 +266,36 @@ describe("buildReceiptTemplateData — footer mischarge", () => {
     // Total reflects the fresh SC (70 + 6.88 + 12.60 = 89.48), not the stale 84.44:
     expect(d.total).toBeCloseTo(70 + d.tax + 12.6, 2);
     expect(d.total).not.toBeCloseTo(84.44, 2);
+  });
+});
+
+describe("resolveFullOrder — uniform order source across print surfaces", () => {
+  afterEach(() => {
+    useOrderStore.setState({ ordersById: {}, dbOrderIdIndex: {} } as any);
+  });
+
+  it("prefers the hydrated store order (by local id) over a lossy list object", () => {
+    const full = baseOrder({ id: "ord-x", items: S1_0003_ITEMS() });
+    useOrderStore.setState({ ordersById: { "ord-x": full } } as any);
+    // Previous-Orders passes a stripped object with empty items:
+    const lossy = { id: "ord-x", items: [] } as any;
+    expect(resolveFullOrder(lossy)).toBe(full);
+  });
+
+  it("resolves via db_order_id when the local id is not a store key", () => {
+    const full = baseOrder({ id: "local-1", items: S1_0003_ITEMS() });
+    useOrderStore.setState({
+      ordersById: { "local-1": full },
+      dbOrderIdIndex: { "db-1": "local-1" },
+    } as any);
+    const lossy = { id: "db-1", db_order_id: "db-1", items: [] } as any;
+    expect(resolveFullOrder(lossy)).toBe(full);
+  });
+
+  it("falls back to the passed order when not held in the store (archived)", () => {
+    useOrderStore.setState({ ordersById: {}, dbOrderIdIndex: {} } as any);
+    const archived = baseOrder({ id: "old-1", items: [] });
+    expect(resolveFullOrder(archived)).toBe(archived);
   });
 });
 

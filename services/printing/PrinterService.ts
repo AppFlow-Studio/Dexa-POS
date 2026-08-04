@@ -14,6 +14,7 @@ import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { useOrderStore } from '@/stores/useOrderStore'
 import { usePrintQueueStore } from '@/stores/usePrintQueueStore'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useReceiptTemplateStore } from '@/stores/useReceiptTemplateStore'
@@ -121,14 +122,43 @@ function kickAllReadyPrinters (): void {
 // PUBLIC API
 // ============================================================================
 
+/**
+ * Resolve the fullest available copy of an order for printing. Live surfaces
+ * (sidebar, table sheet, payment sheet, menu) already pass the hydrated store
+ * OrderProfile. Previous-Orders reprints, however, pass a list-optimized object
+ * whose items lack modifier customizations and whose session_id was dropped —
+ * which makes the printed receipt diverge (missing modifiers, stale service
+ * charge that can't be recomputed without the session). When a hydrated copy
+ * exists in the order store (matched by local id, else db_order_id), prefer it
+ * so EVERY print surface resolves the same receipt. Falls back to the passed
+ * order for archived orders no longer held in the store.
+ */
+export function resolveFullOrder (order: OrderProfile): OrderProfile {
+  try {
+    const store = useOrderStore.getState()
+    const byLocal = store.ordersById[order.id]
+    if (byLocal) return byLocal
+    const localId = order.db_order_id
+      ? store.dbOrderIdIndex[order.db_order_id]
+      : undefined
+    if (localId && store.ordersById[localId]) return store.ordersById[localId]
+  } catch {
+    // Store unavailable — print what we were handed.
+  }
+  return order
+}
+
 export const PrinterService = {
   /**
    * Print a receipt for a completed order.
    */
   async printReceipt (
-    order: OrderProfile,
+    inputOrder: OrderProfile,
     location: SelectedLocation
   ): Promise<boolean> {
+    // Prefer the hydrated store copy so every surface — including Previous-Orders
+    // reprints — renders the same receipt (full modifiers + live service charge).
+    const order = resolveFullOrder(inputOrder)
     const printer = getReceiptPrinter(location.id)
     if (!printer) {
       console.warn('[PrinterService] No receipt printer configured')
@@ -171,11 +201,12 @@ export const PrinterService = {
    * payer's items/totals/tender. Supplements the combined receipt.
    */
   async printSplitPaymentReceipt (
-    order: OrderProfile,
+    inputOrder: OrderProfile,
     payment: OrderProfilePayment,
     location: SelectedLocation
   ): Promise<boolean> {
     if (payment.isVoided) return false
+    const order = resolveFullOrder(inputOrder)
 
     const printer = getReceiptPrinter(location.id)
     if (!printer) {
@@ -219,9 +250,10 @@ export const PrinterService = {
    * Print one separate receipt for every non-voided payment on the order.
    */
   async printAllSplitReceipts (
-    order: OrderProfile,
+    inputOrder: OrderProfile,
     location: SelectedLocation
   ): Promise<boolean> {
+    const order = resolveFullOrder(inputOrder)
     const payments = (order.payments ?? []).filter(p => !p.isVoided)
     if (payments.length === 0) return false
     let ok = true
@@ -1302,22 +1334,47 @@ export function buildReceiptTemplateData (
     : null
   const seatCount =
     useSeatingStore.getState().byOrderId[order.id]?.seatCount ?? null
-  const partySize = seatCount ?? sessionPartySize ?? null
+  // Mirror useOrderTotals (stores/selectors/orderSelectors.ts): with no seat or
+  // session signal, fall back to the order's own guest_count so the printed
+  // service charge resolves the same party size the POS summary used — on every
+  // surface (sidebar, table sheet, payment sheet, previous-orders reprint).
+  const guestCountFallback =
+    seatCount == null &&
+    sessionPartySize == null &&
+    !order.session_id &&
+    typeof order.guest_count === 'number' &&
+    order.guest_count > 0
+      ? order.guest_count
+      : null
+  const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null
 
+  // Inputs mirror useOrderTotals EXACTLY so the printed totals — the service
+  // charge especially — resolve identically to the POS summary the cashier saw,
+  // regardless of which surface triggered the print. In particular
+  // serverConfirmedServiceCharge keeps SC when the live rule/party-size can't be
+  // resolved (e.g. a reprint from Previous Orders), and manual/taxable mirror the
+  // summary's manager-override handling.
   const orderTotals = calculateOrderTotals({
     items: order.items,
     checkDiscount: order.checkDiscount ?? null,
     taxRatesMap,
     payments: order.payments ?? [],
+    preserveItemLevelOutstanding: order._reopenedForOrdering === true,
     serviceChargeRule,
     partySize,
     orderType: order.order_type ?? null,
     snapshottedRate: order.service_charge_rate ?? null,
     snapshottedAppliesOn: order.service_charge_applies_on ?? null,
     snapshottedName: order.service_charge_name ?? null,
-    manualServiceCharge: order.service_charge_is_manual
-      ? order.service_charge
-      : undefined
+    manualServiceCharge:
+      order.service_charge_is_manual === true
+        ? order.service_charge ?? 0
+        : null,
+    manualServiceChargeTaxable: order.service_charge_is_taxable ?? null,
+    serverConfirmedServiceCharge:
+      order.service_charge_is_manual !== true
+        ? order.service_charge ?? null
+        : null
   })
 
   // Calculator fallbacks — retained for the split-payment scope block, which
