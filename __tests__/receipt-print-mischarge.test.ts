@@ -29,6 +29,7 @@ import {
   useStoreSettingsStore,
 } from "@/stores/useStoreSettingsStore";
 import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
+import { useSeatingStore } from "@/stores/useSeatingStore";
 
 const LOCATION = {
   id: "loc-1",
@@ -100,6 +101,7 @@ beforeEach(() => {
     taxRatesMap: { standard: 8.875, alcohol: 12, exempt: 0 },
   } as any);
   useServiceChargeRulesStore.getState().setRules([]);
+  useSeatingStore.setState({ byOrderId: {} } as any);
 });
 
 describe("buildReceiptTemplateData — footer mischarge", () => {
@@ -203,6 +205,65 @@ describe("buildReceiptTemplateData — footer mischarge", () => {
     expect(b.total).toBe(a.total);
     expect(b.subtotal).toBe(a.subtotal);
     expect(b.items).toEqual(a.items);
+  });
+
+  it("open order uses the live-recomputed service charge, not a stale persisted scalar (repro #S2-0001)", () => {
+    // Live SC rule: 18%, min party 2, dine_in, pre_discount.
+    useServiceChargeRulesStore.getState().setRules([
+      {
+        id: "scr-1",
+        merchant_id: "m1",
+        location_id: "loc-1",
+        name: "Service Charge",
+        rate_percent: 18,
+        min_party_size: 2,
+        applies_to_order_types: ["dine_in"],
+        applies_on: "pre_discount",
+        is_taxable: false,
+        auto_apply: true,
+        is_active: true,
+        updated_at: "2026-08-01T00:00:00Z",
+      } as any,
+    ]);
+
+    const order = baseOrder({
+      id: "ord-s2-0001",
+      display_number: "#S2-0001",
+      paid_status: "Pending", // OPEN
+      session_id: "sess-1",
+      items: [
+        mkItem({ id: "a", subtotal: 40, cashSubtotal: 38, taxAmount: 3.93, cashTaxAmount: 3.74 }),
+        mkItem({ id: "b", subtotal: 30, cashSubtotal: 28.5, taxAmount: 2.95, cashTaxAmount: 2.8 }),
+      ], // card subtotal 70.00, tax Σ 6.88
+      service_charge_rate: 18,
+      service_charge_applies_on: "pre_discount",
+      service_charge_is_manual: false,
+      // STALE persisted SC (18% of an earlier $42 base) — must be ignored while open:
+      service_charge: 7.56,
+      total_amount: 84.44, // stale, consistent with the stale SC
+    });
+    // Party size 2 (>= rule min) resolves via the seating store.
+    useSeatingStore.setState({
+      byOrderId: {
+        [order.id]: {
+          activeSeat: null,
+          itemSeatMap: {},
+          dbIdToSeatMap: {},
+          seatCount: 2,
+          syncing: false,
+        },
+      },
+    } as any);
+
+    const d = buildReceiptTemplateData(order, LOCATION, PRINTER);
+
+    expect(d.subtotal).toBeCloseTo(70, 2);
+    // Live SC = 18% * 70 = 12.60, NOT the stale 7.56:
+    expect(d.serviceCharge ?? 0).toBeCloseTo(12.6, 2);
+    expect(d.serviceCharge ?? 0).not.toBeCloseTo(7.56, 2);
+    // Total reflects the fresh SC (70 + 6.88 + 12.60 = 89.48), not the stale 84.44:
+    expect(d.total).toBeCloseTo(70 + d.tax + 12.6, 2);
+    expect(d.total).not.toBeCloseTo(84.44, 2);
   });
 });
 

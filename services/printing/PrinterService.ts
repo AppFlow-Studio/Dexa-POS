@@ -1507,10 +1507,27 @@ export function buildReceiptTemplateData (
     : tax
   const dispTaxCash = sumItemCashTax > 0 ? sumItemCashTax : cashTax
 
-  const dispSCCard = persisted(order.service_charge)
-    ? order.service_charge
-    : orderTotals.service_charge
-  const dispSCCash = orderTotals.cash_service_charge
+  // On OPEN orders prefer the live-recomputed SC (tracks the current subtotal and
+  // matches the POS summary). The persisted order.service_charge is applied via a
+  // separate path and can lag when items are added after it was set — #S2-0001
+  // printed 7.56 (18% of a stale $42 base) while the check was $70 / SC $12.60 on
+  // the POS, and the card SC even disagreed with the cash SC (which already used the
+  // live value). Trust the persisted value only when finalized (exact reprint), or
+  // as a fallback when the live rule can't resolve (fresh 0) so a real SC never drops.
+  const freshSCCard = orderTotals.service_charge
+  const freshSCCash = orderTotals.cash_service_charge
+  const dispSCCard =
+    isFinalized && persisted(order.service_charge)
+      ? order.service_charge
+      : freshSCCard > 0
+      ? freshSCCard
+      : order.service_charge ?? 0
+  const dispSCCash =
+    isFinalized && persisted(order.service_charge)
+      ? order.service_charge
+      : freshSCCash > 0
+      ? freshSCCash
+      : order.service_charge ?? 0
 
   // Footer TOTAL = Σ(printed Subtotal − Discount + Tax + Service Charge), tip-EXCLUSIVE
   // (Tip prints as its own row; "Total w/ Tip" is a separate write-in). Deriving from
