@@ -397,7 +397,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   color: colors.danger,
                 }}
               >
-                Cancel order
+                Cancel Order
               </Text>
             )}
           </TouchableOpacity>
@@ -422,22 +422,21 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     paddingHorizontal: s(12),
                     paddingVertical: s(6),
                     borderRadius: s(8),
-                    borderWidth: 1,
-                    backgroundColor: colors.teal + "14",
-                    borderColor: colors.teal + "40",
+                    backgroundColor: colors.teal,
+                    opacity: submitting && submitting !== "ready" ? 0.5 : 1,
                   }}
                 >
                   {submitting === "ready" ? (
-                    <ActivityIndicator size="small" color={colors.teal} />
+                    <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
                     <Text
                       style={{
                         fontSize: s(12),
-                        fontWeight: "600",
-                        color: colors.teal,
+                        fontWeight: "700",
+                        color: colors.onSolid,
                       }}
                     >
-                      Mark ready
+                      Mark Ready
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -450,22 +449,21 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     paddingHorizontal: s(12),
                     paddingVertical: s(6),
                     borderRadius: s(8),
-                    borderWidth: 1,
-                    backgroundColor: colors.success + "14",
-                    borderColor: colors.success + "40",
+                    backgroundColor: colors.success,
+                    opacity: submitting && submitting !== "done" ? 0.5 : 1,
                   }}
                 >
                   {submitting === "done" ? (
-                    <ActivityIndicator size="small" color={colors.success} />
+                    <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
                     <Text
                       style={{
                         fontSize: s(12),
-                        fontWeight: "600",
-                        color: colors.success,
+                        fontWeight: "700",
+                        color: colors.onSolid,
                       }}
                     >
-                      Mark done
+                      Mark Done
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -478,22 +476,21 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     paddingHorizontal: s(12),
                     paddingVertical: s(6),
                     borderRadius: s(8),
-                    borderWidth: 1,
-                    backgroundColor: colors.danger + "14",
-                    borderColor: colors.danger + "40",
+                    backgroundColor: colors.danger,
+                    opacity: submitting && submitting !== "cancel" ? 0.5 : 1,
                   }}
                 >
                   {submitting === "cancel" ? (
-                    <ActivityIndicator size="small" color={colors.danger} />
+                    <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
                     <Text
                       style={{
                         fontSize: s(12),
-                        fontWeight: "600",
-                        color: colors.danger,
+                        fontWeight: "700",
+                        color: colors.onSolid,
                       }}
                     >
-                      Cancel order
+                      Cancel Order
                     </Text>
                   )}
                 </TouchableOpacity>
