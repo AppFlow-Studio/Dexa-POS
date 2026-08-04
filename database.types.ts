@@ -22486,6 +22486,22 @@ export type Database = {
           stage: string
         }[]
       }
+      get_online_orders_board_v1: {
+        Args: {
+          p_end_date?: string
+          p_limit?: number
+          p_location_id: string
+          p_preset?: string
+          p_start_date?: string
+        }
+        Returns: {
+          item_count: number
+          is_in_range: boolean
+          order_id: string
+          order_data: Json
+          placed_at: string | null
+        }[]
+      }
       get_open_batches_v1: { Args: { p_location_id: string }; Returns: Json }
       get_order_courses: { Args: { p_order_id: string }; Returns: Json }
       get_order_details: { Args: { p_order_id: string }; Returns: Json }

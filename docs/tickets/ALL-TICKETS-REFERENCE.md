@@ -1,6 +1,15 @@
 # All Tickets Reference
 
-This index links repository engineering tickets that have corresponding durable task records. The running chronological index remains `tasks/ticket-log.md`.
+This index links repository engineering tickets to durable records in their
+owning feature or engineering folder.
+
+## Active Plans
+
+| Date | Ticket | Status | Plan |
+| --- | --- | --- | --- |
+| 2026-08-04 | POS Online Orders local-day boundaries | Implemented - migration and tablet QA pending | `docs/features/orders/online-orders-local-day-boundaries-plan.md` |
+| 2026-08-04 | POS-QA OrderOut Ready-path audit and E2E | Plan ready - awaiting approval | `docs/features/orders/orderout-ready-path-audit-e2e-plan.md` |
+| 2026-08-04 | POS-PERF AUD-14 offline queue persistence | Protocol complete - Landi measurement pending | `docs/features/offline-sync/aud-14-offline-queue-persistence-measurement-plan.md` |
 
 ## Database and Architecture
 

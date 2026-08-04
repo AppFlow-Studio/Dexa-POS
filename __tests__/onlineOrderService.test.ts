@@ -1,3 +1,5 @@
+import { OrderService } from "@/services/orderService";
+
 /**
  * OrderService.acceptOnlineOrder / declineOnlineOrder — RPC contract.
  *
@@ -12,7 +14,7 @@ jest.mock("uuid", () => ({ v4: () => "00000000-0000-4000-8000-000000000000" }));
 // Bypass the deadline wrap — invoke the call directly with a no-op signal.
 jest.mock("@/lib/network/runWithDeadline", () => ({
   runWithDeadline: jest.fn(
-    async <T,>(
+    async <T>(
       _op: string,
       _ms: number,
       call: (signal: AbortSignal) => Promise<{ data: T | null; error: any }>,
@@ -23,8 +25,6 @@ jest.mock("@/lib/network/runWithDeadline", () => ({
   ),
 }));
 
-import { OrderService } from "@/services/orderService";
-
 function makeClient(rpcResult: { data: unknown; error: any }) {
   const abortSignal = jest.fn(async () => rpcResult);
   const rpc = jest.fn(() => ({ abortSignal }));
@@ -32,6 +32,44 @@ function makeClient(rpcResult: { data: unknown; error: any }) {
 }
 
 describe("OrderService online-order actions", () => {
+  it("getOnlineOrdersBoard sends the complete server date contract", async () => {
+    const orderData = { id: "db-board-1", status: "completed" };
+    const { client, rpc } = makeClient({
+      data: [
+        {
+          order_id: "db-board-1",
+          placed_at: "2026-07-26T04:10:00Z",
+          is_in_range: true,
+          item_count: 3,
+          order_data: orderData,
+        },
+      ],
+      error: null,
+    });
+
+    const result = await OrderService.getOnlineOrdersBoard(client, "loc-1", {
+      preset: "yesterday",
+      startDate: "2026-07-25",
+      endDate: "2026-07-25",
+    });
+
+    expect(rpc).toHaveBeenCalledWith("get_online_orders_board_v1", {
+      p_location_id: "loc-1",
+      p_preset: "yesterday",
+      p_start_date: "2026-07-25",
+      p_end_date: "2026-07-25",
+    });
+    expect(result.data).toEqual([
+      {
+        orderId: "db-board-1",
+        placedAt: "2026-07-26T04:10:00Z",
+        isInRange: true,
+        itemCount: 3,
+        orderData,
+      },
+    ]);
+  });
+
   it("acceptOnlineOrder calls accept_online_order with p_order_id and returns the envelope", async () => {
     const envelope = { success: true, order_id: "db-1", accepted_at: "t" };
     const { client, rpc } = makeClient({ data: envelope, error: null });

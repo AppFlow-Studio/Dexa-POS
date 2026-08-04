@@ -1,4 +1,5 @@
 import { getDeviceId } from "@/lib/deviceId";
+import type { OnlineOrderBoardSelection } from "@/lib/onlineOrderBoard";
 import { DEADLINES } from "@/lib/network/deadlines";
 import {
     rpcWithIdempotency,
@@ -1253,6 +1254,45 @@ export class OrderService {
       return null;
     }
     return { start_ts: data[0].start_ts, end_ts: data[0].end_ts };
+  }
+
+  static async getOnlineOrdersBoard(
+    client: SupabaseClient,
+    locationId: string,
+    filter: {
+      preset: "today" | "yesterday" | "last_7_days" | "custom";
+      startDate: string | null;
+      endDate: string | null;
+    },
+  ): Promise<{ data: OnlineOrderBoardSelection[] | null; error: any }> {
+    const { data, error } = await _runWithDeadline<any[]>(
+      "get_online_orders_board_v1",
+      DEADLINES.read,
+      async (signal) => {
+        const result = await client
+          .rpc("get_online_orders_board_v1", {
+            p_location_id: locationId,
+            p_preset: filter.preset,
+            p_start_date: filter.startDate,
+            p_end_date: filter.endDate,
+          })
+          .abortSignal(signal);
+        return { data: result.data, error: result.error };
+      },
+    );
+
+    if (error) return { data: null, error };
+
+    return {
+      data: ((data ?? []) as any[]).map((row) => ({
+        orderId: row.order_id,
+        placedAt: row.placed_at ?? null,
+        isInRange: row.is_in_range === true,
+        itemCount: Number(row.item_count ?? 0),
+        orderData: row.order_data,
+      })),
+      error: null,
+    };
   }
 
   static async getHistoryOrders(
