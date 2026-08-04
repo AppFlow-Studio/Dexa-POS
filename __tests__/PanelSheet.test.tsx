@@ -22,6 +22,18 @@ jest.mock("@/lib/theme", () => ({
   colors: { panel: "#111827", muted: "#888888", border: "#333333" },
 }));
 
+// Controls what withTiming reports to its completion callback. Real Reanimated
+// passes `finished: false` when an animation is CANCELLED (a racing write to the
+// shared value, teardown); flip `finished` to exercise PanelSheet's
+// interrupted-close path. Setting `deferred` queues callbacks there instead of
+// firing them inline, so a test can land a re-open *before* the cancelled
+// close reports in — the real ordering, which an inline callback can't model.
+// Both reset in beforeEach.
+const mockTimingState = {
+  finished: true,
+  deferred: null as null | ((f: boolean) => void)[],
+};
+
 // Self-contained reanimated mock. The global mock in jest-setup.ts requires the
 // real `react-native-reanimated/mock`, which pulls in react-native-worklets and
 // crashes under jest; override it here with the minimal surface PanelSheet uses.
@@ -29,7 +41,10 @@ jest.mock("@/lib/theme", () => ({
 jest.mock("react-native-reanimated", () => {
   const { View } = require("react-native");
   const withTiming = (toValue: any, _cfg?: any, cb?: (f: boolean) => void) => {
-    cb?.(true);
+    if (cb) {
+      if (mockTimingState.deferred) mockTimingState.deferred.push(cb);
+      else cb(mockTimingState.finished);
+    }
     return toValue;
   };
   const createAnimatedComponent = (c: any) => c;
@@ -132,6 +147,8 @@ function renderSheet(props: HarnessProps) {
 beforeEach(() => {
   // Give the anchor store real dims so the panel resolves a height/width.
   useBillPanelLayoutStore.getState().setLayout(380, 800);
+  mockTimingState.finished = true;
+  mockTimingState.deferred = null;
 });
 
 describe("PanelSheet", () => {
@@ -197,6 +214,48 @@ describe("PanelSheet", () => {
     pressBackdrop();
     expect(isOpen()).toBe(true);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Regression: an INTERRUPTED close animation (finished === false) used to skip
+   * finishClose entirely, leaving the sheet mounted at progress 0 — panel off
+   * screen, scrim transparent, but its absolute-fill Pressable still swallowing
+   * every touch in the app. The screen looked normal and was completely dead.
+   */
+  it("interrupted close still unmounts (no invisible touch-blocking overlay)", () => {
+    const onClose = jest.fn();
+    const { ref, isOpen } = renderSheet({
+      enablePanDownToClose: false,
+      onClose,
+    });
+    act(() => ref.current!.expand());
+    expect(isOpen()).toBe(true);
+
+    mockTimingState.finished = false;
+    act(() => ref.current!.close());
+
+    expect(isOpen()).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("a close interrupted BY a re-open leaves the panel open", () => {
+    const { ref, isOpen } = renderSheet({});
+    act(() => ref.current!.expand());
+
+    // Hold the close animation "running" so the re-open lands first. That is the
+    // real ordering: writing progress inside open() is what cancels the close
+    // and fires its callback with finished === false.
+    const pending: ((f: boolean) => void)[] = [];
+    mockTimingState.deferred = pending;
+    act(() => ref.current!.close());
+    act(() => ref.current!.expand());
+    mockTimingState.deferred = null;
+
+    // The cancelled close now reports in. open() already released the claim, so
+    // this must NOT tear down the freshly-opened panel.
+    act(() => pending.forEach((cb) => cb(false)));
+
+    expect(isOpen()).toBe(true);
   });
 });
 

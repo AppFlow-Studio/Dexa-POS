@@ -88,6 +88,7 @@ import {
 } from "@react-navigation/native";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack, useNavigationContainerRef } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import * as React from "react";
@@ -236,6 +237,20 @@ async function checkForUpdate() {
 }
 // IMPORTANT: Must be called once at module level for OAuth to work correctly
 WebBrowser.maybeCompleteAuthSession();
+
+// Collapse the native splash-screen exit fade to zero.
+//
+// The fade is a ViewPropertyAnimator whose `withEndAction` is the ONLY place
+// expo-splash-screen removes the splash view from the window — and that callback
+// is skipped when the animation is cancelled. A cancelled fade strands the splash
+// view over the app at alpha 0: invisible, full-screen, eating every touch, so the
+// app renders normally but no gesture lands until the Activity is recreated
+// (which is why changing the device UI/display scale "fixed" it in the field).
+//
+// patches/expo-splash-screen+0.30.10.patch guarantees removal regardless of the
+// animation outcome; this is defense-in-depth that also shrinks the exposure
+// window from 400ms to ~0 and removes 400ms of dead time from every cold start.
+SplashScreen.setOptions({ duration: 0, fade: false });
 
 // Register CFD secondary display component for Android built-in displays.
 // Must happen at module level before native side mounts the ReactRootView.
