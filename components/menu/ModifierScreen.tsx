@@ -25,7 +25,6 @@ import { FlashList } from "@shopify/flash-list";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -753,7 +752,6 @@ const ModifierScreenContent = () => {
   const lastDraftMenuItemIdRef = useRef<string | null>(null);
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
-  const scrollViewRef = useRef<ScrollView | null>(null);
   // Tracks whether the user has touched the modifier-screen qty stepper this
   // session. When false, external cart-side qty changes (e.g. swipe-right
   // increments on the cart row while modifier is open) sync into state.quantity
@@ -761,7 +759,6 @@ const ModifierScreenContent = () => {
   // modifier screen's stale opened-at value. When true, the modifier's qty
   // wins. Reset on session change (new item or new cart entry).
   const userTouchedQtyRef = useRef(false);
-  const [keyboardInset, setKeyboardInset] = useState(0);
 
   // When the store opens a new item session, reinitialize local reducer state
   // without unmounting the component.
@@ -850,30 +847,10 @@ const ModifierScreenContent = () => {
   // image is already prefetched by the store's preWarm and the allergens block
   // is a handful of pills. Both now render on the first frame.
 
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardInset(event.endCoordinates?.height ?? 0);
-    });
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      setKeyboardInset(0);
-    });
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
-
-  const handleNotesFocus = useCallback(() => {
-    requestAnimationFrame(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    });
-  }, []);
+  // Notes now lives in the pinned bottom section (not a scrolling body), so
+  // there's nothing to scroll into view on focus — KeyboardAvoidingView +
+  // Android's adjustResize lift it above the keyboard.
+  const handleNotesFocus = useCallback(() => {}, []);
 
   const isReadOnly = mode === "view";
   const currentItem =
@@ -1798,15 +1775,13 @@ const ModifierScreenContent = () => {
         </View>
       </View>
 
-      <ScrollView
-        ref={scrollViewRef}
-        className="flex-1"
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          paddingBottom: keyboardInset > 0 ? keyboardInset + 24 : 24,
-        }}
-      >
+      {/* Body is a flex column (not a ScrollView): the item header, seat
+          picker and category tabs stay fixed at the top, the options grid
+          flexes to fill whatever space is left (scrolling internally), and
+          quantity / to-go / notes are pinned to the bottom — so they're always
+          visible without scrolling on any screen size or ui-scale (this was the
+          Landi C20Pro complaint). */}
+      <View className="flex-1">
         {/* ── Item Header ─────────────────────────────────────────────────── */}
         <View
           className="flex-row items-center gap-3 px-4 py-3 border-b"
@@ -1897,8 +1872,8 @@ const ModifierScreenContent = () => {
           </View>
         )}
 
-        {/* ── Category Pill Tabs ──────────────────────────────────────────── */}
-        <View>
+        {/* ── Category Pill Tabs (fixed) + flexing options area ───────────── */}
+        <View className="flex-1">
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1939,9 +1914,9 @@ const ModifierScreenContent = () => {
             )}
           </ScrollView>
 
-          {/* ── Active Category Options ──────────────────────────────── */}
-          {currentCategory && (
-            <View className="px-4 pt-3 pb-2">
+          {/* ── Active Category Options (flex-fills to keep qty/notes on-screen) ── */}
+          {currentCategory ? (
+            <View className="flex-1 px-4 pt-3 pb-2">
               {/* Sub-header row */}
               <View className="flex-row items-center justify-between mb-3">
                 <Text
@@ -1981,8 +1956,13 @@ const ModifierScreenContent = () => {
                   reuses the realized option views instead of mounting a new
                   set. No extraData: each cell subscribes to its own
                   selection in useModifierSelectionStore, so taps never
-                  re-run the list. */}
-              <View style={{ height: 320 }}>
+                  re-run the list.
+
+                  flex-1 (was a fixed 320px): the grid now takes exactly the
+                  space between the tabs and the pinned quantity/notes footer,
+                  scrolling internally, instead of a hardcoded height that
+                  overflowed tall/hi-scale screens and pushed qty/notes off. */}
+              <View className="flex-1">
                 <FlashList
                   data={optionsForCategory}
                   numColumns={OPTION_COLUMNS}
@@ -1997,6 +1977,9 @@ const ModifierScreenContent = () => {
                 />
               </View>
             </View>
+          ) : (
+            /* No modifiers: keep the footer pinned to the bottom. */
+            <View className="flex-1" />
           )}
         </View>
 
@@ -2171,7 +2154,7 @@ const ModifierScreenContent = () => {
               </View>
             </View>
           )}
-      </ScrollView>
+      </View>
 
       {/* ── Quantity Modal ──────────────────────────────────────────────── */}
       <Modal
