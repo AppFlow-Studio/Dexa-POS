@@ -8,6 +8,8 @@ import { onlineOrderShortCode } from '@/lib/onlineOrderLabel'
 import { isOnlineOrderSource } from '@/lib/orderSource'
 import { resolveOrderPlatformLogo } from '@/lib/orderPlatformResolver'
 import { INKIND_LABEL } from '@/lib/paymentMethod'
+import { KEY_RECEIPT_RECONCILE_MISMATCH } from '@/lib/telemetry/keys'
+import { recordCount } from '@/lib/telemetry/registry'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -1196,7 +1198,82 @@ function mapPaymentToReceiptData (p: OrderProfilePayment): ReceiptPaymentData {
   }
 }
 
-function buildReceiptTemplateData (
+// Fail-open receipt-integrity switch. When true, a reconcile mismatch throws and
+// blocks the print (the ticket's original "fail-closed" ask). Default OFF: the
+// derive-from-components fix makes footer == Σ(rows) by construction, so a hard
+// block could only fire on a sub-cent rounding artifact or a finalized order whose
+// already-charged total drifted — neither should strand a cashier at the pass.
+// Flip only with a deliberate decision.
+const RECEIPT_RECONCILE_HARD_FAIL = false
+const RECONCILE_TOLERANCE = 0.01
+
+export type ReceiptReconcileCode = 'line_vs_subtotal' | 'components_vs_total'
+
+export interface ReceiptReconcileInput {
+  /** Σ of the item line rows for this track (card or cash), before discount. */
+  lineSum: number
+  subtotal: number
+  discount: number
+  tax: number
+  serviceCharge: number
+  /** Footer TOTAL as it will print — tip-EXCLUSIVE. */
+  total: number
+  /** 'card' | 'cash' — context for logs/telemetry; not used in the math. */
+  track: string
+}
+
+export interface ReceiptReconcileViolation {
+  code: ReceiptReconcileCode
+  track: string
+  expected: number
+  actual: number
+  delta: number
+}
+
+/**
+ * Pure check that a receipt's printed parts reconcile. Returns one entry per
+ * violated invariant (empty = clean). Tip-EXCLUSIVE by design: the TOTAL row
+ * never includes tip. Tolerance is one cent.
+ *
+ * C1 line_vs_subtotal   — Σ(line rows) + Discount == Subtotal (subtotal is GROSS).
+ * C2 components_vs_total — Subtotal − Discount + Tax + Service Charge == TOTAL.
+ * C2 is the invariant #S1-0003 violated (footer 48.85 vs rows 66.61).
+ */
+export function reconcileReceiptTotals (
+  input: ReceiptReconcileInput
+): ReceiptReconcileViolation[] {
+  const violations: ReceiptReconcileViolation[] = []
+
+  const subtotalExpected = round2(input.lineSum + input.discount)
+  const subtotalDelta = Math.abs(subtotalExpected - input.subtotal)
+  if (subtotalDelta > RECONCILE_TOLERANCE) {
+    violations.push({
+      code: 'line_vs_subtotal',
+      track: input.track,
+      expected: subtotalExpected,
+      actual: round2(input.subtotal),
+      delta: round2(subtotalDelta)
+    })
+  }
+
+  const totalExpected = round2(
+    input.subtotal - input.discount + input.tax + input.serviceCharge
+  )
+  const totalDelta = Math.abs(totalExpected - input.total)
+  if (totalDelta > RECONCILE_TOLERANCE) {
+    violations.push({
+      code: 'components_vs_total',
+      track: input.track,
+      expected: totalExpected,
+      actual: round2(input.total),
+      delta: round2(totalDelta)
+    })
+  }
+
+  return violations
+}
+
+export function buildReceiptTemplateData (
   order: OrderProfile,
   location: SelectedLocation,
   printer: PrinterConfig,
@@ -1435,12 +1512,38 @@ function buildReceiptTemplateData (
     : orderTotals.service_charge
   const dispSCCash = orderTotals.cash_service_charge
 
-  const dispTotalCard = persisted(order.total_amount)
-    ? order.total_amount
-    : orderTotals.total_amount + tip
-  const dispTotalCash = persisted(order.total_cash_amount)
-    ? order.total_cash_amount
-    : orderTotals.cash_total_amount + tip
+  // Footer TOTAL = Σ(printed Subtotal − Discount + Tax + Service Charge), tip-EXCLUSIVE
+  // (Tip prints as its own row; "Total w/ Tip" is a separate write-in). Deriving from
+  // the same fresh components the summary rows use makes footer == Σ(rows) by
+  // construction — killing the stale-scalar undercharge on OPEN orders, where
+  // order.total_amount lags a just-added item (it is set from backend broadcasts and a
+  // 120ms-debounced local recompute, so a print can race it; #S1-0003 undercharged
+  // $17.76 this way). Trust the persisted scalar ONLY when finalized (closed/paid) for
+  // exact reprints. Guard: if no line data was recovered (empty / partially-synced
+  // items), fall back to persisted then the (tip-exclusive) calculator rather than
+  // print a component-derived $0.
+  const componentTotalCard = round2(
+    dispSubtotalCard - dispDiscountCard + dispTaxCard + dispSCCard
+  )
+  const componentTotalCash = round2(
+    dispSubtotalCash - dispDiscountCash + dispTaxCash + dispSCCash
+  )
+  const dispTotalCard =
+    isFinalized && persisted(order.total_amount)
+      ? order.total_amount
+      : sumCardLine > 0
+      ? componentTotalCard
+      : persisted(order.total_amount)
+      ? order.total_amount
+      : round2(orderTotals.total_amount)
+  const dispTotalCash =
+    isFinalized && persisted(order.total_cash_amount)
+      ? order.total_cash_amount
+      : sumCashLine > 0
+      ? componentTotalCash
+      : persisted(order.total_cash_amount)
+      ? order.total_cash_amount
+      : round2(orderTotals.cash_total_amount)
 
   const dispRateCard =
     dispSubtotalCard > 0 ? (dispTaxCard / dispSubtotalCard) * 100 : 0
@@ -1674,6 +1777,62 @@ function buildReceiptTemplateData (
   const receiptPlatformShortCode = isOnlineOrder
     ? onlineOrderShortCode(order)
     : null
+
+  // ── Fail-open integrity guard ─────────────────────────────────────────
+  // Validate the card computation (and the cash breakdown when it differs)
+  // reconciles: footer TOTAL == Σ(rows). Post-fix this holds by construction
+  // for open orders, so a hit means either a finalized order whose persisted
+  // total drifted from its own rows (worth a cashier's eyes) or a regression
+  // (telemetry). Never blocks a print unless RECEIPT_RECONCILE_HARD_FAIL. Split
+  // receipts derive a per-portion total downstream, so skip the scope path.
+  if (!scopePayment) {
+    const violations = reconcileReceiptTotals({
+      lineSum: sumCardLine,
+      subtotal: dispSubtotalCard,
+      discount: dispDiscountCard,
+      tax: dispTaxCard,
+      serviceCharge: dispSCCard,
+      total: dispTotalCard,
+      track: 'card'
+    })
+    if (dispTotalCash !== dispTotalCard) {
+      violations.push(
+        ...reconcileReceiptTotals({
+          lineSum: sumCashLine,
+          subtotal: dispSubtotalCash,
+          discount: dispDiscountCash,
+          tax: dispTaxCash,
+          serviceCharge: dispSCCash,
+          total: dispTotalCash,
+          track: 'cash'
+        })
+      )
+    }
+    if (violations.length > 0) {
+      recordCount(KEY_RECEIPT_RECONCILE_MISMATCH, violations.length)
+      const orderRef = order.display_number || order.order_number || order.id
+      console.warn(
+        '[PrinterService] receipt totals failed to reconcile — printing anyway',
+        { order: orderRef, isFinalized, violations }
+      )
+      // A finalized order whose already-charged total drifted from its rows is
+      // the one case worth surfacing (money already moved; verify the check).
+      if (isFinalized) {
+        toastService.show({
+          type: 'warning',
+          title: 'Receipt totals need a check',
+          message: `Order ${orderRef}: printed total doesn't match its saved breakdown. Printed anyway — please verify.`
+        })
+      }
+      if (RECEIPT_RECONCILE_HARD_FAIL) {
+        throw new Error(
+          `Receipt reconcile mismatch for ${orderRef}: ${JSON.stringify(
+            violations
+          )}`
+        )
+      }
+    }
+  }
 
   return {
     storeName: location.name,
