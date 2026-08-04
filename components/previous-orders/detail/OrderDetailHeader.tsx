@@ -1,4 +1,5 @@
 import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
+import { onlineOrderShortCode } from '@/lib/onlineOrderLabel'
 import { colors } from '@/lib/theme'
 import { PreviousOrder } from '@/lib/types'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -66,6 +67,13 @@ const OrderDetailHeader: React.FC<OrderDetailHeaderProps> = ({
   const typeStyle = orderTypeConfig[order.type] || orderTypeConfig['Dine In']
   const TypeIcon = typeStyle.icon
 
+  // Online/delivery orders headline the platform short code (e.g. "C424D").
+  const shortCode = onlineOrderShortCode({
+    id: order.orderId,
+    db_order_id: order.db_order_id,
+    platform_order_number: order.platform_order_number
+  })
+
   // Foreign-station ownership: render a warning-toned pill so the user can see
   // the order is owned elsewhere before taking any action. `station_id == null`
   // means unowned (external/online order) — not foreign.
@@ -125,7 +133,7 @@ const OrderDetailHeader: React.FC<OrderDetailHeaderProps> = ({
           }}
           numberOfLines={1}
         >
-          Order {order.display_number || `#${order.orderId.slice(-6)}`}
+          Order {shortCode || order.display_number || `#${order.orderId.slice(-6)}`}
         </Text>
 
         {/* Badges */}

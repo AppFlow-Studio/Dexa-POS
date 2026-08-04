@@ -1,4 +1,5 @@
 import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
+import { onlineOrderShortCode } from '@/lib/onlineOrderLabel'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { OrderProfile } from '@/lib/types'
@@ -35,8 +36,11 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
   const totalAmount = order.total_amount ?? 0
   const effectivePaidStatus = deriveEffectivePaidStatus(order) ?? order.paid_status
 
+  // Append the delivery-platform short code (e.g. "C424D") for online orders.
+  const shortCode = onlineOrderShortCode(order)
   const displayId =
-    order.display_number || order.order_number || `#${order.id.slice(-4)}`
+    (order.display_number || order.order_number || `#${order.id.slice(-4)}`) +
+    (shortCode ? ` · ${shortCode}` : '')
 
   const openedAt = order.opened_at
     ? new Date(order.opened_at).toLocaleTimeString('en-US', {

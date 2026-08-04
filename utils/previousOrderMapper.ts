@@ -63,6 +63,12 @@ export function previousOrderToOrderProfile(
     service_charge_rate: order.service_charge_rate ?? null,
     customer_name: order.customer,
     server_name: order.server,
+    // Carry the online/delivery-platform fields so a reprint from previous
+    // orders still gets the bag-label receipt + short code (isOnlineOrder).
+    order_source: order.order_source ?? null,
+    delivery_platform: order.delivery_platform ?? null,
+    platform_order_number: order.platform_order_number ?? null,
+    _isOnlineOrder: order._isOnlineOrder,
     payments: order.payments,
     notes: order.notes,
     reversals: order.reversals,

@@ -28,7 +28,10 @@ import {
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
-import { useOrderStore } from "@/stores/useOrderStore";
+import {
+  calculateOrderTotalsForOrder,
+  useOrderStore,
+} from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -262,6 +265,30 @@ const PreviousOrdersScreen = () => {
     }),
   );
 
+  // Live store copies of NON-final orders on this device, keyed by BOTH local id
+  // and db_order_id. Used to overlay fresh financials onto the history snapshot
+  // for an order that is still being edited: its fetched service charge / total
+  // lag the current items (the server SC recompute runs at payment, not on every
+  // add), so Previous Orders would otherwise show a stale SC while the table view
+  // and payment sheet — which read the live store — show the correct one. Only
+  // open orders are included, so finalized rows keep their authoritative fetched
+  // values. useShallow keeps this from re-rendering unless an open order changes.
+  const liveOpenById = useOrderStore(
+    useShallow((s) => {
+      const FINAL = new Set(["completed", "void", "cancelled", "voided"]);
+      const map: Record<string, OrderProfile> = {};
+      for (const id of s.orderIds) {
+        const o = s.ordersById[id];
+        if (!o) continue;
+        if (o.closed_at || o.paid_status === "Paid") continue;
+        if (FINAL.has(o.order_status ?? "")) continue;
+        map[o.id] = o;
+        if (o.db_order_id) map[o.db_order_id] = o;
+      }
+      return map;
+    }),
+  );
+
   // Release the loaded page from memory when navigating away. The rows are
   // persisted to MMKV by the store, so re-entry rehydrates from that cache and
   // only refetches when the backend signature says something changed — it does
@@ -303,13 +330,14 @@ const PreviousOrdersScreen = () => {
     setExpandedOrderId(null);
   }, [pageIndex]);
 
+  const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
+
   // Server-fetched history mapped to OrderProfile. Online: exactly the
   // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
   // pending orders) is prepended so open/unpaid offline orders show too.
   const allOrders: OrderProfile[] = useMemo(() => {
-    const mappedHistory: OrderProfile[] = previousOrders.map(
-      (po) =>
-        ({
+    const mappedHistory: OrderProfile[] = previousOrders.map((po) => {
+      const mapped = {
           id: po.orderId,
           db_order_id: po.db_order_id,
           display_number: po.display_number,
@@ -349,12 +377,50 @@ const PreviousOrdersScreen = () => {
           payments: po.payments,
           order_source: po.order_source ?? null,
           delivery_platform: po.delivery_platform ?? null,
+          platform_order_number: po.platform_order_number ?? null,
           _isOnlineOrder: po._isOnlineOrder,
           reversals: po.reversals,
           order_refund_items: po.order_refund_items,
           _offlineUnsynced: po._offlineUnsynced,
-        }) as OrderProfile,
-    );
+        } as OrderProfile;
+      // Overlay the live store copy's fresh financials while this order is still
+      // open on this device — see liveOpenById above. Finalized rows (absent from
+      // the map) keep their authoritative fetched values.
+      const live =
+        liveOpenById[mapped.id] ??
+        (mapped.db_order_id ? liveOpenById[mapped.db_order_id] : undefined);
+      if (!live) return mapped;
+      // RECOMPUTE the live totals (same path as useOrderTotals) rather than read
+      // live.service_charge / live.total_amount — those persisted scalars are
+      // stale until _ensureTotalsFresh runs (which only happens once the order is
+      // opened), so reading them showed the wrong SC on the first fetch. Computing
+      // from the fresh items + live SC inputs matches the table view immediately.
+      const t = calculateOrderTotalsForOrder(
+        live.items,
+        live.checkDiscount,
+        live.payments ?? [],
+        taxRatesMap,
+        live,
+      );
+      return {
+        ...mapped,
+        items: live.items,
+        service_charge: t.service_charge,
+        service_charge_name:
+          t.service_charge_name ||
+          live.service_charge_name ||
+          mapped.service_charge_name,
+        service_charge_rate:
+          live.service_charge_rate ?? mapped.service_charge_rate,
+        total_amount: t.total_amount,
+        total_cash_amount: t.cash_total_amount,
+        total_tax: t.tax_amount,
+        total_discount: t.discount_amount,
+        amount_due: t.outstanding_total,
+        amount_paid: live.amount_paid ?? mapped.amount_paid,
+        session_id: live.session_id ?? mapped.session_id,
+      };
+    });
 
     if (offlineLiveOrders.length === 0) return mappedHistory;
 
@@ -370,7 +436,7 @@ const PreviousOrdersScreen = () => {
         !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id)),
     );
     return [...offlineLiveOrders, ...historyMinusLive];
-  }, [previousOrders, offlineLiveOrders]);
+  }, [previousOrders, offlineLiveOrders, liveOpenById, taxRatesMap]);
 
   // The server already applied every filter and the sort — render as-is.
   // No client-side filter/sort/search pass exists any more; adding one back

@@ -3,6 +3,7 @@ import {
     derivePaymentRefundState,
     getCashPricedOrderTotal,
 } from "@/lib/paymentStatus";
+import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
 import { getProviderKey, PROVIDER_LABELS } from "@/lib/previousOrdersFilters";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
@@ -312,9 +313,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               }}
               numberOfLines={1}
             >
-              {order.display_number ||
-                order.order_number ||
-                `#${order.id.slice(-4)}`}
+              {resolveOrderLabel(order)}
             </Text>
             <Text
               style={{

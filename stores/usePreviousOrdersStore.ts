@@ -495,6 +495,7 @@ function _transformFetchedOrder(
     db_order_id: profile.db_order_id,
     order_source: profile.order_source ?? null,
     delivery_platform: _deliveryPlatform ?? profile.delivery_platform ?? null,
+    platform_order_number: profile.platform_order_number ?? null,
     reversals: profile.reversals,
     order_refund_items: profile.order_refund_items,
     created_by_staff_profile_id: profile.created_by_staff_profile_id ?? null,
@@ -794,6 +795,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         order_refund_items: order.order_refund_items,
         order_source: order.order_source ?? null,
         delivery_platform: order.delivery_platform ?? null,
+        platform_order_number: order.platform_order_number ?? null,
         created_by_staff_profile_id: order.created_by_staff_profile_id ?? null,
         // Broadcast orders don't carry the online_orders join, so fall back to
         // order_source. Server-fetched orders (in _transformFetchedOrder) use

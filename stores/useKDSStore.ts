@@ -1048,6 +1048,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       order_type: order.order_type,
       order_source: order.order_source ?? null,
       delivery_platform: normalizePlatform(order.delivery_platform) ?? null,
+      platform_order_number: order.platform_order_number ?? null,
       table_name: resolveKdsTableName(order.table_number),
       customer_name: order.customer_name ?? null,
       order_notes: order.special_instructions ?? null,
@@ -1099,7 +1100,8 @@ function ticketDeepEqual(a: KDSTicket, b: KDSTicket): boolean {
     return false;
   if (
     a.order_source !== b.order_source ||
-    a.delivery_platform !== b.delivery_platform
+    a.delivery_platform !== b.delivery_platform ||
+    a.platform_order_number !== b.platform_order_number
   )
     return false;
   if (a.order_notes !== b.order_notes) return false;

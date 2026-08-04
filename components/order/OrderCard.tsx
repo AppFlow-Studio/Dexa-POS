@@ -1,3 +1,4 @@
+import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -38,6 +39,10 @@ const OrderCard: React.FC<OrderCardProps> = ({
 }) => {
   const uiScale = useUiScale();
   const tablesById = useFloorPlanStore((s) => s.tablesById);
+
+  // Delivery-platform short code (last-5 of platform_order_number, e.g. "C424D")
+  // shown alongside the Dexa number for online orders so staff can match bags.
+  const shortCode = onlineOrderShortCode(order);
 
   // Look up table name from service_location_id
   const tableName = useMemo(() => {
@@ -228,6 +233,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
           style={{ color: colors.heading }}
         >
           {order.customer_name || "Walk-In"} {order?.display_number}
+          {shortCode ? ` · ${shortCode}` : ""}
         </Text>
         <DeliveryPlatformBadge
           deliveryPlatform={order.delivery_platform}

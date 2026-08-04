@@ -443,31 +443,69 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   }
   nodes.push({ type: "empty_line" });
 
-  // ── B. Big Order Number (UNCHANGED — DEXA top) ───────────────────────
-  if (validated.orderNumber) {
-    nodes.push({
-      type: "text_line",
-      content: validated.orderNumber,
-      align: "center",
-      format: ORDER_NUM,
-    });
-  }
-
-  // ── C. Order Type + Table (separate rows) ────────────────────────────
-  if (cfg?.showOrderType !== false && validated.orderType) {
-    nodes.push({
-      type: "text_line",
-      content: sanitizeForPrint(validated.orderType),
-      align: "center",
-      format: BOLD,
-    });
-    if (validated.tableName) {
+  if (validated.isOnlineOrder) {
+    // ── B/C (online). Bag-label header: platform → type → customer → code ─
+    // Mirrors the delivery-app's own bag label so staff can match the order.
+    if (validated.onlinePlatformLabel) {
       nodes.push({
         type: "text_line",
-        content: `Table: ${sanitizeForPrint(validated.tableName)}`,
+        content: sanitizeForPrint(validated.onlinePlatformLabel.toUpperCase()),
+        align: "center",
+        format: ORDER_NUM,
+      });
+    }
+    if (cfg?.showOrderType !== false && validated.orderType) {
+      nodes.push({
+        type: "text_line",
+        content: sanitizeForPrint(validated.orderType),
         align: "center",
         format: BOLD,
       });
+    }
+    if (validated.customerName) {
+      nodes.push({ type: "empty_line" });
+      nodes.push({
+        type: "text_line",
+        content: sanitizeForPrint(validated.customerName),
+        align: "center",
+        format: ORDER_NUM,
+      });
+    }
+    if (validated.platformShortCode) {
+      nodes.push({
+        type: "text_line",
+        content: `Code: ${validated.platformShortCode}`,
+        align: "center",
+        format: ORDER_NUM,
+      });
+    }
+  } else {
+    // ── B. Big Order Number (UNCHANGED — DEXA top) ───────────────────────
+    if (validated.orderNumber) {
+      nodes.push({
+        type: "text_line",
+        content: validated.orderNumber,
+        align: "center",
+        format: ORDER_NUM,
+      });
+    }
+
+    // ── C. Order Type + Table (separate rows) ──────────────────────────
+    if (cfg?.showOrderType !== false && validated.orderType) {
+      nodes.push({
+        type: "text_line",
+        content: sanitizeForPrint(validated.orderType),
+        align: "center",
+        format: BOLD,
+      });
+      if (validated.tableName) {
+        nodes.push({
+          type: "text_line",
+          content: `Table: ${sanitizeForPrint(validated.tableName)}`,
+          align: "center",
+          format: BOLD,
+        });
+      }
     }
   }
 
@@ -629,8 +667,13 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  // ── G. Tip Write-In Line (skip if tip already collected) ─────────────
-  if (cfg?.showTipLine !== false && (validated.tip ?? 0) <= 0) {
+  // ── G. Tip Write-In Line (skip if tip already collected, or online) ──
+  // Online/delivery orders are prepaid on the platform — no write-in tip.
+  if (
+    cfg?.showTipLine !== false &&
+    (validated.tip ?? 0) <= 0 &&
+    !validated.isOnlineOrder
+  ) {
     nodes.push({ type: "empty_line" });
     nodes.push({
       type: "two_column",
@@ -756,6 +799,18 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   // const META_VALUE_MAX = Math.max(8, w - 21);
   const META_VALUE_MAX = 27;
 
+  // Online receipts headline the platform code up top, so the Dexa order number
+  // moves here to the footer (in-house orders already show it big at the top).
+  if (validated.isOnlineOrder && validated.orderNumber) {
+    nodes.push({
+      type: "two_column",
+      left: "Order #",
+      right: truncate(sanitizeForPrint(validated.orderNumber), META_VALUE_MAX),
+      lineWidth: w,
+      labelAlign: "meta",
+    });
+  }
+
   if (validated.orderDate || validated.orderTime) {
     const created =
       `${validated.orderDate ?? ""} ${validated.orderTime ?? ""}`.trim();
@@ -768,7 +823,14 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  if (cfg?.showServerName !== false && validated.serverName) {
+  // Online orders headline platform/customer/code at the top, so the metadata
+  // block trims to Order # + Order Date + Phone + Print Date (Assignee/Type/
+  // Customer drop — those are redundant with the header).
+  if (
+    !validated.isOnlineOrder &&
+    cfg?.showServerName !== false &&
+    validated.serverName
+  ) {
     nodes.push({
       type: "two_column",
       left: "Assignee",
@@ -778,7 +840,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  if (validated.orderType) {
+  if (!validated.isOnlineOrder && validated.orderType) {
     nodes.push({
       type: "two_column",
       left: "Type",
@@ -787,7 +849,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       labelAlign: "meta",
     });
   }
-  if (validated.tableName) {
+  if (!validated.isOnlineOrder && validated.tableName) {
     nodes.push({
       type: "two_column",
       left: "Table",
@@ -797,7 +859,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  if (validated.customerName) {
+  if (!validated.isOnlineOrder && validated.customerName) {
     nodes.push({
       type: "two_column",
       left: "Customer",

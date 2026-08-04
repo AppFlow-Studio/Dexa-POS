@@ -34,6 +34,16 @@ export const KEY_FANOUT_KDS_MS = internKey("fanout.kds_ms");
 // RPC counters (stores/useOrderStore.ts)
 export const KEY_RPC_GET_ORDER_DETAILS = internKey("rpc.get_order_details");
 
+// Receipt integrity (services/printing/PrinterService.ts buildReceiptTemplateData).
+// count = printed receipts whose parts failed to reconcile (Σ line rows ≠ subtotal,
+// or subtotal−discount+tax+SC ≠ total). Target 0 — after the derive-from-components
+// fix the footer equals Σ(rows) by construction, so any hit is a genuine anomaly
+// (finalized order whose persisted total drifted from its own rows, or a logic
+// regression). The receipt still prints (fail-open); this is the tripwire.
+export const KEY_RECEIPT_RECONCILE_MISMATCH = internKey(
+  "receipt.reconcile_mismatch",
+);
+
 // Storage / persistence (lib/storage.ts)
 export const KEY_FLUSH_ALL_MS = internKey("flush_all_ms");
 
