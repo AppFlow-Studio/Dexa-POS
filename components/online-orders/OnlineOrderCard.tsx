@@ -10,6 +10,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Href, Link } from "expo-router";
+import { Ban, Bell, Check, CheckCheck, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
@@ -373,9 +374,18 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
               {submitting === "decline" ? (
                 <ActivityIndicator color={colors.label} />
               ) : (
-                <Text style={{ fontWeight: "700", color: colors.label }}>
-                  Decline
-                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(6),
+                  }}
+                >
+                  <X size={s(16)} color={colors.label} />
+                  <Text style={{ fontWeight: "700", color: colors.label }}>
+                    Decline
+                  </Text>
+                </View>
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -392,9 +402,18 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
               {submitting === "accept" ? (
                 <ActivityIndicator color={colors.onSolid} />
               ) : (
-                <Text style={{ fontWeight: "700", color: colors.onSolid }}>
-                  Accept
-                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(6),
+                  }}
+                >
+                  <Check size={s(16)} color={colors.onSolid} />
+                  <Text style={{ fontWeight: "700", color: colors.onSolid }}>
+                    Accept
+                  </Text>
+                </View>
               )}
             </TouchableOpacity>
           </View>
@@ -407,15 +426,24 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
             {submitting === "cancel" ? (
               <ActivityIndicator size="small" color={colors.danger} />
             ) : (
-              <Text
+              <View
                 style={{
-                  fontSize: s(12),
-                  fontWeight: "600",
-                  color: colors.danger,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(4),
                 }}
               >
-                Cancel Order
-              </Text>
+                <Ban size={s(13)} color={colors.danger} />
+                <Text
+                  style={{
+                    fontSize: s(12),
+                    fontWeight: "600",
+                    color: colors.danger,
+                  }}
+                >
+                  Cancel Order
+                </Text>
+              </View>
             )}
           </TouchableOpacity>
         </View>
@@ -446,15 +474,24 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   {submitting === "ready" ? (
                     <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
-                    <Text
+                    <View
                       style={{
-                        fontSize: s(12),
-                        fontWeight: "700",
-                        color: colors.onSolid,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(5),
                       }}
                     >
-                      Mark Ready
-                    </Text>
+                      <Bell size={s(14)} color={colors.onSolid} />
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: "700",
+                          color: colors.onSolid,
+                        }}
+                      >
+                        Mark Ready
+                      </Text>
+                    </View>
                   )}
                 </TouchableOpacity>
               )}
@@ -473,15 +510,24 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   {submitting === "done" ? (
                     <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
-                    <Text
+                    <View
                       style={{
-                        fontSize: s(12),
-                        fontWeight: "700",
-                        color: colors.onSolid,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(5),
                       }}
                     >
-                      Mark Done
-                    </Text>
+                      <CheckCheck size={s(14)} color={colors.onSolid} />
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: "700",
+                          color: colors.onSolid,
+                        }}
+                      >
+                        Mark Done
+                      </Text>
+                    </View>
                   )}
                 </TouchableOpacity>
               )}
@@ -500,15 +546,24 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   {submitting === "cancel" ? (
                     <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
-                    <Text
+                    <View
                       style={{
-                        fontSize: s(12),
-                        fontWeight: "700",
-                        color: colors.onSolid,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(5),
                       }}
                     >
-                      Cancel Order
-                    </Text>
+                      <Ban size={s(14)} color={colors.onSolid} />
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: "700",
+                          color: colors.onSolid,
+                        }}
+                      >
+                        Cancel Order
+                      </Text>
+                    </View>
                   )}
                 </TouchableOpacity>
               )}

@@ -799,6 +799,18 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   // const META_VALUE_MAX = Math.max(8, w - 21);
   const META_VALUE_MAX = 27;
 
+  // Online receipts headline the platform code up top, so the Dexa order number
+  // moves here to the footer (in-house orders already show it big at the top).
+  if (validated.isOnlineOrder && validated.orderNumber) {
+    nodes.push({
+      type: "two_column",
+      left: "Order #",
+      right: truncate(sanitizeForPrint(validated.orderNumber), META_VALUE_MAX),
+      lineWidth: w,
+      labelAlign: "meta",
+    });
+  }
+
   if (validated.orderDate || validated.orderTime) {
     const created =
       `${validated.orderDate ?? ""} ${validated.orderTime ?? ""}`.trim();
@@ -812,7 +824,8 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   }
 
   // Online orders headline platform/customer/code at the top, so the metadata
-  // block trims to Order Date + Phone (Assignee/Type/Customer/Print Date drop).
+  // block trims to Order # + Order Date + Phone + Print Date (Assignee/Type/
+  // Customer drop — those are redundant with the header).
   if (
     !validated.isOnlineOrder &&
     cfg?.showServerName !== false &&
@@ -869,7 +882,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  if (!validated.isOnlineOrder && validated.printDate && validated.printTime) {
+  if (validated.printDate && validated.printTime) {
     const printed = `${validated.printDate}, ${validated.printTime}`;
     nodes.push({
       type: "two_column",

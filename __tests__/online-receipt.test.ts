@@ -79,14 +79,15 @@ describe("online-order receipt (IR / buildReceiptDocument)", () => {
     expect(labels).not.toContain("Total w/ Tip:");
   });
 
-  it("trims metadata to Order Date + Phone", () => {
+  it("footer keeps Order # (Dexa), Order Date, Phone, Print Date; drops Assignee/Type/Customer", () => {
     const labels = twoColLabels(makeReceiptData(ONLINE));
+    expect(labels).toContain("Order #");
     expect(labels).toContain("Order Date");
     expect(labels).toContain("Phone");
+    expect(labels).toContain("Print Date");
     expect(labels).not.toContain("Assignee");
     expect(labels).not.toContain("Type");
     expect(labels).not.toContain("Customer");
-    expect(labels).not.toContain("Print Date");
   });
 
   it("leaves in-house orders unchanged (tip write-in + full metadata)", () => {

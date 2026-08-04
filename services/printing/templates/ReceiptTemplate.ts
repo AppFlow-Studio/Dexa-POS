@@ -317,17 +317,17 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.emptyLine();
 
   b.bold(true);
-  // Online orders headline platform/customer/code at the top; the footer trims
-  // to Ordered + Phone (Order #/Printed/Server/Customer drop).
-  if (!data.isOnlineOrder) {
-    if (data.backendOrderNumber) {
-      b.twoColumnRow("Order #", data.backendOrderNumber, w);
-    } else {
-      b.twoColumnRow("Order #", data.orderNumber, w);
-    }
+  // Online orders headline platform/customer/code at the top; the footer keeps
+  // Order # (Dexa) + Ordered + Printed + Phone, and drops Server/Customer.
+  if (data.isOnlineOrder) {
+    b.twoColumnRow("Order #", data.orderNumber, w);
+  } else if (data.backendOrderNumber) {
+    b.twoColumnRow("Order #", data.backendOrderNumber, w);
+  } else {
+    b.twoColumnRow("Order #", data.orderNumber, w);
   }
   b.twoColumnRow("Ordered", `${data.orderDate}, ${data.orderTime}`, w);
-  if (!data.isOnlineOrder && data.printDate && data.printTime) {
+  if (data.printDate && data.printTime) {
     b.twoColumnRow("Printed", `${data.printDate}, ${data.printTime}`, w);
   }
   if (!data.isOnlineOrder && data.serverName) {
