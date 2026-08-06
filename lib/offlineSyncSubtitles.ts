@@ -149,7 +149,10 @@ export function isRetryable (op: OfflineOperation): boolean {
     code === 'INVALID_INPUT' ||
     code === 'NUMERIC_OUT_OF_RANGE' ||
     code === 'ORDER_MATH_INCONSISTENT' ||
-    code === 'SCHEMA_VERSION_MISMATCH'
+    code === 'SCHEMA_VERSION_MISMATCH' ||
+    // Retrying re-runs the same unresolvable item lookup. The operator must
+    // re-fire the items from the order instead.
+    code === 'KITCHEN_ITEMS_UNRESOLVED'
   ) {
     return false
   }
@@ -241,6 +244,8 @@ export function describeCause (op: OfflineOperation): string {
       return 'Session expired'
     case 'NOT_FOUND':
       return 'No longer exists'
+    case 'KITCHEN_ITEMS_UNRESOLVED':
+      return 'Some items never reached the kitchen'
     case 'CONFLICT':
       return 'Changed on another station'
     case 'FOREIGN_KEY_VIOLATION':

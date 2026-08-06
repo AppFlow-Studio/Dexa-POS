@@ -163,6 +163,15 @@ function _getCalculatePaidStatus() {
   return require("@/stores/useOrderStore").calculatePaidStatusFromPayments;
 }
 
+/**
+ * Cap on how many times `send_to_kitchen` may re-queue its own unresolved
+ * items. Each pass costs two RPCs and spawns a fresh op with retryCount 0, so
+ * without a bound an item whose db_order_item_id never materialises loops
+ * forever — invisibly, because no individual op ever fails. Past this many
+ * passes the remainder dead-letters with an operator-facing cause instead.
+ */
+const MAX_KITCHEN_REQUEUE_GENERATIONS = 3;
+
 let _supabaseClient: any = null;
 
 function isAlreadyDoneSyncError(
@@ -927,8 +936,15 @@ async function executeQueuedOperation(
           return OpOk("nothing to void");
         }
 
+        // Prefer the staff id captured when the op was QUEUED. Reading the
+        // live store here attributes the void to whoever happens to be logged
+        // in at replay time — or blocks forever if nobody is (the store clears
+        // loggedInEmployee on logout). The live lookup remains as a fallback
+        // for ops queued before this param existed.
         const staffId =
-          useEmployeeStore.getState().loggedInEmployee?.profileId ?? null;
+          op.params.staffId ??
+          useEmployeeStore.getState().loggedInEmployee?.profileId ??
+          null;
 
         if (!staffId) {
           console.warn(
@@ -2733,7 +2749,8 @@ async function executeQueuedOperation(
           console.log(
             `[OfflineSync:send_to_kitchen] BLOCKED - Order ${localOrderId} not synced yet`,
           );
-          return false;
+          // Dependency wait, not a failure — preserve the retry budget.
+          return OpBlocked("order_not_synced");
         }
 
         console.log(
@@ -2785,9 +2802,9 @@ async function executeQueuedOperation(
               // If still zero after live store fallback, items aren't synced yet — retry
               if (resolvedItemIds.length === 0) {
                 console.log(
-                  `[OfflineSync:send_to_kitchen] No items resolved yet, will retry`,
+                  `[OfflineSync:send_to_kitchen] No items resolved yet, waiting`,
                 );
-                return false;
+                return OpBlocked("items_not_synced");
               }
               // Resolved via live store — clear unresolved list so we don't re-queue them
               unresolvedLocalItemIds = [];
@@ -2811,9 +2828,9 @@ async function executeQueuedOperation(
 
             if (resolvedItemIds.length === 0 && hasUnsyncedFiredItems) {
               console.log(
-                "[OfflineSync:send_to_kitchen] Fired items exist but item IDs are not synced yet, will retry",
+                "[OfflineSync:send_to_kitchen] Fired items exist but item IDs are not synced yet, waiting",
               );
-              return false;
+              return OpBlocked("items_not_synced");
             }
 
             if (resolvedItemIds.length > 0) {
@@ -2860,7 +2877,7 @@ async function executeQueuedOperation(
               "[OfflineSync:send_to_kitchen] Order status transition failed; deferring item sync",
               { resolvedOrderId, error: transition.error },
             );
-            return false;
+            return classifyError(transition.error, { opType: op.type });
           }
           console.log(
             `[OfflineSync:send_to_kitchen] Order out of draft (target "${backendStatus}")`,
@@ -2889,8 +2906,9 @@ async function executeQueuedOperation(
                 "[OfflineSync:send_to_kitchen] Failed to update item statuses:",
                 itemError,
               );
-              // Fatal - retry the whole operation so items get updated
-              return false;
+              // Classify: a transient error retries, a rejection surfaces with
+              // a cause instead of spinning the whole operation.
+              return classifyError(itemError, { opType: op.type });
             }
 
             console.log(
@@ -2898,14 +2916,58 @@ async function executeQueuedOperation(
             );
           }
 
-          // 4. Re-queue unresolved items so they aren't lost
+          // 4. Re-queue unresolved items so they aren't lost — but BOUNDED.
+          //
+          // This step spawns a NEW op and then returns success, so the original
+          // op is removed as successful. `queueFailedOperation` does no dedupe
+          // and resets retryCount to 0, which means the normal safety nets
+          // never engage: MAX_RETRY_ATTEMPTS, dead-lettering, classifyError,
+          // the Syncing panel and the 24h TTL all key off an op FAILING, and
+          // no op here ever does. If an item's db_order_item_id never
+          // materialises (its add dead-lettered, it was voided mid-flight, or
+          // the registry mapping was lost on rekey), each generation costs two
+          // RPCs (ensureOrderOutOfDraft + bulkUpdateOrderItemStatus) and
+          // spawns another generation — indefinitely, and invisibly.
+          //
+          // The generation counter converts that silent infinite loop into a
+          // visible, actionable dead-letter after a bounded number of passes.
           if (unresolvedLocalItemIds.length > 0) {
+            const generation = (op.params.requeueGeneration ?? 0) + 1;
+
+            if (generation > MAX_KITCHEN_REQUEUE_GENERATIONS) {
+              console.error(
+                `[OfflineSync:send_to_kitchen] ${unresolvedLocalItemIds.length} item(s) never synced after ${MAX_KITCHEN_REQUEUE_GENERATIONS} passes — dead-lettering instead of re-queueing`,
+                { localOrderId, unresolvedLocalItemIds },
+              );
+              // Surface on the per-item chip so the operator can re-fire.
+              useSyncStatusStore.getState().setSyncStatusBatch(
+                unresolvedLocalItemIds.map((itemId: string) => ({
+                  itemId,
+                  status: "failed" as const,
+                  error:
+                    "Send to Kitchen didn't save — item never synced. Re-fire this item.",
+                })),
+              );
+              // Terminal: the items sent above DID reach the kitchen, so this
+              // is a partial success. Reporting it as terminal is what makes
+              // the remainder visible rather than silently looping forever.
+              return OpTerminal(
+                "KITCHEN_ITEMS_UNRESOLVED",
+                `${unresolvedLocalItemIds.length} item(s) never synced after ${MAX_KITCHEN_REQUEUE_GENERATIONS} attempts`,
+                "Those items did not reach the kitchen. Re-fire them from the order.",
+              );
+            }
+
             console.log(
-              `[OfflineSync:send_to_kitchen] Re-queuing ${unresolvedLocalItemIds.length} unresolved items`,
+              `[OfflineSync:send_to_kitchen] Re-queuing ${unresolvedLocalItemIds.length} unresolved items (generation ${generation}/${MAX_KITCHEN_REQUEUE_GENERATIONS})`,
             );
             await queueFailedOperation(
               "send_to_kitchen",
-              { localOrderId, localItemIds: unresolvedLocalItemIds },
+              {
+                localOrderId,
+                localItemIds: unresolvedLocalItemIds,
+                requeueGeneration: generation,
+              },
               localOrderId,
             );
           }
@@ -2923,10 +2985,10 @@ async function executeQueuedOperation(
           }
 
           console.log(`[OfflineSync:send_to_kitchen] SUCCESS!`);
-          return true;
+          return OpOk();
         } catch (err) {
           console.error("[OfflineSync:send_to_kitchen] Error:", err);
-          return false;
+          return classifyError(err, { opType: op.type });
         }
       }
 

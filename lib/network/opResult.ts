@@ -194,6 +194,8 @@ const REMEDIES: Record<string, string> = {
   ORDER_MATH_INCONSISTENT:
     "The order's totals don't add up. Reopen the check to rebuild them.",
   NOT_FOUND: 'It no longer exists — likely voided on another station. Refresh.',
+  KITCHEN_ITEMS_UNRESOLVED:
+    'Those items did not reach the kitchen. Re-fire them from the order.',
   OWNERSHIP_REJECTED: 'Another station owns this order. Take it over there first.',
   VALIDATION_REJECTED: 'The server rejected this. Edit the item, or remove it.',
   AUTH_EXPIRED: 'Your session expired. Log out and back in.',
