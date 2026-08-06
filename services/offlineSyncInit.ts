@@ -35,6 +35,15 @@ import {
     resolveToBackendId,
 } from "@/lib/offlineIdRegistry";
 import {
+    classifyError,
+    OpBlocked,
+    OpOk,
+    OpRetry,
+    OpTerminal,
+    type OpResult,
+} from "@/lib/network/opResult";
+import {
+    deriveRemedy,
     deriveSubtitle,
     deriveTitle,
     ITEM_BOUND_OPS,
@@ -469,7 +478,12 @@ export async function initializeOfflineSync(): Promise<void> {
         if (itemIds.length > 0) {
           const title = deriveTitle(op);
           const subtitle = deriveSubtitle(op);
-          const errorMessage = `${title} — ${subtitle}`;
+          const remedy = deriveRemedy(op);
+          // Include the remedy so the per-item chip tells the operator what to
+          // do, not just that something failed.
+          const errorMessage = remedy
+            ? `${title} — ${subtitle}. ${remedy}`
+            : `${title} — ${subtitle}`;
           const updates = itemIds.map((itemId) => ({
             itemId,
             status: "failed" as const,
@@ -479,7 +493,9 @@ export async function initializeOfflineSync(): Promise<void> {
         }
       }
     },
-    executeOperation: async (op: OfflineOperation): Promise<boolean> => {
+    executeOperation: async (
+      op: OfflineOperation,
+    ): Promise<boolean | OpResult> => {
       return executeQueuedOperation(op);
     },
   });
@@ -631,11 +647,15 @@ function resolveSessionId(localSessionId: string): string | null {
  * Returns true on success, false on failure.
  * Handles ID resolution from local to backend IDs.
  */
-async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
+async function executeQueuedOperation(
+  op: OfflineOperation,
+): Promise<boolean | OpResult> {
   console.log("[OfflineSync] Executing queued operation:", op.type);
   if (!_supabaseClient) {
     console.error("[OfflineSync] No Supabase client available");
-    return false;
+    // Not a failure of the operation itself — the client just isn't wired up
+    // yet (init ordering). Blocking preserves the retry budget.
+    return OpBlocked("supabase_client_unavailable");
   }
 
   try {
@@ -665,10 +685,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedItemId) {
           console.log(
-            "[OfflineSync] update_item_quantity: Item not synced yet, will retry",
+            "[OfflineSync] update_item_quantity: Item not synced yet, waiting",
             { localOrderId, localItemId, orderItemId, mappedItemId },
           );
-          return false;
+          return OpBlocked("item_not_synced");
         }
 
         // Wave 3.0a: per-intent key. Same (item, qty) on retry → cached.
@@ -687,7 +707,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             errDetails: (error as any)?.details,
             errHint: (error as any)?.hint,
           });
-          return false;
+          return classifyError(error, { opType: op.type });
         }
         if (__DEV__)
           console.log("[OfflineSync] update_item_quantity OK", {
@@ -721,10 +741,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             : orderItemId;
 
         if (!resolvedItemId) {
-          console.log(
-            "[OfflineSync] update_item: Item not synced yet, will retry",
-          );
-          return false;
+          console.log("[OfflineSync] update_item: Item not synced yet, waiting");
+          return OpBlocked("item_not_synced");
         }
 
         const fullParams = {
@@ -740,7 +758,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           fullParams,
           { keyOverride: toUpdateItemKey(fullParams) },
         );
-        return !error;
+        return error ? classifyError(error, { opType: op.type }) : OpOk();
       }
 
       case "replace_modifiers": {
@@ -753,9 +771,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedItemId) {
           console.log(
-            "[OfflineSync] replace_modifiers: Item not synced yet, will retry",
+            "[OfflineSync] replace_modifiers: Item not synced yet, waiting",
           );
-          return false;
+          return OpBlocked("item_not_synced");
         }
 
         // Defensive sanitization: ops queued before the custom-modifier fix
@@ -787,7 +805,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           resolvedItemId,
           sanitized,
         );
-        return !error;
+        return error ? classifyError(error, { opType: op.type }) : OpOk();
       }
 
       case "apply_discount": {
@@ -799,9 +817,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedOrderId) {
           console.log(
-            "[OfflineSync] apply_discount: Order not synced yet, will retry",
+            "[OfflineSync] apply_discount: Order not synced yet, waiting",
           );
-          return false;
+          return OpBlocked("order_not_synced");
         }
 
         // Get staff ID - use from discount if available, otherwise get from employee store
@@ -812,9 +830,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!staffId) {
           console.warn(
-            "[OfflineSync] apply_discount: No staff ID available, will retry",
+            "[OfflineSync] apply_discount: No staff ID available, waiting",
           );
-          return false;
+          // Transient app-state gap (employee store not hydrated), not a
+          // server rejection — blocking avoids burning the retry budget.
+          return OpBlocked("staff_id_unavailable");
         }
 
         const result = await OrderDiscountService.applyDiscount(
@@ -859,30 +879,30 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               },
             };
           });
-          return true;
+          return OpOk();
         } else if (result.requires_approval) {
           console.warn(
             "[OfflineSync] apply_discount: Requires manager approval",
           );
-          // Don't retry - needs user intervention
-          return true; // Mark as "handled" to prevent infinite retries
+          // Needs a human decision — surface it instead of silently dropping
+          // the op as "handled" (which is what the old `return true` did).
+          return OpTerminal(
+            "VALIDATION_REJECTED",
+            "This discount needs manager approval",
+            "Ask a manager to approve this discount, then re-apply it.",
+          );
         } else {
-          const err = typeof result.error === "string" ? result.error : "";
-          if (
-            err.includes("invalid input value for enum discount_type") ||
-            err.includes("22P02")
-          ) {
-            console.error(
-              "[OfflineSync] apply_discount: Non-retryable enum error, dropping op:",
-              result.error,
-            );
-            return true;
-          }
+          // The 22P02 enum hatch is now handled centrally by classifyError.
           console.error(
             "[OfflineSync] apply_discount: RPC failed:",
             result.error,
           );
-          return false;
+          return classifyError(
+            typeof result.error === "string"
+              ? new Error(result.error)
+              : result.error,
+            { opType: op.type },
+          );
         }
       }
 
@@ -895,16 +915,16 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedOrderId) {
           console.log(
-            "[OfflineSync] void_discount: Order not synced yet, will retry",
+            "[OfflineSync] void_discount: Order not synced yet, waiting",
           );
-          return false;
+          return OpBlocked("order_not_synced");
         }
 
         if (!order_discount_id) {
           console.log(
             "[OfflineSync] void_discount: No order_discount_id, skipping",
           );
-          return true; // Nothing to void
+          return OpOk("nothing to void");
         }
 
         const staffId =
@@ -912,9 +932,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!staffId) {
           console.warn(
-            "[OfflineSync] void_discount: No staff ID available, will retry",
+            "[OfflineSync] void_discount: No staff ID available, waiting",
           );
-          return false;
+          return OpBlocked("staff_id_unavailable");
         }
 
         const result = await OrderDiscountService.voidDiscount(
@@ -932,23 +952,19 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             "[OfflineSync] void_discount: Successfully voided",
             order_discount_id,
           );
-          return true;
+          return OpOk();
         } else {
-          const err = typeof result.error === "string" ? result.error : "";
-          if (
-            err.toLowerCase().includes("already voided") ||
-            err.toLowerCase().includes("not found")
-          ) {
-            console.log(
-              "[OfflineSync:void_discount] Already voided, treating as success",
-            );
-            return true;
-          }
+          // "already voided" / "not found" fold into success via classifyError.
           console.error(
             "[OfflineSync] void_discount: RPC failed:",
             result.error,
           );
-          return false;
+          return classifyError(
+            typeof result.error === "string"
+              ? new Error(result.error)
+              : result.error,
+            { opType: op.type },
+          );
         }
       }
 
@@ -961,10 +977,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             : orderItemId;
 
         if (!resolvedItemId) {
-          console.log(
-            "[OfflineSync] void_item: Item not synced yet, will retry",
-          );
-          return false;
+          console.log("[OfflineSync] void_item: Item not synced yet, waiting");
+          return OpBlocked("item_not_synced");
         }
 
         const { error } = await OrderService.voidOrderItem(
@@ -973,20 +987,12 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           reason,
         );
         if (error) {
-          const msg = error.message?.toLowerCase() ?? "";
-          if (
-            msg.includes("not found") ||
-            msg.includes("already voided") ||
-            error.code === "23505"
-          ) {
-            console.log(
-              "[OfflineSync:void_item] Already voided/not found, treating as success",
-            );
-            return true;
-          }
-          return false;
+          // "already voided" / "not found" / 23505 all mean the item is gone,
+          // which is the desired end state — classifyError folds these into
+          // `success` centrally, replacing the hand-written checks here.
+          return classifyError(error, { opType: op.type });
         }
-        return true;
+        return OpOk();
       }
 
       case "update_order_status": {
@@ -998,9 +1004,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedOrderId) {
           console.log(
-            "[OfflineSync] update_order_status: Order not synced yet, will retry",
+            "[OfflineSync] update_order_status: Order not synced yet, waiting",
           );
-          return false;
+          return OpBlocked("order_not_synced");
         }
 
         const { error } = await OrderService.updateOrderStatus(
@@ -1009,7 +1015,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           status,
           reason,
         );
-        return !error;
+        return error ? classifyError(error, { opType: op.type }) : OpOk();
       }
 
       // ================================================================
@@ -1024,9 +1030,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedOrderId) {
           console.log(
-            "[OfflineSync] close_check: Order not synced yet, will retry",
+            "[OfflineSync] close_check: Order not synced yet, waiting",
           );
-          return false;
+          return OpBlocked("order_not_synced");
         }
 
         const result = await OrderService.closeCheck(
@@ -1034,19 +1040,14 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           resolvedOrderId,
           p_staff_id,
         );
-        if (!result.success) {
-          const err = typeof result.error === "string" ? result.error : "";
-          if (
-            err.toLowerCase().includes("already closed") ||
-            err.toLowerCase().includes("check is closed")
-          ) {
-            console.log(
-              "[OfflineSync:close_check] Already closed, treating as success",
-            );
-            return true;
-          }
-        }
-        return result.success;
+        if (result.success) return OpOk();
+        // "already closed" folds into success via classifyError.
+        return classifyError(
+          typeof result.error === "string"
+            ? new Error(result.error)
+            : result.error,
+          { opType: op.type },
+        );
       }
 
       case "reopen_check": {
@@ -1058,16 +1059,21 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedOrderId) {
           console.log(
-            "[OfflineSync] reopen_check: Order not synced yet, will retry",
+            "[OfflineSync] reopen_check: Order not synced yet, waiting",
           );
-          return false;
+          return OpBlocked("order_not_synced");
         }
 
         if (!p_staff_id) {
           console.log(
             "[OfflineSync] reopen_check: No staff ID provided, cannot reopen",
           );
-          return false;
+          // The op was queued without a staff id — replaying can't fix that.
+          return OpTerminal(
+            "NOT_NULL_VIOLATION",
+            "Reopen check was queued without a staff ID",
+            "Reopen the check again while logged in.",
+          );
         }
 
         const result = await OrderService.reopenCheck(
@@ -1076,19 +1082,14 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           p_staff_id,
           p_reason,
         );
-        if (!result.success) {
-          const err = typeof result.error === "string" ? result.error : "";
-          if (
-            err.toLowerCase().includes("not closed") ||
-            err.toLowerCase().includes("already open")
-          ) {
-            console.log(
-              "[OfflineSync:reopen_check] Already open, treating as success",
-            );
-            return true;
-          }
-        }
-        return result.success;
+        if (result.success) return OpOk();
+        // "not closed" / "already open" fold into success via classifyError.
+        return classifyError(
+          typeof result.error === "string"
+            ? new Error(result.error)
+            : result.error,
+          { opType: op.type },
+        );
       }
 
       case "close_and_free_session": {
@@ -1103,9 +1104,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedOrderId || !resolvedSessionId) {
           console.log(
-            "[OfflineSync] close_and_free_session: order/session not synced yet, will retry",
+            "[OfflineSync] close_and_free_session: order/session not synced yet, waiting",
           );
-          return false;
+          return OpBlocked(
+            !resolvedOrderId ? "order_not_synced" : "session_not_synced",
+          );
         }
 
         const result = await OrderService.closeAndFreeSession(
@@ -1119,9 +1122,15 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           console.log(
             "[OfflineSync:close_and_free_session] Already freed, treating as success",
           );
-          return true;
+          return OpOk("already freed");
         }
-        return result.success;
+        if (result.success) return OpOk();
+        return classifyError(
+          typeof result.error === "string"
+            ? new Error(result.error)
+            : result.error,
+          { opType: op.type },
+        );
       }
 
       // ================================================================
@@ -1218,7 +1227,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             console.log(
               `[OfflineSync:payment] BLOCKED - Order ${localOrderId} not synced yet`,
             );
-            return false;
+            // Dependency wait, not a failure — don't charge the retry budget.
+            return OpBlocked("order_not_synced");
           }
           paymentParams.p_order_id = resolvedOrderId;
           console.log(`[OfflineSync:payment] Resolved to: ${resolvedOrderId}`);
@@ -1251,15 +1261,15 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 });
               } else {
                 console.log(
-                  `[OfflineSync:payment] Item ${rawId} not synced yet, will retry`,
+                  `[OfflineSync:payment] Item ${rawId} not synced yet, waiting`,
                 );
-                return false; // wait for item sync
+                return OpBlocked("item_not_synced"); // wait for item sync
               }
             } else {
               console.log(
-                `[OfflineSync:payment] No localOrderId to resolve item ${rawId}, will retry`,
+                `[OfflineSync:payment] No localOrderId to resolve item ${rawId}, waiting`,
               );
-              return false;
+              return OpBlocked("no_local_order_id_for_item");
             }
           }
 
@@ -1462,27 +1472,27 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           // is a data-integrity rejection, NOT a transient/network failure —
           // re-sending the identical payment will deterministically fail again,
           // so returning false here spins the queue forever (observed on a tiny
-          // sub-cent split before the cash_total rounding fix). Treat it as
-          // terminal: fail the journal and discard so the queue drains. The
-          // underlying order state is corrected by calculate_order_totals_fast
-          // (v5 rounding) / a re-sync, not by replaying this op.
+          // sub-cent split before the cash_total rounding fix). The underlying
+          // order state is corrected by calculate_order_totals_fast (v5
+          // rounding) / a re-sync, not by replaying this op.
           if ((error as any)?.code === "P0005") {
             console.error(
-              `[OfflineSync:payment] enforce_order_math (P0005) — order math inconsistent; discarding non-retryable payment op:`,
+              `[OfflineSync:payment] enforce_order_math (P0005) — order math inconsistent; dead-lettering non-retryable payment op:`,
               errMsg,
             );
             if (queuedJournal?.id) {
               failPaymentJournal(queuedJournal.id, `enforce_order_math: ${errMsg}`);
             }
-            return true; // terminal — stop the infinite retry loop
+            // Surfaces to the operator with a remedy instead of vanishing.
+            return OpTerminal("ORDER_MATH_INCONSISTENT", errMsg);
           }
 
-          // Wave Cat-B: 23505 unique violation on the idempotency_key index is
-          // terminal — means the cache row was missing AND the body re-executed,
-          // which the partial unique index then blocked. Should be near-zero.
+          // Wave Cat-B: 23505 unique violation on the idempotency_key index
+          // means the payment already landed — the cache row was missing AND
+          // the body re-executed, which the partial unique index then blocked.
           if ((error as any)?.code === "23505") {
             console.error(
-              `[OfflineSync:payment] DUPLICATE-KEY VIOLATION (23505) — idempotency cache may be malfunctioning:`,
+              `[OfflineSync:payment] DUPLICATE-KEY VIOLATION (23505) — payment already recorded:`,
               error,
             );
             if (queuedJournal?.id) {
@@ -1491,11 +1501,24 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 `unique_violation: ${errMsg}`,
               );
             }
-            return true; // discard — would loop forever otherwise
+            // The charge exists server-side; the desired state holds.
+            return OpOk("duplicate key — payment already recorded");
           }
 
-          console.error(`[OfflineSync:payment] FAILED - Error:`, error);
-          return false;
+          // Everything else: classify rather than blanket-retry. A 4xx/validation
+          // rejection now dead-letters on attempt 1 with a cause the operator can
+          // act on, while genuine network/5xx failures still retry.
+          const classified = classifyError(error, { opType: op.type });
+          console.error(
+            `[OfflineSync:payment] FAILED — ${classified.outcome}:`,
+            error,
+          );
+          // A terminal payment failure must close out the journal, otherwise the
+          // entry lingers as permanently in-flight.
+          if (classified.outcome === "terminal" && queuedJournal?.id) {
+            failPaymentJournal(queuedJournal.id, `${classified.code}: ${errMsg}`);
+          }
+          return classified;
         }
 
         console.log(`[OfflineSync:payment] SUCCESS!`);
@@ -3877,11 +3900,29 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
       default:
         console.warn("[OfflineSync] Unknown operation type:", op.type);
-        return false;
+        // An op type this build doesn't know about can never succeed here —
+        // retrying it forever is pointless. Terminal.
+        return OpTerminal(
+          "SCHEMA_VERSION_MISMATCH",
+          `Unknown operation type "${op.type}" — queued by a different app version`,
+        );
     }
   } catch (error) {
-    console.error("[OfflineSync] Error executing operation:", op.type, error);
-    return false;
+    // This catch previously swallowed EVERY thrown error from all ~30 handlers
+    // and returned a bare `false`. That single line is why the operator only
+    // ever saw "Failed 10 times": the cause was known right here and then
+    // discarded, leaving the dispatcher to invent a reason from the retry
+    // counter. Classifying instead preserves code + message + remedy, and
+    // lets permanent rejections dead-letter on attempt 1 rather than 44.
+    const classified = classifyError(error, { opType: op.type });
+    console.error(
+      `[OfflineSync] ${op.type} threw — classified ${classified.outcome}`,
+      classified.outcome === "terminal" || classified.outcome === "retry"
+        ? `${classified.code}: ${classified.message}`
+        : "",
+      error,
+    );
+    return classified;
   }
 }
 

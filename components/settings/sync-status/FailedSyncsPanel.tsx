@@ -5,12 +5,18 @@
  * Integrates with offlineSyncService dead letter queue.
  */
 
+import {
+  describeCause,
+  deriveRemedy,
+  isRetryable
+} from '@/lib/offlineSyncSubtitles'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import {
   discardDeadLetterOperation,
   getDeadLetterOperations,
   retryDeadLetterOperation,
+  subscribeToDeadLetterChanges,
   type OfflineOperation
 } from '@/services/offlineSyncService'
 import { AlertTriangle, RefreshCw, Trash2, Wrench } from 'lucide-react-native'
@@ -60,6 +66,46 @@ function formatTimestamp (ts: string): string {
   }
 }
 
+/**
+ * Human label for WHICH order/item failed.
+ *
+ * A truncated local id ("order_17351…") is meaningless to a server mid-shift.
+ * Resolve to the ticket number and item name they actually recognise, falling
+ * back progressively so this never renders an empty or cryptic string.
+ */
+function describeTarget (op: OfflineOperation): string {
+  const parts: string[] = []
+  try {
+    // Lazy require: this panel is in the settings tree and shouldn't pull the
+    // order store into its module graph at import time.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useOrderStore } = require('@/stores/useOrderStore')
+    const state = useOrderStore.getState()
+    const order =
+      state.ordersById?.[op.localOrderId] ??
+      (typeof state.getOrder === 'function'
+        ? state.getOrder(op.localOrderId)
+        : null)
+
+    if (order?.display_number) {
+      parts.push(`Order #${order.display_number}`)
+    } else if (order?.customer_name) {
+      parts.push(order.customer_name)
+    }
+
+    if (op.localItemId && order?.items) {
+      const item = order.items.find((i: any) => i.id === op.localItemId)
+      if (item?.name) parts.push(item.name)
+    }
+  } catch {
+    // Store unavailable — fall through to the id-based fallback below.
+  }
+
+  if (parts.length > 0) return parts.join(' · ')
+  // Last resort: the raw id is still better than showing nothing.
+  return op.localOrderId ? `${op.localOrderId.substring(0, 14)}…` : ''
+}
+
 function isPaymentOp (type: string): boolean {
   return [
     'process_payment',
@@ -85,9 +131,16 @@ export function FailedSyncsPanel (): React.ReactElement {
 
   useEffect(() => {
     refresh()
-    // Refresh every 10 seconds in case the queue changes
-    const interval = setInterval(refresh, 10_000)
-    return () => clearInterval(interval)
+    // Subscribe so a failure appears the instant it dead-letters. The previous
+    // 10s poll meant an operator staring at this screen could wait ten seconds
+    // for a failure to show up. Keep a slow poll as a backstop for relative
+    // timestamps ("2 min ago") and any path that mutates without notifying.
+    const unsubscribe = subscribeToDeadLetterChanges(refresh)
+    const interval = setInterval(refresh, 30_000)
+    return () => {
+      unsubscribe()
+      clearInterval(interval)
+    }
   }, [refresh])
 
   const handleRetry = async (opId: string) => {
@@ -110,7 +163,10 @@ export function FailedSyncsPanel (): React.ReactElement {
   }
 
   const handleRetryAll = async () => {
-    const ids = operations.map(op => op.id)
+    // Skip terminal failures — retrying them is guaranteed to fail again and
+    // would just re-queue work the operator has to resolve by hand.
+    const ids = operations.filter(op => isRetryable(op)).map(op => op.id)
+    if (ids.length === 0) return
     setRetryingIds(new Set(ids))
     try {
       for (const id of ids) {
@@ -200,7 +256,7 @@ export function FailedSyncsPanel (): React.ReactElement {
             </Text>
           </View>
         </View>
-        {operations.length > 1 && (
+        {operations.filter(op => isRetryable(op)).length > 1 && (
           <TouchableOpacity
             onPress={handleRetryAll}
             style={{
@@ -227,21 +283,29 @@ export function FailedSyncsPanel (): React.ReactElement {
       {operations.map(op => {
         const isRetrying = retryingIds.has(op.id)
         const isPayment = isPaymentOp(op.type)
+        // Cause + remedy come from the same helpers the bill banner uses, so
+        // the operator sees identical wording in both places.
+        const cause = describeCause(op) || 'Sync failed'
+        const remedy = deriveRemedy(op)
+        const terminal = !isRetryable(op)
+        const target = describeTarget(op)
 
         return (
           <View
             key={op.id}
             style={{
               flexDirection: 'row',
-              alignItems: 'center',
+              // Top-aligned: rows are now 4-5 lines tall, and centering floated
+              // the action buttons to the vertical middle of the text block.
+              alignItems: 'flex-start',
               paddingHorizontal: s(16),
-              paddingVertical: s(16),
+              paddingVertical: s(14),
               borderBottomWidth: 1,
               borderBottomColor: colors.border + '50'
             }}
           >
             {/* Type + Details */}
-            <View style={{ flex: 1, marginRight: s(12) }}>
+            <View style={{ flex: 1, marginRight: s(12), minWidth: 0 }}>
               <View
                 style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
               >
@@ -275,51 +339,120 @@ export function FailedSyncsPanel (): React.ReactElement {
                   </View>
                 )}
               </View>
-              <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}>
-                {formatTimestamp(op.timestamp)} · {op.retryCount} retries
-              </Text>
-              {op.localOrderId && (
-                <Text
-                  style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}
-                  numberOfLines={1}
-                >
-                  Order: {op.localOrderId.substring(0, 20)}...
-                </Text>
-              )}
-            </View>
-
-            {/* Action buttons */}
-            <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
-            >
-              <TouchableOpacity
-                onPress={() => handleRetry(op.id)}
-                disabled={isRetrying}
+              {/* WHY it failed — the operator-facing cause. Before the failure
+                  model rebuild this panel could only show a retry count, because
+                  `lastError` was always the synthetic MAX_RETRIES placeholder. */}
+              <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: s(4),
-                  paddingHorizontal: s(12),
-                  paddingVertical: s(6),
-                  borderRadius: s(8),
-                  backgroundColor: colors.teal + '30'
+                  gap: s(6),
+                  marginTop: s(4)
                 }}
               >
-                {isRetrying ? (
-                  <ActivityIndicator size='small' color={colors.teal} />
-                ) : (
-                  <RefreshCw size={s(12)} color={colors.teal} />
-                )}
+                <View
+                  style={{
+                    backgroundColor: terminal
+                      ? colors.danger + '30'
+                      : colors.warning + '30',
+                    paddingHorizontal: s(6),
+                    paddingVertical: s(2),
+                    borderRadius: s(4)
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      fontWeight: '700',
+                      color: terminal ? colors.danger : colors.warning
+                    }}
+                  >
+                    {terminal ? 'NEEDS ACTION' : 'WILL RETRY'}
+                  </Text>
+                </View>
                 <Text
                   style={{
                     fontSize: s(12),
-                    fontWeight: '500',
-                    color: colors.teal
+                    fontWeight: '600',
+                    color: colors.heading,
+                    flexShrink: 1
+                  }}
+                  numberOfLines={1}
+                >
+                  {cause}
+                </Text>
+              </View>
+
+              {/* HOW to fix it. */}
+              {remedy ? (
+                <Text
+                  style={{ fontSize: s(12), color: colors.label, marginTop: s(3) }}
+                  numberOfLines={2}
+                >
+                  {remedy}
+                </Text>
+              ) : null}
+
+              {/* Raw server message — the detail a manager relays to support. */}
+              {op.lastError?.message ? (
+                <Text
+                  style={{
+                    fontSize: s(10),
+                    color: colors.muted,
+                    marginTop: s(3),
+                    fontStyle: 'italic'
+                  }}
+                  numberOfLines={2}
+                >
+                  {op.lastError.code ? `${op.lastError.code}: ` : ''}
+                  {op.lastError.message}
+                </Text>
+              ) : null}
+
+              <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(3) }}>
+                {target ? `${target} · ` : ''}
+                {formatTimestamp(op.timestamp)} · {op.retryCount}{' '}
+                {op.retryCount === 1 ? 'attempt' : 'attempts'}
+              </Text>
+            </View>
+
+            {/* Action buttons — stacked so long remedy text doesn't squeeze
+                them, and so tap targets stay full-width and thumb-friendly. */}
+            <View style={{ alignItems: 'stretch', gap: s(6), minWidth: s(104) }}>
+              {/* Terminal failures hide Retry — the server rejected this
+                  permanently, so replaying the identical payload cannot work.
+                  Offering it would just waste the operator's time mid-shift. */}
+              {!terminal && (
+                <TouchableOpacity
+                  onPress={() => handleRetry(op.id)}
+                  disabled={isRetrying}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: s(4),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(7),
+                    borderRadius: s(8),
+                    backgroundColor: colors.teal + '30'
                   }}
                 >
-                  Retry
-                </Text>
-              </TouchableOpacity>
+                  {isRetrying ? (
+                    <ActivityIndicator size='small' color={colors.teal} />
+                  ) : (
+                    <RefreshCw size={s(12)} color={colors.teal} />
+                  )}
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      fontWeight: '500',
+                      color: colors.teal
+                    }}
+                  >
+                    Retry
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               {isPayment ? (
                 <TouchableOpacity
@@ -327,9 +460,10 @@ export function FailedSyncsPanel (): React.ReactElement {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: s(4),
                     paddingHorizontal: s(12),
-                    paddingVertical: s(6),
+                    paddingVertical: s(7),
                     borderRadius: s(8),
                     backgroundColor: colors.card,
                     borderWidth: 1,
@@ -353,9 +487,10 @@ export function FailedSyncsPanel (): React.ReactElement {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: s(4),
                     paddingHorizontal: s(12),
-                    paddingVertical: s(6),
+                    paddingVertical: s(7),
                     borderRadius: s(8),
                     backgroundColor: colors.card
                   }}
