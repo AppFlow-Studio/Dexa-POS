@@ -17,6 +17,7 @@
 
 import { colors } from '@/lib/theme'
 import {
+  deriveRemedy,
   deriveSubtitle,
   deriveTitle,
   isRetryable,
@@ -135,6 +136,7 @@ const OrderSyncBanner: React.FC = () => {
       {visible.map((op, idx) => {
         const title = deriveTitle(op)
         const subtitle = deriveSubtitle(op)
+        const remedy = deriveRemedy(op)
         const retryable = isRetryable(op)
         return (
           <View
@@ -171,6 +173,19 @@ const OrderSyncBanner: React.FC = () => {
               >
                 {subtitle}
               </Text>
+              {remedy ? (
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '600',
+                    color: colors.heading,
+                    marginTop: 2
+                  }}
+                  numberOfLines={2}
+                >
+                  {remedy}
+                </Text>
+              ) : null}
             </View>
             {retryable ? (
               <TouchableOpacity

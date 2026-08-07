@@ -11427,13 +11427,17 @@ export const useOrderStore = create<OrderState>()(
                     })
                     .catch((err) => {
                       console.error("[removeCheckDiscount] RPC error:", err);
-                      // Queue for retry
+                      // Queue for retry. Capture staffId NOW — the executor
+                      // otherwise reads loggedInEmployee at replay time, which
+                      // is null after a logout/PIN-lock (useEmployeeStore:309)
+                      // and mis-attributes the void to whoever is on shift then.
                       queueOperation({
                         type: "void_discount",
                         params: {
                           localOrderId: orderId,
                           order_discount_id: discount.order_discount_id,
                           void_reason: null,
+                          staffId,
                         },
                         localOrderId: orderId,
                       } as any);
@@ -11441,7 +11445,9 @@ export const useOrderStore = create<OrderState>()(
                 }
               }
             } else if (discountsToVoid.length > 0) {
-              // Offline - queue void operations
+              // Offline - queue void operations. staffId is captured here (not
+              // read at replay time) so a shift change between queueing and
+              // sync can't leave the op without an attributable staff member.
               for (const discount of discountsToVoid) {
                 if (discount.order_discount_id) {
                   queueOperation({
@@ -11450,6 +11456,7 @@ export const useOrderStore = create<OrderState>()(
                       localOrderId: orderId,
                       order_discount_id: discount.order_discount_id,
                       void_reason: null,
+                      staffId,
                     },
                     localOrderId: orderId,
                   } as any);
