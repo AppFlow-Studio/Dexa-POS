@@ -17,4 +17,14 @@
       terminal by product-name hints when multiple Qualcomm devices are present.
     -->
     <usb-device vendor-id="7694" />
+    <!--
+      Valor VP350 — USB vendor ID 0x067B (1659 decimal), a Prolific PL2303
+      USB-to-serial bridge (the VP550 enumerates as Qualcomm 0x1E0E above; the
+      VP350 uses this Prolific chip instead). Same purpose: persistent USB
+      permission + USB_DEVICE_ATTACHED for zero-touch auto-connect. 0x067B is a
+      widely-shared Prolific VID, so JS-side (valor-transport-usb.ts) narrows to
+      the Valor terminal by product-name hints when multiple serial devices are
+      present.
+    -->
+    <usb-device vendor-id="1659" />
 </resources>
