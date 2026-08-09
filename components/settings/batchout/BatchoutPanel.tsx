@@ -22,6 +22,7 @@ import {
   type UnsettledStats
 } from '@/services/settlementService'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore'
 import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import type { CastlesSettlementHostResult } from '@/types/castles'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -42,6 +43,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Text,
   TextInput,
@@ -1378,6 +1380,18 @@ function ClosedTodayCollapsible ({
   )
 }
 
+// Terminal-type → brand logo. Only Valor/Castles have assets today; other
+// types (dejavoo/atom/manual/…) have no logo and fall back to the status icon.
+const TERMINAL_LOGOS: Record<string, number> = {
+  valor: require('@/assets/images/valorlogo.jpg'),
+  castles: require('@/assets/images/castles.jpg')
+}
+
+function terminalLogoForType (type: string | null | undefined): number | null {
+  if (!type) return null
+  return TERMINAL_LOGOS[type] ?? null
+}
+
 function BatchRow ({
   batch,
   showTerminalLabel = false,
@@ -1393,6 +1407,13 @@ function BatchRow ({
   const supabase = useSupabaseClient()
   const { userId } = useAuth()
   const { selectedStore } = useStoreSettingsStore()
+  // Resolve this batch's terminal type (batches can span terminals) to show its
+  // brand logo in place of the generic clock icon. Terminals are loaded for the
+  // whole location, so a batch from any terminal resolves.
+  const terminals = usePaymentTerminalStore(state => state.terminals)
+  const terminalLogo = terminalLogoForType(
+    terminals.find(t => t.id === batch.paymentTerminalId)?.terminalType
+  )
   const [marking, setMarking] = useState(false)
   const [reasonOpen, setReasonOpen] = useState(false)
   const [reasonText, setReasonText] = useState('')
@@ -1485,6 +1506,12 @@ function BatchRow ({
               <CheckCircle size={s(14)} color={tone} />
             ) : isFailed ? (
               <XCircle size={s(14)} color={tone} />
+            ) : terminalLogo ? (
+              <Image
+                source={terminalLogo}
+                style={{ width: s(26), height: s(26), borderRadius: s(8) }}
+                resizeMode='contain'
+              />
             ) : (
               <Clock size={s(14)} color={tone} />
             )}
