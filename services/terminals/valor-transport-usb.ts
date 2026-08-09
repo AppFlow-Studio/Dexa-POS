@@ -28,7 +28,17 @@ import {
   type UsbDeviceInfo,
 } from "@/modules/castles-usb";
 import type { ITerminalTransport } from "./valor-transport.types";
-import { VALOR_USB_BAUD_RATE } from "@/types/valor";
+import { VALOR_USB_BAUD_RATE_CDC, VALOR_USB_BAUD_RATE_PROLIFIC } from "@/types/valor";
+
+/** Prolific PL2303 VID (VP350) — a real UART bridge, so baud must match. */
+const VALOR_PROLIFIC_VENDOR_ID = 0x067b;
+
+/** Pick the serial baud for a device: PL2303 (VP350) needs the real UART rate;
+ *  Qualcomm CDC (VP550) ignores baud, so keep its known-good value. */
+const baudForDevice = (vendorId: number): number =>
+  vendorId === VALOR_PROLIFIC_VENDOR_ID
+    ? VALOR_USB_BAUD_RATE_PROLIFIC
+    : VALOR_USB_BAUD_RATE_CDC;
 
 /**
  * Valor VP terminal USB vendor ids:
@@ -91,7 +101,13 @@ export class ValorUsbTransport implements ITerminalTransport {
       }
     }
 
-    await usbOpen(device.deviceId, VALOR_USB_BAUD_RATE);
+    const baud = baudForDevice(device.vendorId);
+    console.log(
+      `[ValorUsbTransport] Opening deviceId=${device.deviceId} ` +
+        `vid=0x${device.vendorId.toString(16)} pid=0x${device.productId.toString(16)} ` +
+        `baud=${baud} name="${device.productName ?? ""}"`,
+    );
+    await usbOpen(device.deviceId, baud);
 
     this._subscriptions.push(
       addDataListener((event) => {

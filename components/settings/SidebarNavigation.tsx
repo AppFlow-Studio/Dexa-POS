@@ -613,6 +613,18 @@ const SidebarNavigation = () => {
             Version {Constants.expoConfig?.version ?? '—'}
           </Text>
 
+          <Text
+            style={{
+              fontSize: s(9),
+              color: colors.muted,
+              textAlign: 'center',
+              marginTop: s(1),
+              opacity: 0.6
+            }}
+          >
+            Runtime {Updates.runtimeVersion ?? '—'}
+          </Text>
+
           {updateStatus === 'idle' ? (
             <Text
               style={{
