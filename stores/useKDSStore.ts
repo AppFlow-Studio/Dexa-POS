@@ -970,7 +970,13 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
     const courseNumber = roundItems[0].course_number ?? 1;
     const fireTime = roundItems[0].fire_time ?? null;
     const fireTimeMs = safeParseUtcTimestamp(fireTime);
-    const fireTimeEpoch = fireTimeMs ? Math.floor(fireTimeMs / 1000) : 0;
+    // ticket_id groups at MILLISECOND resolution to match get_kds_tickets_v2's
+    // floor(EXTRACT(EPOCH FROM fire_time) * 1000). Truncating to whole seconds here
+    // collapsed distinct sub-second fire rounds of the same order+course into one
+    // ticket_id; the last-wins de-dupe then dropped the earlier round's items from
+    // the board (prod order #S1-0013). Date.getTime() already floors µs -> ms, so
+    // this stays byte-for-byte identical to the RPC-built id.
+    const fireTimeEpoch = fireTimeMs ? fireTimeMs : 0;
 
     // Derive ticket status from active items only (voided/fully-refunded are display-only)
     // In 2-step mode, remap "pending" to "cooking" (items skip Pending bucket)
