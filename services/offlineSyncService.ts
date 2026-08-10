@@ -14,6 +14,13 @@
 import { connectionQuality } from "@/lib/network/connectionQuality";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isBlockedAddItemEnabled } from "@/lib/network/featureFlags";
+import {
+  classifyError,
+  fromLegacyBoolean,
+  remedyFor,
+  SHORT_BUDGET_CODES,
+  type OpResult,
+} from "@/lib/network/opResult";
 import { isSynced, isValidUUID } from "@/lib/offlineIdRegistry";
 import { isOwnershipError } from "@/lib/orderAccessControl";
 import { startInteraction } from "@/lib/perf";
@@ -182,7 +189,23 @@ export interface OfflineOperation {
   // Wave 3.0e: last error captured before dead-letter / final failure. Powers
   // the operator-facing subtitle on the per-item Retry chip + order banner so
   // they can tell "network too slow" from "server rejected" at a glance.
-  lastError?: { code?: string; message?: string };
+  //
+  // Failure-model rebuild: now set on EVERY failed attempt (not just at
+  // dead-letter) and carries `remedy` — the action the operator should take.
+  // Previously this was only ever populated with the synthetic
+  // `{ code: 'MAX_RETRIES' }` fallback, because the dispatcher passed `null`
+  // as the error for every `return false` path, so the banner could only ever
+  // render "Failed 10 times" — the retry counter describing itself.
+  lastError?: { code?: string; message?: string; remedy?: string };
+  // Whether the last failure was classified permanent. Drives `isRetryable`
+  // in the UI so terminal ops stop showing a Retry button that cannot work.
+  isTerminal?: boolean;
+  // Earliest epoch-ms at which this op may be retried. `scheduleAutoRetry`
+  // always computed exponential backoff, but nothing recorded it, so the 3s
+  // sync debounce / 10s NetInfo poll / 60s periodic sync would each call bare
+  // processQueue() and re-dispatch the op immediately — backoff was computed
+  // and then discarded. getReadyOperations() now filters on this.
+  nextAttemptAtMs?: number;
   // Wave 3.0e: epoch ms when the op transitioned to dead-letter. Used to
   // render relative timestamps ("10 attempts since 4:32pm") in the subtitle.
   deadLetteredAtMs?: number;
@@ -212,11 +235,21 @@ export const CURRENT_OPERATION_VERSION = 1;
 
 const STORAGE_KEY = "offline_operations_queue";
 const DEAD_LETTER_STORAGE_KEY = "offline_dead_letter_queue";
-// Wave 3.1: bumped 5→10 so sustained bad-WiFi (NLC + airplane flap) doesn't
-// dead-letter ops that would succeed once the network recovers. Exponential
-// backoff caps at 20s (was 60s), so 10 retries = ~150s of trying instead of
-// ~62s. OPERATION_TTL_MS (24h) is the real cutoff.
-const MAX_RETRY_ATTEMPTS = 10;
+// Wave 3.1 bumped this 5→10 to survive sustained bad-WiFi. That was treating a
+// symptom: because EVERY failure was misclassified as transient, the budget had
+// to be large enough to cover real network flaps, which meant permanent
+// rejections also got 10 attempts (×4 with slow-mode reprieves ≈ 44).
+//
+// Now that `classifyError` dead-letters permanent failures on attempt 1, this
+// budget applies only to genuinely transient errors, so it can come back down.
+// 5 attempts with backoff capped at 20s ≈ 75s of trying, plus the slow-mode
+// reprieve below for real bad-WiFi. OPERATION_TTL_MS (24h) is still the
+// backstop.
+const MAX_RETRY_ATTEMPTS = 5;
+
+// Errors we could not classify get a shorter budget. They're retried in case
+// it's a blip, but must not burn the full budget on what may well be permanent.
+const UNKNOWN_ERROR_MAX_ATTEMPTS = 3;
 const DEBOUNCE_MS = 3000;
 const MAX_QUEUE_SIZE = 500;
 const MAX_DEAD_LETTER_SIZE = 50;
@@ -395,8 +428,9 @@ function rebuildIndexes(): void {
 let onStatusChange: ((isOnline: boolean) => void) | null = null;
 let onQueueChange: ((count: number) => void) | null = null;
 let onOperationFailed: ((op: OfflineOperation) => void) | null = null;
-let executeOperation: ((op: OfflineOperation) => Promise<boolean>) | null =
-  null;
+let executeOperation:
+  | ((op: OfflineOperation) => Promise<boolean | OpResult>)
+  | null = null;
 
 // W1-1 dev-only durability assertion. useOrderStore registers a checker at
 // module init (a direct import here would be circular: useOrderStore already
@@ -449,7 +483,7 @@ export async function initOfflineSyncService(config: {
   onStatusChange: (isOnline: boolean) => void;
   onQueueChange: (count: number) => void;
   onOperationFailed?: (op: OfflineOperation) => void;
-  executeOperation: (op: OfflineOperation) => Promise<boolean>;
+  executeOperation: (op: OfflineOperation) => Promise<boolean | OpResult>;
 }): Promise<void> {
   // Self-guard: prevent double-init from concurrent calls or re-renders.
   // isInitializing is set synchronously so a second call within the same tick is blocked.
@@ -1190,6 +1224,9 @@ export async function retryFailedOperation(operationId: string): Promise<void> {
   if (op && op.status === "failed") {
     op.status = "pending";
     op.retryCount = 0;
+    op.nextAttemptAtMs = undefined;
+    op.slowModeRetryCount = 0;
+    op.isTerminal = false;
     await saveQueueToStorage();
     onQueueChange?.(getActivePendingCount());
 
@@ -1770,6 +1807,12 @@ export async function retryDeadLetterOperation(
 
   op.status = "pending";
   op.retryCount = 0;
+  // Clear retry gating, or the op would sit behind a stale backoff window /
+  // spent slow-mode budget and appear to do nothing when the operator taps Retry.
+  op.nextAttemptAtMs = undefined;
+  op.slowModeRetryCount = 0;
+  op.isTerminal = false;
+  op.firstAttemptedAtMs = undefined;
   pendingOperations.push(op);
   addToIndex(op);
   await saveQueueToStorage();
@@ -1847,6 +1890,9 @@ export async function retrySyncForItem(itemId: string): Promise<number> {
     op.status = "pending";
     op.retryCount = 0;
     op.firstAttemptedAtMs = undefined;
+    op.nextAttemptAtMs = undefined;
+    op.slowModeRetryCount = 0;
+    op.isTerminal = false;
     pendingOperations.push(op);
     addToIndex(op);
     count++;
@@ -1859,6 +1905,9 @@ export async function retrySyncForItem(itemId: string): Promise<number> {
       op.status = "pending";
       op.retryCount = 0;
       op.firstAttemptedAtMs = undefined;
+      op.nextAttemptAtMs = undefined;
+      op.slowModeRetryCount = 0;
+      op.isTerminal = false;
       count++;
     }
   }
@@ -2119,7 +2168,15 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
  * Get all operations that are ready to process (pending + dependencies satisfied).
  */
 function getReadyOperations(): OfflineOperation[] {
-  const pending = pendingOperations.filter((op) => op.status === "pending");
+  const now = Date.now();
+  const pending = pendingOperations.filter(
+    (op) =>
+      op.status === "pending" &&
+      // Respect exponential backoff. Ops still inside their backoff window are
+      // not "ready" — this is what stops the various unconditional
+      // processQueue() callers from collapsing the retry spacing to ~3s.
+      (op.nextAttemptAtMs === undefined || op.nextAttemptAtMs <= now),
+  );
   const ready = pending.filter((op) => areDependenciesSatisfied(op));
   return sortOperationsByPriority(ready);
 }
@@ -2213,6 +2270,7 @@ async function updateBlockedOperations(): Promise<void> {
 async function handleOperationFailure(
   operation: OfflineOperation,
   error: any,
+  result?: OpResult,
 ): Promise<void> {
   // Wave 2.5: if the op was already removed externally (e.g., the executor
   // detected ownership rejection inline and called `dropQueuedOpsForItem`),
@@ -2252,7 +2310,61 @@ async function handleOperationFailure(
     return;
   }
 
-  const permanent = error && !isTransientError(error);
+  // Failure-model rebuild: classification now comes from the executor's
+  // `OpResult` when available, instead of being guessed from a `null` error.
+  //
+  // Previously: `const permanent = error && !isTransientError(error)` — with
+  // `error === null` on every `return false` path, `permanent` was ALWAYS
+  // false, so a 400/403/FK-violation was retried the full budget and then
+  // reported as "Failed N times" with no cause.
+  const classified: OpResult = result ?? classifyError(error, { opType: operation.type });
+
+  // An "already applied" result reaching here means the executor discovered
+  // mid-failure that the desired state already holds. Treat as done.
+  if (classified.outcome === "success") {
+    console.log(
+      `[OfflineSync] ✓ IDEMPOTENT: ${operation.type} (${operation.id}) — already applied, discarding`,
+    );
+    await removeOperation(operation.id);
+    return;
+  }
+
+  const permanent = classified.outcome === "terminal";
+
+  // Record the cause on EVERY attempt, not just at dead-letter, so an op that
+  // is still retrying can already tell the operator what is going wrong.
+  if (classified.outcome === "terminal" || classified.outcome === "retry") {
+    operation.lastError = {
+      code: classified.code,
+      message: classified.message,
+      remedy: classified.remedy,
+    };
+    operation.isTerminal = permanent;
+  }
+
+  // Terminal failures skip the retry budget and the slow-mode reprieve
+  // entirely — replaying an identical payload into an identical rejection
+  // cannot succeed, and burning 44 attempts on it is exactly the behavior
+  // this rebuild removes.
+  if (permanent) {
+    console.log(
+      `[OfflineSync] ✗ DEAD-LETTERED (terminal: ${classified.code}): ${operation.type} (${operation.id}) — ${classified.message}`,
+    );
+    operation.deadLetteredAtMs = Date.now();
+    removeFromIndex(operation);
+    pendingOperations = pendingOperations.filter((op) => op.id !== operation.id);
+    moveToDeadLetter(operation);
+    await saveQueueToStorage();
+    onOperationFailed?.(operation);
+    return;
+  }
+
+  // Unclassified errors get a shorter budget than known-transient ones.
+  const effectiveMaxAttempts = SHORT_BUDGET_CODES.has(
+    classified.outcome === "retry" ? classified.code : "",
+  )
+    ? UNKNOWN_ERROR_MAX_ATTEMPTS
+    : MAX_RETRY_ATTEMPTS;
 
   // Wave 3.0f-2: slow-mode reprieve. If the diagnosis is "WiFi is bad" (not a
   // permanent server rejection, just exhausted retries) AND the
@@ -2261,8 +2373,7 @@ async function handleOperationFailure(
   // MAX_SLOW_MODE_REPRIEVES so a permanently-unreachable backend eventually
   // does dead-letter.
   if (
-    !permanent &&
-    operation.retryCount >= MAX_RETRY_ATTEMPTS &&
+    operation.retryCount >= effectiveMaxAttempts &&
     connectionQuality.isSlow() &&
     (operation.slowModeRetryCount ?? 0) < MAX_SLOW_MODE_REPRIEVES
   ) {
@@ -2277,42 +2388,36 @@ async function handleOperationFailure(
     return;
   }
 
-  if (permanent || operation.retryCount >= MAX_RETRY_ATTEMPTS) {
+  // Terminal failures already returned above, so reaching here means the op is
+  // transient and has run out of budget.
+  if (operation.retryCount >= effectiveMaxAttempts) {
     const exhaustedSlowMode =
-      !permanent &&
       (operation.slowModeRetryCount ?? 0) >= MAX_SLOW_MODE_REPRIEVES;
-    const reason = permanent
-      ? "permanent error"
-      : exhaustedSlowMode
-        ? "sustained bad wifi"
-        : "max retries";
+
     console.log(
-      `[OfflineSync] ✗ DEAD-LETTERED (${reason}): ${operation.type} (${operation.id})`,
+      `[OfflineSync] ✗ DEAD-LETTERED (${
+        exhaustedSlowMode ? "sustained bad wifi" : "retries exhausted"
+      }): ${operation.type} (${operation.id}) — last cause: ${
+        operation.lastError?.code ?? "unknown"
+      }`,
     );
-    // Wave 3.0e: capture the last error so the operator-facing subtitle can
-    // show "network too slow" vs "server rejected" vs "max retries".
+
     if (exhaustedSlowMode) {
       operation.lastError = {
         code: "SUSTAINED_BAD_WIFI",
         message: `Tried for ~${Math.round(
           (MAX_SLOW_MODE_REPRIEVES * MAX_RETRY_ATTEMPTS * 15) / 60,
         )} min — WiFi never recovered`,
-      };
-    } else if (error) {
-      const code =
-        (error as any).code ??
-        (error as any).status ??
-        (permanent ? "PERMANENT" : "MAX_RETRIES");
-      const message =
-        (error as any).message ?? (error as any).msg ?? String(error);
-      operation.lastError = { code: String(code), message };
-    } else if (operation.retryCount >= MAX_RETRY_ATTEMPTS) {
-      operation.lastError = {
-        code: "MAX_RETRIES",
-        message: `Failed ${MAX_RETRY_ATTEMPTS} times — gave up`,
+        remedy: remedyFor("SUSTAINED_BAD_WIFI"),
       };
     }
-    // Remove from active queue and move to dead letter
+    // Otherwise KEEP the classified cause set above. The old code overwrote it
+    // with `{ code: 'MAX_RETRIES', message: 'Failed N times — gave up' }`,
+    // which is why the banner could only ever report the retry counter instead
+    // of the actual reason the operation failed.
+
+    operation.isTerminal = false; // transient-but-exhausted → Retry still valid
+    operation.deadLetteredAtMs = Date.now();
     removeFromIndex(operation);
     pendingOperations = pendingOperations.filter(
       (op) => op.id !== operation.id,
@@ -2322,9 +2427,14 @@ async function handleOperationFailure(
     onOperationFailed?.(operation);
   } else {
     operation.status = "pending";
+    // Honor the computed backoff. Without this the 3s debounce, the 10s NetInfo
+    // poll and the 60s periodic sync all call bare processQueue(), so an op's
+    // backoff was computed and then immediately bypassed — the "10 retries
+    // instantly" behavior. getReadyOperations() now skips ops until this time.
+    operation.nextAttemptAtMs = Date.now() + calculateBackoffDelay(operation.retryCount);
     await saveQueueToStorage();
     console.log(
-      `[OfflineSync] ⟳ RETRY: ${operation.type} (${operation.id}) - attempt ${operation.retryCount}/${MAX_RETRY_ATTEMPTS}`,
+      `[OfflineSync] ⟳ RETRY (${classified.outcome === "retry" ? classified.code : "?"}): ${operation.type} (${operation.id}) - attempt ${operation.retryCount}/${effectiveMaxAttempts}`,
     );
     scheduleAutoRetry(operation);
   }
@@ -2333,19 +2443,27 @@ async function handleOperationFailure(
 /**
  * Process all pending operations in priority order with dependency tracking.
  */
-async function executeWithTimeout(op: OfflineOperation): Promise<boolean> {
-  return Promise.race([
-    executeOperation!(op),
-    new Promise<boolean>((_, reject) =>
-      setTimeout(
-        () =>
-          reject(
-            new Error(`Operation timeout after ${OPERATION_TIMEOUT_MS}ms`),
-          ),
-        OPERATION_TIMEOUT_MS,
-      ),
-    ),
-  ]);
+async function executeWithTimeout(
+  op: OfflineOperation,
+): Promise<boolean | OpResult> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      executeOperation!(op),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(`Operation timeout after ${OPERATION_TIMEOUT_MS}ms`),
+            ),
+          OPERATION_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    // The loser of the race previously leaked a live 30s timer per attempt.
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function processQueue(): Promise<void> {
@@ -2494,7 +2612,14 @@ async function processQueue(): Promise<void> {
         );
         console.log(`[OfflineSync]   Item: ${operation.localItemId || "N/A"}`);
 
-        const success = await executeWithTimeout(operation);
+        const rawResult = await executeWithTimeout(operation);
+        // Handlers are being migrated from `boolean` to `OpResult`; normalize
+        // so both shapes work while the conversion lands in batches.
+        const opResult: OpResult =
+          typeof rawResult === "boolean"
+            ? fromLegacyBoolean(rawResult)
+            : rawResult;
+        const success = opResult.outcome === "success";
 
         if (success) {
           console.log(
@@ -2523,6 +2648,14 @@ async function processQueue(): Promise<void> {
 
           // After completing an operation, unblock dependent operations
           await updateBlockedOperations();
+        } else if (opResult.outcome === "blocked") {
+          // Executor returned an explicit blocked result (dependency wait).
+          // Not a failure — the retry budget must not be charged, or an item
+          // op can dead-letter while its parent order is still syncing fine.
+          await markOperationBlocked(operation.id, opResult.reason);
+          console.log(
+            `[OfflineSync] ↺ BLOCKED: ${operation.type} (${operation.id}) — ${opResult.reason} (retry budget preserved)`,
+          );
         } else if ((operation.status as string) === "blocked") {
           // Wave 2.8: executor signaled "blocked" via side-channel
           // (markOperationBlocked). Skip retry-counter bump and
@@ -2534,9 +2667,12 @@ async function processQueue(): Promise<void> {
             `[OfflineSync] ↺ BLOCKED: ${operation.type} (${operation.id}) — retry budget preserved`,
           );
         } else {
+          // Previously this passed `null`, which made handleOperationFailure
+          // classify every failure as transient and report "Failed N times".
+          // The executor's own result now carries code + message + remedy.
           operation.retryCount++;
           failCount++;
-          handleOperationFailure(operation, null);
+          await handleOperationFailure(operation, null, opResult);
         }
       } catch (error) {
         console.error(
@@ -2553,7 +2689,8 @@ async function processQueue(): Promise<void> {
         } else {
           operation.retryCount++;
           failCount++;
-          handleOperationFailure(operation, error);
+          // classifyError runs inside handleOperationFailure for thrown errors.
+          await handleOperationFailure(operation, error);
         }
       }
     }

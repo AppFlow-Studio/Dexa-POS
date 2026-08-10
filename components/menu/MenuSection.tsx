@@ -80,7 +80,7 @@ interface MenuSectionProps {
   placeMenuSelectorInMenuRow?: boolean;
 }
 
-// OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
+// OPTIMIZED: Pre-compiled StyleSheet for the grid (no runtime parsing)
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -96,9 +96,6 @@ const menuSectionStylesByScale = new Map<string, MenuSectionStyles>();
 const createMenuSectionStyles = (scale: number) => {
   const s = (n: number) => Math.round(n * scale);
   return StyleSheet.create({
-    spacer: {
-      flex: 1,
-    },
     // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
     // the cell wrapper (3+3 horizontal between columns, 6 vertical between
     // rows) since FlashList has no columnWrapperStyle.
@@ -169,10 +166,6 @@ const getImageSource = (item: MenuItemType) => {
   imageSourceCache.set(key, source);
   return source;
 };
-
-// OPTIMIZED: Memoized spacer component — 20% width matches a real grid cell.
-const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
-SpacerItem.displayName = "SpacerItem";
 
 // Isolated overlay — only this re-renders when modifier opens, not the FlatList
 const MenuBlockingOverlay = React.memo(() => {
@@ -780,24 +773,15 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     availabilityTick,
   ]);
   const numColumns = 5;
-  const dataWithSpacers = useMemo(() => {
-    const items = [...filteredMenuItems];
-    const numberOfElementsLastRow = items.length % numColumns;
-    if (numberOfElementsLastRow === 0) {
-      return items;
-    }
-    const numberOfSpacers = numColumns - numberOfElementsLastRow;
-    for (let i = 0; i < numberOfSpacers; i++) {
-      items.push({
-        id: `spacer-${i}`,
-        name: "spacer",
-        price: 0,
-        category: [],
-        meal: [],
-      } as any);
-    }
-    return items;
-  }, [filteredMenuItems]);
+  // NOTE: no last-row spacer padding here (the FlatList-era hack). FlashList's
+  // grid layout sizes every cell to containerWidth/numColumns via span, so a
+  // partial last row already renders left-aligned at the right width. Filler
+  // cells actively broke the grid: they render at height 0, and FlashList feeds
+  // every measured cell height into a running AverageWindow that becomes the
+  // layout height for all not-yet-measured cells. Each category with a partial
+  // last row pushed 1-4 zeros into that average (and it carries across layout
+  // managers), so the next menu's rows were laid out shorter than the tiles
+  // actually draw — rows overlapping each other on menu switch.
 
   // OPTIMIZED: Hoist category lookup OUTSIDE renderItem (runs once, not 100+ times)
   const currentCategoryId = useMemo(() => {
@@ -867,12 +851,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // NOTE: All hooks must be called before any early returns
   const keyExtractor = useCallback((item: MenuItemType) => item.id, []);
 
-  // OPTIMIZED: Memoized renderItem using hoisted category ID and SpacerItem
+  // OPTIMIZED: Memoized renderItem using hoisted category ID
   const renderMenuItem = useCallback(
     ({ item, index }: ListRenderItemInfo<MenuItemType>) => {
-      if ((item as any).name === "spacer") {
-        return <SpacerItem />;
-      }
       const highThrough = numColumns * 3;
       const normalThrough = numColumns * 10;
       const imagePriority =
@@ -898,13 +879,6 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       numColumns,
       isMenuAddDisabled,
     ],
-  );
-
-  // FlashList recycles by type — keep spacer cells out of the MenuItem pool.
-  const getItemType = useCallback(
-    (item: MenuItemType) =>
-      (item as any).name === "spacer" ? "spacer" : "item",
-    [],
   );
 
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
@@ -1355,12 +1329,19 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   ]}
                 >
                   <FlashList
-                    data={dataWithSpacers}
+                    data={filteredMenuItems}
                     keyExtractor={keyExtractor}
                     numColumns={numColumns}
                     estimatedItemSize={estimatedItemSize}
-                    getItemType={getItemType}
-                    disableAutoLayout
+                    // NOTE: do NOT set `disableAutoLayout` here. It turns off the
+                    // native AutoLayoutView pass (`clearGapsAndOverlaps`), which is
+                    // what corrects cells drawn at stale offsets when a measured
+                    // tile height differs from the estimate — i.e. the exact
+                    // overlapping-tiles artifact seen on menu switch. It was
+                    // originally added to hide a dark rectangle below short lists;
+                    // that turned out to be a themed `backgroundColor` frozen at
+                    // module load (see the gridContainer note above) and is fixed
+                    // properly by the inline background at this render site.
                     drawDistance={500}
                     contentContainerStyle={{
                       backgroundColor: colors.card,
@@ -1369,7 +1350,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     showsVerticalScrollIndicator={false}
                     // Re-render visible cells when the add-disabled state flips
                     // (e.g. first order's db_order_id arrives → isMenuAddDisabled
-                    // false). Without this, dataWithSpacers keeps the same item
+                    // false). Without this, filteredMenuItems keeps the same item
                     // references so FlashList leaves the first category's cells
                     // grayed out until a category switch rebuilds the data.
                     extraData={isMenuAddDisabled}
