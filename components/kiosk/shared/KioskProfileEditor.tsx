@@ -1,3 +1,4 @@
+import { KioskAssetsManager } from "@/components/kiosk/shared/KioskAssetsManager";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { toastService } from "@/lib/toastService";
 import type {
@@ -11,10 +12,13 @@ import {
   ChevronRight,
   Clock,
   CreditCard,
+  Images,
   Info,
   LayoutGrid,
+  Minus,
   Palette,
   Pipette,
+  Plus,
   Power,
   RefreshCw,
   Settings2,
@@ -25,6 +29,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  ScrollView,
   Switch,
   Text,
   TextInput,
@@ -102,13 +107,54 @@ function extractEditable(c: KioskConfig): EditableProfile {
   };
 }
 
-const parsePresets = (text: string): number[] =>
-  text
-    .split(/[,\s]+/)
-    .map((t) => parseInt(t, 10))
-    .filter((n) => Number.isFinite(n) && n >= 0);
-
 const TEAL = "#0D9488";
+
+/** Common tip percentages offered as one-tap chips (merged with any existing
+ *  custom presets so nothing a merchant already saved is lost). */
+const COMMON_TIPS = [10, 12, 15, 18, 20, 22, 25, 30];
+
+/** Font families offered in the dropdown. The current value is always included
+ *  even if it isn't in this list, so a web-set font is never dropped. */
+const FONT_OPTIONS = [
+  "Inter",
+  "Roboto",
+  "Poppins",
+  "Montserrat",
+  "Lato",
+  "Open Sans",
+  "Nunito",
+  "Playfair Display",
+];
+
+/** Template preview cards — mirrors the website's Template picker copy. */
+const TEMPLATES: { value: KioskTemplateId; name: string; desc: string }[] = [
+  {
+    value: "template_a",
+    name: "Template A",
+    desc: "Menu-first grid with a large hero header.",
+  },
+  {
+    value: "template_b",
+    name: "Template B",
+    desc: "Category rail with compact product rows.",
+  },
+  {
+    value: "template_c",
+    name: "Template C",
+    desc: "Visual browse layout for high-traffic counters.",
+  },
+];
+
+const uniqSorted = (nums: number[]): number[] =>
+  Array.from(new Set(nums)).sort((a, b) => a - b);
+
+/** Seconds → friendly "45s" / "1m 30s" for the timeout steppers. */
+function formatDuration(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
+}
 
 export function KioskProfileEditor({
   config,
@@ -122,25 +168,25 @@ export function KioskProfileEditor({
   const [draft, setDraft] = useState<EditableProfile>(() =>
     extractEditable(config),
   );
-  // Tip presets edited as free text so a trailing comma/space is typable.
-  const [tipPresetsText, setTipPresetsText] = useState(() =>
-    config.tipPresets.join(", "),
-  );
+  // Tip presets edited as one-tap chips (no comma-typing).
+  const [tipPresets, setTipPresets] = useState<number[]>(() => [
+    ...config.tipPresets,
+  ]);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const baseline = useMemo(() => extractEditable(config), [config]);
   const dirty =
     JSON.stringify(draft) !== JSON.stringify(baseline) ||
-    JSON.stringify(parsePresets(tipPresetsText)) !==
-      JSON.stringify(config.tipPresets);
+    JSON.stringify(uniqSorted(tipPresets)) !==
+      JSON.stringify(uniqSorted(config.tipPresets));
 
   // Refresh the form from a background poll ONLY when there are no unsaved
   // edits — otherwise keep what the manager is typing.
   useEffect(() => {
     if (!dirty) {
       setDraft(extractEditable(config));
-      setTipPresetsText(config.tipPresets.join(", "));
+      setTipPresets([...config.tipPresets]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
@@ -191,7 +237,7 @@ export function KioskProfileEditor({
         idle_timeout_seconds: draft.idleTimeoutSeconds,
         cart_reset_timeout_seconds: draft.cartResetTimeoutSeconds,
         tip_screen_enabled: draft.tipScreenEnabled,
-        tip_presets: parsePresets(tipPresetsText),
+        tip_presets: uniqSorted(tipPresets),
         auto_print_receipt: draft.autoPrintReceipt,
         receipt_email_prompt: draft.receiptEmailPrompt,
         receipt_sms_prompt: draft.receiptSmsPrompt,
@@ -296,15 +342,9 @@ export function KioskProfileEditor({
           value={draft.profileName}
           onChangeText={(v) => set("profileName", v)}
         />
-        <Segmented
-          label="Template"
-          options={[
-            { value: "template_a", label: "A" },
-            { value: "template_b", label: "B" },
-            { value: "template_c", label: "C" },
-          ]}
+        <TemplatePicker
           value={draft.templateId}
-          onChange={(v) => set("templateId", v as KioskTemplateId)}
+          onChange={(v) => set("templateId", v)}
         />
         <Segmented
           label="Orientation"
@@ -320,12 +360,24 @@ export function KioskProfileEditor({
           value={draft.welcomeMessage}
           onChangeText={(v) => set("welcomeMessage", v)}
         />
-        <TextField
-          label="Pickup number prefix"
-          value={draft.pickupNumberPrefix}
-          onChangeText={(v) => set("pickupNumberPrefix", v)}
-          placeholder="e.g. A-"
-        />
+        <View>
+          <TextField
+            label="Pickup number prefix"
+            hint="Shown in front of the customer's pickup number on the order-ready screen."
+            value={draft.pickupNumberPrefix}
+            onChangeText={(v) => set("pickupNumberPrefix", v)}
+            placeholder="e.g. A-"
+            maxLength={6}
+          />
+          <View className="flex-row items-center mt-2">
+            <Text className="text-[11px] text-gray-400 mr-2">Preview</Text>
+            <View className="px-2.5 py-1 rounded-lg bg-gray-100">
+              <Text className="text-sm font-bold text-gray-700">
+                {(draft.pickupNumberPrefix || "") + "045"}
+              </Text>
+            </View>
+          </View>
+        </View>
       </Collapsible>
 
       <Collapsible title="Appearance" Icon={Palette}>
@@ -337,35 +389,45 @@ export function KioskProfileEditor({
           <ColorField label="Secondary" value={draft.secondaryColor} onChangeText={(v) => set("secondaryColor", v)} />
           <ColorField label="Accent" value={draft.accentColor} onChangeText={(v) => set("accentColor", v)} />
         </View>
-        <TextField
+        <SelectField
           label="Font family"
           value={draft.fontFamily}
-          onChangeText={(v) => set("fontFamily", v)}
+          options={FONT_OPTIONS}
+          onChange={(v) => set("fontFamily", v)}
+        />
+      </Collapsible>
+
+      <Collapsible title="Media & Assets" Icon={Images}>
+        <KioskAssetsManager
+          config={config}
+          onRefreshKioskConfig={onRefreshKioskConfig}
         />
       </Collapsible>
 
       <Collapsible title="Timing" Icon={Clock}>
-        <NumberField
-          label="Idle timeout (seconds)"
+        <Stepper
+          label="Idle timeout"
+          hint="How long the kiosk waits, with no touches, before returning to the welcome screen."
           value={draft.idleTimeoutSeconds}
-          onChangeNumber={(n) => set("idleTimeoutSeconds", n)}
+          onChange={(n) => set("idleTimeoutSeconds", n)}
+          step={15}
+          min={15}
+          max={600}
         />
-        <NumberField
-          label="Cart reset timeout (seconds)"
+        <Stepper
+          label="Cart reset timeout"
+          hint="How long an abandoned cart is kept before it's cleared."
           value={draft.cartResetTimeoutSeconds}
-          onChangeNumber={(n) => set("cartResetTimeoutSeconds", n)}
+          onChange={(n) => set("cartResetTimeoutSeconds", n)}
+          step={5}
+          min={5}
+          max={300}
         />
       </Collapsible>
 
       <Collapsible title="Checkout & Tips" Icon={CreditCard}>
         <ToggleRow label="Tip screen" value={draft.tipScreenEnabled} onChange={(v) => set("tipScreenEnabled", v)} />
-        <TextField
-          label="Tip presets (%)"
-          value={tipPresetsText}
-          onChangeText={setTipPresetsText}
-          keyboardType="numbers-and-punctuation"
-          placeholder="15, 18, 20, 25"
-        />
+        <TipPresetsEditor value={tipPresets} onChange={setTipPresets} />
         <ToggleRow label="Auto-print receipt" value={draft.autoPrintReceipt} onChange={(v) => set("autoPrintReceipt", v)} />
         <ToggleRow label="Email receipt prompt" value={draft.receiptEmailPrompt} onChange={(v) => set("receiptEmailPrompt", v)} />
         <ToggleRow label="SMS receipt prompt" value={draft.receiptSmsPrompt} onChange={(v) => set("receiptSmsPrompt", v)} />
@@ -436,51 +498,241 @@ function Collapsible({
 
 function TextField({
   label,
+  hint,
   value,
   onChangeText,
   placeholder,
   keyboardType,
+  maxLength,
 }: {
   label: string;
+  hint?: string;
   value: string;
   onChangeText: (v: string) => void;
   placeholder?: string;
   keyboardType?: "default" | "numbers-and-punctuation";
+  maxLength?: number;
 }) {
   return (
     <View>
       <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
+      {hint ? (
+        <Text className="text-[11px] text-gray-400 mb-1.5 -mt-1">{hint}</Text>
+      ) : null}
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor="#9CA3AF"
         keyboardType={keyboardType}
+        maxLength={maxLength}
         className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-3 text-base text-black"
       />
     </View>
   );
 }
 
-function NumberField({
+/** −/+ stepper for numeric settings (timeouts) — no keyboard needed. */
+function Stepper({
   label,
+  hint,
   value,
-  onChangeNumber,
+  onChange,
+  step = 1,
+  min = 0,
+  max = 9999,
 }: {
   label: string;
+  hint?: string;
   value: number;
-  onChangeNumber: (n: number) => void;
+  onChange: (n: number) => void;
+  step?: number;
+  min?: number;
+  max?: number;
 }) {
+  const clamp = (n: number) => Math.max(min, Math.min(max, n));
+  const atMin = value <= min;
+  const atMax = value >= max;
   return (
     <View>
       <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
-      <TextInput
-        value={String(value)}
-        onChangeText={(t) => onChangeNumber(parseInt(t, 10) || 0)}
-        keyboardType="number-pad"
-        placeholderTextColor="#9CA3AF"
-        className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-3 text-base text-black"
-      />
+      {hint ? (
+        <Text className="text-[11px] text-gray-400 mb-1.5 -mt-1">{hint}</Text>
+      ) : null}
+      <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl p-1.5">
+        <TouchableOpacity
+          onPress={() => onChange(clamp(value - step))}
+          disabled={atMin}
+          activeOpacity={0.7}
+          className={`w-14 h-12 rounded-lg items-center justify-center ${
+            atMin ? "bg-gray-100" : "bg-white border border-gray-200"
+          }`}
+        >
+          <Minus size={22} color={atMin ? "#D1D5DB" : "#111827"} />
+        </TouchableOpacity>
+        <View className="flex-1 items-center">
+          <Text className="text-xl font-bold text-black">
+            {formatDuration(value)}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => onChange(clamp(value + step))}
+          disabled={atMax}
+          activeOpacity={0.7}
+          className={`w-14 h-12 rounded-lg items-center justify-center ${
+            atMax ? "bg-gray-100" : "bg-white border border-gray-200"
+          }`}
+        >
+          <Plus size={22} color={atMax ? "#D1D5DB" : "#111827"} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+/** Tap-to-pick dropdown (font family). Opens a simple option list in a modal. */
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // Always include the current value so a web-set option is never lost.
+  const opts =
+    !value || options.includes(value) ? options : [value, ...options];
+  return (
+    <View>
+      <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        activeOpacity={0.7}
+        className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-3"
+      >
+        <Text className="flex-1 text-base text-black">
+          {value || "System default"}
+        </Text>
+        <ChevronDown size={18} color="#9CA3AF" />
+      </TouchableOpacity>
+
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+        statusBarTranslucent
+      >
+        <Pressable
+          onPress={() => setOpen(false)}
+          className="flex-1 bg-black/50 items-center justify-center px-6"
+        >
+          <Pressable
+            onPress={() => {}}
+            className="w-full bg-white rounded-3xl overflow-hidden"
+            style={[{ maxWidth: 360 }, modalShadow]}
+          >
+            <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-100">
+              <Text className="text-base font-bold text-black">{label}</Text>
+              <Pressable
+                onPress={() => setOpen(false)}
+                className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
+              >
+                <X size={18} color="#6B7280" />
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {opts.map((opt) => {
+                const active = opt === value;
+                return (
+                  <TouchableOpacity
+                    key={opt}
+                    onPress={() => {
+                      onChange(opt);
+                      setOpen(false);
+                    }}
+                    activeOpacity={0.7}
+                    className={`flex-row items-center px-5 py-4 border-b border-gray-50 ${
+                      active ? "bg-teal-50" : ""
+                    }`}
+                  >
+                    <Text
+                      className={`flex-1 text-base ${
+                        active ? "font-bold text-teal-700" : "text-gray-800"
+                      }`}
+                    >
+                      {opt}
+                    </Text>
+                    {active ? <Check size={18} color={TEAL} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+/** Tip presets as one-tap percentage chips — no comma-separated typing. */
+function TipPresetsEditor({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (next: number[]) => void;
+}) {
+  const selected = new Set(value);
+  const chips = uniqSorted([...COMMON_TIPS, ...value]);
+  const toggle = (n: number) => {
+    const next = new Set(value);
+    if (next.has(n)) next.delete(n);
+    else next.add(n);
+    onChange(uniqSorted([...next]));
+  };
+  return (
+    <View>
+      <Text className="text-xs font-medium text-gray-500 mb-1">
+        Tip presets
+      </Text>
+      <Text className="text-[11px] text-gray-400 mb-2.5">
+        Tap the tip amounts to show on the kiosk tip screen.
+      </Text>
+      <View className="flex-row flex-wrap gap-2">
+        {chips.map((n) => {
+          const on = selected.has(n);
+          return (
+            <TouchableOpacity
+              key={n}
+              onPress={() => toggle(n)}
+              activeOpacity={0.8}
+              className={`px-4 py-2.5 rounded-full border ${
+                on
+                  ? "bg-teal-600 border-teal-600"
+                  : "bg-gray-50 border-gray-200"
+              }`}
+            >
+              <Text
+                className={`text-sm font-bold ${
+                  on ? "text-white" : "text-gray-500"
+                }`}
+              >
+                {n}%
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {value.length === 0 ? (
+        <Text className="text-[11px] text-amber-600 mt-2">
+          No tips selected — the kiosk tip screen will show no preset buttons.
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -720,6 +972,104 @@ function ReadOnlyRow({
       >
         {value}
       </Text>
+    </View>
+  );
+}
+
+/** Template chooser with a mini wireframe preview per layout (A / B / C),
+ *  mirroring the website's Template picker. */
+function TemplatePicker({
+  value,
+  onChange,
+}: {
+  value: KioskTemplateId;
+  onChange: (v: KioskTemplateId) => void;
+}) {
+  return (
+    <View>
+      <Text className="text-xs font-medium text-gray-500 mb-1">Template</Text>
+      <Text className="text-[11px] text-gray-400 mb-2.5">
+        Layout the kiosk uses for browsing and ordering.
+      </Text>
+      <View className="flex-row gap-2.5">
+        {TEMPLATES.map((t) => {
+          const active = value === t.value;
+          return (
+            <TouchableOpacity
+              key={t.value}
+              onPress={() => onChange(t.value)}
+              activeOpacity={0.85}
+              className={`flex-1 rounded-2xl border p-2.5 ${
+                active
+                  ? "border-teal-500 bg-teal-50"
+                  : "border-gray-200 bg-white"
+              }`}
+            >
+              <TemplateThumb kind={t.value} />
+              <View className="flex-row items-center justify-between mt-2">
+                <Text className="text-sm font-bold text-black" numberOfLines={1}>
+                  {t.name}
+                </Text>
+                {active ? (
+                  <View className="w-5 h-5 rounded-full bg-teal-600 items-center justify-center">
+                    <Check size={13} color="#FFFFFF" />
+                  </View>
+                ) : null}
+              </View>
+              <Text
+                className="text-[11px] text-gray-400 mt-0.5"
+                numberOfLines={2}
+              >
+                {t.desc}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/** Small wireframe thumbnail conveying each template's layout. */
+function TemplateThumb({ kind }: { kind: KioskTemplateId }) {
+  return (
+    <View
+      className="rounded-xl bg-gray-100 p-2"
+      style={{ height: 86, overflow: "hidden" }}
+    >
+      {kind === "template_a" ? (
+        // Large hero header over a grid of tiles.
+        <View style={{ flex: 1, gap: 6 }}>
+          <View className="rounded-md bg-teal-400" style={{ height: 24 }} />
+          <View className="flex-row" style={{ flex: 1, gap: 6 }}>
+            <View className="flex-1 rounded-md bg-gray-300" />
+            <View className="flex-1 rounded-md bg-gray-300" />
+            <View className="flex-1 rounded-md bg-gray-300" />
+          </View>
+        </View>
+      ) : kind === "template_b" ? (
+        // Left category rail + compact stacked rows.
+        <View className="flex-row" style={{ flex: 1, gap: 6 }}>
+          <View className="rounded-md bg-teal-400" style={{ width: 22 }} />
+          <View style={{ flex: 1, gap: 5 }}>
+            <View className="rounded-md bg-gray-300" style={{ height: 12 }} />
+            <View className="rounded-md bg-gray-300" style={{ height: 12 }} />
+            <View className="rounded-md bg-gray-300" style={{ height: 12 }} />
+          </View>
+        </View>
+      ) : (
+        // Visual 2×2 image-forward grid.
+        <View style={{ flex: 1, gap: 6 }}>
+          <View className="flex-row" style={{ flex: 1, gap: 6 }}>
+            <View className="flex-1 rounded-md bg-teal-400" />
+            <View className="flex-1 rounded-md bg-gray-300" />
+          </View>
+          <View className="flex-row" style={{ flex: 1, gap: 6 }}>
+            <View className="flex-1 rounded-md bg-gray-300" />
+            <View className="flex-1 rounded-md bg-gray-300" />
+          </View>
+        </View>
+      )}
     </View>
   );
 }

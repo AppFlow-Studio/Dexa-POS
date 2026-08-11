@@ -176,3 +176,16 @@ export const useKioskCartStore = create<KioskCartState>((set, get) => ({
 
   itemCount: () => get().lines.reduce((sum, l) => sum + l.quantity, 0),
 }));
+
+/**
+ * Total quantity of a given menu item currently in the cart, summed across all
+ * of its lines/variants. Subscribes narrowly (returns a number) so a menu card
+ * using it only re-renders when *its* item's quantity changes.
+ */
+export const useKioskItemQuantity = (menuItemId: string): number =>
+  useKioskCartStore((s) =>
+    s.lines.reduce(
+      (sum, l) => (l.menuItemId === menuItemId ? sum + l.quantity : sum),
+      0,
+    ),
+  );

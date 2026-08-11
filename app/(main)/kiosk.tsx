@@ -1,8 +1,8 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
 import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
-import { KioskAttractCarouselB } from "@/components/kiosk/template-b/KioskAttractCarouselB";
 import { KioskAdminPinModal } from "@/components/kiosk/shared/KioskAdminPinModal";
 import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosticsScreen";
+import { KioskErrorBoundary } from "@/components/kiosk/shared/KioskErrorBoundary";
 import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import {
@@ -104,31 +104,41 @@ export default function KioskScreen() {
     );
   }
 
-  const AttractComponent =
-    config.templateId === "template_b" || config.templateId === "template_c"
-      ? KioskAttractCarouselB
-      : KioskAttractScreen;
-
   // Attract (idle) or the active ordering session. The PIN gate + settings
   // entry live at this level so they work from either state. Returning to idle
   // clears the cart and commits any config change that arrived mid-session.
+  //
+  // The customer-facing flow is wrapped in KioskErrorBoundary so a render crash
+  // self-heals back to idle (no staff stands at a kiosk). The PIN gate + dev
+  // shortcut sit OUTSIDE it, so staff can always reach settings even mid-crash.
   return (
     <KioskScaleProvider>
-      {isIdle ? (
-        <AttractComponent
-          config={config}
-          onStart={() => setIdle(false)}
-          onLogoLongPress={() => setShowPinModal(true)}
-        />
-      ) : (
-        <KioskTemplateRouter
-          config={config}
-          onExit={() => {
-            clearCart();
-            setIdle(true);
-          }}
-        />
-      )}
+      <KioskErrorBoundary
+        onReset={() => {
+          setShowDiagnostics(false);
+          clearCart();
+          setIdle(true);
+        }}
+        backgroundColor={config.backgroundColor}
+        textColor={config.headerTextColor}
+        accentColor={config.primaryColor}
+      >
+        {isIdle ? (
+          <KioskAttractScreen
+            config={config}
+            onStart={() => setIdle(false)}
+            onLogoLongPress={() => setShowPinModal(true)}
+          />
+        ) : (
+          <KioskTemplateRouter
+            config={config}
+            onExit={() => {
+              clearCart();
+              setIdle(true);
+            }}
+          />
+        )}
+      </KioskErrorBoundary>
 
       {/* Manager-PIN gate opened by the secret 5-tap on the attract screen. */}
       <KioskAdminPinModal

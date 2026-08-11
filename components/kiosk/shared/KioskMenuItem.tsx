@@ -4,7 +4,9 @@ import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
+import { Check } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -47,6 +49,29 @@ const useStyles = (s: number) =>
       borderLeftWidth: kioskPx(22, s),
       borderLeftColor: "transparent",
       zIndex: 10,
+    },
+    inCartBadge: {
+      position: "absolute",
+      top: kioskPx(8, s),
+      left: kioskPx(8, s),
+      zIndex: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: kioskPx(3, s),
+      paddingLeft: kioskPx(6, s),
+      paddingRight: kioskPx(9, s),
+      paddingVertical: kioskPx(4, s),
+      borderRadius: 999,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.2,
+      shadowRadius: 3,
+      elevation: 3,
+    },
+    inCartBadgeText: {
+      color: "#FFFFFF",
+      fontWeight: "800",
+      fontSize: kioskPx(13, s),
     },
     imageWrapper: {
       flex: 1,
@@ -97,6 +122,8 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
   const styles = useStyles(s);
   const isDisabled = item.availability === false;
   const hasModifiers = !!item.modifierGroupIds?.length;
+  const qtyInCart = useKioskItemQuantity(item.id);
+  const inCart = qtyInCart > 0;
 
   const resolvedImageSource = useMemo(
     () => resolveMenuItemImageSource(item.image),
@@ -120,13 +147,21 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
         styles.container,
         {
           backgroundColor: config.backgroundColor,
-          borderColor: `${accent}30`,
+          borderColor: inCart ? accent : `${accent}30`,
+          borderWidth: inCart ? 2 : 1,
         },
         isDisabled && styles.containerDisabled,
       ]}
     >
       {hasModifiers && (
         <View style={[styles.modifierCorner, { borderTopColor: accent }]} />
+      )}
+
+      {inCart && (
+        <View style={[styles.inCartBadge, { backgroundColor: accent }]}>
+          <Check size={kioskPx(13, s)} color="#FFFFFF" strokeWidth={3.5} />
+          <Text style={styles.inCartBadgeText}>{qtyInCart}</Text>
+        </View>
       )}
 
       <View style={styles.imageWrapper}>

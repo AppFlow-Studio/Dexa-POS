@@ -4,7 +4,9 @@ import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
+import { Check } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -79,6 +81,24 @@ const useStyles = (s: number) =>
       height: kioskPx(10, s),
       borderRadius: 999,
     },
+    inCartBadge: {
+      position: "absolute",
+      top: kioskPx(5, s),
+      left: kioskPx(5, s),
+      zIndex: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: kioskPx(3, s),
+      paddingLeft: kioskPx(5, s),
+      paddingRight: kioskPx(8, s),
+      paddingVertical: kioskPx(3, s),
+      borderRadius: 999,
+    },
+    inCartBadgeText: {
+      color: "#FFFFFF",
+      fontWeight: "800",
+      fontSize: kioskPx(12, s),
+    },
   });
 
 const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
@@ -90,6 +110,8 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
   const styles = useStyles(s);
   const isDisabled = item.availability === false;
   const hasModifiers = !!item.modifierGroupIds?.length;
+  const qtyInCart = useKioskItemQuantity(item.id);
+  const inCart = qtyInCart > 0;
 
   const resolvedImageSource = useMemo(
     () => resolveMenuItemImageSource(item.image),
@@ -112,7 +134,8 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
         styles.container,
         {
           backgroundColor: config.backgroundColor,
-          borderColor: `${accent}30`,
+          borderColor: inCart ? accent : `${accent}30`,
+          borderWidth: inCart ? 2 : 1,
         },
         isDisabled && styles.containerDisabled,
       ]}
@@ -135,6 +158,13 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
               color={`${config.textColor}55`}
               size={kioskPx(32, s)}
             />
+          </View>
+        )}
+
+        {inCart && (
+          <View style={[styles.inCartBadge, { backgroundColor: accent }]}>
+            <Check size={kioskPx(12, s)} color="#FFFFFF" strokeWidth={3.5} />
+            <Text style={styles.inCartBadgeText}>{qtyInCart}</Text>
           </View>
         )}
       </View>

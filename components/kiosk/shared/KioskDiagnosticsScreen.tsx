@@ -168,7 +168,7 @@ export function KioskDiagnosticsScreen({
   const [showTerminalPicker, setShowTerminalPicker] = useState(false);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [registerFormType, setRegisterFormType] = useState<
-    "dejavoo" | "castles"
+    "dejavoo" | "castles" | "valor"
   >("castles");
   const [registerForm, setRegisterForm] = useState({
     name: "",
@@ -180,6 +180,8 @@ export function KioskDiagnosticsScreen({
     port: "8080",
     connectionType: "local_socket" as "local_socket" | "usb",
     serialNumber: "",
+    cancelPort: "5001",
+    epi: "",
   });
   const [isEditingTerminal, setIsEditingTerminal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -190,6 +192,8 @@ export function KioskDiagnosticsScreen({
     ipAddress: "",
     port: "8080",
     connectionType: "local_socket" as "local_socket" | "usb",
+    cancelPort: "5001",
+    epi: "",
   });
   const [isAssigning, setIsAssigning] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -276,6 +280,10 @@ export function KioskDiagnosticsScreen({
         is_connected: terminal.isConnected,
         ip_address: terminal.ipAddress,
         port: terminal.port,
+        cancel_port: terminal.cancelPort ?? undefined,
+        epi: terminal.epi ?? undefined,
+        connection_type: terminal.connectionType,
+        serial_number: terminal.serialNumber ?? null,
         last_connection_status: terminal.lastConnectionStatus || null,
         last_connection_test_at: terminal.lastConnectionTest || null,
       };
@@ -343,6 +351,112 @@ export function KioskDiagnosticsScreen({
             },
           });
         }
+      } else if (registerFormType === "valor") {
+        const connectionType =
+          registerForm.connectionType === "usb" ? "usb" : "local";
+        const localIp =
+          registerForm.connectionType === "local_socket"
+            ? registerForm.ipAddress
+            : null;
+        const localPort =
+          registerForm.connectionType === "local_socket"
+            ? parseInt(registerForm.port, 10) || 5000
+            : null;
+        const cancelPort = parseInt(registerForm.cancelPort, 10) || 5001;
+
+        // Pre-test over TCP to discover the serial before the INSERT. Don't
+        // persist a terminal we can't reach — a dead row would resolve as the
+        // station's active terminal and knock the real one offline.
+        let discoveredSN: string | undefined;
+        if (
+          registerForm.connectionType === "local_socket" &&
+          registerForm.ipAddress
+        ) {
+          const preTest = await testConnectionWithConfig({
+            terminalId: `provisional-${selectedStation.id}`,
+            terminalType: "valor",
+            ipAddress: registerForm.ipAddress,
+            port: localPort ?? 5000,
+            cancelPort,
+            epi: registerForm.epi,
+          });
+          if (!preTest.success) {
+            throw new Error(
+              preTest.error ||
+                "Could not connect to the Valor terminal. Check the IP, port, and that Valor Connect is enabled on the terminal, then try again.",
+            );
+          }
+          discoveredSN = preTest.serialNumber;
+        } else if (registerForm.connectionType === "usb") {
+          // USB: no TCP pre-test. Serial backfills from the first sale.
+        } else {
+          throw new Error(
+            "Enter the terminal IP address, or switch the connection type to USB.",
+          );
+        }
+
+        const { data: terminalRow, error: termErr } = await supabase
+          .from("payment_terminals")
+          .insert({
+            location_id: selectedStore.id,
+            merchant_id: selectedStore.merchant_id,
+            station_id: selectedStation.id,
+            terminal_name: registerForm.name,
+            terminal_type: "valor",
+            terminal_model: registerForm.model || null,
+            register_id: "VALOR",
+            auth_key: "VALOR",
+            local_ip_address: localIp,
+            local_port: localPort,
+            valor_ip_address: localIp,
+            valor_port: localPort ?? 5000,
+            valor_cancel_port: cancelPort,
+            valor_epi: registerForm.epi || null,
+            connection_type: connectionType,
+            is_active: true,
+            is_connected: false,
+            api_environment: "production",
+            serial_number: discoveredSN ?? null,
+          } as any)
+          .select("id")
+          .single();
+        if (termErr) throw termErr;
+        newTerminalId = terminalRow.id;
+
+        await supabase
+          .from("payment_terminals")
+          .update({ is_active: false })
+          .eq("station_id", selectedStation.id)
+          .eq("is_active", true)
+          .neq("id", newTerminalId);
+        await supabase
+          .from("kiosk_profiles")
+          .update({ payment_terminal_id: newTerminalId })
+          .eq("id", config.id);
+        onRefreshKioskConfig?.();
+        await loadTerminals(selectedStore.id);
+        setActiveTerminal(newTerminalId!);
+        setSelectedStation({
+          ...selectedStation,
+          payment_terminal: {
+            id: newTerminalId!,
+            terminal_name: registerForm.name,
+            register_id: null,
+            auth_key: null,
+            terminal_type: "valor",
+            terminal_model: registerForm.model || null,
+            is_connected: false,
+            ip_address: localIp ?? undefined,
+            port: localPort ?? 5000,
+            cancel_port: cancelPort,
+            epi: registerForm.epi || undefined,
+            connection_type:
+              connectionType === "usb" ? "usb" : "local_socket",
+            serial_number: discoveredSN ?? null,
+            last_connection_status: null,
+            last_connection_test_at: null,
+          },
+        });
       } else {
         const connectionType =
           registerForm.connectionType === "usb" ? "usb" : "local";
@@ -503,6 +617,8 @@ export function KioskDiagnosticsScreen({
         port: "8080",
         connectionType: "local_socket",
         serialNumber: "",
+        cancelPort: "5001",
+        epi: "",
       });
     } catch (err) {
       toastService.show({
@@ -524,10 +640,15 @@ export function KioskDiagnosticsScreen({
       tpn: currentTerminal.register_id || "",
       authKey: "",
       ipAddress: currentTerminal.ip_address || "",
-      port: String(currentTerminal.port || 8080),
+      port: String(
+        currentTerminal.port ||
+          (currentTerminal.terminal_type === "valor" ? 5000 : 8080),
+      ),
       connectionType: (currentTerminal.connection_type === "usb"
         ? "usb"
         : "local_socket") as "local_socket" | "usb",
+      cancelPort: String(currentTerminal.cancel_port || 5001),
+      epi: currentTerminal.epi || "",
     });
     setIsEditingTerminal(true);
   };
@@ -538,9 +659,16 @@ export function KioskDiagnosticsScreen({
     try {
       const testResult = await testConnectionWithConfig({
         terminalId: currentTerminal.id,
-        terminalType: currentTerminal.terminal_type as "castles" | "dejavoo",
+        terminalType: currentTerminal.terminal_type as
+          | "castles"
+          | "dejavoo"
+          | "valor",
         ipAddress: editForm.ipAddress || undefined,
         port: editForm.port ? parseInt(editForm.port, 10) : undefined,
+        cancelPort: editForm.cancelPort
+          ? parseInt(editForm.cancelPort, 10)
+          : undefined,
+        epi: editForm.epi || undefined,
         tpn: editForm.tpn || undefined,
         authKey: editForm.authKey || undefined,
       });
@@ -560,6 +688,26 @@ export function KioskDiagnosticsScreen({
           editForm.connectionType === "local_socket"
             ? parseInt(editForm.port, 10) || 8080
             : null;
+        if (testResult.serialNumber)
+          updatePayload.serial_number = testResult.serialNumber;
+      } else if (currentTerminal.terminal_type === "valor") {
+        updatePayload.connection_type =
+          editForm.connectionType === "usb" ? "usb" : "local";
+        const ip =
+          editForm.connectionType === "local_socket"
+            ? editForm.ipAddress.trim()
+            : null;
+        const port =
+          editForm.connectionType === "local_socket"
+            ? parseInt(editForm.port, 10) || 5000
+            : null;
+        updatePayload.local_ip_address = ip;
+        updatePayload.local_port = port;
+        updatePayload.valor_ip_address = ip;
+        updatePayload.valor_port = port ?? 5000;
+        updatePayload.valor_cancel_port =
+          parseInt(editForm.cancelPort, 10) || 5001;
+        updatePayload.valor_epi = editForm.epi.trim() || null;
         if (testResult.serialNumber)
           updatePayload.serial_number = testResult.serialNumber;
       } else {
@@ -596,7 +744,24 @@ export function KioskDiagnosticsScreen({
                     ? ("usb" as const)
                     : ("local_socket" as const),
               }
-            : { register_id: editForm.tpn.trim() }),
+            : currentTerminal.terminal_type === "valor"
+              ? {
+                  ip_address:
+                    editForm.connectionType === "local_socket"
+                      ? editForm.ipAddress.trim()
+                      : undefined,
+                  port:
+                    editForm.connectionType === "local_socket"
+                      ? parseInt(editForm.port, 10) || 5000
+                      : undefined,
+                  cancel_port: parseInt(editForm.cancelPort, 10) || 5001,
+                  epi: editForm.epi.trim() || undefined,
+                  connection_type:
+                    editForm.connectionType === "usb"
+                      ? ("usb" as const)
+                      : ("local_socket" as const),
+                }
+              : { register_id: editForm.tpn.trim() }),
           is_connected: testResult.success,
           last_connection_status: testResult.success ? "Online" : "Offline",
           last_connection_test_at: new Date().toISOString(),
@@ -637,7 +802,8 @@ export function KioskDiagnosticsScreen({
         );
 
   const isEditFormValid =
-    currentTerminal?.terminal_type === "castles"
+    currentTerminal?.terminal_type === "castles" ||
+    currentTerminal?.terminal_type === "valor"
       ? !!(
           editForm.name.trim() &&
           (editForm.connectionType === "usb" || editForm.ipAddress.trim())
@@ -818,7 +984,9 @@ export function KioskDiagnosticsScreen({
               <Text className="text-base font-bold text-gray-900">
                 {registerFormType === "castles"
                   ? "Add Castles Terminal"
-                  : "Register Dejavoo Terminal"}
+                  : registerFormType === "valor"
+                    ? "Add Valor Terminal"
+                    : "Register Dejavoo Terminal"}
               </Text>
             </View>
             <Pressable
@@ -829,7 +997,45 @@ export function KioskDiagnosticsScreen({
             </Pressable>
           </View>
 
-          {registerFormType === "castles" ? (
+          {/* Terminal type toggle (Castles / Valor) */}
+          <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5 mb-4">
+            {(
+              [
+                { id: "castles" as const, label: "Castles" },
+                { id: "valor" as const, label: "Valor" },
+              ]
+            ).map((opt) => {
+              const active = registerFormType === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  onPress={() => {
+                    setRegisterFormType(opt.id);
+                    setRegisterForm((f) => ({
+                      ...f,
+                      port: opt.id === "valor" ? "5000" : "8080",
+                    }));
+                  }}
+                  activeOpacity={0.85}
+                  className={`flex-1 py-3 items-center rounded-xl ${
+                    active ? "bg-white" : ""
+                  }`}
+                  style={active ? cardShadow : undefined}
+                >
+                  <Text
+                    className={`text-sm font-bold ${
+                      active ? "text-teal-700" : "text-gray-400"
+                    }`}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {registerFormType === "castles" ||
+          registerFormType === "valor" ? (
             <>
               <View className="mb-3">
                 <FieldLabel>Connection</FieldLabel>
@@ -893,7 +1099,9 @@ export function KioskDiagnosticsScreen({
                       onChangeText={(v) =>
                         setRegisterForm((f) => ({ ...f, port: v }))
                       }
-                      placeholder="8080"
+                      placeholder={
+                        registerFormType === "valor" ? "5000" : "8080"
+                      }
                       keyboardType="number-pad"
                     />
                   </View>
@@ -905,6 +1113,36 @@ export function KioskDiagnosticsScreen({
                     USB — no IP needed. The terminal is identified by USB device
                     serial.
                   </Text>
+                </View>
+              )}
+
+              {/* Valor-only: cancel port (5001) + EPI */}
+              {registerFormType === "valor" && (
+                <View className="flex-row gap-3 mb-3">
+                  {registerForm.connectionType === "local_socket" && (
+                    <View className="flex-[1.2]">
+                      <FieldLabel>Cancel Port</FieldLabel>
+                      <Input
+                        value={registerForm.cancelPort}
+                        onChangeText={(v) =>
+                          setRegisterForm((f) => ({ ...f, cancelPort: v }))
+                        }
+                        placeholder="5001"
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  )}
+                  <View className="flex-[3]">
+                    <FieldLabel>EPI</FieldLabel>
+                    <Input
+                      value={registerForm.epi}
+                      onChangeText={(v) =>
+                        setRegisterForm((f) => ({ ...f, epi: v }))
+                      }
+                      placeholder="e.g. 2319900000"
+                      keyboardType="number-pad"
+                    />
+                  </View>
                 </View>
               )}
 
@@ -989,9 +1227,9 @@ export function KioskDiagnosticsScreen({
             loading={isRegistering}
             icon={Check}
             label={
-              registerFormType === "castles"
-                ? "Save & Connect"
-                : "Register Terminal"
+              registerFormType === "dejavoo"
+                ? "Register Terminal"
+                : "Save & Connect"
             }
           />
         </View>
@@ -1049,7 +1287,8 @@ export function KioskDiagnosticsScreen({
                             {terminalTypeLabel(t.terminalType)}
                           </Text>
                         </View>
-                        {t.terminalType === "castles" && (
+                        {(t.terminalType === "castles" ||
+                          t.terminalType === "valor") && (
                           <View className="px-2 py-0.5 rounded-md bg-gray-100 flex-row items-center gap-1">
                             {t.connectionType === "usb" ? (
                               <Usb size={10} color="#D97706" />
@@ -1131,7 +1370,8 @@ export function KioskDiagnosticsScreen({
             />
           </View>
 
-          {currentTerminal.terminal_type === "castles" && (
+          {(currentTerminal.terminal_type === "castles" ||
+            currentTerminal.terminal_type === "valor") && (
             <>
               <View className="mb-3">
                 <FieldLabel>Connection</FieldLabel>
@@ -1195,7 +1435,11 @@ export function KioskDiagnosticsScreen({
                       onChangeText={(v) =>
                         setEditForm((f) => ({ ...f, port: v }))
                       }
-                      placeholder="8080"
+                      placeholder={
+                        currentTerminal.terminal_type === "valor"
+                          ? "5000"
+                          : "8080"
+                      }
                       keyboardType="number-pad"
                     />
                   </View>
@@ -1209,9 +1453,39 @@ export function KioskDiagnosticsScreen({
                   </Text>
                 </View>
               )}
+
+              {/* Valor-only: cancel port (5001) + EPI */}
+              {currentTerminal.terminal_type === "valor" && (
+                <>
+                  {editForm.connectionType === "local_socket" && (
+                    <View className="mb-3">
+                      <FieldLabel>Cancel Port</FieldLabel>
+                      <Input
+                        value={editForm.cancelPort}
+                        onChangeText={(v) =>
+                          setEditForm((f) => ({ ...f, cancelPort: v }))
+                        }
+                        placeholder="5001"
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  )}
+                  <View className="mb-3">
+                    <FieldLabel>EPI (optional)</FieldLabel>
+                    <Input
+                      value={editForm.epi}
+                      onChangeText={(v) =>
+                        setEditForm((f) => ({ ...f, epi: v }))
+                      }
+                      placeholder="Electronic Payment Interface id"
+                    />
+                  </View>
+                </>
+              )}
             </>
           )}
-          {currentTerminal.terminal_type !== "castles" && (
+          {currentTerminal.terminal_type !== "castles" &&
+            currentTerminal.terminal_type !== "valor" && (
             <>
               <View className="mb-3">
                 <FieldLabel>TPN *</FieldLabel>
@@ -1267,6 +1541,21 @@ export function KioskDiagnosticsScreen({
                       ).toUpperCase()}
                     </Text>
                   </View>
+                  {(currentTerminal.terminal_type === "castles" ||
+                    currentTerminal.terminal_type === "valor") && (
+                    <View className="px-2 py-0.5 rounded-md bg-teal-100 flex-row items-center gap-1">
+                      {currentTerminal.connection_type === "usb" ? (
+                        <Usb size={11} color={TEAL} />
+                      ) : (
+                        <Wifi size={11} color={TEAL} />
+                      )}
+                      <Text className="text-[11px] font-bold text-teal-700">
+                        {currentTerminal.connection_type === "usb"
+                          ? "USB"
+                          : "WiFi"}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
               {(() => {
@@ -1300,16 +1589,32 @@ export function KioskDiagnosticsScreen({
               })()}
             </View>
 
-            {currentTerminal.terminal_type === "castles" ? (
+            {currentTerminal.terminal_type === "castles" ||
+            currentTerminal.terminal_type === "valor" ? (
               <View className="mt-3 pt-3 border-t border-gray-200 gap-1.5">
                 <KV
-                  k="Address"
+                  k={
+                    currentTerminal.connection_type === "usb"
+                      ? "Conn"
+                      : "Address"
+                  }
                   v={
-                    currentTerminal.ip_address
-                      ? `${currentTerminal.ip_address}:${currentTerminal.port || 8080}`
-                      : "—"
+                    currentTerminal.connection_type === "usb"
+                      ? "USB (wired)"
+                      : currentTerminal.ip_address
+                        ? `${currentTerminal.ip_address}:${
+                            currentTerminal.port ||
+                            (currentTerminal.terminal_type === "valor"
+                              ? 5000
+                              : 8080)
+                          }`
+                        : "—"
                   }
                 />
+                {currentTerminal.terminal_type === "valor" &&
+                  currentTerminal.epi && (
+                    <KV k="EPI" v={currentTerminal.epi} />
+                  )}
                 <KV
                   k="Serial"
                   v={currentTerminal.serial_number ?? "— not yet discovered —"}
