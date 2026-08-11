@@ -6,20 +6,20 @@ import { hasOrderBalanceDue } from "@/lib/orderBalance";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
 import {
-    findLatestReusableEmptyDraftId,
-    getRefreshedReusableDraftNumbers,
+  findLatestReusableEmptyDraftId,
+  getRefreshedReusableDraftNumbers,
 } from "@/lib/reusableEmptyDraft";
 import { toastService } from "@/lib/toastService";
 import {
-    CartItem,
-    OrderPaymentTransactionDetails,
-    SplitPaymentPath,
+  CartItem,
+  OrderPaymentTransactionDetails,
+  SplitPaymentPath,
 } from "@/lib/types";
 import {
-    getFailedPayments,
-    getPendingPaymentsCount,
-    OfflineOperation,
-    retryFailedOperation,
+  getFailedPayments,
+  getPendingPaymentsCount,
+  OfflineOperation,
+  retryFailedOperation,
 } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { trackCashPaymentInDrawer } from "@/services/paymentService";
@@ -29,14 +29,14 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
-import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
+import { calculateCustomSplitCardAmount } from "@/utils/custom-split-amounts";
 import { aggregateTaxByCategory } from "@/utils/money";
 import { create } from "zustand";
 import {
-    calculateItemEffectiveCashPrice,
-    getOrderStoreSupabaseClient,
-    round2,
-    useOrderStore,
+  calculateItemEffectiveCashPrice,
+  getOrderStoreSupabaseClient,
+  round2,
+  useOrderStore,
 } from "./useOrderStore";
 type PaymentMethod = "Card" | "Cash" | "Split";
 
@@ -281,7 +281,9 @@ interface PaymentState {
   removeSplit: (splitId: string) => void;
   assignItemToSplit: (splitId: string, item: CartItem) => void;
   unassignItemFromSplit: (splitId: string, itemId: string) => void;
-  updateSplitAmount: (splitId: string, amount: number) => void;
+  // The amount passed here is the CASH amount the guest hands over; the card
+  // (list-price) amount is derived from it inside updateSplitAmount.
+  updateSplitAmount: (splitId: string, cashAmount: number) => void;
   updateSplitCustomerName: (splitId: string, newName: string) => void;
   setPaymentProgress: (step: number, total: number) => void;
   resetPaymentState: () => void;
@@ -763,10 +765,25 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     });
   },
 
-  updateSplitAmount: (splitId, amount) => {
+  // Custom-amount splits: the operator types the amount the guest hands over
+  // in CASH (cash pricing). The card (list-price) amount is derived from it so
+  // the same portion charges the higher card price if paid by card.
+  updateSplitAmount: (splitId, cashAmount) => {
+    const { activeOrderOutstandingTotal, activeOrderOutstandingCash } =
+      useOrderStore.getState();
     set((state) => ({
       splits: state.splits.map((s) =>
-        s.id === splitId ? { ...s, amount } : s,
+        s.id === splitId
+          ? {
+              ...s,
+              cashAmount,
+              amount: calculateCustomSplitCardAmount(
+                cashAmount,
+                activeOrderOutstandingTotal,
+                activeOrderOutstandingCash,
+              ),
+            }
+          : s,
       ),
       isDirty: true,
     }));
@@ -997,14 +1014,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
 
     if (source === "split-custom-amount") {
-      updatedSplits = updatedSplits.map((split) => ({
-        ...split,
-        cashAmount: calculateCustomSplitCashAmount(
-          split.amount,
-          activeOrderOutstandingTotal,
-          activeOrderOutstandingCash,
-        ),
-      }));
+      // updateSplitAmount already stored the entered amount as cashAmount and
+      // derived amount (card). Just backfill cashAmount for splits created
+      // without an amount (a freshly added guest that stays at $0).
+      updatedSplits = updatedSplits.map((split) =>
+        split.cashAmount !== undefined
+          ? split
+          : { ...split, cashAmount: split.amount },
+      );
     }
 
     set({ splits: updatedSplits });
@@ -1072,8 +1089,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // For split-by-item and pay-for-items payments, build item allocations with quantities
       // This allows the backend to track which specific items and quantities were paid
       let itemAllocations:
-        | { itemId: string; quantity: number; amount?: number }[]
-        | undefined;
+        { itemId: string; quantity: number; amount?: number }[] | undefined;
       const isPerItemPayment =
         splitSourceView === "split-by-item" ||
         splitSourceView === "pay-for-items";
@@ -1517,8 +1533,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           useLocationConfigStore.getState().config.printing;
         const afterOrder = useOrderStore.getState().ordersById[activeOrderId];
         if (autoPrintSplitReceipts && afterOrder?.split_payment_path) {
-          const selectedStore =
-            useStoreSettingsStore.getState().selectedStore;
+          const selectedStore = useStoreSettingsStore.getState().selectedStore;
           const justPaid = (afterOrder.payments ?? []).find(
             (p) => !prePaymentPaymentIds.has(p.id),
           );
@@ -1541,10 +1556,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           }
         }
       } catch (e) {
-        console.warn(
-          "[PaymentStore] settlement receipt auto-print error:",
-          e,
-        );
+        console.warn("[PaymentStore] settlement receipt auto-print error:", e);
       }
 
       set({
