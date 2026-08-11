@@ -1352,11 +1352,21 @@ const ModifierScreenContent = () => {
       let safeCashPrice: number | null = null;
 
       if (storeState.precomputedForItemId !== baseItemId) {
-        const freshMenuItem = baseItem.id
-          ? useMenuStore.getState().getMenuItemById(baseItem.id)
-          : null;
+        // `baseItem` is the menu-tree item passed in via openToAdd, so its
+        // price/cashPrice are the context-specific effective prices (the menu +
+        // category the user actually tapped through). getMenuItemById reads
+        // `menuItemsById`, whose price is deliberately rewritten to the L1 base
+        // (see useMenuStore's globalItemMap build) — using it here swapped an
+        // overridden cash price back to base whenever the pre-warm cache had
+        // been evicted, leaving the card price overridden and the cash price
+        // not. Prefer the context item; fall back to the global copy only when
+        // the context item carries no cash price at all.
         safeCashPrice =
-          freshMenuItem?.cashPrice ?? baseItem.cashPrice ?? baseItem.price;
+          baseItem.cashPrice ??
+          (baseItem.id
+            ? useMenuStore.getState().getMenuItemById(baseItem.id)?.cashPrice
+            : null) ??
+          baseItem.price;
       }
 
       const resolvedCashPrice =
