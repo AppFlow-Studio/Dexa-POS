@@ -1,6 +1,7 @@
+import { KioskSecretAccessCorner } from "@/components/kiosk/shared/KioskSecretAccessCorner";
 import type { KioskConfig } from "@/types/kiosk";
 import { Image } from "expo-image";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 /**
  * Idle / attract screen. Shown whenever no customer is mid-order. Tapping it
@@ -13,10 +14,11 @@ import { Pressable, Text, View } from "react-native";
  * KioskAttractCarouselB). Idle images configured for this profile are
  * unused by Template A.
  *
- * Holding the logo opens the manager-PIN-gated diagnostics/settings screen
- * via `onLogoLongPress`, without starting a customer session. The long-press
- * target wraps the whole header block (not just the logo image) so
- * diagnostics stays reachable even when no logo is configured.
+ * Structure: a full-screen "tap anywhere to start" Pressable underlay, the
+ * centered content (box-none so taps fall through to the underlay), and the
+ * secret admin-access corner ON TOP. Keeping the corner a top-level sibling
+ * (not nested in the start Pressable) guarantees it captures its own taps —
+ * five taps in the top-left corner open the manager-PIN-gated settings.
  */
 export function KioskAttractScreen({
   config,
@@ -25,19 +27,24 @@ export function KioskAttractScreen({
 }: {
   config: KioskConfig;
   onStart: () => void;
+  /** Opens the manager-PIN-gated kiosk settings (via the secret corner). */
   onLogoLongPress?: () => void;
 }) {
   return (
-    <Pressable
-      onPress={onStart}
-      className="flex-1 items-center justify-center"
-      style={{ backgroundColor: config.backgroundColor }}
-    >
+    <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+      {/* Tap-anywhere-to-start underlay. */}
       <Pressable
         onPress={onStart}
-        onLongPress={onLogoLongPress}
-        delayLongPress={2000}
-        className="items-center justify-center px-8"
+        style={StyleSheet.absoluteFill}
+        android_disableSound
+      />
+
+      {/* Centered content. box-none: taps on the logo/text fall through to the
+          underlay (so "tap anywhere" still starts); the button handles its own
+          press. */}
+      <View
+        pointerEvents="box-none"
+        className="flex-1 items-center justify-center px-8"
       >
         {config.logoUrl ? (
           <Image
@@ -55,15 +62,24 @@ export function KioskAttractScreen({
           {config.welcomeMessage}
         </Text>
 
-        <View
-          className="mt-10 px-10 py-4 rounded-full "
+        <Pressable
+          onPress={onStart}
+          className="mt-10 px-10 py-4 rounded-full"
           style={{ backgroundColor: config.primaryColor }}
         >
           <Text className="text-white text-xl font-semibold">
             Tap anywhere to start
           </Text>
-        </View>
-      </Pressable>
-    </Pressable>
+        </Pressable>
+      </View>
+
+      {/* Secret admin access — 5 taps in the top-left corner. */}
+      {onLogoLongPress ? (
+        <KioskSecretAccessCorner
+          onTrigger={onLogoLongPress}
+          tint={config.headerTextColor}
+        />
+      ) : null}
+    </View>
   );
 }

@@ -4,6 +4,10 @@ import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import {
+  resolveKioskColumns,
+  useKioskDeviceSettingsStore,
+} from "@/stores/useKioskDeviceSettingsStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
@@ -34,7 +38,8 @@ export function KioskMenuViewB({
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
   const isVertical = config.orientation === "vertical";
-  const numColumns = isVertical ? 3 : 4;
+  const columnsPref = useKioskDeviceSettingsStore((st) => st.menuColumns);
+  const numColumns = resolveKioskColumns(columnsPref, isVertical ? 3 : 4);
 
   const sections = useMemo<CategorySection[]>(() => {
     return menus

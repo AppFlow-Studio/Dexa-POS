@@ -1,3 +1,4 @@
+import { KioskCustomerInfoStep } from "@/components/kiosk/shared/KioskCustomerInfoStep";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import {
   useKioskCheckout,
@@ -21,7 +22,7 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
  * useKioskCheckout hook; this is presentation only. On success the cart is
  * cleared and `onDone` returns the kiosk to idle/attract.
  */
-type Step = "tip" | "processing" | "success";
+type Step = "customer" | "tip" | "processing" | "success";
 
 export function KioskCheckoutView({
   config,
@@ -47,7 +48,9 @@ export function KioskCheckoutView({
   };
 
   const tipEnabled = config.tipScreenEnabled;
-  const [step, setStep] = useState<Step>(tipEnabled ? "tip" : "processing");
+  // Customer capture (phone + name, REQUIRED) is the first checkout step — it
+  // sits before tip/pay so every template gets it via this shared view.
+  const [step, setStep] = useState<Step>("customer");
   const [pickupNumber, setPickupNumber] = useState<string | undefined>();
 
   const muted = `${config.textColor}99`;
@@ -74,13 +77,25 @@ export function KioskCheckoutView({
     }
   };
 
-  // If tipping is disabled, pay as soon as totals are ready.
+  // If tipping is disabled, pay as soon as totals are ready — but ONLY after the
+  // customer step is done (step advances to "processing"), never on mount.
   useEffect(() => {
-    if (!tipEnabled && status === "ready") {
+    if (step === "processing" && !tipEnabled && status === "ready") {
       void runPayment(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tipEnabled, status]);
+  }, [step, tipEnabled, status]);
+
+  // ---- CUSTOMER (phone + name, required) ----
+  if (step === "customer") {
+    return (
+      <KioskCustomerInfoStep
+        config={config}
+        onBack={onBack}
+        onComplete={() => setStep(tipEnabled ? "tip" : "processing")}
+      />
+    );
+  }
 
   // ---- COMPUTING (brief) / ERROR before tip ----
   // Totals compute synchronously and locally, so this is essentially instant;

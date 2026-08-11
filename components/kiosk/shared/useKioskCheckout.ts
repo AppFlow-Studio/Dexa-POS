@@ -1,18 +1,9 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { CartItem } from "@/lib/types";
-import {
-  failPaymentJournal,
-  updatePaymentJournal,
-  writePaymentJournal,
-} from "@/services/paymentJournal";
+import { sendReceipt } from "@/services/messaging/sendReceiptService";
 import { payFullCard } from "@/services/paymentService";
-import {
-  extractLast4,
-  parseCastlesReturnCode,
-} from "@/services/terminals/castles-response-mapper";
-import { getSharedCastlesService } from "@/services/terminals/castles-service";
-import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { chargeActiveTerminal } from "@/services/terminals/chargeActiveTerminal";
 import {
   lineCashUnitPrice,
   lineUnitPrice,
@@ -21,7 +12,6 @@ import {
 } from "@/stores/useKioskCartStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { useCallback, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
@@ -104,134 +94,6 @@ function toCartItem(line: KioskCartLine): CartItem {
   } as CartItem;
 }
 
-/** Result shape from charging the card terminal. */
-export interface ChargeCardResult {
-  ok: boolean;
-  message?: string;
-  terminalResponse?: Record<string, unknown>;
-  terminalId?: string;
-}
-
-/** Charge the card on the configured terminal, or simulate when none is
- * configured. Mirrors the POS CardPaymentView Castles flow exactly:
- *   1. Connect (shared singleton) + resetTerminalState
- *   2. Get counter → txnPosTxnId
- *   3. Write payment journal (crash recovery, pre-TCP)
- *   4. processSale on the terminal
- *   5. Promote journal to terminal_approved
- *   6. Return response for payFullCard
- */
-async function chargeCardWithTerminal(
-  total: number,
-  tipAmount: number,
-  orderId: string,
-  dbOrderId: string | undefined,
-  supabase: ReturnType<typeof useSupabaseClient>,
-): Promise<ChargeCardResult> {
-  const station = useStoreSettingsStore.getState().selectedStation;
-  const terminal = station?.payment_terminal;
-  if (!terminal) {
-    await new Promise((r) => setTimeout(r, 800));
-    return { ok: true, terminalResponse: { simulated: true, amount: total } };
-  }
-
-  if (terminal.terminal_type === "castles") {
-    const isUsb = terminal.connection_type === "usb";
-    const host = isUsb ? undefined : terminal.ip_address;
-    if (!isUsb && !host) {
-      return {
-        ok: false,
-        message: "Castles terminal has no IP address configured.",
-      };
-    }
-    const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT);
-
-    const service = getSharedCastlesService();
-    await service.connect({
-      connectionType: isUsb ? "usb" : "local_socket",
-      host,
-      port,
-      timeout: 120_000,
-      terminalId: terminal.id,
-    });
-    await service.resetTerminalState();
-
-    const counter = getOrCreateCounter({
-      terminalId: terminal.id,
-      supabaseClient: supabase,
-    });
-    if (!counter.isInitialized) await counter.initialize();
-    const referenceId = counter.next();
-
-    const paymentJournalKey = uuidv4();
-    const paymentJournalId = writePaymentJournal({
-      orderId,
-      dbOrderId: dbOrderId ?? undefined,
-      amount: total - tipAmount,
-      tipAmount,
-      paymentMethod: "Card",
-      idempotencyKey: paymentJournalKey,
-    });
-
-    let result: Awaited<ReturnType<typeof service.processSale>>;
-    try {
-      result = await service.processSale({
-        amount: total - tipAmount,
-        tipAmount,
-        referenceId,
-      });
-    } catch (err) {
-      throw err;
-    }
-
-    updatePaymentJournal(paymentJournalId, {
-      status: "terminal_approved",
-      terminalTxnId: referenceId,
-      ...(dbOrderId ? { dbOrderId } : {}),
-    });
-
-    if (!result.success) {
-      const errorInfo = result.raw?.txnReturnCode
-        ? parseCastlesReturnCode(result.raw.txnReturnCode)
-        : { message: result.error || "Transaction failed" };
-      failPaymentJournal(
-        paymentJournalId,
-        `terminal_declined: ${errorInfo.message}`,
-      );
-      return { ok: false, message: errorInfo.message };
-    }
-
-    const castlesLast4 = result.raw
-      ? extractLast4(
-          result.raw.txnMaskedCardNum ?? result.raw.txnCardMaskedPan ?? "",
-        )
-      : undefined;
-
-    return {
-      ok: true,
-      terminalId: terminal.id,
-      terminalResponse: {
-        castles_transaction: {
-          cardLast4: castlesLast4,
-          approvalCode: result.raw?.txnApprovalCode,
-          cardType: result.raw?.txnCardBrand ?? result.raw?.txnCardType,
-          rrn: result.raw?.txnRrn ?? result.raw?.txnRRN,
-          cardAID: result.raw?.txnCardAid,
-        },
-        transactionId: referenceId,
-        paymentJournalHandle: {
-          id: paymentJournalId,
-          idempotencyKey: paymentJournalKey,
-        },
-      },
-    };
-  }
-
-  // Dejavoo or unsupported terminal type — simulate for now
-  await new Promise((r) => setTimeout(r, 800));
-  return { ok: true, terminalResponse: { simulated: true, amount: total } };
-}
-
 export function useKioskCheckout() {
   const supabase = useSupabaseClient();
   const [status, setStatus] = useState<KioskCheckoutStatus>("idle");
@@ -311,15 +173,36 @@ export function useKioskCheckout() {
         // takeout. startNewOrder({ tableId: null }) always yields takeout, so we
         // patch it from the cart selection.
         const order = orderStore.startNewOrder({});
-        if (cart.orderType) {
-          orderStore.patchOrder(order.id, { order_type: cart.orderType });
-        }
+        // Apply order type + the captured customer BEFORE the backend row is
+        // created — ensureActiveOrderCreated sends p_customer_name/p_customer_phone
+        // on creation, so the name/phone (and thus the receipt greeting) are
+        // attached from the start.
+        orderStore.patchOrder(order.id, {
+          ...(cart.orderType ? { order_type: cart.orderType } : {}),
+          ...(cart.customerName ? { customer_name: cart.customerName } : {}),
+          ...(cart.customerPhone ? { customer_phone: cart.customerPhone } : {}),
+          ...(cart.customerId ? { customer_id: cart.customerId } : {}),
+        });
         orderStore.setActiveOrder(order.id);
         const createdDbId = await orderStore.ensureActiveOrderCreated(order.id);
         if (!createdDbId) {
           setStatus("error");
           setError("Could not create the order. Please try again.");
           return null;
+        }
+
+        // Best-effort: link the order to the customer row so the analytics /
+        // loyalty trigger can attribute it. Non-fatal — the name/phone are
+        // already on the order regardless.
+        if (cart.customerId) {
+          try {
+            await supabase
+              .from("orders")
+              .update({ customer_id: cart.customerId })
+              .eq("id", createdDbId);
+          } catch {
+            /* non-fatal */
+          }
         }
 
         // The order may be re-keyed (local id → db_order_id) during creation.
@@ -372,21 +255,27 @@ export function useKioskCheckout() {
           return null;
         }
 
-        // 4. Charge the card via the configured terminal (same path as POS).
+        // 4. Charge the card on the station's ACTIVE terminal — same routing +
+        // per-processor branches (Castles/Valor/ATOM/Dejavoo) the POS uses.
         setStatus("charging");
-        const charge = await chargeCardWithTerminal(
-          amountToCharge,
+        const charge = await chargeActiveTerminal({
+          amount: amountToCharge,
           tipAmount,
-          liveOrderId,
-          createdDbId,
+          orderId: liveOrderId,
+          dbOrderId: createdDbId,
           supabase,
-        );
+        });
         if (!charge.ok) {
-          // No charge happened — void the unpaid order so it doesn't linger.
-          try {
-            orderStore.voidOrder(liveOrderId);
-          } catch {
-            /* best-effort */
+          // INDETERMINATE — the charge MAY have landed (socket died after the
+          // card read, or a partial approval). Do NOT void the order: voiding
+          // locally can't refund a captured charge, and re-charging would double
+          // it. Leave it for staff reconciliation and surface a clear message.
+          if (!charge.indeterminate) {
+            try {
+              orderStore.voidOrder(liveOrderId);
+            } catch {
+              /* best-effort */
+            }
           }
           setStatus("error");
           setError(charge.message ?? "Payment declined.");
@@ -420,6 +309,21 @@ export function useKioskCheckout() {
         // that never paid, so the KDS send must follow a confirmed payment.
         await orderStore.sendNewItemsToKitchenForOrder(liveOrderId);
 
+        // 7. Text the customer their receipt + a personalized confirmation on
+        // top (name + order number). Fire-and-forget — never block or fail the
+        // success screen on an SMS hiccup.
+        if (cart.customerPhone) {
+          void sendReceipt({
+            client: supabase,
+            dbOrderId: createdDbId,
+            deliveryMethod: "sms",
+            recipient: cart.customerPhone,
+            confirmation: true,
+          }).catch(() => {
+            /* non-fatal: the order is paid regardless of SMS delivery */
+          });
+        }
+
         const finalOrder = useOrderStore.getState().ordersById[liveOrderId];
         const res: KioskCheckoutResult = {
           orderId: liveOrderId,
@@ -435,7 +339,7 @@ export function useKioskCheckout() {
         return null;
       }
     },
-    [],
+    [supabase],
   );
 
   return {

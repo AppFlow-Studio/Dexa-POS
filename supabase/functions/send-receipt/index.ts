@@ -17,6 +17,10 @@ interface SendReceiptBody {
   delivery_method: 'email' | 'sms'
   recipient: string
   receipt_template_id?: string
+  // Kiosk self-service: prefix the SMS receipt with a personalized
+  // order-confirmation greeting (customer name + order number). Backward
+  // compatible — omitted for normal POS receipts.
+  confirmation?: boolean
 }
 
 function jsonResp(body: unknown, init: ResponseInit = {}) {
@@ -73,7 +77,8 @@ serve(async (req: Request) => {
     return jsonResp({ success: false, message: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { order_id, delivery_method, recipient, receipt_template_id } = body
+  const { order_id, delivery_method, recipient, receipt_template_id, confirmation } =
+    body
   if (!order_id || !delivery_method || !recipient) {
     return jsonResp(
       { success: false, message: 'order_id, delivery_method, recipient required' },
@@ -193,7 +198,9 @@ serve(async (req: Request) => {
       return jsonResp({ success: false, message: 'Invalid phone number' })
     }
 
-    const text = renderReceiptText(order as any, location)
+    const text = renderReceiptText(order as any, location, {
+      confirmation: confirmation === true
+    })
     const telnyxBody: Record<string, unknown> = {
       to: e164,
       text
@@ -615,7 +622,8 @@ function renderReceiptHtml(
 
 function renderReceiptText(
   order: ReceiptOrder,
-  location: ReceiptLocation | null
+  location: ReceiptLocation | null,
+  opts: { confirmation?: boolean } = {}
 ): string {
   const orderNumber = order.display_number || order.order_number || '-'
   const businessName = location?.name || 'Receipt'
@@ -651,6 +659,14 @@ function renderReceiptText(
     paidLine ? `Paid: ${paidLine}` : '',
     'Thank you!'
   ].filter(Boolean)
+
+  // Kiosk confirmation: a personalized greeting on top of the receipt.
+  if (opts.confirmation) {
+    const firstName = (order.customer_name ?? '').trim().split(/\s+/)[0]
+    const greeting = firstName ? `Hi ${firstName}! ` : ''
+    const header = `${greeting}Your order #${orderNumber} is confirmed. We'll text you when it's ready.`
+    return [header, '', ...lines].join('\n')
+  }
 
   return lines.join('\n')
 }

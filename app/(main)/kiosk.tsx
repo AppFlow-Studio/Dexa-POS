@@ -15,7 +15,7 @@ import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 /**
  * Kiosk entry point.
@@ -58,7 +58,9 @@ export default function KioskScreen() {
     const kioskProfileId =
       useStoreSettingsStore.getState().selectedStation?.kiosk_profile_id ??
       null;
-    queryClient.invalidateQueries({
+    // Return the promise so callers (e.g. the settings Sync button) can await
+    // the refetch and show a spinner.
+    return queryClient.invalidateQueries({
       queryKey: kioskProfileQueryKeys.forStation(stationId, kioskProfileId),
     });
   }, [queryClient]);
@@ -102,41 +104,64 @@ export default function KioskScreen() {
     );
   }
 
-  if (isIdle) {
-    const AttractComponent =
-      config.templateId === "template_b" || config.templateId === "template_c"
-        ? KioskAttractCarouselB
-        : KioskAttractScreen;
-    return (
-      <KioskScaleProvider>
+  const AttractComponent =
+    config.templateId === "template_b" || config.templateId === "template_c"
+      ? KioskAttractCarouselB
+      : KioskAttractScreen;
+
+  // Attract (idle) or the active ordering session. The PIN gate + settings
+  // entry live at this level so they work from either state. Returning to idle
+  // clears the cart and commits any config change that arrived mid-session.
+  return (
+    <KioskScaleProvider>
+      {isIdle ? (
         <AttractComponent
           config={config}
           onStart={() => setIdle(false)}
           onLogoLongPress={() => setShowPinModal(true)}
         />
-        <KioskAdminPinModal
-          visible={showPinModal}
-          onClose={() => setShowPinModal(false)}
-          onVerified={() => {
-            setShowPinModal(false);
-            setShowDiagnostics(true);
+      ) : (
+        <KioskTemplateRouter
+          config={config}
+          onExit={() => {
+            clearCart();
+            setIdle(true);
           }}
         />
-      </KioskScaleProvider>
-    );
-  }
+      )}
 
-  // Active session — Template A ordering flow. Returning to idle clears the
-  // cart and commits any config change that arrived during the session.
-  return (
-    <KioskScaleProvider>
-      <KioskTemplateRouter
-        config={config}
-        onExit={() => {
-          clearCart();
-          setIdle(true);
+      {/* Manager-PIN gate opened by the secret 5-tap on the attract screen. */}
+      <KioskAdminPinModal
+        visible={showPinModal}
+        onClose={() => setShowPinModal(false)}
+        onVerified={() => {
+          setShowPinModal(false);
+          setShowDiagnostics(true);
         }}
       />
+
+      {/* DEV builds only: an always-visible shortcut to open Kiosk Settings on
+          the emulator without the secret gesture or a manager PIN. Stripped
+          from production bundles (`__DEV__` is false there). */}
+      {__DEV__ ? (
+        <Pressable
+          onPress={() => setShowDiagnostics(true)}
+          style={{
+            position: "absolute",
+            bottom: 16,
+            right: 16,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 999,
+            zIndex: 100,
+          }}
+        >
+          <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 13 }}>
+            ⚙︎ Settings (dev)
+          </Text>
+        </Pressable>
+      ) : null}
     </KioskScaleProvider>
   );
 }

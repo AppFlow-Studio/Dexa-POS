@@ -7,6 +7,11 @@ import { getDeviceId } from "@/lib/deviceId";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { toastService } from "@/lib/toastService";
 import { clearStationData } from "@/services/cacheService";
+import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
+import {
+    useKioskDeviceSettingsStore,
+    type KioskMenuColumns,
+} from "@/stores/useKioskDeviceSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
 import type { KioskConfig } from "@/types/kiosk";
@@ -51,12 +56,16 @@ export function KioskDiagnosticsScreen({
 }: {
   config: KioskConfig;
   onClose: () => void;
-  onRefreshKioskConfig?: () => void;
+  onRefreshKioskConfig?: () => void | Promise<unknown>;
 }) {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const { isOnline, rawIsOnline, quality, pendingSyncCount } =
     useNetworkStatus();
+
+  // ── Menu layout (device-local) ──
+  const menuColumns = useKioskDeviceSettingsStore((s) => s.menuColumns);
+  const setMenuColumns = useKioskDeviceSettingsStore((s) => s.setMenuColumns);
 
   // ── Payment Terminal ──────────────────────────────────────────────
   const supabase = useSupabaseClient();
@@ -682,24 +691,51 @@ export function KioskDiagnosticsScreen({
           <Row label="Station ID" value={selectedStation?.id ?? "—"} mono />
         </Section>
 
-        <Section title="Kiosk Profile">
-          <Row label="Profile name" value={config.profileName} />
-          <Row label="Profile ID" value={config.id} mono />
-          <Row label="Template" value={config.templateId} />
-          <Row label="Orientation" value={config.orientation} />
-          <Row label="Idle timeout" value={`${config.idleTimeoutSeconds}s`} />
-          <Row
-            label="Cart reset timeout"
-            value={`${config.cartResetTimeoutSeconds}s`}
-          />
-          <Row
-            label="Payment terminal"
-            value={config.paymentTerminalId ?? "Not linked"}
-            mono
-          />
-          <Row label="Published" value={config.publishedAt ?? "Never"} />
-          <Row label="Active" value={config.isActive ? "Yes" : "No"} />
-        </Section>
+        {/* Editable kiosk profile — same options as the web dashboard, with
+            Sync (pull) + Save (push) to kiosk_profiles. */}
+        <KioskProfileEditor
+          config={config}
+          onRefreshKioskConfig={onRefreshKioskConfig}
+        />
+
+        {/* ── Menu Layout (device-local) ── */}
+        <View style={{ gap: 8 }}>
+          <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            Menu Layout
+          </Text>
+          <View className="rounded-2xl border border-gray-200 px-4 py-3">
+            <Text className="text-base text-gray-600 mb-1">
+              Items per row
+            </Text>
+            <Text className="text-xs text-gray-400 mb-3">
+              How many menu items show across each row. “Auto” uses the
+              template default ({config.orientation === "vertical" ? "3" : "4"}{" "}
+              for this orientation).
+            </Text>
+            <View className="flex-row bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
+              {(["auto", 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
+                const active = menuColumns === opt;
+                return (
+                  <TouchableOpacity
+                    key={String(opt)}
+                    onPress={() => setMenuColumns(opt)}
+                    className={`flex-1 py-2.5 items-center ${
+                      active ? "bg-teal-100" : ""
+                    }`}
+                  >
+                    <Text
+                      className={`text-sm font-semibold ${
+                        active ? "text-teal-600" : "text-gray-400"
+                      }`}
+                    >
+                      {opt === "auto" ? "Auto" : opt}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
 
         {/* ── Payment Terminal ── */}
         <View style={{ gap: 8 }}>

@@ -3,6 +3,10 @@ import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import {
+  resolveKioskColumns,
+  useKioskDeviceSettingsStore,
+} from "@/stores/useKioskDeviceSettingsStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
@@ -33,7 +37,10 @@ export function KioskMenuView({
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
   const isVertical = config.orientation === "vertical";
-  const numColumns = isVertical ? 3 : 4;
+  // Column count: manager device setting wins; "auto" falls back to the
+  // orientation default (3 vertical / 4 horizontal).
+  const columnsPref = useKioskDeviceSettingsStore((st) => st.menuColumns);
+  const numColumns = resolveKioskColumns(columnsPref, isVertical ? 3 : 4);
 
   // Build one section per available menu, listing its available categories.
   const sections = useMemo<CategorySection[]>(() => {

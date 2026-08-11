@@ -61,12 +61,30 @@ export function lineTotal(line: KioskCartLine): number {
 /** Customer-selected fulfilment type, mapped to order_type at checkout. */
 export type KioskOrderType = "dine_in" | "takeout";
 
+/** Customer captured on the pre-payment screen (phone-first). */
+export interface KioskCartCustomer {
+  /** customers.id, once looked up / created. */
+  id: string | null;
+  /** Display name (may be null for a brand-new, unnamed customer). */
+  name: string | null;
+  /** Digits-only US phone number. */
+  phone: string | null;
+}
+
 interface KioskCartState {
   lines: KioskCartLine[];
   /** Null until the customer picks one on the order-type screen. */
   orderType: KioskOrderType | null;
 
+  /** Captured on the pre-pay customer screen. Required before checkout. */
+  customerId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+
   setOrderType: (type: KioskOrderType) => void;
+
+  /** Store the looked-up / created customer for this session. */
+  setCustomer: (customer: KioskCartCustomer) => void;
 
   /** Add a fully-built line. Returns the generated lineId. */
   addLine: (line: Omit<KioskCartLine, "lineId">) => string;
@@ -90,8 +108,18 @@ const genLineId = () =>
 export const useKioskCartStore = create<KioskCartState>((set, get) => ({
   lines: [],
   orderType: null,
+  customerId: null,
+  customerName: null,
+  customerPhone: null,
 
   setOrderType: (type) => set({ orderType: type }),
+
+  setCustomer: (customer) =>
+    set({
+      customerId: customer.id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+    }),
 
   addLine: (line) => {
     const lineId = genLineId();
@@ -129,7 +157,14 @@ export const useKioskCartStore = create<KioskCartState>((set, get) => ({
       lines: state.lines.filter((l) => l.lineId !== lineId),
     })),
 
-  clear: () => set({ lines: [], orderType: null }),
+  clear: () =>
+    set({
+      lines: [],
+      orderType: null,
+      customerId: null,
+      customerName: null,
+      customerPhone: null,
+    }),
 
   subtotal: () => get().lines.reduce((sum, l) => sum + lineTotal(l), 0),
 

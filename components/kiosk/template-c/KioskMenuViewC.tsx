@@ -4,6 +4,10 @@ import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import type { Category, MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import {
+  resolveKioskColumns,
+  useKioskDeviceSettingsStore,
+} from "@/stores/useKioskDeviceSettingsStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
@@ -76,7 +80,10 @@ export function KioskMenuViewC({
   );
 
   const isVertical = config.orientation === "vertical";
-  const numColumns = 4;
+  // Template C's grid is 4-wide by default (both orientations); a manager
+  // override still applies.
+  const columnsPref = useKioskDeviceSettingsStore((st) => st.menuColumns);
+  const numColumns = resolveKioskColumns(columnsPref, 4);
   const bannerImages = kioskOrderBannerImages(config);
   const hasMedia = bannerImages.length > 0;
   const bannerHeight = kioskPx(420, s);
