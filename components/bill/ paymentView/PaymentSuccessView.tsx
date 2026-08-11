@@ -1,10 +1,7 @@
 "use no memo";
 
 import { runAfterPaint } from "@/lib/afterPaint";
-import {
-  getOrderBalanceDue,
-  getOrderCashBalanceDue,
-} from "@/lib/orderBalance";
+import { hasOrderBalanceDue } from "@/lib/orderBalance";
 import { startInteraction } from "@/lib/perf";
 import { useUiScale } from "@/lib/uiScale";
 import { useToast } from "@/contexts/ToastContext";
@@ -111,9 +108,29 @@ const PaymentSuccessView = () => {
   // payment succeeded but the CHECK is still open. Everything below that reads
   // `hasBalanceDue` exists to stop the operator being offered "Start New Order"
   // (or a dine-in table clear) while money is still on the check.
-  const balanceDue = getOrderBalanceDue(activeOrder);
-  const cashBalanceDue = getOrderCashBalanceDue(activeOrder);
-  const hasBalanceDue = balanceDue > 0;
+  //
+  // This screen deliberately shows NO balance figure.
+  //
+  // At the instant the success view is created, the outstanding fields have not
+  // been decremented by the payment that just completed — `order.amount_due`,
+  // `cash_amount_due` and the `activeOrderOutstanding*` pair all still read the
+  // pre-payment totals (a $5 payment against a $1087.66 / $1045.83 dual-priced
+  // check showed the full 1087.66 / 1045.83 here, while the pay-remaining
+  // screen a moment later correctly showed 1082.66 / 1041.02). The corrected
+  // values only arrive with the debounced backend re-sync ~1s later.
+  //
+  // So there is no field to read and no snapshot to take that yields the right
+  // number at this moment. Rendering the live value instead just shows a wrong
+  // figure that later flickers to a right one. A wrong balance on a payment
+  // screen is worse than no balance, so we state only what we know for certain
+  // — the check is still open — and route the operator to the pay-remaining
+  // flow, which reads settled state at tap time and is correct there.
+  //
+  // Only the EXISTENCE of a balance is used, never its size, and existence is
+  // safe from the undecremented reads: an unpaid check reports > 0 either way,
+  // and a fully-paid one is caught by the `paid_status === "Paid"` short-circuit
+  // inside hasOrderBalanceDue. Read live so it self-corrects as sync lands.
+  const hasBalanceDue = hasOrderBalanceDue(activeOrder);
   // console.log("[PaymentSuccessView] items", items);
   // console.log("[PaymentSuccessView] activeOrder", activeOrder);
   const handleDone = () => {
@@ -415,44 +432,28 @@ const PaymentSuccessView = () => {
             return (
               <>
                 {hasBalanceDue ? (
-                  /* Partial settlement: what was collected and what's left,
-                     side by side. Stacking a full-width "Balance Due" panel
-                     under the hero number cost ~90px and pushed the action
-                     buttons below the fold on an 800px-tall tablet. Two
-                     columns carry both figures in roughly half the height —
-                     and paid-vs-outstanding is a comparison anyway, so
-                     reading them as a pair is also the clearer framing. */
-                  <View style={{ flexDirection: "row", width: "100%", marginBottom: s(16) }}>
-                    <View style={{ flex: 1, alignItems: "center" }}>
-                      <Text style={{ color: colors.muted, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
-                        Paid Now
+                  /* Partial settlement. Amount collected only — no balance
+                     figure, since none of the outstanding fields are
+                     decremented yet at this point in the flow (see the note by
+                     `hasBalanceDue` above). The wording states the fact we do
+                     know for certain; the exact remainder is shown on the
+                     pay-remaining screen, where it is settled and correct. */
+                  <>
+                    <Text style={{ color: colors.muted, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
+                      Paid Now
+                    </Text>
+                    <Text style={{ fontSize: s(38), fontWeight: "800", color: colors.teal, marginBottom: totalTips > 0 ? s(6) : s(12) }}>
+                      ${totalPaid.toFixed(2)}
+                    </Text>
+                    {totalTips > 0 && (
+                      <Text style={{ color: colors.success, fontSize: s(12), marginBottom: s(12) }}>
+                        incl. ${totalTips.toFixed(2)} tip
                       </Text>
-                      <Text style={{ fontSize: s(28), fontWeight: "800", color: colors.teal }}>
-                        ${totalPaid.toFixed(2)}
-                      </Text>
-                      {totalTips > 0 && (
-                        <Text style={{ color: colors.success, fontSize: s(11), marginTop: s(2) }}>
-                          incl. ${totalTips.toFixed(2)} tip
-                        </Text>
-                      )}
-                    </View>
-
-                    <View style={{ width: 1, alignSelf: "stretch", backgroundColor: colors.border, marginHorizontal: s(12) }} />
-
-                    <View style={{ flex: 1, alignItems: "center" }}>
-                      <Text style={{ color: colors.warning, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
-                        Balance Due
-                      </Text>
-                      <Text style={{ fontSize: s(28), fontWeight: "800", color: colors.warning }}>
-                        ${balanceDue.toFixed(2)}
-                      </Text>
-                      {cashBalanceDue > 0 && cashBalanceDue !== balanceDue && (
-                        <Text style={{ color: colors.success, fontSize: s(11), marginTop: s(2) }}>
-                          ${cashBalanceDue.toFixed(2)} cash
-                        </Text>
-                      )}
-                    </View>
-                  </View>
+                    )}
+                    <Text style={{ color: colors.warning, fontSize: s(12), fontWeight: "700", marginBottom: s(14), textAlign: "center" }}>
+                      Balance remaining on this check
+                    </Text>
+                  </>
                 ) : totalTips > 0 ? (
                   <>
                     <Text style={{ color: colors.muted, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
@@ -628,8 +629,14 @@ const PaymentSuccessView = () => {
                 onPress={payRemainingBalance}
                 style={{ width: "100%", paddingVertical: s(10), backgroundColor: colors.teal, borderRadius: s(8), flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(6), shadowColor: colors.teal, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 }}
               >
+                {/* No figure on the button. What the remainder actually costs
+                    depends on the tender chosen NEXT — a cash-priced balance
+                    and a card-priced one differ — and that choice hasn't been
+                    made yet, so any amount printed here would be wrong half the
+                    time. The card above shows both bases; the amount charged is
+                    resolved live from the tender picked on the next screen. */}
                 <Text style={{ color: colors.onSolid, fontWeight: "700", fontSize: s(13) }}>
-                  Pay Remaining ${balanceDue.toFixed(2)}
+                  Pay Remaining Balance
                 </Text>
                 <ArrowRight size={s(15)} color={colors.onSolid} />
               </TouchableOpacity>

@@ -88,6 +88,11 @@ export interface CompletedPaymentInfo {
   totalTips: number; // Total tips (sum of all tips on order)
   paymentMethod: string; // "Card" or "Cash"
   transactionId: string; // Order ID (last 6 chars used for display)
+  // NOTE: deliberately carries no outstanding-balance figure. At the moment
+  // this snapshot is taken the outstanding fields have not yet been decremented
+  // by the payment that just completed, so any balance captured here is the
+  // pre-payment total. See the comment by `hasBalanceDue` in
+  // PaymentSuccessView for the full account.
 }
 
 const paymentViewToStepMap: Record<PaymentView, number> = {

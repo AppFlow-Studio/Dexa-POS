@@ -1,8 +1,4 @@
-import {
-  getOrderBalanceDue,
-  getOrderCashBalanceDue,
-  hasOrderBalanceDue,
-} from "@/lib/orderBalance";
+import { getOrderBalanceDue, hasOrderBalanceDue } from "@/lib/orderBalance";
 import type { OrderProfile } from "@/lib/types";
 
 // Only the payment-status fields matter to these helpers; the rest of
@@ -62,33 +58,27 @@ describe("getOrderBalanceDue", () => {
   });
 });
 
-describe("getOrderCashBalanceDue", () => {
-  it("reports the cash-priced balance alongside the card balance", () => {
-    expect(
-      getOrderCashBalanceDue(
-        order({ paid_status: "Partial", amount_due: 50, cash_amount_due: 47.5 }),
-      ),
-    ).toBe(47.5);
-  });
-
-  it("stays 0 whenever the card balance is 0, even with a stale cash figure", () => {
-    // The two figures must never disagree about whether a balance EXISTS —
-    // otherwise the success screen could show a cash line under no headline.
-    expect(
-      getOrderCashBalanceDue(
-        order({ paid_status: "Paid", amount_due: 0, cash_amount_due: 47.5 }),
-      ),
-    ).toBe(0);
-  });
-
-  it("returns 0 when cash_amount_due is absent", () => {
-    expect(
-      getOrderCashBalanceDue(order({ paid_status: "Partial", amount_due: 50 })),
-    ).toBe(0);
-  });
-});
-
 describe("hasOrderBalanceDue", () => {
+  // This predicate is used for EXISTENCE only — the success screen shows no
+  // balance figure, because right after a payment `amount_due` still holds the
+  // pre-payment total (a $5 payment against a $1087.66 check left it reading
+  // 1087.66). Existence survives that staleness; the amount does not.
+  it("still detects a balance from an undecremented amount_due", () => {
+    expect(
+      hasOrderBalanceDue(
+        order({ paid_status: "Partial", amount_due: 1087.66 }),
+      ),
+    ).toBe(true);
+  });
+
+  it("reports no balance on a settled check even with a stale amount_due", () => {
+    // paid_status is the guard that keeps a "Pay Remaining" CTA off a closed
+    // sale when the outstanding figure hasn't caught up yet.
+    expect(
+      hasOrderBalanceDue(order({ paid_status: "Paid", amount_due: 1087.66 })),
+    ).toBe(false);
+  });
+
   it("mirrors getOrderBalanceDue as a boolean", () => {
     expect(
       hasOrderBalanceDue(order({ paid_status: "Partial", amount_due: 50 })),

@@ -38,20 +38,15 @@ export function getOrderBalanceDue(order?: OrderProfile | null): number {
 }
 
 /**
- * Cash-priced twin of {@link getOrderBalanceDue}, for surfacing the cash
- * discount on what's left. Returns 0 whenever the card balance is 0, so the two
- * figures can never disagree about whether a balance exists at all.
+ * True when the order positively has money left to collect.
+ *
+ * EXISTENCE ONLY. Callers must not display `getOrderBalanceDue`'s figure on the
+ * payment success screen: right after a payment the outstanding fields have not
+ * been decremented yet, so the amount reads as the pre-payment total. Existence
+ * survives that staleness — an unpaid check reports a balance either way, and a
+ * settled one is caught by the `paid_status === "Paid"` short-circuit — but the
+ * amount does not.
  */
-export function getOrderCashBalanceDue(order?: OrderProfile | null): number {
-  if (getOrderBalanceDue(order) <= 0) return 0;
-
-  const cashDue = order?.cash_amount_due;
-  if (typeof cashDue !== "number" || !Number.isFinite(cashDue)) return 0;
-
-  return cashDue > BALANCE_EPSILON ? cashDue : 0;
-}
-
-/** True when the order positively has money left to collect. */
 export function hasOrderBalanceDue(order?: OrderProfile | null): boolean {
   return getOrderBalanceDue(order) > 0;
 }
