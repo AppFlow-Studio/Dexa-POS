@@ -5,6 +5,7 @@
  * Runs checklist validations against live data.
  */
 
+import { isInKindMethod, isMonetaryMethod } from '@/lib/paymentMethod'
 import { fetchSessionVarianceAnalysis } from '@/services/cashDrawerAuditService'
 import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
@@ -268,7 +269,13 @@ export async function fetchUnsettledTipSummary (
   const payments = (paymentsRes.data || []).filter(
     (p: any) => !p.is_voided && !p.is_returned
   )
-  const cardPayments = payments.filter((p: any) => p.payment_method !== 'cash')
+  // `!== 'cash'` alone would sweep in-kind into the card bucket. In-kind is a
+  // non-tender settlement (no processor, tip forced to 0 server-side), so
+  // counting it here would report phantom card tips and, worse, run them
+  // through the processor-fee deduction below for a fee that was never charged.
+  const cardPayments = payments.filter(
+    (p: any) => p.payment_method !== 'cash' && isMonetaryMethod(p.payment_method)
+  )
   const cardTips = cardPayments.reduce(
     (sum: number, p: any) => sum + Number(p.tip_amount || 0),
     0
@@ -653,7 +660,15 @@ export async function fetchDailySummary (
     const validPayments = paymentList.filter(
       (p: any) => !p.is_voided && !p.is_returned && !['pending', 'processing', 'failed', 'declined', 'void'].includes(p.status)
     )
-    const cardPayments = validPayments.filter((p: any) => p.payment_method !== 'cash')
+    // In-kind is card-PRICED but is not a card tender — no money reaches the
+    // processor. It gets its own total so cardTotal stays reconcilable against
+    // the processor's settlement figure.
+    const inKindPayments = validPayments.filter((p: any) =>
+      isInKindMethod(p.payment_method)
+    )
+    const cardPayments = validPayments.filter(
+      (p: any) => p.payment_method !== 'cash' && isMonetaryMethod(p.payment_method)
+    )
     const cashPayments = validPayments.filter((p: any) => p.payment_method === 'cash')
 
     const cardTotal = cardPayments.reduce(
@@ -661,6 +676,10 @@ export async function fetchDailySummary (
       0
     )
     const cashTotal = cashPayments.reduce(
+      (sum: number, p: any) => sum + Number(p.total_amount || p.amount || 0),
+      0
+    )
+    const inKindTotal = inKindPayments.reduce(
       (sum: number, p: any) => sum + Number(p.total_amount || p.amount || 0),
       0
     )
@@ -854,6 +873,7 @@ export async function fetchDailySummary (
         orderList.length > 0 ? totalSales / orderList.length : 0,
       cardTotal,
       cashTotal,
+      inKindTotal,
       otherTotal: 0,
       totalTips,
       totalLaborHours,

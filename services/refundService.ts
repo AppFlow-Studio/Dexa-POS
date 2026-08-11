@@ -1,5 +1,6 @@
 import { isTransientRpcError } from "@/lib/network/idempotencyKey";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { isInKindMethod } from "@/lib/paymentMethod";
 import { computeItemRefundAmount } from "@/lib/refundScShare";
 import { OrderService } from "@/services/orderService";
 import {
@@ -15,6 +16,16 @@ import {
     isTerminalTransportDead,
 } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
+import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
+import { getSharedAtomService } from "@/services/terminals/atom-service";
+import {
+  suspendAtomLoopbackProbing,
+  resumeAtomLoopbackProbing,
+} from "@/services/terminals/atomLoopbackDetector";
+import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
+import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from "@/types/atom";
 import {
     CASTLES_DEFAULT_PORT,
     CASTLES_SOCKET_TIMEOUT_MS,
@@ -222,11 +233,22 @@ export class RefundService {
           castlesTxn?.stan ||
           p.processor_response?.raw_castles_response?.txnStan ||
           "";
+        // Valor reversal reference is TRAN_NO (charge-slip "Trans" number), NOT rrn/stan.
+        const valorTxn = p.processor_response?.valor_transaction;
+        const tranNo = valorTxn?.tranNo || "";
+        // ATOM linked refund/void references the original by paymentId.
+        const atomTxn = p.processor_response?.atom_transaction;
+        const atomPaymentId = atomTxn?.paymentId || "";
+        const cardLast4 =
+          valorTxn?.cardLast4 || castlesTxn?.cardLast4 || atomTxn?.cardLast4 || "";
         return {
           paymentId: p.id,
           referenceId: p.reference_number || p.transaction_id || "",
           rrn: p.rrn || "",
           stan,
+          tranNo,
+          atomPaymentId,
+          cardLast4,
           authCode: p.auth_code || "",
           amount,
           tipAmount: Number(p.tip_amount || 0),
@@ -1291,6 +1313,22 @@ export class RefundService {
       return { success: true };
     }
 
+    // In-kind is a non-tender settlement: no processor ever saw it, and it
+    // carries no terminal_id, reference_id or auth code. Routed like cash so
+    // the reversal is recorded in the DB only. Without this it would fall
+    // through to the terminal path below and fail the missing-reference guard
+    // — leaving the payment un-reversible.
+    if (isInKindMethod(payment.paymentMethod)) {
+      return { success: true };
+    }
+
+    // ATOM (on-device) payments have NO terminal_id (loopback, no DB terminal
+    // row) and are identified by the stored ATOM paymentId. Route here BEFORE
+    // the terminalId guards, and independent of the station's configured terminal.
+    if (payment.atomPaymentId) {
+      return this.processAtomTerminalRefund(payment, amount, useVoid);
+    }
+
     // Check for missing required fields with specific error messages
     console.log("processTerminalRefund Payment", payment);
     if (!terminalId && !payment.referenceId) {
@@ -1324,6 +1362,15 @@ export class RefundService {
         useVoid,
         terminal!,
         journalId,
+      );
+    }
+
+    if (terminalType === "valor") {
+      return this.processValorTerminalRefund(
+        payment,
+        amount,
+        useVoid,
+        terminal!,
       );
     }
 
@@ -1441,6 +1488,146 @@ export class RefundService {
           source: "castles_refund",
           terminal_ip: terminal.ip_address ?? "unknown",
         },
+      });
+      return { success: false, error: message };
+    }
+  }
+
+  private async processValorTerminalRefund(
+    payment: PaymentRefundContext,
+    amount: number,
+    useVoid: boolean,
+    terminal: StationPaymentTerminal,
+  ): Promise<{
+    success: boolean;
+    terminalResponse?: Record<string, unknown>;
+    error?: string;
+  }> {
+    const isUsb = terminal.connection_type === "usb";
+    if (!isUsb && !terminal.ip_address) {
+      return { success: false, error: "Valor terminal missing IP address." };
+    }
+
+    const valor = getSharedValorService();
+    try {
+      await valor.connect({
+        connectionType: isUsb ? "usb" : "local_socket",
+        host: isUsb ? undefined : terminal.ip_address,
+        port: isUsb ? undefined : (terminal.port ?? VALOR_DEFAULT_PORT),
+        cancelPort: terminal.cancel_port,
+        epi: terminal.epi,
+        timeout: VALOR_SALE_TIMEOUT_MS,
+        terminalId: terminal.id,
+      });
+
+      const counter = getOrCreateValorCounter({
+        terminalId: terminal.id,
+        supabaseClient: this.supabase,
+      });
+      if (!counter.isInitialized) await counter.initialize();
+      const referenceId = counter.next();
+
+      if (useVoid) {
+        // Valor void references the original by TRAN_NO (or CARD_NO last-4) —
+        // NOT rrn/stan.
+        const tranNo = payment.tranNo || undefined;
+        const cardNo = payment.cardLast4 || undefined;
+        if (!tranNo && !cardNo) {
+          return {
+            success: false,
+            error: "Cannot void: no TRAN_NO or card last-4 from original transaction.",
+          };
+        }
+        const result = await valor.processVoid({ tranNo, cardNo, referenceId });
+        return {
+          success: result.success,
+          terminalResponse: result.terminalResponse,
+          error: result.error,
+        };
+      }
+
+      const result = await valor.processRefund({ amount, referenceId });
+      return {
+        success: result.success,
+        terminalResponse: result.terminalResponse,
+        error: result.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[RefundService] Valor terminal refund error:", message);
+      Sentry.captureException(err instanceof Error ? err : new Error(message), {
+        tags: {
+          source: "valor_refund",
+          terminal_ip: terminal.ip_address ?? "unknown",
+        },
+      });
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * ATOM (on-device / loopback) terminal refund. ATOM does a LINKED refund by
+   * paymentId — no card re-presentment. For a full void (unsettled + no prior
+   * refunds) we omit `amount` so ATOM auto-voids (cheapest); otherwise we send
+   * the amount. Amounts are DOLLARS. Config comes from the surfaced internal
+   * ATOM terminal (loopback), not the station's configured terminal.
+   */
+  private async processAtomTerminalRefund(
+    payment: PaymentRefundContext,
+    amount: number,
+    useVoid: boolean,
+  ): Promise<{
+    success: boolean;
+    terminalResponse?: Record<string, unknown>;
+    error?: string;
+  }> {
+    const paymentId = payment.atomPaymentId;
+    if (!paymentId) {
+      return {
+        success: false,
+        error: "Cannot refund: missing ATOM paymentId from original transaction.",
+      };
+    }
+    const internal = useAtomTerminalStore.getState().internalTerminal;
+    const port =
+      internal?.port ?? useAtomTerminalStore.getState().port ?? undefined;
+    if (!internal || !port) {
+      return {
+        success: false,
+        error:
+          "On-device ATOM terminal not reachable. Open the ATOM app and retry.",
+      };
+    }
+
+    try {
+      const service = getSharedAtomService();
+      service.configure({
+        host: internal.ip_address ?? ATOM_LOOPBACK_HOST,
+        port,
+        terminalId: internal.id,
+        timeout: ATOM_SALE_TIMEOUT_MS,
+      });
+      const referenceId = `ATOMCXL_${Date.now()}`;
+      // Full reversal → /cancel (ATOM auto-routes COMPLETED→Return, APPROVED→Void).
+      // This replaces the old /refund-with-omitted-amount path, which ATOM rejects
+      // (NOT_ALLOWED) on a captured sale. Partial (or post-settlement) → linked
+      // return for the exact amount via /refund.
+      // Pause loopback probing for the reversal (single-session terminal).
+      suspendAtomLoopbackProbing();
+      const result = await (useVoid
+        ? service.cancel({ paymentId, referenceId })
+        : service.refund({ paymentId, amount, referenceId })
+      ).finally(() => resumeAtomLoopbackProbing());
+      return {
+        success: result.success,
+        terminalResponse: result.terminalResponse,
+        error: result.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[RefundService] ATOM terminal refund error:", message);
+      Sentry.captureException(err instanceof Error ? err : new Error(message), {
+        tags: { source: "atom_refund" },
       });
       return { success: false, error: message };
     }

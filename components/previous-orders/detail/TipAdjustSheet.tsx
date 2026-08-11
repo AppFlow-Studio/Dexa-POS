@@ -8,8 +8,8 @@ import { adjustTips, TipAdjustment } from '@/services/tipAdjustService'
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView
-} from '@gorhom/bottom-sheet'
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+} from '@/components/ui/bottomSheet'
+import { BottomSheetMethods } from '@/components/ui/bottomSheet'
 import { useQueryClient } from '@tanstack/react-query'
 import { CreditCard, Lock } from 'lucide-react-native'
 import React, {

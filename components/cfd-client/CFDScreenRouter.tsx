@@ -7,7 +7,8 @@ import {
   triggerCFDPhoneSubmit,
 } from "@/lib/cfdLoyaltyTriggers";
 import { colors } from "@/lib/theme";
-import { useEffect, useRef } from "react";
+import { useUiScale } from "@/lib/uiScale";
+import { useEffect, useMemo, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { iosOnly } from "@/lib/safeAnimations";
@@ -42,6 +43,9 @@ export function CFDScreenRouter({
   onLoyaltyJoin,
   nativeLoyaltyPrompt = false,
 }: Props) {
+  const uiScale = useUiScale();
+  const styles = useMemo(() => getStylesForScale(uiScale), [uiScale]);
+
   // Defensive: if context is missing (e.g. during unmount race), fall back
   // to idle rather than letting the throw escape to the native Presentation
   // layer where it surfaces as an Android system crash dialog.
@@ -251,35 +255,47 @@ export function CFDScreenRouter({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  screenContent: {
-    flex: 1,
-    position: "relative",
-  },
-  // Both rotating + loyalty-prompt layers absolutely fill the
-  // screenContent. Toggling display swaps them without remounting.
-  layer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  layerHidden: {
-    display: "none",
-  },
-  dexaFooterWrap: {
-    minHeight: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 2,
-    paddingBottom: 6,
-  },
-  dexaFooterText: {
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "500",
-    color: colors.label,
-    letterSpacing: 0.25,
-    opacity: 0.82,
-  },
-});
+const createStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    screenContent: {
+      flex: 1,
+      position: "relative",
+    },
+    // Both rotating + loyalty-prompt layers absolutely fill the
+    // screenContent. Toggling display swaps them without remounting.
+    layer: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    layerHidden: {
+      display: "none",
+    },
+    dexaFooterWrap: {
+      minHeight: s(20),
+      alignItems: "center",
+      justifyContent: "center",
+      paddingTop: s(2),
+      paddingBottom: s(6),
+    },
+    dexaFooterText: {
+      fontSize: s(10),
+      lineHeight: s(14),
+      fontWeight: "500",
+      color: colors.label,
+      letterSpacing: 0.25,
+      opacity: 0.82,
+    },
+  });
+};
+
+const stylesByScale = new Map<number, ReturnType<typeof createStyles>>();
+const getStylesForScale = (scale: number) => {
+  const cached = stylesByScale.get(scale);
+  if (cached) return cached;
+  const next = createStyles(scale);
+  stylesByScale.set(scale, next);
+  return next;
+};

@@ -17,6 +17,7 @@
  * manual char-padding at 32 chars.
  */
 
+import { INKIND_LABEL } from "@/lib/paymentMethod";
 import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
 import { sanitizeForPrint, safeTimeString } from "../utils/sanitizeText";
 
@@ -58,10 +59,24 @@ export interface BatchSummary {
     cash_total: number;
     gift_total: number;
     house_total?: number;
+    /**
+     * In-kind (non-tender) settlements: revenue posted at card pricing with
+     * no money collected. Included in `gross`, then deducted again in
+     * `net.inkind` so the printed report shows the write-off explicitly.
+     * Closing report only — a settlement batch never contains in-kind.
+     */
+    inkind_total?: number;
     gross: number;
   };
   refunds: { count: number; amount: number };
-  net: { gross: number; tips?: number; refunds: number; net_deposit: number | null };
+  net: {
+    gross: number;
+    tips?: number;
+    refunds: number;
+    /** In-kind netted out of net_deposit (money that never moved). */
+    inkind?: number;
+    net_deposit: number | null;
+  };
   card_brands: Record<string, BatchSummaryAmount>;
   entry_modes: Record<string, BatchSummaryAmount>;
   payment_methods?: Record<string, BatchSummaryAmount>;
@@ -330,6 +345,11 @@ function pushBody(nodes: PrintNode[], s: BatchSummary): void {
   if ((s.sales.house_total ?? 0) > 0) {
     pushAmountRow(nodes, "House Account", s.sales.house_total ?? 0);
   }
+  // Only printed when non-zero: most days have none, and a permanent
+  // $0.00 inKind line would just be noise on every receipt.
+  if ((s.sales.inkind_total ?? 0) > 0) {
+    pushAmountRow(nodes, `${INKIND_LABEL} (no payment)`, s.sales.inkind_total ?? 0);
+  }
   pushAmountRow(nodes, "Gross Sales", s.sales.gross, BOLD);
 
   // 3. REFUNDS
@@ -354,10 +374,22 @@ function pushBody(nodes: PrintNode[], s: BatchSummary): void {
     right: `-${fmtCurrency(s.net.refunds)}`,
     lineWidth: W,
   });
+  // In-kind is inside Gross (it is real posted revenue) but never reached the
+  // bank, so it is deducted here on its own line — a merchant reconciling the
+  // deposit can see exactly why Gross and Net differ.
+  const inKindForNet = s.net.inkind ?? 0;
+  if (inKindForNet > 0) {
+    nodes.push({
+      type: "two_column",
+      left: `Less ${INKIND_LABEL}`,
+      right: `-${fmtCurrency(inKindForNet)}`,
+      lineWidth: W,
+    });
+  }
   const computedDeposit =
     s.net.net_deposit && s.net.net_deposit !== 0
       ? s.net.net_deposit
-      : s.net.gross + tipForNet - s.net.refunds;
+      : s.net.gross + tipForNet - s.net.refunds - inKindForNet;
   pushAmountRow(nodes, "Net Deposit", computedDeposit, BOLD);
 
   // 5. CARD BRANDS — always render the four canonical brands at zero,

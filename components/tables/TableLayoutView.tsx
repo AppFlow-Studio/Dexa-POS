@@ -1151,6 +1151,17 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   // cross-floor / deleted tables are released. Only runs in skia mode.
   useEffect(() => {
     if (!skiaViewMode) return;
+    // Do NOT prune on a transiently-empty `tables`. On a WiFi drop the floor-plan
+    // store's `tables` array briefly empties then refills; pruning to an empty
+    // keep-set wipes EVERY tableDrawStore entry. It never recovers because when
+    // `tables` refills with the SAME (identity-reused) objects, each publisher's
+    // `draw` memo is unchanged, so its publish effect doesn't re-run and the
+    // deleted draw-data is never restored — the canvas stays blank until a floor
+    // switch/remount rebuilds the publishers. An active floor never legitimately
+    // has zero tables, so skip the GC for that frame; the next real `tables`
+    // change (or floor switch) prunes cross-floor/deleted entries. (Classic mode
+    // has no tableDrawStore, which is why only Skia mode showed this.)
+    if (tables.length === 0) return;
     const keep = new Set<string>();
     for (const t of tables) keep.add(t.id);
     useTableDrawStore.getState().pruneData(keep);

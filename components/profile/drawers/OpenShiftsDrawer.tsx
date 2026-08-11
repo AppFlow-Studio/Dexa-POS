@@ -1,14 +1,14 @@
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { Briefcase } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 
 import { useToast } from "@/contexts/ToastContext";
-import { Shift } from "@/lib/types";
+import { MerchantRole, Role, Shift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import {
@@ -21,6 +21,12 @@ import {
   startOfDay,
 } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
+
+// Employees only carry a permission-tier MerchantRole (cashier/manager/admin/owner),
+// not a job-position Role (Barista/Line Cook/Prep/...). Map to the closest job
+// position so open-shift "match score" has something meaningful to compare against.
+const merchantRoleToJobRole = (role: MerchantRole): Role =>
+  role === "merchant.cashier" ? "Cashier" : "Manager";
 
 const MetricCard = ({
   label,
@@ -134,7 +140,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet>((props, ref) => {
     if (openShifts.length === 0 || !loggedInEmployee) return 0;
     // Simple logic: if any shift matches role, 100%, else 80%
     const hasRoleMatch = openShifts.some(
-      (s) => s.role === loggedInEmployee.role
+      (s) => s.role === merchantRoleToJobRole(loggedInEmployee.role)
     );
     return hasRoleMatch ? 100 : 80;
   }, [openShifts, loggedInEmployee]);
@@ -161,7 +167,9 @@ const OpenShiftsDrawer = forwardRef<BottomSheet>((props, ref) => {
 
   const calculateMatchScore = (shift: Shift) => {
     if (!loggedInEmployee) return 0;
-    return shift.role === loggedInEmployee.role ? 100 : 80;
+    return shift.role === merchantRoleToJobRole(loggedInEmployee.role)
+      ? 100
+      : 80;
   };
 
   return (

@@ -1,11 +1,12 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { MenuItemType } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   AlertTriangle,
@@ -50,25 +51,25 @@ interface InventoryTransaction {
   reference?: string;
 }
 
-const inputStyle = (editable: boolean) => ({
+const inputStyle = (editable: boolean, s: (n: number) => number) => ({
   backgroundColor: editable ? colors.screen : colors.screen,
   borderWidth: 1,
   borderColor: editable ? colors.border : colors.border,
-  borderRadius: 8,
+  borderRadius: s(8),
   color: editable ? colors.heading : colors.muted,
-  fontSize: 13,
-  height: 38,
-  paddingHorizontal: 12,
+  fontSize: s(13),
+  height: s(38),
+  paddingHorizontal: s(12),
 });
 
-const fieldLabel = {
-  fontSize: 11,
+const fieldLabel = (s: (n: number) => number) => ({
+  fontSize: s(11),
   fontWeight: "600" as const,
   color: colors.muted,
   textTransform: "uppercase" as const,
   letterSpacing: 0.5,
-  marginBottom: 5,
-};
+  marginBottom: s(5),
+});
 
 const transactionMeta = (
   type: string,
@@ -117,6 +118,8 @@ const LOG_REASONS = [
 ];
 
 const MenuItemScreen = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const { itemId } = useLocalSearchParams();
   const router = useRouter();
   const {
@@ -418,28 +421,28 @@ const MenuItemScreen = () => {
       >
         <View
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: 14,
+            width: s(48),
+            height: s(48),
+            borderRadius: s(14),
             backgroundColor: colors.danger + "20",
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: 10,
+            marginBottom: s(10),
           }}
         >
-          <Package size={22} color={colors.danger} />
+          <Package size={s(22)} color={colors.danger} />
         </View>
         <Text
           style={{
-            fontSize: 14,
+            fontSize: s(14),
             fontWeight: "700",
             color: colors.heading,
-            marginBottom: 4,
+            marginBottom: s(4),
           }}
         >
           Item Not Found
         </Text>
-        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16 }}>
+        <Text style={{ fontSize: s(12), color: colors.muted, marginBottom: s(16) }}>
           This menu item doesn't exist or was removed.
         </Text>
         <TouchableOpacity
@@ -447,17 +450,17 @@ const MenuItemScreen = () => {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 6,
-            paddingHorizontal: 14,
-            paddingVertical: 8,
+            gap: s(6),
+            paddingHorizontal: s(14),
+            paddingVertical: s(8),
             backgroundColor: colors.teal + "20",
             borderWidth: 1,
             borderColor: colors.teal + "50",
-            borderRadius: 8,
+            borderRadius: s(8),
           }}
         >
-          <ArrowLeft size={14} color={colors.teal} />
-          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+          <ArrowLeft size={s(14)} color={colors.teal} />
+          <Text style={{ fontSize: s(13), fontWeight: "600", color: colors.teal }}>
             Go Back
           </Text>
         </TouchableOpacity>
@@ -488,8 +491,8 @@ const MenuItemScreen = () => {
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          paddingHorizontal: s(14),
+          paddingVertical: s(10),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           backgroundColor: colors.panel,
@@ -500,28 +503,28 @@ const MenuItemScreen = () => {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 6,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
+            gap: s(6),
+            paddingHorizontal: s(10),
+            paddingVertical: s(6),
             backgroundColor: colors.teal + "15",
             borderWidth: 1,
             borderColor: colors.teal + "30",
-            borderRadius: 7,
+            borderRadius: s(7),
           }}
         >
-          <ArrowLeft size={14} color={colors.teal} />
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+          <ArrowLeft size={s(14)} color={colors.teal} />
+          <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}>
             Back
           </Text>
         </TouchableOpacity>
 
         <Text
-          style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}
+          style={{ fontSize: s(14), fontWeight: "700", color: colors.heading }}
         >
           {item.name}
         </Text>
 
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: s(8) }}>
           {isEditing ? (
             <>
               <TouchableOpacity
@@ -529,18 +532,18 @@ const MenuItemScreen = () => {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 5,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
+                  gap: s(5),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(6),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 7,
+                  borderRadius: s(7),
                 }}
               >
-                <X size={13} color={colors.label} />
+                <X size={s(13)} color={colors.label} />
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: "600",
                     color: colors.label,
                   }}
@@ -553,19 +556,19 @@ const MenuItemScreen = () => {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 5,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
+                  gap: s(5),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(6),
                   backgroundColor: colors.teal + "20",
                   borderWidth: 1,
                   borderColor: colors.teal + "50",
-                  borderRadius: 7,
+                  borderRadius: s(7),
                 }}
               >
-                <Save size={13} color={colors.teal} />
+                <Save size={s(13)} color={colors.teal} />
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: "600",
                     color: colors.teal,
                   }}
@@ -580,18 +583,18 @@ const MenuItemScreen = () => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 5,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
+                gap: s(5),
+                paddingHorizontal: s(10),
+                paddingVertical: s(6),
                 backgroundColor: colors.teal + "15",
                 borderWidth: 1,
                 borderColor: colors.teal + "30",
-                borderRadius: 7,
+                borderRadius: s(7),
               }}
             >
-              <Edit size={13} color={colors.teal} />
+              <Edit size={s(13)} color={colors.teal} />
               <Text
-                style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}
+                style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}
               >
                 Edit
               </Text>
@@ -606,7 +609,7 @@ const MenuItemScreen = () => {
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 14, gap: 12 }}
+          contentContainerStyle={{ padding: s(14), gap: s(12) }}
         >
           {/* Overview Card */}
           <View
@@ -614,23 +617,23 @@ const MenuItemScreen = () => {
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
-              padding: 14,
+              borderRadius: s(12),
+              padding: s(14),
             }}
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.muted,
                 textTransform: "uppercase",
                 letterSpacing: 0.5,
-                marginBottom: 10,
+                marginBottom: s(10),
               }}
             >
               Overview
             </Text>
-            <View style={{ gap: 8 }}>
+            <View style={{ gap: s(8) }}>
               <View
                 style={{
                   flexDirection: "row",
@@ -638,12 +641,12 @@ const MenuItemScreen = () => {
                   alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   Current Stock
                 </Text>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.heading,
                   }}
@@ -662,12 +665,12 @@ const MenuItemScreen = () => {
                   alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   Reorder Threshold
                 </Text>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.heading,
                   }}
@@ -682,10 +685,10 @@ const MenuItemScreen = () => {
                   alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.muted }}>Price</Text>
+                <Text style={{ fontSize: s(12), color: colors.muted }}>Price</Text>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.heading,
                   }}
@@ -700,13 +703,13 @@ const MenuItemScreen = () => {
                   alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   Availability
                 </Text>
                 <View
                   style={{
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(3),
                     backgroundColor:
                       item.availability !== false
                         ? colors.success + "20"
@@ -716,12 +719,12 @@ const MenuItemScreen = () => {
                       item.availability !== false
                         ? colors.success + "50"
                         : colors.danger + "50",
-                    borderRadius: 6,
+                    borderRadius: s(6),
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "600",
                       color:
                         item.availability !== false
@@ -738,20 +741,20 @@ const MenuItemScreen = () => {
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 6,
+                    gap: s(6),
                     backgroundColor: colors.warning + "15",
                     borderWidth: 1,
                     borderColor: colors.warning + "40",
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 7,
-                    marginTop: 2,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(7),
+                    marginTop: s(2),
                   }}
                 >
-                  <AlertTriangle size={13} color={colors.warning} />
+                  <AlertTriangle size={s(13)} color={colors.warning} />
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       color: colors.warning,
                       fontWeight: "600",
                     }}
@@ -769,23 +772,23 @@ const MenuItemScreen = () => {
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
-              padding: 14,
+              borderRadius: s(12),
+              padding: s(14),
             }}
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.muted,
                 textTransform: "uppercase",
                 letterSpacing: 0.5,
-                marginBottom: 10,
+                marginBottom: s(10),
               }}
             >
               Quick Actions
             </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flexDirection: "row", gap: s(8) }}>
               <TouchableOpacity
                 onPress={() => setIsLogUsageModalOpen(true)}
                 style={{
@@ -793,18 +796,18 @@ const MenuItemScreen = () => {
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 6,
-                  paddingVertical: 8,
+                  gap: s(6),
+                  paddingVertical: s(8),
                   backgroundColor: colors.teal + "15",
                   borderWidth: 1,
                   borderColor: colors.teal + "40",
-                  borderRadius: 8,
+                  borderRadius: s(8),
                 }}
               >
-                <Minus size={14} color={colors.teal} />
+                <Minus size={s(14)} color={colors.teal} />
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.teal,
                   }}
@@ -819,17 +822,17 @@ const MenuItemScreen = () => {
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 6,
-                  paddingVertical: 8,
+                  gap: s(6),
+                  paddingVertical: s(8),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
+                  borderRadius: s(8),
                 }}
               >
-                <History size={14} color={colors.label} />
+                <History size={s(14)} color={colors.label} />
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.label,
                   }}
@@ -846,27 +849,27 @@ const MenuItemScreen = () => {
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
-              padding: 14,
+              borderRadius: s(12),
+              padding: s(14),
             }}
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.muted,
                 textTransform: "uppercase",
                 letterSpacing: 0.5,
-                marginBottom: 12,
+                marginBottom: s(12),
               }}
             >
               Item Details
             </Text>
 
             {/* Stock Tracking Mode */}
-            <View style={{ marginBottom: 12 }}>
-              <Text style={fieldLabel}>Stock Tracking</Text>
-              <View style={{ flexDirection: "row", gap: 6 }}>
+            <View style={{ marginBottom: s(12) }}>
+              <Text style={fieldLabel(s)}>Stock Tracking</Text>
+              <View style={{ flexDirection: "row", gap: s(6) }}>
                 {stockTrackingModes.map((mode) => {
                   const isActive = editStockTrackingMode === mode.key;
                   return (
@@ -876,9 +879,9 @@ const MenuItemScreen = () => {
                       onPress={() => setEditStockTrackingMode(mode.key)}
                       style={{
                         flex: 1,
-                        paddingVertical: 7,
+                        paddingVertical: s(7),
                         alignItems: "center",
-                        borderRadius: 7,
+                        borderRadius: s(7),
                         backgroundColor: isActive
                           ? colors.teal + "20"
                           : "transparent",
@@ -891,7 +894,7 @@ const MenuItemScreen = () => {
                     >
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: "600",
                           color: isActive ? colors.teal : colors.muted,
                         }}
@@ -905,35 +908,35 @@ const MenuItemScreen = () => {
             </View>
 
             {/* Name + SKU */}
-            <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+            <View style={{ flexDirection: "row", gap: s(10), marginBottom: s(10) }}>
               <View style={{ flex: 1 }}>
-                <Text style={fieldLabel}>Item Name</Text>
+                <Text style={fieldLabel(s)}>Item Name</Text>
                 <TextInput
                   value={editForm.name}
                   onChangeText={(t) => setEditForm((p) => ({ ...p, name: t }))}
                   editable={isEditing}
                   placeholder="Item name"
                   placeholderTextColor={colors.muted}
-                  style={inputStyle(isEditing)}
+                  style={inputStyle(isEditing, s)}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={fieldLabel}>SKU / Barcode</Text>
+                <Text style={fieldLabel(s)}>SKU / Barcode</Text>
                 <TextInput
                   value={editForm.sku}
                   onChangeText={(t) => setEditForm((p) => ({ ...p, sku: t }))}
                   editable={isEditing}
                   placeholder="e.g. SKU-0001"
                   placeholderTextColor={colors.muted}
-                  style={inputStyle(isEditing)}
+                  style={inputStyle(isEditing, s)}
                 />
               </View>
             </View>
 
             {/* Category + Unit */}
-            <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+            <View style={{ flexDirection: "row", gap: s(10), marginBottom: s(10) }}>
               <View style={{ flex: 1 }}>
-                <Text style={fieldLabel}>Category</Text>
+                <Text style={fieldLabel(s)}>Category</Text>
                 <TextInput
                   value={editForm.category}
                   onChangeText={(t) =>
@@ -942,11 +945,11 @@ const MenuItemScreen = () => {
                   editable={isEditing}
                   placeholder="e.g. Appetizer, Main"
                   placeholderTextColor={colors.muted}
-                  style={inputStyle(isEditing)}
+                  style={inputStyle(isEditing, s)}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={fieldLabel}>Unit of Measure</Text>
+                <Text style={fieldLabel(s)}>Unit of Measure</Text>
                 <TextInput
                   value={editForm.unitOfMeasure}
                   onChangeText={(t) =>
@@ -955,7 +958,7 @@ const MenuItemScreen = () => {
                   editable={isEditing}
                   placeholder="e.g. each, kg"
                   placeholderTextColor={colors.muted}
-                  style={inputStyle(isEditing)}
+                  style={inputStyle(isEditing, s)}
                 />
               </View>
             </View>
@@ -966,7 +969,7 @@ const MenuItemScreen = () => {
                 marginBottom: editStockTrackingMode === "quantity" ? 10 : 0,
               }}
             >
-              <Text style={fieldLabel}>Price ($)</Text>
+              <Text style={fieldLabel(s)}>Price ($)</Text>
               <TextInput
                 value={editForm.price}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, price: t }))}
@@ -974,15 +977,15 @@ const MenuItemScreen = () => {
                 keyboardType="numeric"
                 placeholder="0.00"
                 placeholderTextColor={colors.muted}
-                style={inputStyle(isEditing)}
+                style={inputStyle(isEditing, s)}
               />
             </View>
 
             {/* Quantity fields (only when tracking mode = quantity) */}
             {editStockTrackingMode === "quantity" && (
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+              <View style={{ flexDirection: "row", gap: s(10), marginTop: s(10) }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={fieldLabel}>Stock Quantity</Text>
+                  <Text style={fieldLabel(s)}>Stock Quantity</Text>
                   <TextInput
                     value={editForm.stockQuantity}
                     onChangeText={(t) =>
@@ -995,11 +998,11 @@ const MenuItemScreen = () => {
                     keyboardType="numeric"
                     placeholder="0"
                     placeholderTextColor={colors.muted}
-                    style={inputStyle(isEditing)}
+                    style={inputStyle(isEditing, s)}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={fieldLabel}>Reorder Threshold</Text>
+                  <Text style={fieldLabel(s)}>Reorder Threshold</Text>
                   <TextInput
                     value={editForm.reorderThreshold}
                     onChangeText={(t) =>
@@ -1012,7 +1015,7 @@ const MenuItemScreen = () => {
                     keyboardType="numeric"
                     placeholder="0"
                     placeholderTextColor={colors.muted}
-                    style={inputStyle(isEditing)}
+                    style={inputStyle(isEditing, s)}
                   />
                 </View>
               </View>
@@ -1025,9 +1028,9 @@ const MenuItemScreen = () => {
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
-              padding: 14,
-              marginBottom: 20,
+              borderRadius: s(12),
+              padding: s(14),
+              marginBottom: s(20),
             }}
           >
             <View
@@ -1035,12 +1038,12 @@ const MenuItemScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                marginBottom: 12,
+                marginBottom: s(12),
               }}
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "700",
                   color: colors.muted,
                   textTransform: "uppercase",
@@ -1055,19 +1058,19 @@ const MenuItemScreen = () => {
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 5,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
+                    gap: s(5),
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(6),
                     backgroundColor: colors.teal + "15",
                     borderWidth: 1,
                     borderColor: colors.teal + "30",
-                    borderRadius: 7,
+                    borderRadius: s(7),
                   }}
                 >
-                  <Edit size={12} color={colors.teal} />
+                  <Edit size={s(12)} color={colors.teal} />
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: "600",
                       color: colors.teal,
                     }}
@@ -1076,24 +1079,24 @@ const MenuItemScreen = () => {
                   </Text>
                 </TouchableOpacity>
               ) : (
-                <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flexDirection: "row", gap: s(8) }}>
                   <TouchableOpacity
                     onPress={handleCancelRecipe}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 5,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
+                      gap: s(5),
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(6),
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 7,
+                      borderRadius: s(7),
                     }}
                   >
-                    <X size={12} color={colors.label} />
+                    <X size={s(12)} color={colors.label} />
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.label,
                       }}
@@ -1106,19 +1109,19 @@ const MenuItemScreen = () => {
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 5,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
+                      gap: s(5),
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(6),
                       backgroundColor: colors.teal + "20",
                       borderWidth: 1,
                       borderColor: colors.teal + "50",
-                      borderRadius: 7,
+                      borderRadius: s(7),
                     }}
                   >
-                    <Save size={12} color={colors.teal} />
+                    <Save size={s(12)} color={colors.teal} />
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.teal,
                       }}
@@ -1134,9 +1137,9 @@ const MenuItemScreen = () => {
             {(isEditingRecipe ? editRecipeForm : (item.recipe ?? [])).length ===
             0 ? (
               <View
-                style={{ alignItems: "center", paddingVertical: 20, gap: 6 }}
+                style={{ alignItems: "center", paddingVertical: s(20), gap: s(6) }}
               >
-                <Text style={{ fontSize: 13, color: colors.muted }}>
+                <Text style={{ fontSize: s(13), color: colors.muted }}>
                   No ingredients linked yet
                 </Text>
                 {isEditingRecipe && (
@@ -1148,20 +1151,20 @@ const MenuItemScreen = () => {
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 5,
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
+                      gap: s(5),
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(7),
                       backgroundColor: colors.teal + "15",
                       borderWidth: 1,
                       borderColor: colors.teal + "30",
-                      borderRadius: 7,
-                      marginTop: 4,
+                      borderRadius: s(7),
+                      marginTop: s(4),
                     }}
                   >
-                    <Plus size={13} color={colors.teal} />
+                    <Plus size={s(13)} color={colors.teal} />
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.teal,
                       }}
@@ -1172,7 +1175,7 @@ const MenuItemScreen = () => {
                 )}
               </View>
             ) : (
-              <View style={{ gap: 6 }}>
+              <View style={{ gap: s(6) }}>
                 {(isEditingRecipe ? editRecipeForm : (item.recipe ?? [])).map(
                   (r: any, index: number) => (
                     <View
@@ -1183,23 +1186,23 @@ const MenuItemScreen = () => {
                         backgroundColor: colors.screen,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        borderRadius: 8,
-                        paddingHorizontal: 10,
-                        paddingVertical: 8,
-                        gap: 10,
+                        borderRadius: s(8),
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(8),
+                        gap: s(10),
                       }}
                     >
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: "600",
                             color: colors.heading,
                           }}
                         >
                           {getInventoryItemName(r.inventoryItemId)}
                         </Text>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
                           {getInventoryItemUnit(r.inventoryItemId)}
                         </Text>
                       </View>
@@ -1225,16 +1228,16 @@ const MenuItemScreen = () => {
                             }}
                             keyboardType="numeric"
                             style={{
-                              width: 60,
-                              height: 38,
+                              width: s(60),
+                              height: s(38),
                               backgroundColor: colors.panel,
                               borderWidth: 1,
                               borderColor: colors.border,
-                              borderRadius: 6,
+                              borderRadius: s(6),
                               color: colors.heading,
-                              fontSize: 13,
+                              fontSize: s(13),
                               textAlign: "center",
-                              paddingVertical: 0,
+                              paddingVertical: s(0),
                             }}
                           />
                           <TouchableOpacity
@@ -1243,9 +1246,9 @@ const MenuItemScreen = () => {
                               setInventorySearchQuery("");
                               inventorySelectionSheetRef.current?.expand();
                             }}
-                            style={{ padding: 5 }}
+                            style={{ padding: s(5) }}
                           >
-                            <Search size={14} color={colors.muted} />
+                            <Search size={s(14)} color={colors.muted} />
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() =>
@@ -1253,15 +1256,15 @@ const MenuItemScreen = () => {
                                 prev.filter((_, i) => i !== index),
                               )
                             }
-                            style={{ padding: 5 }}
+                            style={{ padding: s(5) }}
                           >
-                            <X size={14} color={colors.danger} />
+                            <X size={s(14)} color={colors.danger} />
                           </TouchableOpacity>
                         </>
                       ) : (
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: "600",
                             color: colors.heading,
                           }}
@@ -1282,18 +1285,18 @@ const MenuItemScreen = () => {
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "center",
-                      gap: 6,
-                      paddingVertical: 8,
+                      gap: s(6),
+                      paddingVertical: s(8),
                       borderWidth: 1,
                       borderColor: colors.teal + "40",
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       borderStyle: "dashed",
                     }}
                   >
-                    <Plus size={13} color={colors.teal} />
+                    <Plus size={s(13)} color={colors.teal} />
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.teal,
                       }}
@@ -1325,7 +1328,7 @@ const MenuItemScreen = () => {
               backgroundColor: "rgba(0,0,0,0.6)",
               justifyContent: "center",
               alignItems: "center",
-              paddingHorizontal: 24,
+              paddingHorizontal: s(24),
             }}
           >
             <View
@@ -1333,16 +1336,16 @@ const MenuItemScreen = () => {
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 14,
-                padding: 18,
+                borderRadius: s(14),
+                padding: s(18),
                 width: "100%",
                 maxWidth: 440,
-                gap: 12,
+                gap: s(12),
               }}
             >
               <Text
                 style={{
-                  fontSize: 15,
+                  fontSize: s(15),
                   fontWeight: "700",
                   color: colors.heading,
                 }}
@@ -1352,7 +1355,7 @@ const MenuItemScreen = () => {
 
               {/* Quantity */}
               <View>
-                <Text style={fieldLabel}>Quantity Used</Text>
+                <Text style={fieldLabel(s)}>Quantity Used</Text>
                 <TextInput
                   value={logUsageForm.quantityUsed}
                   onChangeText={(t) =>
@@ -1361,15 +1364,15 @@ const MenuItemScreen = () => {
                   placeholder="Enter quantity"
                   placeholderTextColor={colors.muted}
                   keyboardType="numeric"
-                  style={inputStyle(true)}
+                  style={inputStyle(true, s)}
                 />
               </View>
 
               {/* Reason pills */}
               <View>
-                <Text style={fieldLabel}>Reason</Text>
+                <Text style={fieldLabel(s)}>Reason</Text>
                 <View
-                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: s(6) }}
                 >
                   {LOG_REASONS.map((r) => {
                     const isActive = logUsageForm.reason === r.key;
@@ -1380,9 +1383,9 @@ const MenuItemScreen = () => {
                           setLogUsageForm((p) => ({ ...p, reason: r.key }))
                         }
                         style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          borderRadius: 7,
+                          paddingHorizontal: s(10),
+                          paddingVertical: s(6),
+                          borderRadius: s(7),
                           backgroundColor: isActive
                             ? colors.teal + "20"
                             : "transparent",
@@ -1394,7 +1397,7 @@ const MenuItemScreen = () => {
                       >
                         <Text
                           style={{
-                            fontSize: 12,
+                            fontSize: s(12),
                             fontWeight: "600",
                             color: isActive ? colors.teal : colors.muted,
                           }}
@@ -1409,7 +1412,7 @@ const MenuItemScreen = () => {
 
               {/* Notes */}
               <View>
-                <Text style={fieldLabel}>Notes (Optional)</Text>
+                <Text style={fieldLabel(s)}>Notes (Optional)</Text>
                 <TextInput
                   value={logUsageForm.notes}
                   onChangeText={(t) =>
@@ -1420,28 +1423,28 @@ const MenuItemScreen = () => {
                   multiline
                   numberOfLines={3}
                   style={[
-                    inputStyle(true),
-                    { height: 70, paddingTop: 10, textAlignVertical: "top" },
+                    inputStyle(true, s),
+                    { height: s(70), paddingTop: 10, textAlignVertical: "top" },
                   ]}
                 />
               </View>
 
               {/* Buttons */}
-              <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flexDirection: "row", gap: s(8) }}>
                 <TouchableOpacity
                   onPress={() => setIsLogUsageModalOpen(false)}
                   style={{
                     flex: 1,
-                    paddingVertical: 9,
+                    paddingVertical: s(9),
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: "600",
                       color: colors.label,
                     }}
@@ -1453,17 +1456,17 @@ const MenuItemScreen = () => {
                   onPress={handleLogUsage}
                   style={{
                     flex: 1,
-                    paddingVertical: 9,
+                    paddingVertical: s(9),
                     backgroundColor: colors.teal + "20",
                     borderWidth: 1,
                     borderColor: colors.teal + "50",
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: "600",
                       color: colors.teal,
                     }}
@@ -1492,19 +1495,19 @@ const MenuItemScreen = () => {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              paddingHorizontal: 14,
-              paddingVertical: 10,
+              paddingHorizontal: s(14),
+              paddingVertical: s(10),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}
           >
             <Text
-              style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(14), fontWeight: "700", color: colors.heading }}
             >
               Inventory History
             </Text>
             <TouchableOpacity onPress={() => historySheetRef.current?.close()}>
-              <X size={18} color={colors.muted} />
+              <X size={s(18)} color={colors.muted} />
             </TouchableOpacity>
           </View>
           <BottomSheetFlatList
@@ -1517,8 +1520,8 @@ const MenuItemScreen = () => {
               return (
                 <View
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(10),
                     borderBottomWidth: 1,
                     borderBottomColor: colors.border,
                   }}
@@ -1528,20 +1531,20 @@ const MenuItemScreen = () => {
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      marginBottom: 4,
+                      marginBottom: s(4),
                     }}
                   >
                     <View
                       style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(3),
                         backgroundColor: meta.bg,
-                        borderRadius: 5,
+                        borderRadius: s(5),
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           fontWeight: "600",
                           color: meta.text,
                         }}
@@ -1551,7 +1554,7 @@ const MenuItemScreen = () => {
                     </View>
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: "700",
                         color: isPositive ? colors.success : colors.danger,
                       }}
@@ -1566,12 +1569,12 @@ const MenuItemScreen = () => {
                       justifyContent: "space-between",
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.muted }}>
+                    <Text style={{ fontSize: s(12), color: colors.muted }}>
                       {new Date(tx.timestamp).toLocaleDateString()} · Resulting:{" "}
                       {tx.resultingQuantity}
                     </Text>
                     {tx.reference && (
-                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                      <Text style={{ fontSize: s(11), color: colors.muted }}>
                         {tx.reference}
                       </Text>
                     )}
@@ -1579,9 +1582,9 @@ const MenuItemScreen = () => {
                   {tx.notes && (
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.muted,
-                        marginTop: 3,
+                        marginTop: s(3),
                       }}
                     >
                       {tx.notes}
@@ -1591,8 +1594,8 @@ const MenuItemScreen = () => {
               );
             }}
             ListEmptyComponent={
-              <View style={{ alignItems: "center", paddingVertical: 40 }}>
-                <Text style={{ fontSize: 13, color: colors.muted }}>
+              <View style={{ alignItems: "center", paddingVertical: s(40) }}>
+                <Text style={{ fontSize: s(13), color: colors.muted }}>
                   No history recorded yet
                 </Text>
               </View>
@@ -1620,15 +1623,15 @@ const MenuItemScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingHorizontal: 14,
-                paddingVertical: 10,
+                paddingHorizontal: s(14),
+                paddingVertical: s(10),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
               }}
             >
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: "700",
                   color: colors.heading,
                 }}
@@ -1643,12 +1646,12 @@ const MenuItemScreen = () => {
                   inventorySelectionSheetRef.current?.close();
                 }}
               >
-                <X size={18} color={colors.muted} />
+                <X size={s(18)} color={colors.muted} />
               </TouchableOpacity>
             </View>
             <View
               style={{
-                padding: 12,
+                padding: s(12),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
               }}
@@ -1660,13 +1663,13 @@ const MenuItemScreen = () => {
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  height: 38,
-                  gap: 8,
+                  borderRadius: s(8),
+                  paddingHorizontal: s(10),
+                  height: s(38),
+                  gap: s(8),
                 }}
               >
-                <Search size={14} color={colors.muted} />
+                <Search size={s(14)} color={colors.muted} />
                 <TextInput
                   value={inventorySearchQuery}
                   onChangeText={setInventorySearchQuery}
@@ -1674,9 +1677,9 @@ const MenuItemScreen = () => {
                   placeholderTextColor={colors.muted}
                   style={{
                     flex: 1,
-                    fontSize: 13,
+                    fontSize: s(13),
                     color: colors.heading,
-                    paddingVertical: 0,
+                    paddingVertical: s(0),
                   }}
                 />
               </View>
@@ -1700,8 +1703,8 @@ const MenuItemScreen = () => {
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
+                      paddingHorizontal: s(14),
+                      paddingVertical: s(10),
                       borderBottomWidth: 1,
                       borderBottomColor: colors.border,
                       opacity:
@@ -1714,7 +1717,7 @@ const MenuItemScreen = () => {
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: "600",
                           color: colors.heading,
                         }}
@@ -1723,9 +1726,9 @@ const MenuItemScreen = () => {
                       </Text>
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.muted,
-                          marginTop: 1,
+                          marginTop: s(1),
                         }}
                       >
                         {inv.stockQuantity} {inv.unit} · ${inv.cost.toFixed(2)}
@@ -1734,17 +1737,17 @@ const MenuItemScreen = () => {
                     {isCurrentlySelected ? (
                       <View
                         style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(3),
                           backgroundColor: colors.teal + "20",
                           borderWidth: 1,
                           borderColor: colors.teal + "40",
-                          borderRadius: 5,
+                          borderRadius: s(5),
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             fontWeight: "600",
                             color: colors.teal,
                           }}
@@ -1755,25 +1758,25 @@ const MenuItemScreen = () => {
                     ) : isAlreadyAdded ? (
                       <View
                         style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(3),
                           backgroundColor: colors.muted + "20",
-                          borderRadius: 5,
+                          borderRadius: s(5),
                         }}
                       >
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
                           Added
                         </Text>
                       </View>
                     ) : (
-                      <CheckCircle size={16} color={colors.border} />
+                      <CheckCircle size={s(16)} color={colors.border} />
                     )}
                   </TouchableOpacity>
                 );
               }}
               ListEmptyComponent={
-                <View style={{ alignItems: "center", paddingVertical: 40 }}>
-                  <Text style={{ fontSize: 13, color: colors.muted }}>
+                <View style={{ alignItems: "center", paddingVertical: s(40) }}>
+                  <Text style={{ fontSize: s(13), color: colors.muted }}>
                     {inventorySearchQuery
                       ? "No items found"
                       : "No inventory items available"}

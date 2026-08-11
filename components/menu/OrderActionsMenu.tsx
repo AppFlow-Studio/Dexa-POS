@@ -6,8 +6,10 @@ import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useActiveProcessor } from "@/hooks/useActiveProcessor";
 import { getTerminalMatchInfo } from "@/utils/terminalMatchGuard";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import {
     ChefHat,
     DollarSign,
@@ -64,14 +66,12 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   // Get order (single index lookup - benefits from immer structural sharing)
   const order = useOrder(orderId);
 
-  // Check if active terminal matches the order's payment terminal type
+  // Which terminal types this station can service reversals on (single source
+  // of truth — includes the on-device ATOM when surfaced).
+  const { availableTypes: activeAvailableTypes } = useActiveProcessor();
   const { canProcess: canTerminalRefund } = useMemo(
-    () =>
-      getTerminalMatchInfo(
-        order?.payments,
-        selectedStation?.payment_terminal?.terminal_type,
-      ),
-    [order?.payments, selectedStation?.payment_terminal?.terminal_type],
+    () => getTerminalMatchInfo(order?.payments, activeAvailableTypes),
+    [order?.payments, activeAvailableTypes],
   );
 
   // Handle add to bill
@@ -331,15 +331,6 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
           <Pressable
             className="rounded-lg overflow-hidden min-w-[220px] border"
             onPress={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: colors.panel,
-              borderColor: menuBorder,
-              shadowColor: colors.screen,
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.28,
-              shadowRadius: 20,
-              elevation: 20,
-            }}
             style={
               position
                 ? {

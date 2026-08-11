@@ -10,6 +10,7 @@
  * without leaving the order processing screen.
  */
 
+import { remedyFor } from '@/lib/network/opResult'
 import type { OfflineOperation, OperationType } from '@/services/offlineSyncService'
 
 // Item-bound op types — surface on per-item Retry chip via useSyncStatusStore.
@@ -108,15 +109,53 @@ export function deriveSubtitle (
 }
 
 /**
+ * The action the operator should take, e.g. "Edit the item and try again, or
+ * remove it." Rendered as a second line beneath the cause.
+ *
+ * Populated by `classifyError` at failure time. Falls back to a remedy derived
+ * from the code so a line is always shown — an operator mid-shift needs to know
+ * what to DO, not just that something broke.
+ */
+export function deriveRemedy (op: OfflineOperation): string {
+  return op.lastError?.remedy ?? remedyFor(op.lastError?.code)
+}
+
+/**
  * Whether this op is still safe to retry. False for permanent server-side
  * rejections (4xx) — operator must edit or remove instead.
  */
 export function isRetryable (op: OfflineOperation): boolean {
+  // Authoritative: set by the classifier at failure time. Previously this
+  // function had to guess from the code, and since every failure was labelled
+  // `MAX_RETRIES` it always returned true — so permanently-rejected ops showed
+  // a Retry button that could never succeed.
+  if (op.isTerminal === true) return false
+
   const code = op.lastError?.code
   if (!code) return true
   // 4xx HTTP-shaped codes mean the server permanently rejected this op
   // (validation, auth, conflict). Retrying with the same payload won't help.
   if (/^4\d{2}$/.test(code)) return false
+  // Permanent classes emitted by `classifyError`.
+  if (
+    code === 'VALIDATION_REJECTED' ||
+    code === 'PERMISSION_DENIED' ||
+    code === 'AUTH_EXPIRED' ||
+    code === 'NOT_FOUND' ||
+    code === 'CONFLICT' ||
+    code === 'FOREIGN_KEY_VIOLATION' ||
+    code === 'NOT_NULL_VIOLATION' ||
+    code === 'CHECK_VIOLATION' ||
+    code === 'INVALID_INPUT' ||
+    code === 'NUMERIC_OUT_OF_RANGE' ||
+    code === 'ORDER_MATH_INCONSISTENT' ||
+    code === 'SCHEMA_VERSION_MISMATCH' ||
+    // Retrying re-runs the same unresolvable item lookup. The operator must
+    // re-fire the items from the order instead.
+    code === 'KITCHEN_ITEMS_UNRESOLVED'
+  ) {
+    return false
+  }
   // Postgres unique-violation = already applied. Retry is harmless but it
   // also means the op is effectively done — surface as retryable so the
   // user can dismiss the chip via tap.
@@ -140,7 +179,39 @@ export function isRetryable (op: OfflineOperation): boolean {
 // Internals
 // ---------------------------------------------------------------------------
 
-function describeCause (op: OfflineOperation): string {
+/**
+ * Turn an internal block-reason slug into operator-readable text.
+ *
+ * A "BLOCKED" chip on its own tells the operator nothing — these reasons
+ * explain what the operation is waiting for, which is almost always a parent
+ * record that hasn't finished syncing.
+ */
+export function describeBlockReason (reason: string): string {
+  switch (reason) {
+    case 'order_not_synced':
+    case 'order_id_unresolved':
+      return 'the order to finish syncing'
+    case 'item_not_synced':
+    case 'no_local_order_id_for_item':
+      return 'the item to finish syncing'
+    case 'session_not_synced':
+      return 'the table session to finish syncing'
+    case 'staff_id_unavailable':
+      return 'staff sign-in details'
+    case 'supabase_client_unavailable':
+      return 'the connection to finish starting up'
+    default:
+      return reason.replace(/_/g, ' ')
+  }
+}
+
+/**
+ * Short human cause for a failure ("Server rejected this", "Network
+ * unavailable"). Exported so the settings → Syncing panel renders the exact
+ * same wording as the inline bill banner — an operator should not have to
+ * reconcile two different descriptions of the same failure.
+ */
+export function describeCause (op: OfflineOperation): string {
   const code = op.lastError?.code
   if (!code) return ''
   switch (code) {
@@ -161,7 +232,48 @@ function describeCause (op: OfflineOperation): string {
     case 'OWNERSHIP_REJECTED':
       return 'Order owned by another station'
     case '23505':
+    case 'ALREADY_APPLIED':
       return 'Already applied'
+    // Codes emitted by `classifyError`. Without these the operator saw the
+    // generic "Sync failed" for every one of them.
+    case 'VALIDATION_REJECTED':
+      return 'Server rejected this'
+    case 'PERMISSION_DENIED':
+      return 'Permission denied'
+    case 'AUTH_EXPIRED':
+      return 'Session expired'
+    case 'NOT_FOUND':
+      return 'No longer exists'
+    case 'KITCHEN_ITEMS_UNRESOLVED':
+      return 'Some items never reached the kitchen'
+    case 'CONFLICT':
+      return 'Changed on another station'
+    case 'FOREIGN_KEY_VIOLATION':
+      return 'Linked record missing'
+    case 'NOT_NULL_VIOLATION':
+      return 'Required detail missing'
+    case 'CHECK_VIOLATION':
+    case 'INVALID_INPUT':
+      return 'Invalid value'
+    case 'NUMERIC_OUT_OF_RANGE':
+      return 'Amount out of range'
+    case 'ORDER_MATH_INCONSISTENT':
+      return "Order totals don't add up"
+    case 'SCHEMA_VERSION_MISMATCH':
+      return 'From an older app version'
+    case 'SERVER_ERROR':
+      return 'Server error'
+    case 'RATE_LIMITED':
+      return 'Server busy'
+    case 'NETWORK':
+      return 'Network unavailable'
+    case 'TIMEOUT':
+      return 'Timed out'
+    case 'CONTENTION':
+      return 'Another station is editing this'
+    case 'UNKNOWN_ERROR':
+    case 'UNSPECIFIED':
+      return 'Unexpected problem'
     default:
       // Numeric HTTP-shaped codes
       if (/^5\d{2}$/.test(code)) return 'Server error'

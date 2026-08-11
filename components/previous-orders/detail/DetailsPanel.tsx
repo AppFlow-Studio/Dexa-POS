@@ -1,6 +1,7 @@
 import { colors } from "@/lib/theme";
+import { INKIND_LABEL } from "@/lib/paymentMethod";
 import { OrderProfile } from "@/lib/types";
-import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@/components/ui/bottomSheet";
 import React, { useMemo } from "react";
 import { Text, View } from "react-native";
 import {
@@ -192,7 +193,9 @@ const DetailsPanel: React.FC<DetailsPanelProps> = ({ order }) => {
             const methodLabel =
               payment.method === "Cash"
                 ? "Cash"
-                : `${payment.cardBrand || "Card"} ${payment.last4 ? `••••${payment.last4}` : ""}`.trim();
+                : payment.method === "InKind"
+                  ? INKIND_LABEL
+                  : `${payment.cardBrand || "Card"} ${payment.last4 ? `••••${payment.last4}` : ""}`.trim();
             return (
               <View
                 key={payment.id || idx}

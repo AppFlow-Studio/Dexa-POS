@@ -1,6 +1,7 @@
 import MarkOrderReadyDialog from "@/components/online-orders/MarkOrderReadyDialog";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
+import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
 import { colors } from "@/lib/theme";
 import type { CartItem } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -190,7 +191,9 @@ const OnlineOrderDetailsScreen = () => {
     );
   }
 
-  const label = order.display_number || order.order_number || order.id;
+  // Online surfaces show the platform short code (e.g. "C424D") as the primary
+  // label, falling back to the Dexa number. resolveOrderLabel handles the #.
+  const label = resolveOrderLabel(order);
   const items = order.items ?? [];
   // QR dine-in orders carry the table label via service_location_name.
   const source = order.service_location_name
@@ -245,7 +248,7 @@ const OnlineOrderDetailsScreen = () => {
                 color: colors.heading,
               }}
             >
-              Order Details #{label}
+              Order Details {label}
             </Text>
             <DeliveryPlatformBadge
               deliveryPlatform={order.delivery_platform}

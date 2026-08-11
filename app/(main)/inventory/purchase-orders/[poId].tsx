@@ -1,6 +1,7 @@
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -39,6 +40,8 @@ const PurchaseOrderDetailScreen = () => {
     deletePurchaseOrder
   } = useInventoryStore()
   const { show } = useToast()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   const po = purchaseOrders.find(p => p.id === poId)
   const vendor = po ? vendors.find(v => v.id === po.vendorId) : null
@@ -305,16 +308,16 @@ const PurchaseOrderDetailScreen = () => {
     backgroundColor: colors.screen,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: s(8),
     color: colors.heading,
-    fontSize: 12,
-    height: 36,
-    paddingHorizontal: 10,
+    fontSize: s(12),
+    height: s(36),
+    paddingHorizontal: s(10),
     paddingVertical: 0
   } as const
 
   const sectionTitleStyle = {
-    fontSize: 13,
+    fontSize: s(13),
     fontWeight: '700' as const,
     color: colors.heading
   } as const

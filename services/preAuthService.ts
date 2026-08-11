@@ -10,8 +10,33 @@ import { toastService } from "@/lib/toastService";
 import type { OrderProfilePayment } from "@/lib/types";
 import type { CastlesService } from "@/services/terminals/castles-service";
 import type { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import type { ValorService } from "@/services/terminals/valor-service";
+import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { generateRefId } from "@/types/dejavoo-spin-api";
 import { useOrderStore } from "@/stores/useOrderStore";
+
+/**
+ * Mint a Valor REQ_TXN_ID from the per-terminal counter (echoed back as
+ * MER_TXN_ID for correlation). Unlike Castles/Dejavoo — which use the
+ * alphanumeric generateRefId — Valor's reference must come from this counter.
+ */
+async function nextValorRefId(
+  terminalId: string,
+  supabase: SupabaseClient,
+): Promise<string> {
+  const counter = getOrCreateValorCounter({ terminalId, supabaseClient: supabase });
+  if (!counter.isInitialized) await counter.initialize();
+  return counter.next();
+}
+
+/**
+ * Kill switch for Valor open-tab (pre-auth). Temporarily OFF: the on-device flow
+ * was slow and needs perf work before shipping. Flip to `true` to re-enable —
+ * gates BOTH the service (openTab below) and the "Open Tab" UI entry
+ * (PaymentMethodSelectionView imports this). Close/Release stay available so an
+ * existing Valor hold can still be captured or voided.
+ */
+export const VALOR_OPEN_TAB_ENABLED = false;
 
 // ============================================================
 // TYPES
@@ -44,7 +69,8 @@ export interface VoidResult {
 
 type TerminalInstance =
   | { type: "castles"; service: CastlesService }
-  | { type: "dejavoo"; api: DejavooSpinAPI };
+  | { type: "dejavoo"; api: DejavooSpinAPI }
+  | { type: "valor"; service: ValorService; terminalId: string };
 
 // ============================================================
 // OPEN TAB (Pre-Auth)
@@ -58,7 +84,12 @@ export async function openTab(
   onTransactionStart?: (refId: string) => void,
 ): Promise<PreAuthResult> {
   try {
-    const referenceId = generateRefId("AUTH");
+    // Valor's REQ_TXN_ID must come from its terminal counter (echoed back as
+    // MER_TXN_ID for correlation); Castles/Dejavoo use the alphanumeric refId.
+    const referenceId =
+      terminal.type === "valor"
+        ? await nextValorRefId(terminal.terminalId, supabase)
+        : generateRefId("AUTH");
     onTransactionStart?.(referenceId);
     let terminalResponse: Record<string, unknown> | undefined;
     let rrn: string | undefined;
@@ -68,6 +99,7 @@ export async function openTab(
     let cardBrand: string | undefined;
     let last4: string | undefined;
     let entryMode: string | undefined;
+    let valorTranNo: string | undefined;
 
     // 1. Call terminal
     if (terminal.type === "castles") {
@@ -91,6 +123,55 @@ export async function openTab(
       cardBrand = castlesTxn?.cardType ?? undefined;
       last4 = castlesTxn?.cardLast4 ?? undefined;
       entryMode = castlesTxn?.entryMode ?? undefined;
+    } else if (terminal.type === "valor") {
+      if (!VALOR_OPEN_TAB_ENABLED) {
+        return {
+          success: false,
+          error: "Open Tab is temporarily unavailable on Valor terminals.",
+        };
+      }
+      // preAuthService works in DOLLARS; the Valor service takes integer CENTS.
+      // (Passing dollars here charged $25 as a 25¢ hold.)
+      const amountCents = Math.round((amount + Number.EPSILON) * 100);
+      const result = await terminal.service.processPreAuth({
+        amount: amountCents,
+        referenceId,
+      });
+
+      if (!result.success) {
+        // Indeterminate (a hold may exist) vs clean decline — both fail the open,
+        // but the message nudges staff to release from the terminal when unsure.
+        return {
+          success: false,
+          error: result.indeterminate
+            ? "Hold status unknown — if a hold was placed, release it from the terminal."
+            : result.error || "Pre-auth declined",
+        };
+      }
+
+      const valorTxn = result.terminalResponse?.valor_transaction as
+        | Record<string, any>
+        | undefined;
+      const tranNo = result.tranNo ?? (valorTxn?.tranNo || undefined);
+      last4 = valorTxn?.cardLast4 || undefined;
+
+      // A hold with NO usable reference (no TRAN_NO and no last-4) is uncapturable
+      // AND unvoidable by reference — never store it as a normal authorized payment.
+      if (!tranNo && !last4) {
+        return {
+          success: false,
+          error: "Hold placed but no reference returned — release it from the terminal.",
+        };
+      }
+
+      terminalResponse = result.terminalResponse;
+      rrn = result.rrn;
+      stan = result.stan;
+      authCode = valorTxn?.approvalCode || undefined;
+      refId = referenceId;
+      cardBrand = valorTxn?.cardType || undefined;
+      entryMode = valorTxn?.entryMode || undefined;
+      valorTranNo = tranNo;
     } else {
       const result = await terminal.api
         .preAuth()
@@ -136,6 +217,7 @@ export async function openTab(
       preAuthAmount: amount,
       preAuthRrn: rrn,
       preAuthStan: stan,
+      preAuthTranNo: valorTranNo,
       preAuthAuthCode: authCode,
       preAuthReferenceId: refId,
       preAuthTerminalType: terminal.type,
@@ -288,7 +370,6 @@ export async function increaseTab(
       toastService.show({
         title: "Tab Amount Updated",
         message: `Hold tracking updated to $${newAmount.toFixed(2)}. Processor will attempt capture at final amount.`,
-        type: "info",
         duration: 5000,
       });
     }
@@ -320,14 +401,14 @@ export async function increaseTab(
 
 /**
  * Poll for db_payment_id to appear on a payment (set by syncPreAuthToBackend).
- * Returns the db_payment_id or null if timeout expires.
+ * Returns the db_payment_id or undefined if timeout expires.
  */
 async function waitForDbPaymentId(
   orderId: string,
   paymentId: string,
   timeoutMs = 5000,
   intervalMs = 200,
-): Promise<string | null> {
+): Promise<string | undefined> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const order = useOrderStore.getState().ordersById[orderId];
@@ -335,7 +416,7 @@ async function waitForDbPaymentId(
     if (pmt?.db_payment_id) return pmt.db_payment_id;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  return null;
+  return undefined;
 }
 
 // ============================================================
@@ -361,7 +442,10 @@ export async function closeTab(
     }
 
     let terminalResponse: Record<string, unknown> | undefined;
-    const referenceId = generateRefId("CAPT");
+    const referenceId =
+      terminal.type === "valor"
+        ? await nextValorRefId(terminal.terminalId, supabase)
+        : generateRefId("CAPT");
 
     // 1. Call terminal to capture
     if (terminal.type === "castles") {
@@ -378,6 +462,39 @@ export async function closeTab(
       }
 
       terminalResponse = result.terminalResponse;
+    } else if (terminal.type === "valor") {
+      onTransactionStart?.(referenceId);
+      // preAuthService works in dollars; the Valor service takes integer cents.
+      const captureCents = Math.round((captureAmount + Number.EPSILON) * 100);
+      const tipCents = Math.round((tipAmount + Number.EPSILON) * 100);
+      const result = await terminal.service.processAuthComplete({
+        captureAmount: captureCents,
+        tipAmount: tipCents,
+        tranNo: payment.preAuthTranNo,
+        cardNo: payment.last4, // last-4 fallback when TRAN_NO is missing
+        referenceId,
+      });
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.indeterminate
+            ? "Capture status unknown — verify on the terminal before retrying."
+            : result.error || "Capture failed",
+        };
+      }
+
+      terminalResponse = result.terminalResponse;
+
+      // Expired-hold partial capture: ledger the terminal-reported total (base vs
+      // tip can't be split on a partial) so the order totals match what was charged.
+      if (result.partial && typeof result.approvedAmount === "number") {
+        console.warn(
+          `[PreAuthService] Valor completion captured ${result.approvedAmount}c of ${captureCents + tipCents}c requested`,
+        );
+        captureAmount = result.approvedAmount / 100;
+        tipAmount = 0;
+      }
     } else {
       const dejavooRef = payment.preAuthReferenceId ?? referenceId;
       onTransactionStart?.(dejavooRef);
@@ -447,7 +564,19 @@ export async function closeTab(
         console.error("[PreAuthService] Capture sync failed:", err);
       }
     } else {
-      console.warn("[PreAuthService] No db_payment_id after polling — capture sync skipped");
+      // The terminal captured the card but we have no db_payment_id to record it
+      // against — a money-vs-ledger divergence. Surface it loudly (the payment
+      // stays locally 'captured' and reconciles when the order re-syncs).
+      console.error(
+        "[PreAuthService] Card captured on terminal but backend sync could not be linked (no db_payment_id)",
+      );
+      toastService.show({
+        title: "Capture Not Fully Synced",
+        message:
+          "The card was charged but the record didn't sync yet. It will retry — verify in reports if it persists.",
+        type: "warning",
+        duration: 8000,
+      });
     }
 
     // Close check AFTER capture (capture updates order totals, close_check increments sync_version)
@@ -461,11 +590,11 @@ export async function closeTab(
     }
 
     // 4. If fully paid, dispatch FULL_PAYMENT session action (local, no await needed)
-    if (orderFullyPaid && order.tableId) {
+    if (orderFullyPaid && order.service_location_id) {
       const { useTableSessionStore } = require("@/stores/useTableSessionStore");
       useTableSessionStore.getState().dispatchAction?.({
         type: "FULL_PAYMENT",
-        tableId: order.tableId,
+        tableId: order.service_location_id,
       });
     }
 
@@ -509,6 +638,19 @@ export async function releaseTab(
       const result = await terminal.service.processVoid({
         rrn: payment.preAuthRrn,
         stan: payment.preAuthStan,
+        referenceId,
+      });
+
+      if (!result.success) {
+        return { success: false, error: result.error || "Failed to release hold on terminal" };
+      }
+    } else if (terminal.type === "valor") {
+      const referenceId = await nextValorRefId(terminal.terminalId, supabase);
+      onTransactionStart?.(referenceId);
+      // Valor voids reference the hold by TRAN_NO (or last-4 CARD_NO) — NOT rrn/stan.
+      const result = await terminal.service.processVoid({
+        tranNo: payment.preAuthTranNo,
+        cardNo: payment.last4,
         referenceId,
       });
 
@@ -569,6 +711,15 @@ const PREAUTH_USE_V3 =
   process.env.EXPO_PUBLIC_PREAUTH_V3 === "1" ||
   process.env.EXPO_PUBLIC_PREAUTH_V3 === "true";
 
+// v4 adds the Valor card-field arm to process_preauth / capture_preauth (mirrors
+// the process_payment v16→v17 fix). Identical signatures to v3, so the arg types
+// below still check against v3. Flip to '1' on staging first, then prod — and
+// deploy the v4 migration BEFORE enabling it in prod (else Valor pre-auth persists
+// null card columns). update_preauth_amount stays v3 (card-field-agnostic).
+const PREAUTH_USE_V4 =
+  process.env.EXPO_PUBLIC_PREAUTH_V4 === "1" ||
+  process.env.EXPO_PUBLIC_PREAUTH_V4 === "true";
+
 
 async function syncPreAuthToBackend(
   orderId: string,
@@ -585,8 +736,13 @@ async function syncPreAuthToBackend(
     return;
   }
 
-  const rpcName = PREAUTH_USE_V3 ? "process_preauth_v3" : "process_preauth_v1";
-  const { data, error } = await supabase.rpc(rpcName, {
+  const rpcName = PREAUTH_USE_V4
+    ? "process_preauth_v4"
+    : PREAUTH_USE_V3
+      ? "process_preauth_v3"
+      : "process_preauth_v1";
+  // v4 shares v3's signature, so the cast keeps the args type-checked.
+  const { data, error } = await supabase.rpc(rpcName as "process_preauth_v3", {
     p_order_id: dbOrderId,
     p_amount: payment.amount,
     p_terminal_response: terminalResponse ?? null,
@@ -637,8 +793,13 @@ async function syncCaptureToBackend(
   terminalResponse: Record<string, unknown> | undefined,
   supabase: SupabaseClient,
 ): Promise<void> {
-  const rpcName = PREAUTH_USE_V3 ? "capture_preauth_v3" : "capture_preauth_v1";
-  const { error } = await supabase.rpc(rpcName, {
+  const rpcName = PREAUTH_USE_V4
+    ? "capture_preauth_v4"
+    : PREAUTH_USE_V3
+      ? "capture_preauth_v3"
+      : "capture_preauth_v1";
+  // v4 shares v3's signature, so the cast keeps the args type-checked.
+  const { error } = await supabase.rpc(rpcName as "capture_preauth_v3", {
     p_payment_id: dbPaymentId,
     p_capture_amount: captureAmount,
     p_tip_amount: tipAmount,

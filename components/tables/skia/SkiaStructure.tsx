@@ -57,10 +57,25 @@ const SkiaStructure: React.FC<{
   table: FloorPlanObject;
   darkMode: boolean;
   wallEdgeFlags?: WallEdgeFlags;
+  /**
+   * Typefaces-loaded flag — not read, exists only to invalidate React.memo when the
+   * async font load finishes. `label-text` structures below bail to no-text while
+   * getTableFont() returns null; without this prop their memoized textless output
+   * would never be recomputed. Same bug as SkiaTableContent.
+   */
+  fontsReady: boolean;
 }> = ({ table, darkMode, wallEdgeFlags }) => {
   const shapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
-  const width = table.width ?? shapeDef?.width ?? 100;
-  const height = table.height ?? shapeDef?.height ?? 100;
+  // `?? … ?? 100` only guards null/undefined — a NaN width from a bad row would
+  // slip through into the Group transform and the built SVG string and can fault
+  // the native surface. Coerce non-finite / non-positive dims to a valid fallback.
+  const rawW = table.width ?? shapeDef?.width ?? 100;
+  const rawH = table.height ?? shapeDef?.height ?? 100;
+  const width = Number.isFinite(rawW) && rawW > 0 ? rawW : 100;
+  const height = Number.isFinite(rawH) && rawH > 0 ? rawH : 100;
+  const rotation = Number.isFinite(table.rotation) ? table.rotation : 0;
+  const tx = Number.isFinite(table.x) ? table.x : 0;
+  const ty = Number.isFinite(table.y) ? table.y : 0;
 
   // Label-text shapes use <text> in SVG markup, which Skia.SVG.MakeFromString does
   // not render. Draw text directly via Skia's native <Text> component instead.
@@ -75,9 +90,9 @@ const SkiaStructure: React.FC<{
     return (
       <Group
         transform={[
-          { translateX: table.x + width / 2 },
-          { translateY: table.y + height / 2 },
-          { rotate: ((table.rotation || 0) * Math.PI) / 180 },
+          { translateX: tx + width / 2 },
+          { translateY: ty + height / 2 },
+          { rotate: (rotation * Math.PI) / 180 },
           { translateX: -width / 2 },
           { translateY: -height / 2 },
         ]}
@@ -126,9 +141,9 @@ const SkiaStructure: React.FC<{
   return (
     <Group
       transform={[
-        { translateX: table.x + width / 2 },
-        { translateY: table.y + height / 2 },
-        { rotate: ((table.rotation || 0) * Math.PI) / 180 },
+        { translateX: tx + width / 2 },
+        { translateY: ty + height / 2 },
+        { rotate: (rotation * Math.PI) / 180 },
         { translateX: -width / 2 },
         { translateY: -height / 2 },
       ]}

@@ -1,5 +1,6 @@
 import CategoryForm from "@/components/menu/CategoryForm";
 import { useToast } from "@/contexts/ToastContext";
+import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
@@ -21,6 +22,7 @@ const EditCategoryScreen: React.FC = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
+  const { isSingleLocation } = useIsSingleLocation();
   const [isSaving, setIsSaving] = useState(false);
   const setMenuTab = useMenuManagementSearchStore((s) => s.setActiveTab);
 
@@ -53,7 +55,12 @@ const EditCategoryScreen: React.FC = () => {
     existing?.location_id,
     selectedStore?.id
   );
-  if (existing && (isGlobalCategory || !isLocalCategory)) {
+  // Single-location merchants edit the global category directly; multi-location
+  // keeps the read-only wall for global categories.
+  if (existing && isGlobalCategory && !isSingleLocation) {
+    return <GlobalItemScreen type="Category" />
+  }
+  if (existing && !isGlobalCategory && !isLocalCategory) {
     return <GlobalItemScreen type="Category" />
   }
 

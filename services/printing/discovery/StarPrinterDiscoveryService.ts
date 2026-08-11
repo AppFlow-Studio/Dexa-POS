@@ -3,7 +3,10 @@
 // and updates stored printer IPs when they change (DHCP recovery).
 // Singleton pattern matching starPrinterHealthCheck.ts.
 
-import { AppState, AppStateStatus } from "react-native";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
 import { isRecentlyNavigated } from "@/lib/rootNavigation";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { discoverStarPrinters } from "./StarPrinterDiscovery";
@@ -24,7 +27,8 @@ const SCAN_TIMEOUT_MS = 5000; // Short scan — just enough to find active print
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
-let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
+/** Unregister fns for the lifecycle-coordinator tasks (was an AppState sub). */
+let lifecycleUnregister: (() => void)[] = [];
 let isScanning = false;
 
 // ============================================================================
@@ -113,18 +117,24 @@ async function performDiscoveryRound(): Promise<void> {
 // APP STATE HANDLING
 // ============================================================================
 
-function handleAppState(nextState: AppStateStatus): void {
-  if (nextState === "active") {
-    if (!intervalId) {
-      intervalId = setInterval(performDiscoveryRound, DISCOVERY_INTERVAL_MS);
-      console.log("[StarDiscoveryService] Resumed on app active");
-    }
-  } else {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      console.log("[StarDiscoveryService] Paused (app backgrounded)");
-    }
+/**
+ * Resume half, run from the coordinator's `background` bucket. This one was
+ * already the best-behaved site pre-migration — it restarts the interval
+ * without firing an immediate scan — so bucketing it changes nothing except
+ * removing its private AppState subscription.
+ */
+function handleResume(): void {
+  if (!intervalId) {
+    intervalId = setInterval(performDiscoveryRound, DISCOVERY_INTERVAL_MS);
+    console.log("[StarDiscoveryService] Resumed on app active");
+  }
+}
+
+function handleSuspend(): void {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+    console.log("[StarDiscoveryService] Paused (app backgrounded)");
   }
 }
 
@@ -133,7 +143,7 @@ function handleAppState(nextState: AppStateStatus): void {
 // ============================================================================
 
 export function startStarPrinterDiscoveryService(): void {
-  if (intervalId || initialTimeoutId || appStateSubscription) {
+  if (intervalId || initialTimeoutId || lifecycleUnregister.length > 0) {
     stopStarPrinterDiscoveryService();
   }
 
@@ -144,7 +154,17 @@ export function startStarPrinterDiscoveryService(): void {
     intervalId = setInterval(performDiscoveryRound, DISCOVERY_INTERVAL_MS);
   }, INITIAL_DELAY_MS);
 
-  appStateSubscription = AppState.addEventListener("change", handleAppState);
+  lifecycleUnregister = [
+    registerResumeTask({
+      id: "printing.star-discovery-resume",
+      bucket: "background",
+      run: handleResume,
+    }),
+    registerSuspendTask({
+      id: "printing.star-discovery-suspend",
+      run: handleSuspend,
+    }),
+  ];
 
   console.log(
     `[StarDiscoveryService] Started (every ${DISCOVERY_INTERVAL_MS / 1000}s, initial delay ${INITIAL_DELAY_MS / 1000}s)`,
@@ -160,10 +180,8 @@ export function stopStarPrinterDiscoveryService(): void {
     clearInterval(intervalId);
     intervalId = null;
   }
-  if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
-  }
+  lifecycleUnregister.forEach((fn) => fn());
+  lifecycleUnregister = [];
   isScanning = false;
   console.log("[StarDiscoveryService] Stopped");
 }

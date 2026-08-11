@@ -13,6 +13,8 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.ProbeTable
+import com.hoho.android.usbserial.driver.ProlificSerialDriver
+import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
@@ -25,6 +27,20 @@ private const val CASTLES_VENDOR_ID = 0x0CA6
 
 /** Known Saturn1000 product IDs — add more as discovered on LANDI/other devices */
 private val CASTLES_PRODUCT_IDS = intArrayOf(0x0070)
+
+/**
+ * Valor VP terminal USB vendor IDs. Both are SHARED VIDs (Qualcomm / Prolific
+ * ship in many serial adapters), so instead of hard-coding a per-model PID list
+ * that a new VP revision would miss, buildProber() maps the ACTUAL connected
+ * device's (vendorId, productId) to the right driver at probe time.
+ *   0x1E0E — Qualcomm "Android Diag" CDC ACM serial (VP550 + other Qualcomm VPs).
+ *   0x067B — Prolific PL2303 USB-to-serial bridge (VP350). The default prober's
+ *            Prolific driver only matches a fixed PID allow-list, so a VP350 whose
+ *            PL2303 reports an unlisted PID otherwise gets NO driver and open()
+ *            fails with "No serial driver found".
+ */
+private const val VALOR_QUALCOMM_VENDOR_ID = 0x1E0E
+private const val VALOR_PROLIFIC_VENDOR_ID = 0x067B
 
 /** Read buffer size — 16 KB handles large JSON payment responses */
 private const val READ_BUFFER_SIZE = 16 * 1024
@@ -92,19 +108,46 @@ class CastlesUsbModule : Module() {
     for (pid in CASTLES_PRODUCT_IDS) {
       customTable.addProduct(CASTLES_VENDOR_ID, pid, CdcAcmSerialDriver::class.java)
     }
+    // Valor terminals use SHARED VIDs whose specific PIDs vary by model/revision.
+    // Register each currently-attached Valor device's real (vendorId, productId)
+    // against the correct driver so an unlisted VP350 Prolific PID (or a Qualcomm
+    // CDC PID) still resolves to a driver instead of failing open() outright.
+    try {
+      for (device in usbManager.deviceList.values) {
+        when (device.vendorId) {
+          VALOR_PROLIFIC_VENDOR_ID ->
+            customTable.addProduct(device.vendorId, device.productId, ProlificSerialDriver::class.java)
+          VALOR_QUALCOMM_VENDOR_ID ->
+            customTable.addProduct(device.vendorId, device.productId, CdcAcmSerialDriver::class.java)
+        }
+      }
+    } catch (e: Exception) {
+      android.util.Log.w("CastlesUsbModule", "Valor prober augmentation failed (non-fatal): ${e.message}")
+    }
     return UsbSerialProber(customTable)
   }
 
   /**
-   * Find drivers for a device, trying default prober first, then custom
-   * Castles prober as fallback.
+   * Find drivers for all attached devices. Merges the default prober's results
+   * with the custom Castles/Valor prober, keyed by deviceId. The custom prober
+   * only fills in devices the default one didn't recognise (putIfAbsent never
+   * overrides a default match), so an unrecognised VP350 is still covered even
+   * when another serial device IS recognised by default — the old "default OR
+   * fallback" short-circuit skipped the fallback entirely in that case.
    */
-  private fun findAllDrivers(): List<com.hoho.android.usbserial.driver.UsbSerialDriver> {
-    val defaultDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
-    if (defaultDrivers.isNotEmpty()) return defaultDrivers
-
-    // Fallback: try custom prober with explicit Castles VID/PID → CDC ACM mapping
-    return buildProber().findAllDrivers(usbManager)
+  private fun findAllDrivers(): List<UsbSerialDriver> {
+    val byDeviceId = LinkedHashMap<Int, UsbSerialDriver>()
+    try {
+      for (d in UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)) {
+        byDeviceId[d.device.deviceId] = d
+      }
+    } catch (_: SecurityException) { /* tolerate — custom prober may still match */ }
+    try {
+      for (d in buildProber().findAllDrivers(usbManager)) {
+        byDeviceId.putIfAbsent(d.device.deviceId, d)
+      }
+    } catch (_: SecurityException) { /* tolerate — default results (if any) stand */ }
+    return byDeviceId.values.toList()
   }
 
   // ── Broadcast receivers ──

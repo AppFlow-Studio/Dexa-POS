@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { calculateMenuEngineering } from "@/lib/analyticsEngine";
+import { calculateMenuEngineering, SaleEvent } from "@/lib/analyticsEngine";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -18,7 +18,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import {
   AlertTriangle,
   ArrowRight,
@@ -124,9 +124,11 @@ const FinancialReportsScreen = () => {
     }
 
     // 2. Filter Revenue (Sales)
-    const recentSales = salesData.filter((s) => new Date(s.date) >= startDate);
+    const recentSales = salesData.filter(
+      (s: SaleEvent) => new Date(s.date) >= startDate
+    );
     const totalRevenue = recentSales.reduce(
-      (sum, s) => sum + s.salePrice * s.quantitySold,
+      (sum: number, s: SaleEvent) => sum + s.salePrice * s.quantitySold,
       0
     );
 
@@ -144,7 +146,7 @@ const FinancialReportsScreen = () => {
         const hours = parseFloat(shift.duration.replace("h", ""));
         if (!isNaN(hours)) {
           // Base wage cost
-          totalLaborCost += hours * employee.baseWage;
+          totalLaborCost += hours * (employee.baseWage ?? 0);
         }
       }
     });
@@ -173,7 +175,9 @@ const FinancialReportsScreen = () => {
       startDate.setDate(now.getDate() - 30);
     }
 
-    const recentSales = salesData.filter((s) => new Date(s.date) >= startDate);
+    const recentSales = salesData.filter(
+      (s: SaleEvent) => new Date(s.date) >= startDate
+    );
 
     return calculateMenuEngineering(recentSales);
   }, [salesData, reportFrequency]);

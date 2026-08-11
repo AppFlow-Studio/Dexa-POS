@@ -16,6 +16,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { getHeaderHeight } from "@/lib/headerHeight";
+import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import {
   forceSetLocalSequence,
   parseSequenceFromDisplayNumber,
@@ -45,7 +46,7 @@ import {
   formatOrderStatus,
   formatPaymentStatus,
 } from "@/utils/orderStatusHelpers";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -72,7 +73,6 @@ import React, {
 } from "react";
 import {
   Dimensions,
-  InteractionManager,
   Keyboard,
   Modal,
   PanResponder,
@@ -515,13 +515,21 @@ const OrderProcessing = () => {
       // Always eager-creating here is safe because ensureActiveOrderCreated
       // is idempotent and single-flight.
     }
-    // Defer the eager backend create off the screen-entry frame: it's an RPC
-    // whose broadcast/re-render can land mid-first-interaction. The local draft
-    // is already usable; this just pre-persists it so the first item-add is
-    // faster. ensureActiveOrderCreated is idempotent + single-flight, so the
-    // add-item path still creates on demand if this hasn't run yet.
+    // Fire the eager backend create on the next tick — NOT via
+    // InteractionManager. This RPC is what the "Creating order" gate waits on
+    // (MenuSection blocks adds until db_order_id lands), so every ms spent
+    // waiting for interactions to drain — the nav transition, any Animated
+    // handle — is a ms the user spends staring at the overlay. There is no
+    // "first interaction" to protect here precisely because the gate is up:
+    // the menu is blocked until this resolves, so starting earlier only moves
+    // the unblocking re-render earlier. The RPC itself is a fetch and costs
+    // the JS thread almost nothing to kick off.
+    //
+    // setTimeout(0) (not a bare call) keeps the effect's cancel semantics for
+    // a same-tick activeOrderId flip, so a draft that's activated and
+    // immediately switched away from doesn't get a stray backend row.
     let cancelled = false;
-    const task = InteractionManager.runAfterInteractions(async () => {
+    const timer = setTimeout(async () => {
       if (cancelled) return;
       const result = await useOrderStore
         .getState()
@@ -541,10 +549,10 @@ const OrderProcessing = () => {
         if (cancelled) return;
         void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
       }
-    });
+    }, 0);
     return () => {
       cancelled = true;
-      task.cancel();
+      clearTimeout(timer);
     };
   }, [activeOrderId, orderAttributionOrderId]);
 
@@ -911,8 +919,10 @@ const OrderProcessing = () => {
   const renderOrderGridCard = useCallback(
     ({ item }: { item: OrderProfile }) => {
       const totalAmount = item.total_amount ?? 0;
+      const gridShortCode = onlineOrderShortCode(item);
       const displayId =
-        item.display_number || item.order_number || `#${item.id.slice(-4)}`;
+        (item.display_number || item.order_number || `#${item.id.slice(-4)}`) +
+        (gridShortCode ? ` · ${gridShortCode}` : "");
       const itemCount =
         item.items.length > 0
           ? item.items.length

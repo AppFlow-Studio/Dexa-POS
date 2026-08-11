@@ -1,5 +1,6 @@
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { CFDPairingData } from "@/types/cfd.types";
@@ -33,6 +34,8 @@ export default function CFDPairingScreen() {
   const hasNavigatedRef = useRef(false);
 
   const { isPaired, setPairing } = useCFDClientStore();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   // Single source of truth for post-pair navigation. We DO NOT call
   // router.replace inline in handleBarCodeScanned / handleManualConnect —
@@ -150,26 +153,26 @@ export default function CFDPairingScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: 16, paddingVertical: 12 }}>
+    <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: s(16), paddingVertical: s(12) }}>
       {/* Header */}
-      <View style={{ alignItems: 'center', marginBottom: 24 }}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading, marginBottom: 4 }}>
+      <View style={{ alignItems: 'center', marginBottom: s(24) }}>
+        <Text style={{ fontSize: s(20), fontWeight: '700', color: colors.heading, marginBottom: s(4) }}>
           Customer Facing Display
         </Text>
-        <Text style={{ fontSize: 12, color: colors.label }}>
+        <Text style={{ fontSize: s(12), color: colors.label }}>
           Connect your tablet to the POS system
         </Text>
       </View>
 
       {/* Tab Selector */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20, backgroundColor: colors.panel, borderRadius: 10, padding: 4, borderWidth: 1, borderColor: colors.border }}>
+      <View style={{ flexDirection: 'row', gap: s(8), marginBottom: s(20), backgroundColor: colors.panel, borderRadius: s(10), padding: s(4), borderWidth: 1, borderColor: colors.border }}>
         <Pressable
           onPress={() => setActiveTab("qr")}
           style={{
             flex: 1,
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            borderRadius: 8,
+            paddingVertical: s(10),
+            paddingHorizontal: s(12),
+            borderRadius: s(8),
             backgroundColor: activeTab === "qr" ? colors.teal + '20' : 'transparent',
             alignItems: 'center',
             justifyContent: 'center',
@@ -177,9 +180,9 @@ export default function CFDPairingScreen() {
             borderColor: activeTab === "qr" ? colors.teal + '50' : 'transparent',
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <QrCode size={14} color={activeTab === "qr" ? colors.teal : colors.label} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: activeTab === "qr" ? colors.teal : colors.label }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+            <QrCode size={s(14)} color={activeTab === "qr" ? colors.teal : colors.label} />
+            <Text style={{ fontSize: s(12), fontWeight: '600', color: activeTab === "qr" ? colors.teal : colors.label }}>
               Scan QR
             </Text>
           </View>
@@ -188,9 +191,9 @@ export default function CFDPairingScreen() {
           onPress={() => setActiveTab("manual")}
           style={{
             flex: 1,
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            borderRadius: 8,
+            paddingVertical: s(10),
+            paddingHorizontal: s(12),
+            borderRadius: s(8),
             backgroundColor: activeTab === "manual" ? colors.teal + '20' : 'transparent',
             alignItems: 'center',
             justifyContent: 'center',
@@ -198,9 +201,9 @@ export default function CFDPairingScreen() {
             borderColor: activeTab === "manual" ? colors.teal + '50' : 'transparent',
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Wifi size={14} color={activeTab === "manual" ? colors.teal : colors.label} />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: activeTab === "manual" ? colors.teal : colors.label }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+            <Wifi size={s(14)} color={activeTab === "manual" ? colors.teal : colors.label} />
+            <Text style={{ fontSize: s(12), fontWeight: '600', color: activeTab === "manual" ? colors.teal : colors.label }}>
               Manual
             </Text>
           </View>
@@ -209,13 +212,13 @@ export default function CFDPairingScreen() {
 
       {/* QR Tab */}
       {activeTab === "qr" && (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: s(16) }}>
           {!permission?.granted ? (
-            <View style={{ alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 12, backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '50', alignItems: 'center', justifyContent: 'center' }}>
-                <QrCode size={28} color={colors.teal} />
+            <View style={{ alignItems: 'center', gap: s(12) }}>
+              <View style={{ width: s(56), height: s(56), borderRadius: s(12), backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '50', alignItems: 'center', justifyContent: 'center' }}>
+                <QrCode size={s(28)} color={colors.teal} />
               </View>
-              <Text style={{ fontSize: 14, color: colors.label, textAlign: 'center', maxWidth: 280 }}>
+              <Text style={{ fontSize: s(14), color: colors.label, textAlign: 'center', maxWidth: s(280) }}>
                 Camera permission required to scan QR code
               </Text>
               <Pressable
@@ -224,19 +227,19 @@ export default function CFDPairingScreen() {
                   backgroundColor: colors.teal + '20',
                   borderWidth: 1,
                   borderColor: colors.teal + '50',
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 8,
+                  paddingHorizontal: s(16),
+                  paddingVertical: s(8),
+                  borderRadius: s(8),
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
+                <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>
                   Grant Permission
                 </Text>
               </Pressable>
             </View>
           ) : (
             <>
-              <View style={{ width: 240, height: 240, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+              <View style={{ width: s(240), height: s(240), borderRadius: s(12), overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
                 <CameraView
                   style={{ flex: 1 }}
                   facing="back"
@@ -244,10 +247,10 @@ export default function CFDPairingScreen() {
                   onBarcodeScanned={handleBarCodeScanned}
                 />
                 <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-                  <View style={{ width: 160, height: 160, borderWidth: 2, borderColor: colors.teal, borderRadius: 8 }} />
+                  <View style={{ width: s(160), height: s(160), borderWidth: 2, borderColor: colors.teal, borderRadius: s(8) }} />
                 </View>
               </View>
-              <Text style={{ fontSize: 12, color: colors.label, textAlign: 'center' }}>
+              <Text style={{ fontSize: s(12), color: colors.label, textAlign: 'center' }}>
                 {isProcessing ? "Processing..." : "Position QR code in frame"}
               </Text>
             </>
@@ -257,11 +260,11 @@ export default function CFDPairingScreen() {
 
       {/* Manual Tab */}
       {activeTab === "manual" && (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-          <View style={{ width: 56, height: 56, borderRadius: 12, backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '50', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-            <Wifi size={28} color={colors.teal} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: s(12) }}>
+          <View style={{ width: s(56), height: s(56), borderRadius: s(12), backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '50', alignItems: 'center', justifyContent: 'center', marginBottom: s(8) }}>
+            <Wifi size={s(28)} color={colors.teal} />
           </View>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label, marginBottom: 4 }}>
+          <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label, marginBottom: s(4) }}>
             Enter POS Connection Details
           </Text>
           <TextInput
@@ -273,16 +276,16 @@ export default function CFDPairingScreen() {
             placeholder="192.168.1.100:8080"
             placeholderTextColor={colors.muted}
             style={{
-              width: 280,
+              width: s(280),
               backgroundColor: colors.card,
-              borderRadius: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              fontSize: 13,
+              borderRadius: s(8),
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
+              fontSize: s(13),
               color: colors.heading,
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 12,
+              marginBottom: s(12),
             }}
             autoCapitalize="none"
             keyboardType="numbers-and-punctuation"
@@ -293,12 +296,12 @@ export default function CFDPairingScreen() {
               backgroundColor: colors.teal + '20',
               borderWidth: 1,
               borderColor: colors.teal + '50',
-              paddingHorizontal: 20,
-              paddingVertical: 8,
-              borderRadius: 8,
+              paddingHorizontal: s(20),
+              paddingVertical: s(8),
+              borderRadius: s(8),
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
+            <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>
               Connect
             </Text>
           </Pressable>
@@ -307,8 +310,8 @@ export default function CFDPairingScreen() {
 
       {/* Error Message */}
       {error && (
-        <View style={{ backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '30', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 }}>
-          <Text style={{ fontSize: 11, color: colors.danger, textAlign: 'center' }}>
+        <View style={{ backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '30', borderRadius: s(8), paddingHorizontal: s(12), paddingVertical: s(8), marginBottom: s(12) }}>
+          <Text style={{ fontSize: s(11), color: colors.danger, textAlign: 'center' }}>
             {error}
           </Text>
         </View>
@@ -320,13 +323,13 @@ export default function CFDPairingScreen() {
         style={{
           borderWidth: 1,
           borderColor: colors.border,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderRadius: 8,
+          paddingHorizontal: s(12),
+          paddingVertical: s(8),
+          borderRadius: s(8),
           alignItems: 'center',
         }}
       >
-        <Text style={{ fontSize: 12, color: colors.label }}>
+        <Text style={{ fontSize: s(12), color: colors.label }}>
           Exit CFD Mode
         </Text>
       </Pressable>

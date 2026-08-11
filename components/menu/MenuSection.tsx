@@ -1,26 +1,26 @@
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import {
-    beginMenuModifierPreWarm,
-    isMenuModifierPreWarmCurrent,
+  beginMenuModifierPreWarm,
+  isMenuModifierPreWarmCurrent,
 } from "@/lib/menuModifierPreWarmControl";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useMenuVisibilityStore } from "@/stores/useMenuVisibilityStore";
 import {
-    isMenuBlockedSync,
-    selectCancelAndRemoveDraft,
-    selectIsMenuBlocked,
-    useModifierSidebarStore,
+  isMenuBlockedSync,
+  selectCancelAndRemoveDraft,
+  selectIsMenuBlocked,
+  useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
@@ -30,31 +30,31 @@ import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { BlurView } from "expo-blur";
 import { Link } from "expo-router";
 import {
-    CheckCircle2,
-    ChevronDown,
-    Clock,
-    Lock,
-    Logs,
-    PackagePlus,
-    Search,
-    Sofa,
-    Table,
-    UtensilsCrossed,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Lock,
+  Logs,
+  PackagePlus,
+  Search,
+  Sofa,
+  Table,
+  UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    ActivityIndicator,
-    InteractionManager,
-    Pressable,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  InteractionManager,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
@@ -80,7 +80,7 @@ interface MenuSectionProps {
   placeMenuSelectorInMenuRow?: boolean;
 }
 
-// OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
+// OPTIMIZED: Pre-compiled StyleSheet for the grid (no runtime parsing)
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -90,31 +90,44 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { StyleSheet, ViewStyle } from "react-native";
 
-const menuSectionStyles = StyleSheet.create({
-  spacer: {
-    flex: 1,
-  },
-  // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
-  // the cell wrapper (3+3 horizontal between columns, 6 vertical between
-  // rows) since FlashList has no columnWrapperStyle.
-  gridCell: {
-    // FlashList lays each row of `numColumns` cells out in a flex row; flex:1
-    // makes every cell take an equal share of the row width. Static (no onLayout
-    // measurement race that left the first category cramped until a switch).
-    flex: 1,
-    paddingHorizontal: 3,
-    paddingBottom: 6,
-  },
-  gridContainer: {
-    flex: 1,
-    marginTop: 8,
-    // NOTE: backgroundColor is applied inline at the render site, NOT here.
-    // `colors` is a theme Proxy that defaults to dark; StyleSheet.create runs
-    // at module load (before setThemeMode('light')), so a themed color frozen
-    // here would lock to the dark value (#1E2340) and show as a dark rectangle
-    // below short lists. Inline styles read the live (light) value.
-  },
-});
+type MenuSectionStyles = ReturnType<typeof createMenuSectionStyles>;
+const menuSectionStylesByScale = new Map<string, MenuSectionStyles>();
+
+const createMenuSectionStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
+    // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
+    // the cell wrapper (3+3 horizontal between columns, 6 vertical between
+    // rows) since FlashList has no columnWrapperStyle.
+    gridCell: {
+      // FlashList lays each row of `numColumns` cells out in a flex row; flex:1
+      // makes every cell take an equal share of the row width. Static (no onLayout
+      // measurement race that left the first category cramped until a switch).
+      flex: 1,
+      paddingHorizontal: s(3),
+      paddingBottom: s(6),
+    },
+    gridContainer: {
+      flex: 1,
+      marginTop: s(8),
+      // NOTE: backgroundColor is applied inline at the render site, NOT here.
+      // `colors` is a theme Proxy that defaults to dark; StyleSheet.create runs
+      // at module load (before setThemeMode('light')), so a themed color frozen
+      // here would lock to the dark value (#1E2340) and show as a dark rectangle
+      // below short lists. Inline styles read the live (light) value.
+    },
+  });
+};
+
+const getMenuSectionStyles = (scale: number) => {
+  const key = String(scale);
+  const cached = menuSectionStylesByScale.get(key);
+  if (cached) return cached;
+  const next = createMenuSectionStyles(scale);
+  menuSectionStylesByScale.set(key, next);
+  return next;
+};
+const menuSectionStyles = createMenuSectionStyles(1);
 const EMPTY_HIDDEN_MENU_IDS: string[] = [];
 
 const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
@@ -154,10 +167,6 @@ const getImageSource = (item: MenuItemType) => {
   return source;
 };
 
-// OPTIMIZED: Memoized spacer component — 20% width matches a real grid cell.
-const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
-SpacerItem.displayName = "SpacerItem";
-
 // Isolated overlay — only this re-renders when modifier opens, not the FlatList
 const MenuBlockingOverlay = React.memo(() => {
   const isMenuBlocked = useModifierSidebarStore(selectIsMenuBlocked);
@@ -179,10 +188,12 @@ const SeatingBlockingOverlay = React.memo(
     isVisible,
     title,
     message,
+    showSpinner = true,
   }: {
     isVisible: boolean;
     title: string;
     message: string;
+    showSpinner?: boolean;
   }) => {
     const uiScale = useUiScale();
     const s = (n: number) => Math.round(n * uiScale);
@@ -192,7 +203,7 @@ const SeatingBlockingOverlay = React.memo(
         <BlurView
           intensity={22}
           tint="dark"
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
         <View
           style={{
@@ -200,9 +211,17 @@ const SeatingBlockingOverlay = React.memo(
             backgroundColor: colors.background + "66",
           }}
         />
+        {/* absoluteFill, NOT flex:1. This layer's parent is itself absolutely
+            positioned (top/left/right/bottom: 0), and a flex:1 child only fills
+            such a parent if the parent's height resolves from its insets before
+            the child measures — which Fabric does not guarantee. When it didn't,
+            this box collapsed to its content height and, laid out after the two
+            absolutely-positioned siblings, the card sat low in the column
+            instead of centered. Pinning to the parent's box makes the centering
+            depend on nothing. */}
         <View
           style={{
-            flex: 1,
+            ...StyleSheet.absoluteFillObject,
             alignItems: "center",
             justifyContent: "center",
             paddingHorizontal: s(24),
@@ -220,7 +239,9 @@ const SeatingBlockingOverlay = React.memo(
               backgroundColor: colors.panel + "E6",
             }}
           >
-            <ActivityIndicator size="small" color={colors.teal} />
+            {showSpinner && (
+              <ActivityIndicator size="small" color={colors.teal} />
+            )}
             <Text
               style={{
                 color: colors.heading,
@@ -346,15 +367,19 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // (mirrors the offline carve-out in addItemToActiveOrder). Only block while
   // ONLINE, otherwise the overlay would stick on "Creating order" forever offline.
   const { isOnline } = useNetworkStatus();
-  // Also guard against stale/orphaned activeOrderId: if the order object doesn't
-  // exist in ordersById, don't block — BillSection will show "No Active
-  // Order" and the user can start fresh. Checking currentOrderPaidStatus as a
-  // proxy; if it's null and activeOrderId is set, the order doesn't exist.
+  // Guard against stale/orphaned activeOrderId: if the order object doesn't
+  // exist in ordersById, it's not "creating" — it's the no-active-order state
+  // (blocked below with its own overlay message).
   const currentOrderExists = useOrderStore((s) =>
     s.activeOrderId ? !!s.ordersById[s.activeOrderId] : false,
   );
   const isCreatingOrder =
     isOnline && !!activeOrderId && !currentOrderDbId && currentOrderExists;
+  // No order to add to: activeOrderId unset (e.g. auto-create OFF before the
+  // operator starts a ticket) or set but pruned from ordersById. BillSection
+  // shows its "No Active Order" panel in this state — block the menu so item
+  // taps can't open the add flow with nowhere to land.
+  const hasNoActiveOrder = !activeOrderId || !currentOrderExists;
 
   // Timeout + retry for the "Creating order" gate. If the eager-create RPC
   // failed or was skipped, the order is permanently stuck with no db_order_id
@@ -426,19 +451,26 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     !currentOrderDbId &&
     currentOrderPaidStatus !== "Paid";
   const isMenuAddDisabled =
-    isTableSeating || effectiveCreatingOrder || isAwaitingOrderPin;
+    hasNoActiveOrder ||
+    isTableSeating ||
+    effectiveCreatingOrder ||
+    isAwaitingOrderPin;
   // Seating takes precedence over "creating" in the label (a dine-in order is
   // also db_order_id-less while seating, but "Seating in progress" is clearer).
-  const menuDisabledTitle = isTableSeating
-    ? "Seating in progress"
-    : isAwaitingOrderPin
-      ? "Enter PIN to start"
-      : "Creating order";
-  const menuDisabledMessage = isTableSeating
-    ? "Items can be added once the table is seated."
-    : isAwaitingOrderPin
-      ? "Enter your PIN to start this order."
-      : "Items can be added once the order is ready.";
+  const menuDisabledTitle = hasNoActiveOrder
+    ? "No Active Order"
+    : isTableSeating
+      ? "Seating in progress"
+      : isAwaitingOrderPin
+        ? "Enter PIN to start"
+        : "Creating order";
+  const menuDisabledMessage = hasNoActiveOrder
+    ? "Start an order to add items."
+    : isTableSeating
+      ? "Items can be added once the table is seated."
+      : isAwaitingOrderPin
+        ? "Enter your PIN to start this order."
+        : "Items can be added once the order is ready.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );
@@ -741,24 +773,15 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     availabilityTick,
   ]);
   const numColumns = 5;
-  const dataWithSpacers = useMemo(() => {
-    const items = [...filteredMenuItems];
-    const numberOfElementsLastRow = items.length % numColumns;
-    if (numberOfElementsLastRow === 0) {
-      return items;
-    }
-    const numberOfSpacers = numColumns - numberOfElementsLastRow;
-    for (let i = 0; i < numberOfSpacers; i++) {
-      items.push({
-        id: `spacer-${i}`,
-        name: "spacer",
-        price: 0,
-        category: [],
-        meal: [],
-      } as any);
-    }
-    return items;
-  }, [filteredMenuItems]);
+  // NOTE: no last-row spacer padding here (the FlatList-era hack). FlashList's
+  // grid layout sizes every cell to containerWidth/numColumns via span, so a
+  // partial last row already renders left-aligned at the right width. Filler
+  // cells actively broke the grid: they render at height 0, and FlashList feeds
+  // every measured cell height into a running AverageWindow that becomes the
+  // layout height for all not-yet-measured cells. Each category with a partial
+  // last row pushed 1-4 zeros into that average (and it carries across layout
+  // managers), so the next menu's rows were laid out shorter than the tiles
+  // actually draw — rows overlapping each other on menu switch.
 
   // OPTIMIZED: Hoist category lookup OUTSIDE renderItem (runs once, not 100+ times)
   const currentCategoryId = useMemo(() => {
@@ -828,12 +851,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // NOTE: All hooks must be called before any early returns
   const keyExtractor = useCallback((item: MenuItemType) => item.id, []);
 
-  // OPTIMIZED: Memoized renderItem using hoisted category ID and SpacerItem
+  // OPTIMIZED: Memoized renderItem using hoisted category ID
   const renderMenuItem = useCallback(
     ({ item, index }: ListRenderItemInfo<MenuItemType>) => {
-      if ((item as any).name === "spacer") {
-        return <SpacerItem />;
-      }
       const highThrough = numColumns * 3;
       const normalThrough = numColumns * 10;
       const imagePriority =
@@ -859,13 +879,6 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       numColumns,
       isMenuAddDisabled,
     ],
-  );
-
-  // FlashList recycles by type — keep spacer cells out of the MenuItem pool.
-  const getItemType = useCallback(
-    (item: MenuItemType) =>
-      (item as any).name === "spacer" ? "spacer" : "item",
-    [],
   );
 
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
@@ -1316,12 +1329,19 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   ]}
                 >
                   <FlashList
-                    data={dataWithSpacers}
+                    data={filteredMenuItems}
                     keyExtractor={keyExtractor}
                     numColumns={numColumns}
                     estimatedItemSize={estimatedItemSize}
-                    getItemType={getItemType}
-                    disableAutoLayout
+                    // NOTE: do NOT set `disableAutoLayout` here. It turns off the
+                    // native AutoLayoutView pass (`clearGapsAndOverlaps`), which is
+                    // what corrects cells drawn at stale offsets when a measured
+                    // tile height differs from the estimate — i.e. the exact
+                    // overlapping-tiles artifact seen on menu switch. It was
+                    // originally added to hide a dark rectangle below short lists;
+                    // that turned out to be a themed `backgroundColor` frozen at
+                    // module load (see the gridContainer note above) and is fixed
+                    // properly by the inline background at this render site.
                     drawDistance={500}
                     contentContainerStyle={{
                       backgroundColor: colors.card,
@@ -1330,7 +1350,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     showsVerticalScrollIndicator={false}
                     // Re-render visible cells when the add-disabled state flips
                     // (e.g. first order's db_order_id arrives → isMenuAddDisabled
-                    // false). Without this, dataWithSpacers keeps the same item
+                    // false). Without this, filteredMenuItems keeps the same item
                     // references so FlashList leaves the first category's cells
                     // grayed out until a category switch rebuilds the data.
                     extraData={isMenuAddDisabled}
@@ -1369,6 +1389,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           isVisible={isMenuAddDisabled}
           title={menuDisabledTitle}
           message={menuDisabledMessage}
+          showSpinner={!hasNoActiveOrder}
         />
         <MenuBlockingOverlay />
 

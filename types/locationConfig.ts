@@ -25,6 +25,13 @@ export interface DiningConfig {
   allowTableSplitting: boolean;
   autoUpdateTableStatus: boolean;
   autoClearTableOnPayment: boolean;
+  /**
+   * Wave A — when true, the Close-Table gate reconciles against server truth
+   * and offers a one-tap "Sync & Clear" instead of trapping staff into
+   * void/cash on a server-paid check whose local state is stale. Runtime
+   * kill-switch (remote-synced, no rebuild needed); defaults OFF.
+   */
+  syncAndClearEnabled: boolean;
   defaultSittingTimeMinutes: number;
   defaultPartySize: number;
 }
@@ -234,6 +241,7 @@ export const DEFAULT_DINING_CONFIG: DiningConfig = {
   allowTableSplitting: false,
   autoUpdateTableStatus: true,
   autoClearTableOnPayment: false,
+  syncAndClearEnabled: false,
   defaultSittingTimeMinutes: 60,
   defaultPartySize: 2,
 };

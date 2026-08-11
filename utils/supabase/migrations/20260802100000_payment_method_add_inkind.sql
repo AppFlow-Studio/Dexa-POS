@@ -1,0 +1,39 @@
+-- =====================================================================
+-- Migration: add 'inkind' to the payment_method enum
+-- =====================================================================
+-- In-kind is a non-tender settlement: the check is marked fully paid at
+-- CARD pricing, but no money is collected — no drawer movement, no
+-- processor, no settlement batch. Think donated meals, staff/promo comps
+-- that must still post revenue at menu (card) price.
+--
+-- Why its own enum value instead of reusing 'external' or 'house_account':
+--   • 'house_account' implies a receivable that is collected later.
+--   • 'external' is already used for third-party-collected online orders,
+--     which DO settle money.
+--   • Reporting must be able to exclude in-kind from BOTH the expected
+--     cash drawer and the card settlement total. That requires a value
+--     no existing bucket claims.
+--
+-- ORDERING REQUIREMENT (hard):
+--   Postgres forbids using a newly added enum label in the SAME
+--   transaction that adds it. This migration MUST be applied and
+--   COMMITTED before:
+--     • 20260802100100_order_payments_inkind_normalize_trigger.sql
+--     • 20260802100200_business_day_summary_inkind_bucket.sql
+--     • any app build that sends p_payment_method = 'inkind'
+--   Apply this file on its own, then the rest.
+--
+-- NOTE: no process_payment fork is needed. Every live version forks
+-- pricing on `p_payment_method = 'cash'`, so 'inkind' already takes the
+-- CARD-pricing path. The tender-metadata corrections are applied by
+-- trg_inkind_normalize instead — see that migration for why a trigger
+-- beats a fork here.
+--
+-- Rollback: 20260802100000_payment_method_add_inkind_rollback.sql
+--   NOTE: Postgres cannot DROP a single enum label. Rolling back means
+--   rebuilding the type; the rollback file documents the procedure and
+--   is intentionally guarded, since it is destructive if any row already
+--   uses the value.
+-- =====================================================================
+
+ALTER TYPE public.payment_method ADD VALUE IF NOT EXISTS 'inkind';

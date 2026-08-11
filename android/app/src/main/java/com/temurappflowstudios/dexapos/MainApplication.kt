@@ -17,6 +17,7 @@ import com.temurappflowstudios.dexapos.tcpserver.TcpServerPackage
 import com.temurappflowstudios.dexapos.secondarydisplay.SecondaryDisplayPackage
 import com.temurappflowstudios.dexapos.hardware.HardwareDetectionPackage
 import com.temurappflowstudios.dexapos.printer.LandiPrinterPackage
+import com.temurappflowstudios.dexapos.atom.AtomBridgePackage
 import com.temurappflowstudios.dexapos.nsd.NsdPublisherPackage
 import com.temurappflowstudios.dexapos.nsd.NsdDiscoveryPackage
 import com.temurappflowstudios.dexapos.locktask.LockTaskPackage
@@ -38,6 +39,7 @@ class MainApplication : Application(), ReactApplication {
             packages.add(NsdPublisherPackage())
             packages.add(NsdDiscoveryPackage())
             packages.add(LockTaskPackage())
+            packages.add(AtomBridgePackage())
             return packages
           }
 

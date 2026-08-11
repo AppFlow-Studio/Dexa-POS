@@ -1,4 +1,6 @@
 import { useUiScale } from '@/lib/uiScale'
+import InKindLogo from '@/components/brand/InKindLogo'
+import { INKIND_LABEL } from '@/lib/paymentMethod'
 import { colors } from '@/lib/theme'
 import {
   useActiveOrder,
@@ -6,12 +8,16 @@ import {
   useOrderPreAuth
 } from '@/stores/selectors/orderSelectors'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { PaymentView, usePaymentStore } from '@/stores/usePaymentStore'
+import { VALOR_OPEN_TAB_ENABLED } from '@/services/preAuthService'
+import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import {
   Banknote,
   CheckCircle2,
   Columns,
   CreditCard,
+  HandHeart,
   Keyboard,
   Lock
 } from 'lucide-react-native'
@@ -29,6 +35,7 @@ type PaymentMethod =
   | 'Manual Key-in'
   | 'Split'
   | 'Cash'
+  | typeof INKIND_LABEL
   | 'Open Tab'
   | 'Close Tab'
 
@@ -76,6 +83,32 @@ const getStyles = (scale: number) => {
     methodTitleActive: { color: colors.heading },
     methodDesc: { fontSize: s(11), color: colors.muted, marginTop: 1 },
     methodDescActive: { color: colors.teal },
+    // ── inKind: solid brand-gold tile. Everything on it is black, which is
+    // legible on gold in both themes (9.4:1 light, 11.3:1 dark) — so unlike
+    // the earlier black-slab version this needs no light/dark inversion.
+    inKindCard: {
+      backgroundColor: colors.inKindOn,
+      borderColor: colors.inKindOn
+    },
+    inKindCardActive: {
+      backgroundColor: colors.inKindOn,
+      borderColor: colors.inKindField,
+      borderWidth: 2
+    },
+    // Black chip: the lockup is gold-on-black, so it needs a dark field to
+    // read — it cannot sit directly on the gold tile.
+    inKindLogoChip: {
+      backgroundColor: colors.inKindField,
+      borderRadius: s(8),
+      paddingHorizontal: s(7),
+      paddingVertical: s(6),
+      marginRight: s(12),
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const
+    },
+    // Black, not muted: muted grey on gold fails contrast.
+    inKindDesc: { color: colors.inKindField },
+    inKindRadio: { borderColor: colors.inKindField },
     radio: {
       width: s(18),
       height: s(18),
@@ -127,11 +160,29 @@ const PaymentMethodSelectionView: React.FC = () => {
   const preAuth = useOrderPreAuth(activeOrder?.id)
   const preAuthEnabled = useLocationConfigStore(s => s.config.preAuth.enabled)
 
+  // Open Tab (pre-auth) is temporarily disabled on Valor terminals (perf).
+  // Close/Release of an existing hold stay available.
+  const terminalType = useStoreSettingsStore(
+    s => s.selectedStation?.payment_terminal?.terminal_type
+  )
+  // ATOM (Landi P30) has no pre-auth capability — the on-device processor only
+  // supports immediate-capture sales, so there's no APPROVED auth to hold. Hide
+  // Open Tab whenever ATOM is the active processor (same treatment as the Valor
+  // perf kill-switch). Uses the active processor, not the configured terminal,
+  // because a NEW hold routes to whatever device services new sales.
+  const activeProcessorType = useActiveProcessor().activeType
+  const openTabDisabledForTerminal =
+    (terminalType === 'valor' && !VALOR_OPEN_TAB_ENABLED) ||
+    activeProcessorType === 'atom'
+
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(
     hasPreAuth ? 'Close Tab' : 'Card Reader'
   )
 
   const activeSplit = splits.find(s => s.id === activeSplitId)
+
+  // Drives the Proceed CTA's brand-gold treatment in the footer.
+  const isInKindSelected = selectedMethod === INKIND_LABEL
 
   const paymentMethods: Array<{
     name: PaymentMethod
@@ -185,7 +236,18 @@ const PaymentMethodSelectionView: React.FC = () => {
       description: 'Standard cash transaction',
       view: 'cash' as PaymentView
     },
-    ...(!hasPreAuth && preAuthEnabled
+    // Non-tender settlement: closes the check at card pricing with no money
+    // collected. Hidden during a split — an in-kind portion of a split check
+    // has no defined meaning here, and the split branch would price and
+    // report it inconsistently.
+    {
+      name: INKIND_LABEL as PaymentMethod,
+      icon: HandHeart,
+      title: INKIND_LABEL,
+      description: 'Settle at menu price — no payment collected',
+      view: 'inkind' as PaymentView
+    },
+    ...(!hasPreAuth && preAuthEnabled && !openTabDisabledForTerminal
       ? [
           {
             name: 'Open Tab' as PaymentMethod,
@@ -202,7 +264,10 @@ const PaymentMethodSelectionView: React.FC = () => {
     m =>
       !(
         activeSplit &&
-        (m.name === 'Split' || m.name === 'Open Tab' || m.name === 'Close Tab')
+        (m.name === 'Split' ||
+          m.name === INKIND_LABEL ||
+          m.name === 'Open Tab' ||
+          m.name === 'Close Tab')
       )
   )
 
@@ -250,38 +315,51 @@ const PaymentMethodSelectionView: React.FC = () => {
           {availableMethods.map(method => {
             const isSelected = selectedMethod === method.name
             const Icon = method.icon
+            // inKind shows the brand lockup instead of a generic icon +
+            // title: the logo IS the name, so rendering both would repeat it.
+            const isInKind = method.name === INKIND_LABEL
+            const iconColor = isSelected ? colors.teal : colors.label
             return (
               <TouchableOpacity
                 key={method.name}
                 onPress={() => setSelectedMethod(method.name)}
                 activeOpacity={0.8}
-                style={[styles.card, isSelected && styles.cardActive]}
+                style={[
+                  styles.card,
+                  isSelected && styles.cardActive,
+                  isInKind && styles.inKindCard,
+                  isInKind && isSelected && styles.inKindCardActive
+                ]}
               >
-                <View
-                  style={[
-                    styles.iconBox,
-                    isSelected && styles.iconBoxActive
-                  ]}
-                >
-                  <Icon
-                    color={isSelected ? colors.teal : colors.label}
-                    size={s(16)}
-                    strokeWidth={2}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.methodTitle,
-                      isSelected && styles.methodTitleActive
-                    ]}
+                {isInKind ? (
+                  <View style={styles.inKindLogoChip}>
+                    <InKindLogo width={s(52)} />
+                  </View>
+                ) : (
+                  <View
+                    style={[styles.iconBox, isSelected && styles.iconBoxActive]}
                   >
-                    {method.title}
-                  </Text>
+                    <Icon color={iconColor} size={s(16)} strokeWidth={2} />
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  {/* Title omitted for inKind — the lockup already reads
+                      "inKind", so a text title would duplicate it. */}
+                  {!isInKind && (
+                    <Text
+                      style={[
+                        styles.methodTitle,
+                        isSelected && styles.methodTitleActive
+                      ]}
+                    >
+                      {method.title}
+                    </Text>
+                  )}
                   <Text
                     style={[
                       styles.methodDesc,
-                      isSelected && styles.methodDescActive
+                      isSelected && styles.methodDescActive,
+                      isInKind && styles.inKindDesc
                     ]}
                   >
                     {method.description}
@@ -291,12 +369,16 @@ const PaymentMethodSelectionView: React.FC = () => {
                   {isSelected ? (
                     <CheckCircle2
                       size={s(18)}
-                      color={colors.teal}
-                      fill={colors.teal}
-                      stroke={colors.screen}
+                      // Black disc with a gold tick on the gold tile — the
+                      // teal treatment would vanish against it.
+                      color={isInKind ? colors.inKindField : colors.teal}
+                      fill={isInKind ? colors.inKindField : colors.teal}
+                      stroke={isInKind ? colors.inKindOn : colors.screen}
                     />
                   ) : (
-                    <View style={styles.radio} />
+                    <View
+                      style={[styles.radio, isInKind && styles.inKindRadio]}
+                    />
                   )}
                 </View>
               </TouchableOpacity>
@@ -316,12 +398,24 @@ const PaymentMethodSelectionView: React.FC = () => {
             {activeSplit ? 'Back' : 'Cancel'}
           </Text>
         </TouchableOpacity>
+        {/* Proceed adopts the brand gold once inKind is the selected method,
+            so the CTA matches the tile the cashier just picked instead of
+            staying teal. Label flips to inKindField (black) on the gold —
+            9.4:1 in light, 11.3:1 in dark. onSolid would be white in light
+            mode and unreadable on gold. */}
         <TouchableOpacity
-          style={styles.proceedBtn}
+          style={[
+            styles.proceedBtn,
+            isInKindSelected && { backgroundColor: colors.inKindOn }
+          ]}
           onPress={handleProceed}
         >
           <Text
-            style={{ color: colors.onSolid, fontWeight: '700', fontSize: s(13) }}
+            style={{
+              color: isInKindSelected ? colors.inKindField : colors.onSolid,
+              fontWeight: '700',
+              fontSize: s(13)
+            }}
           >
             Proceed
           </Text>

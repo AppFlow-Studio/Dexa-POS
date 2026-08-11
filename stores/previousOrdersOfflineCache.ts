@@ -21,14 +21,37 @@ import type { DateWindowLabel } from "@/stores/usePreviousOrdersStore";
 
 const PREFIX = "prev_orders_offline:";
 const KEY = (locationId: string) => `${PREFIX}${locationId}`;
+const SIG_PREFIX = "prev_orders_sig:";
+const SIG_KEY = (locationId: string) => `${SIG_PREFIX}${locationId}`;
 
 // Hard cap so a busy location can't bloat MMKV. Matches the in-memory cap.
 const MAX_CACHED_ORDERS = 200;
+
+/**
+ * Cached rows carry customer names, phones and emails. They're kept so
+ * re-entering the screen is instant instead of always waiting on a fetch, but
+ * they're not worth retaining indefinitely on the device — a cache older than
+ * this is discarded on read and refetched.
+ */
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 interface CachedPayload {
   orders: PreviousOrder[];
   windowLabel: DateWindowLabel;
   cachedAt: number; // epoch ms — for an "as of" hint in the UI
+}
+
+/**
+ * Cheap fingerprint of a location's date window: how many orders it held and
+ * the most recent `updated_at` seen. Compared against a live probe on entry to
+ * decide whether the cached rows are still current — an exact-match means the
+ * backend hasn't moved and the cache can be shown as-is.
+ */
+export interface CachedSignature {
+  count: number | null;
+  latestUpdatedAt: string | null;
+  windowLabel: DateWindowLabel;
+  cachedAt: number;
 }
 
 export const previousOrdersOfflineCache = {
@@ -38,10 +61,52 @@ export const previousOrdersOfflineCache = {
       if (!raw) return null;
       const parsed = JSON.parse(raw) as CachedPayload;
       if (!parsed || !Array.isArray(parsed.orders)) return null;
+      // Expire stale entries rather than serving day-old customer data.
+      if (
+        typeof parsed.cachedAt === "number" &&
+        Date.now() - parsed.cachedAt > CACHE_TTL_MS
+      ) {
+        this.clearLocation(locationId);
+        return null;
+      }
       return parsed;
     } catch (err) {
       console.error("[previousOrdersOfflineCache.get]", err);
       return null;
+    }
+  },
+
+  /** Fingerprint of the last fetch, for the staleness check on re-entry. */
+  getSignature(locationId: string): CachedSignature | null {
+    try {
+      const raw = syncStorage.getString(SIG_KEY(locationId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as CachedSignature;
+      if (!parsed) return null;
+      if (
+        typeof parsed.cachedAt === "number" &&
+        Date.now() - parsed.cachedAt > CACHE_TTL_MS
+      ) {
+        return null;
+      }
+      return parsed;
+    } catch (err) {
+      console.error("[previousOrdersOfflineCache.getSignature]", err);
+      return null;
+    }
+  },
+
+  setSignature(
+    locationId: string,
+    signature: Omit<CachedSignature, "cachedAt">,
+  ): void {
+    try {
+      syncStorage.set(
+        SIG_KEY(locationId),
+        JSON.stringify({ ...signature, cachedAt: Date.now() }),
+      );
+    } catch (err) {
+      console.error("[previousOrdersOfflineCache.setSignature]", err);
     }
   },
 
@@ -69,8 +134,31 @@ export const previousOrdersOfflineCache = {
   clearLocation(locationId: string): void {
     try {
       syncStorage.remove(KEY(locationId));
+      syncStorage.remove(SIG_KEY(locationId));
     } catch (err) {
       console.error("[previousOrdersOfflineCache.clearLocation]", err);
     }
   },
 };
+
+/**
+ * Whether cached rows can be trusted for this window.
+ *
+ * Requires an exact match on both the row count and the newest `updated_at`.
+ * The count alone would miss in-place edits (a refund, a void, a tip adjust,
+ * a check reopening) that change an order without changing how many there are;
+ * `updated_at` alone would miss a delete. A null on either side means "unknown"
+ * and is treated as stale, so an ambiguous probe always refetches.
+ */
+export function isCacheFresh(
+  cached: CachedSignature | null,
+  live: { count: number | null; latestUpdatedAt: string | null },
+  windowLabel: DateWindowLabel,
+): boolean {
+  if (!cached) return false;
+  if (cached.windowLabel !== windowLabel) return false;
+  if (cached.count == null || live.count == null) return false;
+  if (cached.count !== live.count) return false;
+  // Both null is legitimate: an empty window has no newest row.
+  return cached.latestUpdatedAt === live.latestUpdatedAt;
+}

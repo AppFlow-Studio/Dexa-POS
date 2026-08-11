@@ -3,6 +3,8 @@ import {
     derivePaymentRefundState,
     getCashPricedOrderTotal,
 } from "@/lib/paymentStatus";
+import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
+import { getProviderKey, PROVIDER_LABELS } from "@/lib/previousOrdersFilters";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -19,7 +21,6 @@ import {
     RotateCcw,
     ShoppingBag,
     Truck,
-    User,
     Utensils,
     WifiOff,
     XCircle,
@@ -34,8 +35,8 @@ import {
     UIManager,
     View,
 } from "react-native";
-import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
 import ExpandedOrderPanel from "./ExpandedOrderPanel";
+import ProviderGlyph from "./ProviderGlyph";
 
 if (
   Platform.OS === "android" &&
@@ -231,195 +232,169 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
 
   const isVoided = order.order_status === "void";
 
+  // Online orders lead with the provider mark (DoorDash / Uber Eats / …);
+  // everything else leads with its channel icon. Provider identity always goes
+  // through the shared resolver — never raw `delivery_platform` equality.
+  const providerKey = useMemo(() => getProviderKey(order), [order]);
+
+  // Secondary state that used to occupy its own stacked badges. Collapsed to a
+  // single sub-line so the row holds its 64px two-line rhythm.
+  const secondaryNote = order._offlineUnsynced
+    ? { label: "Offline", color: colors.muted }
+    : refundBadge
+      ? { label: refundBadge.label, color: refundBadge.color }
+      : isSettled
+        ? { label: "Settled", color: colors.muted }
+        : null;
+
+  // The leading glyph is a brand logo for marketplaces, but House and Other
+  // only have generic icons — indistinguishable at a glance. Name the provider
+  // in the meta line so an online order reads as "DoorDash" / "House", the way
+  // the old DeliveryPlatformBadge's text label did.
+  const metaLine = [
+    providerKey ? PROVIDER_LABELS[providerKey] : null,
+    displayType,
+    tableName ? `Table ${tableName}` : null,
+    order.server_name && !order._isOnlineOrder
+      ? `Server: ${order.server_name}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <View
       style={{
-        marginBottom: s(8),
-        marginHorizontal: s(8),
-        borderRadius: s(12),
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: needsAttention ? colors.warning + "30" : colors.border,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: needsAttention ? colors.warning + "12" : colors.panel,
       }}
     >
-      {/* Collapsed row */}
+      {/* Collapsed row — two lines, 64px, ≥8 visible at 1080p */}
       <TouchableOpacity
         activeOpacity={0.7}
         onPress={handlePress}
         style={{
-          backgroundColor: needsAttention
-            ? colors.warning + "20"
-            : colors.panel,
-          paddingHorizontal: s(14),
-          paddingVertical: s(10),
+          height: s(64),
+          paddingHorizontal: s(16),
           flexDirection: "row",
           alignItems: "center",
           gap: s(12),
-          ...(needsAttention
-            ? {}
-            : {
-                shadowColor: "#000000",
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.05,
-                shadowRadius: 1.5,
-                elevation: 1,
-              }),
         }}
       >
-        {/* Left: order number + meta line */}
-        <View style={{ flex: 1 }}>
+        {/* Channel / provider mark */}
+        {providerKey ? (
+          <ProviderGlyph provider={providerKey} size={s(28)} />
+        ) : (
           <View
-            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
+            style={{
+              width: s(28),
+              height: s(28),
+              borderRadius: s(9),
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: typeConfig.color + "1A",
+            }}
+          >
+            <TypeIcon color={typeConfig.color} size={s(15)} />
+          </View>
+        )}
+
+        {/* Line 1: order # + time · Line 2: channel/table · customer · phone */}
+        <View style={{ flex: 1, justifyContent: "center", gap: s(2) }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
           >
             <Text
               style={{
-                fontSize: s(13),
+                fontSize: s(14),
                 fontWeight: "700",
                 color: colors.heading,
               }}
+              numberOfLines={1}
             >
-              {order.display_number ||
-                order.order_number ||
-                `#${order.id.slice(-4)}`}
+              {resolveOrderLabel(order)}
             </Text>
-            <Text style={{ fontSize: s(11), color: colors.muted }}>
+            <Text
+              style={{
+                fontSize: s(12),
+                color: colors.muted,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
               {orderTime}
             </Text>
-            {/* {order.customer_name ? (
-              <>
-                <Text style={{ fontSize: 11, color: colors.muted }}>·</Text>
-                <User size={11} color={colors.label} />
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "600",
-                    color: colors.heading,
-                  }}
-                  numberOfLines={1}
-                >
-                  {order.customer_name}
-                </Text>
-              </>
-            ) : null} */}
-            <DeliveryPlatformBadge
-              deliveryPlatform={order.delivery_platform}
-              orderSource={order.order_source}
-              size="sm"
-              uiScale={uiScale}
-            />
             {needsAttention && (
               <AlertTriangle size={s(12)} color={colors.warning} />
             )}
           </View>
           <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: s(6),
-              marginTop: s(3),
-            }}
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
           >
-            <TypeIcon color={typeConfig.color} size={s(11)} />
             <Text
-              style={{
-                fontSize: s(11),
-                color: typeConfig.color,
-                fontWeight: "600",
-              }}
+              style={{ fontSize: s(12), color: colors.label }}
+              numberOfLines={1}
             >
-              {displayType}
+              {metaLine}
             </Text>
-            {tableName ? (
+            {order.customer_name?.trim() ? (
               <>
-                <Text style={{ fontSize: s(11), color: colors.muted }}>-</Text>
-                <Text
-                  style={{ fontSize: s(11), color: colors.label }}
-                  numberOfLines={1}
-                >
-                  Table {tableName}
-                </Text>
-              </>
-            ) : null}
-            {order.server_name && !order._isOnlineOrder ? (
-              <>
-                <Text style={{ fontSize: s(11), color: colors.muted }}>-</Text>
-                <Text
-                  style={{ fontSize: s(11), color: colors.label }}
-                  numberOfLines={1}
-                >
-                  Server: {order.server_name}
-                </Text>
-              </>
-            ) : null}
-          </View>
-          {order.customer_name?.trim() ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: s(5),
-                marginTop: s(4),
-              }}
-            >
-              <User color={colors.teal} size={s(13)} />
-              <Text
-                style={{
-                  fontSize: s(13),
-                  fontWeight: "700",
-                  color: colors.heading,
-                }}
-                numberOfLines={1}
-              >
-                {order.customer_name.trim()}
-              </Text>
-              {order.customer_phone?.trim() ? (
+                <Text style={{ fontSize: s(12), color: colors.muted }}>·</Text>
                 <Text
                   style={{
                     fontSize: s(12),
-                    color: colors.muted,
-                    marginLeft: s(4),
+                    fontWeight: "600",
+                    color: colors.heading,
+                    maxWidth: s(200),
                   }}
                   numberOfLines={1}
                 >
-                  · {order.customer_phone.trim()}
+                  {order.customer_name.trim()}
                 </Text>
-              ) : null}
-            </View>
-          ) : null}
+              </>
+            ) : null}
+            {order.customer_phone?.trim() ? (
+              <Text
+                style={{ fontSize: s(12), color: colors.muted }}
+                numberOfLines={1}
+              >
+                · {order.customer_phone.trim()}
+              </Text>
+            ) : null}
+          </View>
         </View>
 
-        {/* Status badges */}
-        <View style={{ alignItems: "flex-end", gap: s(4) }}>
-          {order._offlineUnsynced && (
+        {/* Status pill + secondary note */}
+        <View style={{ alignItems: "flex-end", gap: s(2) }}>
+          {isVoided ? (
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: s(3),
-                paddingHorizontal: s(6),
-                paddingVertical: s(2),
+                gap: s(4),
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
                 borderRadius: 999,
-                backgroundColor: colors.muted + "20",
+                backgroundColor: colors.danger + "20",
                 borderWidth: 1,
-                borderColor: colors.muted + "40",
+                borderColor: colors.danger + "40",
               }}
             >
-              <WifiOff size={s(9)} color={colors.muted} />
+              <XCircle size={s(10)} color={colors.danger} />
               <Text
                 style={{
-                  fontSize: s(10),
+                  fontSize: s(11),
                   fontWeight: "600",
-                  color: colors.muted,
+                  color: colors.danger,
                 }}
               >
-                Offline
+                Voided
               </Text>
             </View>
-          )}
-          {!isVoided && (
+          ) : (
             <View
               style={{
-                paddingHorizontal: s(8),
+                paddingHorizontal: s(10),
                 paddingVertical: s(3),
                 borderRadius: 999,
                 backgroundColor: statusConfig.color + statusConfig.bgOpacity,
@@ -438,95 +413,52 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               </Text>
             </View>
           )}
-          {refundBadge && (
-            <View
-              style={{
-                paddingHorizontal: s(8),
-                paddingVertical: s(3),
-                borderRadius: 999,
-                backgroundColor: refundBadge.color + "20",
-                borderWidth: 1,
-                borderColor: refundBadge.color + "50",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: s(11),
-                  fontWeight: "600",
-                  color: refundBadge.color,
-                }}
-              >
-                {refundBadge.label}
-              </Text>
-            </View>
-          )}
-          {isVoided && (
+          {secondaryNote && (
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 gap: s(3),
-                paddingHorizontal: s(6),
-                paddingVertical: s(2),
-                borderRadius: 999,
-                backgroundColor: colors.danger + "20",
-                borderWidth: 1,
-                borderColor: colors.danger + "40",
               }}
             >
-              <XCircle size={s(9)} color={colors.danger} />
+              {order._offlineUnsynced ? (
+                <WifiOff size={s(9)} color={secondaryNote.color} />
+              ) : isSettled && !refundBadge ? (
+                <Lock size={s(9)} color={secondaryNote.color} />
+              ) : null}
               <Text
                 style={{
                   fontSize: s(10),
                   fontWeight: "600",
-                  color: colors.danger,
+                  color: secondaryNote.color,
                 }}
               >
-                Voided
-              </Text>
-            </View>
-          )}
-          {isSettled && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: s(3),
-                paddingHorizontal: s(6),
-                paddingVertical: s(2),
-                borderRadius: 999,
-                backgroundColor: colors.muted + "20",
-                borderWidth: 1,
-                borderColor: colors.muted + "40",
-              }}
-            >
-              <Lock size={s(9)} color={colors.muted} />
-              <Text
-                style={{
-                  fontSize: s(10),
-                  fontWeight: "600",
-                  color: colors.muted,
-                }}
-              >
-                Settled
+                {secondaryNote.label}
               </Text>
             </View>
           )}
         </View>
 
         {/* Price */}
-        <View style={{ alignItems: "flex-end", minWidth: s(70) }}>
+        <View style={{ alignItems: "flex-end", minWidth: s(84) }}>
           <Text
             style={{
-              fontSize: s(14),
+              fontSize: s(15),
               fontWeight: "700",
               color: colors.heading,
+              fontVariant: ["tabular-nums"],
             }}
           >
             ${displayTotal.toFixed(2)}
           </Text>
           {totalRefunded > 0 && (
-            <Text style={{ fontSize: s(11), color: colors.danger }}>
+            <Text
+              style={{
+                fontSize: s(11),
+                color: colors.danger,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
               −${totalRefunded.toFixed(2)}
             </Text>
           )}
@@ -536,8 +468,12 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         <View ref={triggerRef} onTouchStart={(e) => e.stopPropagation()}>
           <TouchableOpacity
             onPress={openMenu}
+            hitSlop={s(10)}
             style={{
-              padding: s(6),
+              width: s(36),
+              height: s(36),
+              alignItems: "center",
+              justifyContent: "center",
               borderRadius: s(8),
               backgroundColor: colors.muted + "15",
             }}
@@ -745,6 +681,9 @@ const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
     prev.order.delivery_address === next.order.delivery_address &&
     prev.order.customer_name === next.order.customer_name &&
     prev.order.server_name === next.order.server_name &&
+    prev.order.delivery_platform === next.order.delivery_platform &&
+    prev.order.order_source === next.order.order_source &&
+    prev.order._isOnlineOrder === next.order._isOnlineOrder &&
     prev.order._offlineUnsynced === next.order._offlineUnsynced &&
     prev.isExpanded === next.isExpanded &&
     prev.onContinue === next.onContinue

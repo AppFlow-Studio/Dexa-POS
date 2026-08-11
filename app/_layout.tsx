@@ -39,8 +39,14 @@ import {
     secureStorage,
 } from "@/lib/storage";
 import { initTelemetry } from "@/lib/telemetry/init";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+  startAppLifecycleCoordinator,
+  stopAppLifecycleCoordinator,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
-import { computeUiScale } from "@/lib/uiScale";
+import { UiScaleProvider } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { getRawIsOnline } from "@/services/offlineSyncService";
 import type { PaymentJournalEntry } from "@/services/paymentJournal";
@@ -82,18 +88,16 @@ import {
 } from "@react-navigation/native";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack, useNavigationContainerRef } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
-import { vars } from "nativewind";
 import * as React from "react";
 import {
     ActivityIndicator,
-    AppState,
     InteractionManager,
     Platform,
     Pressable,
     Text,
-    useWindowDimensions,
     View,
 } from "react-native";
 import { SystemBars } from "react-native-edge-to-edge";
@@ -129,8 +133,8 @@ Sentry.init({
   // Offline: cache up to 100 envelopes on disk (default 30)
   maxCacheItems: 100,
 
-  // 100% in dev for debugging, 30% in production to reduce overhead
-  tracesSampleRate: __DEV__ ? 1.0 : 0.3,
+  
+  tracesSampleRate: 0.1,
 
   // Native crash + hang capture. Android ANRs are captured by the native SDK by
   // default; we additionally enable iOS app-hang tracking and are explicit about
@@ -235,6 +239,20 @@ async function checkForUpdate() {
 // IMPORTANT: Must be called once at module level for OAuth to work correctly
 WebBrowser.maybeCompleteAuthSession();
 
+// Collapse the native splash-screen exit fade to zero.
+//
+// The fade is a ViewPropertyAnimator whose `withEndAction` is the ONLY place
+// expo-splash-screen removes the splash view from the window — and that callback
+// is skipped when the animation is cancelled. A cancelled fade strands the splash
+// view over the app at alpha 0: invisible, full-screen, eating every touch, so the
+// app renders normally but no gesture lands until the Activity is recreated
+// (which is why changing the device UI/display scale "fixed" it in the field).
+//
+// patches/expo-splash-screen+0.30.10.patch guarantees removal regardless of the
+// animation outcome; this is defense-in-depth that also shrinks the exposure
+// window from 400ms to ~0 and removes 400ms of dead time from every cold start.
+SplashScreen.setOptions({ duration: 0, fade: false });
+
 // Register CFD secondary display component for Android built-in displays.
 // Must happen at module level before native side mounts the ReactRootView.
 if (Platform.OS === "android") {
@@ -330,19 +348,6 @@ const DARK_THEME: Theme = {
   ...DarkTheme,
   colors: NAV_THEME.dark,
 };
-
-/**
- * Injects the automatic UI scale as the `--ui-scale` CSS variable for the
- * whole app. Every scale-driven Tailwind utility (spacing/font/radius) reads
- * it via tailwind.config.js. Re-computes if window dimensions change.
- */
-function UiScaleProvider({ children }: { children: React.ReactNode }) {
-  const { width, height } = useWindowDimensions();
-  const scale = computeUiScale(width, height);
-  return (
-    <View style={[{ flex: 1 }, vars({ "--ui-scale": scale })]}>{children}</View>
-  );
-}
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -573,6 +578,11 @@ function RootErrorFallback() {
 }
 
 export default Sentry.wrap(function RootLayout() {
+  // NOTE: the screen wake lock is NOT here — it's a native window flag set in
+  // MainActivity.onCreate (android/.../MainActivity.kt). See the comment there
+  // for why the JS path was rejected. Adding a JS keep-awake hook back into
+  // this tree will fight the native flag on teardown.
+
   const hasMounted = React.useRef(false);
   const { colorScheme, isDarkColorScheme } = useColorScheme();
   const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false);
@@ -890,18 +900,25 @@ export default Sentry.wrap(function RootLayout() {
 
   // Flush pending MMKV writes when app goes to background to prevent data loss
   React.useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "background" || state === "inactive") {
-        flushAllPendingWrites();
-      }
+    return registerSuspendTask({
+      id: "storage.flush-pending-writes",
+      run: flushAllPendingWrites,
     });
-    return () => sub.remove();
   }, []);
 
   // Wave-0 perf telemetry (long-task watcher, persist/broadcast counters,
   // ring buffer). Owns its own AppState listener + 30s flush; idempotent.
   React.useEffect(() => {
     initTelemetry();
+  }, []);
+
+  // Single AppState owner for resume recovery. Subsystems register bucketed,
+  // idempotent tasks instead of each holding their own listener and firing on
+  // the same tick — see tasks/appstate-netinfo-listener-inventory.md.
+  // Network gating reads the app's existing single source of truth.
+  React.useEffect(() => {
+    startAppLifecycleCoordinator(getRawIsOnline);
+    return () => stopAppLifecycleCoordinator();
   }, []);
 
   // Cleanup intervals on unmount
@@ -914,25 +931,24 @@ export default Sentry.wrap(function RootLayout() {
     };
   }, [isKDS, isCFDMode]);
 
-  // Also stop draft cleanup when app goes to background (prevents background timer leaks)
+  // Pause/resume the background maintenance timers across the foreground
+  // boundary (prevents background timer leaks).
+  //
+  // The resume half sits in `interactions`, not on the resume edge: the old
+  // listener called startDraftCleanup() synchronously, and that runs
+  // cleanupAbandonedDrafts() + clearInactiveOrders() over the WHOLE order
+  // store before returning. On a station carrying a busy shift that was the
+  // only unbounded synchronous work on the first-tap path — it scaled with
+  // how many orders the shift had accumulated. Nothing about it is urgent;
+  // the timers it arms fire minutes later regardless.
   React.useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "background" || state === "inactive") {
-        if (!isKDS && !isCFDMode) {
-          useOrderStore.getState().stopDraftCleanup();
-          PrinterService.stopProcessing();
-          try {
-            const {
-              stopSessionPrune,
-            } = require("@/stores/useTableSessionStore");
-            stopSessionPrune();
-          } catch {
-            /* store may not be loaded */
-          }
-        }
-      } else if (state === "active") {
-        // Restart when app comes back to foreground
-        if (!isKDS && !isCFDMode) {
+    if (isKDS || isCFDMode) return;
+
+    const unregister = [
+      registerResumeTask({
+        id: "pos.maintenance-timers-resume",
+        bucket: "interactions",
+        run: () => {
           useOrderStore.getState().startDraftCleanup();
           PrinterService.startProcessing();
           try {
@@ -943,10 +959,26 @@ export default Sentry.wrap(function RootLayout() {
           } catch {
             /* store may not be loaded */
           }
-        }
-      }
-    });
-    return () => sub.remove();
+        },
+      }),
+      registerSuspendTask({
+        id: "pos.maintenance-timers-suspend",
+        run: () => {
+          useOrderStore.getState().stopDraftCleanup();
+          PrinterService.stopProcessing();
+          try {
+            const {
+              stopSessionPrune,
+            } = require("@/stores/useTableSessionStore");
+            stopSessionPrune();
+          } catch {
+            /* store may not be loaded */
+          }
+        },
+      }),
+    ];
+
+    return () => unregister.forEach((fn) => fn());
   }, [isKDS, isCFDMode]);
 
   if (!isColorSchemeLoaded) {

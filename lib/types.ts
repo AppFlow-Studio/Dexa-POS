@@ -181,6 +181,11 @@ export interface ModifierOption {
   isAvailable?: boolean; // For items that are "86'd" (unavailable)
   isDefault?: boolean; // For default selected options
   recipe?: RecipeItem[];
+  // Per-location 86/snooze state (out of stock). null/undefined = live,
+  // ISO timestamp = timed 86, "infinity" = until manual. Modifiers use binary
+  // "infinity" toggles today, but the field carries any snoozed_until value.
+  snoozedUntil?: string | null;
+  snoozeReason?: string | null;
 }
 
 export interface ModifierCategory {
@@ -257,6 +262,10 @@ export interface MenuItemType {
   // Location ownership - null = global (merchant-wide), UUID = local to that location
   location_id?: string | null;
   displayOrder?: number;
+  // Per-location 86/snooze state (out of stock). Contract mirrors the backend:
+  // null/undefined = live, ISO timestamp = timed 86, "infinity" = until manual.
+  snoozedUntil?: string | null;
+  snoozeReason?: string | null;
 }
 
 export interface CustomPricing {
@@ -725,7 +734,19 @@ export interface TrackedOrder {
   totalItems: number;
 }
 
-export type PaymentType = "Card" | "Cash" | "Split";
+/**
+ * UI-level payment method.
+ *
+ * "InKind" is a NON-TENDER settlement: the check is marked fully paid at
+ * CARD pricing while no money is collected (donated meals, promo/staff
+ * comps that must still post revenue at menu price). It is deliberately
+ * neither Card nor Cash — it must not reach the expected cash drawer or a
+ * card settlement batch. Maps to the DB `payment_method` enum value
+ * 'inkind'; use `toDbPaymentMethod` / `fromDbPaymentMethod` in
+ * `lib/paymentMethod.ts` to cross that boundary rather than comparing
+ * strings inline.
+ */
+export type PaymentType = "Card" | "Cash" | "Split" | "InKind";
 
 /**
  * Item coverage detail for a payment.
@@ -760,6 +781,10 @@ export interface OrderPaymentTransactionDetails {
   dejavooTransaction?: DejavooSaleTransactionResponse;
   // Full Castles response JSONB (from buildCastlesTerminalResponse)
   castlesTransaction?: Record<string, unknown>;
+  // Full Valor response JSONB (from buildValorTerminalResponse)
+  valorTransaction?: Record<string, unknown>;
+  // Full ATOM response JSONB (from buildAtomTerminalResponse)
+  atomTransaction?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -834,9 +859,12 @@ export interface OrderProfilePayment {
   preAuthAmount?: number;
   preAuthRrn?: string;
   preAuthStan?: string; // Castles only
+  /** Valor only — the charge-slip "Trans" number; the reference the Valor
+   *  completion (TICKET) / release (VOID) needs (Valor has no RRN/STAN reversal). */
+  preAuthTranNo?: string;
   preAuthAuthCode?: string;
   preAuthReferenceId?: string;
-  preAuthTerminalType?: "dejavoo" | "castles";
+  preAuthTerminalType?: "dejavoo" | "castles" | "valor";
 
   // Void tracking
   isVoided: boolean;

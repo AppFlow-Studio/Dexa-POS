@@ -1,4 +1,5 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { fromDbPaymentMethod } from '@/lib/paymentMethod'
 import type {
   CartItem,
   OrderPaymentItemCoverage,
@@ -132,7 +133,6 @@ export const getOrderPaymentsQueryOptions = (
           return_number,
           return_reason,
           initiated_at,
-          created_at,
           amount_tendered,
           change_given,
           is_cash_priced,
@@ -164,7 +164,7 @@ export const getOrderPaymentsQueryOptions = (
         `
       )
       .eq('order_id', orderId)
-      .order('created_at', { ascending: true })
+      .order('initiated_at', { ascending: true })
 
     if (error) throw error
     return (data as OrderPaymentRow[] | null) ?? []
@@ -177,10 +177,10 @@ export const getOrderPaymentsQueryOptions = (
   staleTime: 60_000
 })
 
-const toPaymentType = (paymentMethod: OrderPaymentRow['payment_method']): PaymentType => {
-  if (paymentMethod?.toLowerCase() === 'cash') return 'Cash'
-  return 'Card'
-}
+// Delegates to the canonical converter so 'inkind' resolves to "InKind"
+// instead of being swept into the "not cash ⇒ Card" fallback.
+const toPaymentType = (paymentMethod: OrderPaymentRow['payment_method']): PaymentType =>
+  fromDbPaymentMethod(paymentMethod)
 
 const buildItemsCovered = (
   payment: OrderPaymentRow,

@@ -1,5 +1,6 @@
 import AddIngredientModal from '@/components/inventory/AddIngredientModal'
 import RecipeIngredientSheet from '@/components/inventory/RecipeIngredientSheet'
+import { ItemModifierStockSection } from '@/components/menu/ItemModifierStockSection'
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog'
 import UnsavedChangesDialog from '@/components/ui/UnsavedChangesDialog'
 import { useToast } from '@/contexts/ToastContext'
@@ -15,13 +16,14 @@ import {
 import { MENU_IMAGE_MAP } from '@/lib/mockData'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { MenuItemType, RecipeItem } from '@/lib/types'
+import { useUiScale } from '@/lib/uiScale'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetSectionList
-} from '@gorhom/bottom-sheet'
+} from '@/components/ui/bottomSheet'
 import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
 import {
@@ -98,6 +100,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
   const categories = useMenuStore(s => s.categories)
   const modifierGroups = useMenuStore(s => s.modifierGroups)
   const { show } = useToast()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   const selectedStoreForPricing = useStoreSettingsStore(s => s.selectedStore)
   const pricingStrategy = selectedStoreForPricing?.pricing_strategy
@@ -533,29 +537,29 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
   // Section label style
   const sectionLabel = {
-    fontSize: 10,
+    fontSize: s(10),
     fontWeight: '600' as const,
     color: colors.muted,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.8,
-    marginBottom: 8
+    marginBottom: s(8)
   }
   const card = {
     backgroundColor: colors.card,
-    borderRadius: 12,
+    borderRadius: s(12),
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
-    marginBottom: 12
+    padding: s(12),
+    marginBottom: s(12)
   }
   const inputStyle = {
     backgroundColor: colors.screen,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
+    borderRadius: s(8),
+    paddingHorizontal: s(10),
+    paddingVertical: s(8),
+    fontSize: s(13),
     color: colors.heading
   }
 
@@ -567,33 +571,33 @@ const ItemForm: React.FC<ItemFormProps> = ({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingHorizontal: 16,
-          paddingVertical: 12,
+          paddingHorizontal: s(16),
+          paddingVertical: s(12),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           backgroundColor: colors.panel
         }}
       >
         <Text
-          style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
         >
           {title}
         </Text>
 
-        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', gap: s(10), alignItems: 'center' }}>
           <TouchableOpacity
             onPress={() => router.back()}
             style={{
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 8,
+              paddingHorizontal: s(12),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.label }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}
             >
               Cancel
             </Text>
@@ -602,15 +606,15 @@ const ItemForm: React.FC<ItemFormProps> = ({
             <TouchableOpacity
               onPress={() => setShowDeleteDialog(true)}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 8,
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
+                borderRadius: s(8),
                 backgroundColor: colors.danger + '15',
                 borderWidth: 1,
                 borderColor: colors.danger + '30'
               }}
             >
-              <Trash2 size={14} color={colors.danger} />
+              <Trash2 size={s(14)} color={colors.danger} />
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -619,10 +623,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 14,
-              paddingVertical: 6,
-              borderRadius: 8,
+              gap: s(6),
+              paddingHorizontal: s(14),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.teal,
               opacity: isSaving ? 0.7 : 1
             }}
@@ -630,10 +634,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
             {isSaving ? (
               <ActivityIndicator size='small' color={colors.onSolid} />
             ) : (
-              <Check size={14} color={colors.onSolid} />
+              <Check size={s(14)} color={colors.onSolid} />
             )}
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.onSolid }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.onSolid }}
             >
               {isSaving ? 'Saving...' : submitButtonLabel}
             </Text>
@@ -648,7 +652,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
         {/* Left: Form */}
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 14 }}
+          contentContainerStyle={{ padding: s(14) }}
           showsVerticalScrollIndicator={false}
         >
           {/* Basic Info */}
@@ -656,9 +660,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
             <Text style={sectionLabel}>Basic Information</Text>
 
             {/* Name */}
-            <View style={{ marginBottom: 10 }}>
+            <View style={{ marginBottom: s(10) }}>
               <Text
-                style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}
+                style={{ fontSize: s(11), color: colors.label, marginBottom: s(4) }}
               >
                 Name *
               </Text>
@@ -677,7 +681,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
               />
               {errors.name && (
                 <Text
-                  style={{ fontSize: 11, color: colors.danger, marginTop: 3 }}
+                  style={{ fontSize: s(11), color: colors.danger, marginTop: s(3) }}
                 >
                   {errors.name}
                 </Text>
@@ -685,14 +689,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
             </View>
 
             {/* Description */}
-            <View style={{ marginBottom: 10 }}>
+            <View style={{ marginBottom: s(10) }}>
               <Text
-                style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}
+                style={{ fontSize: s(11), color: colors.label, marginBottom: s(4) }}
               >
                 Description
               </Text>
               <TextInput
-                style={[inputStyle, { height: 70, textAlignVertical: 'top' }]}
+                style={[inputStyle, { height: s(70), textAlignVertical: 'top' }]}
                 placeholder='Enter item description'
                 placeholderTextColor={colors.muted}
                 value={formData.description}
@@ -707,36 +711,36 @@ const ItemForm: React.FC<ItemFormProps> = ({
             {/* Image */}
             <View>
               <Text
-                style={{ fontSize: 11, color: colors.label, marginBottom: 6 }}
+                style={{ fontSize: s(11), color: colors.label, marginBottom: s(6) }}
               >
                 Image
               </Text>
               {getImageSource() && (
                 <View
                   style={{
-                    marginBottom: 8,
-                    borderRadius: 8,
+                    marginBottom: s(8),
+                    borderRadius: s(8),
                     overflow: 'hidden',
                     position: 'relative'
                   }}
                 >
                   <Image
                     source={getImageSource()}
-                    style={{ width: '100%', height: 120, borderRadius: 8 }}
+                    style={{ width: '100%', height: s(120), borderRadius: s(8) }}
                     resizeMode='cover'
                   />
                   <TouchableOpacity
                     onPress={removeImage}
                     style={{
                       position: 'absolute',
-                      top: 6,
-                      right: 6,
+                      top: s(6),
+                      right: s(6),
                       backgroundColor: colors.danger,
-                      borderRadius: 20,
-                      padding: 4
+                      borderRadius: s(20),
+                      padding: s(4)
                     }}
                   >
-                    <X size={12} color='#fff' />
+                    <X size={s(12)} color='#fff' />
                   </TouchableOpacity>
                 </View>
               )}
@@ -746,33 +750,33 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
+                  gap: s(6),
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
-                  paddingVertical: 8
+                  borderRadius: s(8),
+                  paddingVertical: s(8)
                 }}
               >
-                <Camera size={14} color={colors.muted} />
-                <Text style={{ fontSize: 12, color: colors.label }}>
+                <Camera size={s(14)} color={colors.muted} />
+                <Text style={{ fontSize: s(12), color: colors.label }}>
                   {getImageSource() ? 'Change Image' : 'Pick Image'}
                 </Text>
               </TouchableOpacity>
 
               {!getImageSource() && (
-                <View style={{ marginTop: 10 }}>
+                <View style={{ marginTop: s(10) }}>
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       color: colors.label,
-                      marginBottom: 6
+                      marginBottom: s(6)
                     }}
                   >
                     Placeholder Icon
                   </Text>
                   <View
-                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}
                   >
                     {MENU_ITEM_PLACEHOLDER_ICON_OPTIONS.map(option => {
                       const isSelected = formData.placeholderIcon === option.key
@@ -787,8 +791,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
                             }))
                           }
                           style={{
-                            width: 68,
-                            borderRadius: 8,
+                            width: s(68),
+                            borderRadius: s(8),
                             borderWidth: 1,
                             borderColor: isSelected
                               ? colors.teal
@@ -797,18 +801,18 @@ const ItemForm: React.FC<ItemFormProps> = ({
                               ? `${colors.teal}18`
                               : colors.screen,
                             alignItems: 'center',
-                            paddingVertical: 8,
-                            gap: 4
+                            paddingVertical: s(8),
+                            gap: s(4)
                           }}
                         >
                           <Icon
-                            size={18}
+                            size={s(18)}
                             color={isSelected ? colors.teal : colors.muted}
                             strokeWidth={2}
                           />
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               fontWeight: '600',
                               color: isSelected ? colors.teal : colors.label
                             }}
@@ -834,14 +838,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   backgroundColor: colors.teal + '12',
                   borderWidth: 1,
                   borderColor: colors.teal + '40',
-                  borderRadius: 8,
-                  padding: 8,
-                  marginBottom: 10
+                  borderRadius: s(8),
+                  padding: s(8),
+                  marginBottom: s(10)
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.teal,
                     fontWeight: '600'
                   }}
@@ -850,9 +854,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 </Text>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.teal + 'aa',
-                    marginTop: 2
+                    marginTop: s(2)
                   }}
                 >
                   Edit Cash Price — Card Price is automatically{' '}
@@ -861,10 +865,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
               </View>
             )}
 
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: 'row', gap: s(10) }}>
               <View style={{ flex: 1 }}>
                 <Text
-                  style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}
+                  style={{ fontSize: s(11), color: colors.label, marginBottom: s(4) }}
                 >
                   {isDualPricing ? 'Cash Price *' : 'Cash Price (Optional)'}
                 </Text>
@@ -875,22 +879,22 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       flexDirection: 'row',
                       alignItems: 'center',
                       paddingVertical: 0,
-                      height: 38
+                      height: s(38)
                     },
                     errors.cashPrice ? { borderColor: colors.danger } : {}
                   ]}
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.muted,
-                      marginRight: 4
+                      marginRight: s(4)
                     }}
                   >
                     $
                   </Text>
                   <TextInput
-                    style={{ flex: 1, fontSize: 13, color: colors.heading }}
+                    style={{ flex: 1, fontSize: s(13), color: colors.heading }}
                     placeholder='0.00'
                     placeholderTextColor={colors.muted}
                     value={formData.cashPrice}
@@ -900,7 +904,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 </View>
                 {errors.cashPrice && (
                   <Text
-                    style={{ fontSize: 11, color: colors.danger, marginTop: 3 }}
+                    style={{ fontSize: s(11), color: colors.danger, marginTop: s(3) }}
                   >
                     {errors.cashPrice}
                   </Text>
@@ -909,7 +913,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
               <View style={{ flex: 1 }}>
                 <Text
-                  style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}
+                  style={{ fontSize: s(11), color: colors.label, marginBottom: s(4) }}
                 >
                   {isDualPricing ? 'Card Price (Auto)' : 'Price *'}
                 </Text>
@@ -920,7 +924,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       flexDirection: 'row',
                       alignItems: 'center',
                       paddingVertical: 0,
-                      height: 38,
+                      height: s(38),
                       opacity: isDualPricing ? 0.6 : 1
                     },
                     errors.price ? { borderColor: colors.danger } : {}
@@ -928,15 +932,15 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.muted,
-                      marginRight: 4
+                      marginRight: s(4)
                     }}
                   >
                     $
                   </Text>
                   <TextInput
-                    style={{ flex: 1, fontSize: 13, color: colors.heading }}
+                    style={{ flex: 1, fontSize: s(13), color: colors.heading }}
                     placeholder='0.00'
                     placeholderTextColor={colors.muted}
                     value={formData.price}
@@ -947,7 +951,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 </View>
                 {errors.price && (
                   <Text
-                    style={{ fontSize: 11, color: colors.danger, marginTop: 3 }}
+                    style={{ fontSize: s(11), color: colors.danger, marginTop: s(3) }}
                   >
                     {errors.price}
                   </Text>
@@ -974,9 +978,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   }))
                 }
                 style={{
-                  width: 44,
-                  height: 24,
-                  borderRadius: 12,
+                  width: s(44),
+                  height: s(24),
+                  borderRadius: s(12),
                   backgroundColor: formData.availability
                     ? colors.teal
                     : colors.card,
@@ -985,14 +989,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     ? colors.teal
                     : colors.border,
                   justifyContent: 'center',
-                  paddingHorizontal: 2
+                  paddingHorizontal: s(2)
                 }}
               >
                 <View
                   style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
+                    width: s(20),
+                    height: s(20),
+                    borderRadius: s(10),
                     backgroundColor: colors.onSolid,
                     alignSelf: formData.availability ? 'flex-end' : 'flex-start'
                   }}
@@ -1004,7 +1008,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
           {/* Meal Types */}
           <View style={card}>
             <Text style={sectionLabel}>Available For</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}>
               {MEAL_OPTIONS.map(meal => {
                 const selected = formData.meal.includes(meal)
                 return (
@@ -1012,9 +1016,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     key={meal}
                     onPress={() => toggleMeal(meal)}
                     style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 20,
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5),
+                      borderRadius: s(20),
                       borderWidth: 1,
                       backgroundColor: selected
                         ? colors.teal + '20'
@@ -1024,7 +1028,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         color: selected ? colors.teal : colors.label,
                         fontWeight: selected ? '600' : '400'
                       }}
@@ -1044,7 +1048,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: 10
+                marginBottom: s(10)
               }}
             >
               <Text style={sectionLabel}>Categories</Text>
@@ -1053,10 +1057,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                  borderRadius: 6,
+                  gap: s(4),
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(4),
+                  borderRadius: s(6),
                   backgroundColor: colors.teal + '15',
                   borderWidth: 1,
                   borderColor: colors.teal + '40'
@@ -1513,6 +1517,11 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 />
               </View>
             )}
+
+            {/* Per-location 86 for this item's modifier options. Single-location
+                merchants edit via this full form (not the price sheet), so the
+                modifier out-of-stock controls must live here too. */}
+            <ItemModifierStockSection groups={selectedModifierGroups} />
           </View>
 
           {/* Recipe */}

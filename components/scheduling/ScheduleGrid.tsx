@@ -476,7 +476,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                                 key={shift.id}
                                 shift={shift}
                                 onShiftClick={onShiftClick}
-                                wage={employee.baseWage}
+                                wage={employee.baseWage ?? 0}
                                 onShiftDrop={handleShiftDrop}
                               />
                             ))}

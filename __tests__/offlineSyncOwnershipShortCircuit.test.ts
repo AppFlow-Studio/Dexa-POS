@@ -74,18 +74,19 @@ describe('Wave 2.5 — offlineSyncService ownership short-circuit', () => {
 
     const handlerBody = offlineSyncSrc.slice(handlerIdx, handlerIdx + 4000)
     expect(handlerBody).toMatch(
-      /pendingOperations\.some\(o => o\.id === operation\.id\)/
+      /pendingOperations\.some\(\(?o\)? => o\.id === operation\.id\)/
     )
     expect(handlerBody).toMatch(
-      /deadLetterQueue\.some\(o => o\.id === operation\.id\)/
+      /deadLetterQueue\.some\(\(?o\)? => o\.id === operation\.id\)/
     )
     expect(handlerBody).toMatch(/already removed, skipping/)
 
-    // Early-out must precede the retry classifier.
+    // Early-out must precede the failure classifier. The classifier used to be
+    // `const permanent = error && !isTransientError(error)`; it is now driven
+    // by the executor's OpResult via `classifyError`, so match the current
+    // expression rather than the retired one.
     const earlyOutIdx = handlerBody.indexOf('already removed, skipping')
-    const classifierIdx = handlerBody.indexOf(
-      'const permanent = error && !isTransientError(error)'
-    )
+    const classifierIdx = handlerBody.indexOf('classifyError(error')
     expect(earlyOutIdx).toBeGreaterThan(0)
     expect(classifierIdx).toBeGreaterThan(earlyOutIdx)
   })
@@ -99,10 +100,10 @@ describe('Wave 2.5 — offlineSyncService ownership short-circuit', () => {
     // Calls the recogniser.
     expect(handlerBody).toMatch(/isOwnershipError\(null, error\)/)
 
-    // Sets the right code so `lib/offlineSyncSubtitles.ts:161` can render
-    // "Order owned by another station" and `isRetryable` (line 125-130)
-    // returns false → Retry chip hides.
-    expect(handlerBody).toMatch(/code:\s*'OWNERSHIP_REJECTED'/)
+    // Sets the right code so `lib/offlineSyncSubtitles.ts` can render
+    // "Order owned by another station" and `isRetryable` returns false →
+    // Retry chip hides. Quote style is Prettier's; match either.
+    expect(handlerBody).toMatch(/code:\s*['"]OWNERSHIP_REJECTED['"]/)
 
     // Forces immediate dead-letter — no MAX_RETRY_ATTEMPTS burn, no
     // slow-mode reprieve.
@@ -111,13 +112,36 @@ describe('Wave 2.5 — offlineSyncService ownership short-circuit', () => {
     )
     expect(handlerBody).toMatch(/moveToDeadLetter\(operation\)/)
 
-    // Short-circuit must precede the regular permanent/transient branch.
-    const ownershipIdx = handlerBody.indexOf("'OWNERSHIP_REJECTED'")
-    const classifierIdx = handlerBody.indexOf(
-      'const permanent = error && !isTransientError(error)'
-    )
+    // Short-circuit must precede the general classifier, so an ownership
+    // rejection never falls through to generic retry handling.
+    const ownershipIdx = handlerBody.search(/['"]OWNERSHIP_REJECTED['"]/)
+    const classifierIdx = handlerBody.indexOf('classifyError(error')
     expect(ownershipIdx).toBeGreaterThan(0)
     expect(classifierIdx).toBeGreaterThan(ownershipIdx)
+  })
+
+  it('classifies terminal failures without charging the retry budget', async () => {
+    // Behavioral counterpart to the source-text assertions above: a permanent
+    // rejection must dead-letter on the FIRST attempt, carrying a real cause
+    // and remedy. Previously every failure was classified transient (the
+    // dispatcher passed `null` as the error), so a 4xx burned the full budget
+    // and reported "Failed N times" with no cause.
+    const { classifyError } = require('@/lib/network/opResult')
+
+    const terminal = classifyError({ code: '22P02', message: 'bad enum' })
+    expect(terminal.outcome).toBe('terminal')
+    expect(terminal.remedy).toBeTruthy()
+
+    const transient = classifyError({ status: 503 })
+    expect(transient.outcome).toBe('retry')
+
+    const ownership = classifyError(
+      new Error('ORDER_OWNED_BY_OTHER_STATION')
+    )
+    expect(ownership).toMatchObject({
+      outcome: 'terminal',
+      code: 'OWNERSHIP_REJECTED'
+    })
   })
 
   it('the subtitle helper recognises the OWNERSHIP_REJECTED code and renders the operator-facing copy', () => {

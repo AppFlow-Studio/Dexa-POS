@@ -14,6 +14,8 @@ import {
   releaseTab
 } from '@/services/preAuthService'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
+import { getSharedValorService } from '@/services/terminals/valor-service'
+import { resolveActiveProcessor } from '@/hooks/useActiveProcessor'
 import {
   useActiveOrder,
   useActiveOrderTotals,
@@ -24,6 +26,7 @@ import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
+import { VALOR_DEFAULT_PORT } from '@/types/valor'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -129,6 +132,18 @@ const PreAuthPaymentView: React.FC = () => {
       return
     }
 
+    if (terminal.terminal_type === 'valor') {
+      const refId = inFlightRef.current?.refId
+      if (refId) {
+        try {
+          await getSharedValorService().cancelInFlight(refId)
+        } catch (e) {
+          console.warn('[PreAuthPaymentView] Valor cancel failed', e)
+        }
+      }
+      return
+    }
+
     const refId = inFlightRef.current?.refId
     if (!refId) return
     try {
@@ -170,6 +185,31 @@ const PreAuthPaymentView: React.FC = () => {
       throw new Error('No payment terminal selected')
     }
 
+    // Valor open-tab: connect the shared Valor service (mirrors the proven
+    // Valor sale path in CardPaymentView). The counter-based referenceId is
+    // minted inside preAuthService's Valor branches, which need terminalId.
+    if (terminal.terminal_type === 'valor') {
+      const isUsb = terminal.connection_type === 'usb'
+      const host = isUsb ? undefined : terminal.ip_address
+      if (!isUsb && !host)
+        throw new Error('Valor terminal has no IP address configured')
+      const port = isUsb ? undefined : (terminal.port ?? VALOR_DEFAULT_PORT)
+
+      const service = getSharedValorService()
+      if (service.isSuspended()) service.resume()
+      await service.connect({
+        connectionType: isUsb ? 'usb' : 'local_socket',
+        host,
+        port,
+        cancelPort: terminal.cancel_port,
+        epi: terminal.epi,
+        timeout: 120_000,
+        terminalId: terminal.id
+      })
+
+      return { type: 'valor' as const, service, terminalId: terminal.id }
+    }
+
     if (terminal.terminal_type === 'castles') {
       const isUsb = terminal.connection_type === 'usb'
       const host = isUsb ? undefined : terminal.ip_address
@@ -202,6 +242,21 @@ const PreAuthPaymentView: React.FC = () => {
       toastService.show({
         title: 'Invalid Amount',
         message: 'Enter a valid hold amount',
+        type: 'error'
+      })
+      return
+    }
+
+    // ATOM (Landi P30) can't place holds — pre-auth isn't part of the on-device
+    // capability set. Defense-in-depth guard for the OPEN path only; capture /
+    // release of an existing hold must still work regardless of the active
+    // processor. The Open Tab entry is also hidden in PaymentMethodSelectionView
+    // when ATOM is active, so this should rarely be reached.
+    if (resolveActiveProcessor().activeType === 'atom') {
+      toastService.show({
+        title: 'Not Supported',
+        message:
+          'Open Tab / pre-auth isn’t available on ATOM (Landi P30). Charge the full amount instead.',
         type: 'error'
       })
       return
@@ -531,7 +586,8 @@ const PreAuthPaymentView: React.FC = () => {
               <Text style={styles.warningActionText}>Increase Hold</Text>
             </TouchableOpacity>
           )}
-          {preAuth.preAuthTerminalType === 'dejavoo' && (
+          {(preAuth.preAuthTerminalType === 'dejavoo' ||
+            preAuth.preAuthTerminalType === 'valor') && (
             <Text style={styles.warningInfo}>
               Hold will be adjusted at close
             </Text>
@@ -553,6 +609,8 @@ const PreAuthPaymentView: React.FC = () => {
             <Text style={styles.preAuthValue}>
               {preAuth.preAuthTerminalType === 'castles'
                 ? 'Castles'
+                : preAuth.preAuthTerminalType === 'valor'
+                ? 'Valor'
                 : 'Dejavoo'}
             </Text>
           </View>

@@ -9,4 +9,22 @@
       Matched by vendor only so all Castles models are covered.
     -->
     <usb-device vendor-id="3238" />
+    <!--
+      Valor VP terminal — USB vendor ID 0x1E0E (7694 decimal), a Qualcomm
+      "Android Diag" CDC serial interface. Same purpose as above: persistent USB
+      permission + USB_DEVICE_ATTACHED for zero-touch auto-connect. 0x1E0E is a
+      shared Qualcomm VID; JS-side (valor-transport-usb.ts) narrows to the Valor
+      terminal by product-name hints when multiple Qualcomm devices are present.
+    -->
+    <usb-device vendor-id="7694" />
+    <!--
+      Valor VP350 — USB vendor ID 0x067B (1659 decimal), a Prolific PL2303
+      USB-to-serial bridge (the VP550 enumerates as Qualcomm 0x1E0E above; the
+      VP350 uses this Prolific chip instead). Same purpose: persistent USB
+      permission + USB_DEVICE_ATTACHED for zero-touch auto-connect. 0x067B is a
+      widely-shared Prolific VID, so JS-side (valor-transport-usb.ts) narrows to
+      the Valor terminal by product-name hints when multiple serial devices are
+      present.
+    -->
+    <usb-device vendor-id="1659" />
 </resources>

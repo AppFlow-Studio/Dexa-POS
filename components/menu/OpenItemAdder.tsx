@@ -1,7 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
-import { useColorScheme } from "@/lib/useColorScheme";
 import { useUiScale } from "@/lib/uiScale";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -28,8 +27,12 @@ const MODIFIER_PRICE_DELTA_COLOR = "#15803D";
 const round2 = (value: number) =>
   Math.round((value + Number.EPSILON) * 100) / 100;
 
-const createStyles = (modalLayout: boolean, s: (n: number) => number) =>
-  StyleSheet.create({
+type OpenItemAdderStyles = ReturnType<typeof buildStyles>;
+const openItemAdderStylesByKey = new Map<string, OpenItemAdderStyles>();
+
+const buildStyles = (modalLayout: boolean, scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
     container: {
       flex: 1,
       width: "100%",
@@ -237,6 +240,16 @@ const createStyles = (modalLayout: boolean, s: (n: number) => number) =>
       color: colors.onSolid,
     },
   });
+};
+
+const getStylesForKey = (modalLayout: boolean, scale: number) => {
+  const key = `${modalLayout}:${scale}`;
+  const cached = openItemAdderStylesByKey.get(key);
+  if (cached) return cached;
+  const next = buildStyles(modalLayout, scale);
+  openItemAdderStylesByKey.set(key, next);
+  return next;
+};
 
 interface OpenItemAdderProps {
   onCreated?: () => void;
@@ -247,12 +260,11 @@ const OpenItemAdder = ({
   onCreated,
   modalLayout = false,
 }: OpenItemAdderProps) => {
-  const { colorScheme } = useColorScheme();
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const styles = useMemo(
-    () => createStyles(modalLayout, s),
-    [colorScheme, modalLayout, uiScale],
+    () => getStylesForKey(modalLayout, uiScale),
+    [modalLayout, uiScale],
   );
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
@@ -627,7 +639,7 @@ const OpenItemAdder = ({
                 )}
               </View>
 
-              <View style={{ gap: 4 }}>
+              <View style={{ gap: s(4) }}>
                 {numpadRows.map((row, i) => (
                   <View key={i} style={styles.numpadRow}>
                     {row.map((btn) => (
@@ -682,7 +694,7 @@ const OpenItemAdder = ({
               </View>
 
               <View style={styles.toGoRow}>
-                <View style={{ flex: 1, paddingRight: 8 }}>
+                <View style={{ flex: 1, paddingRight: s(8) }}>
                   <Text style={styles.toGoTitle}>TO GO</Text>
                   <Text style={styles.toGoSubtitle}>
                     Package this item to-go
@@ -735,7 +747,7 @@ const OpenItemAdder = ({
                   <View style={styles.modifierList}>
                     {customModifiers.map((modifier) => (
                       <View key={modifier.id} style={styles.modifierChip}>
-                        <View style={{ flex: 1, paddingRight: 6 }}>
+                        <View style={{ flex: 1, paddingRight: s(6) }}>
                           <Text
                             style={{
                               fontSize: s(12),
@@ -767,7 +779,7 @@ const OpenItemAdder = ({
                   </View>
                 ) : (
                   <View style={styles.emptyModifierState}>
-                    <Text style={{ fontSize: 11, color: colors.muted }}>
+                    <Text style={{ fontSize: s(11), color: colors.muted }}>
                       No modifiers added yet. You can create the item as-is or
                       add priced extras first.
                     </Text>

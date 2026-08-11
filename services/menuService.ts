@@ -649,6 +649,138 @@ export class MenuService {
     return { success: true, error: null }
   }
 
+  // ============================================================
+  // 86 / SNOOZE (per-location out-of-stock) — mirrors the website
+  // ============================================================
+
+  /**
+   * Set (or clear) a per-location 86/snooze on a menu item.
+   *
+   * `snoozedUntil` contract:
+   *   - `null`       -> un-86 (also restores is_available server-side)
+   *   - ISO string   -> timed 86 (auto-restored by pg_cron when it expires)
+   *   - `'infinity'` -> 86 until manually restored
+   *
+   * Works on global items too — it writes a `location_item_overrides` row for
+   * the given location without mutating the global `menu_items` core.
+   */
+  static async setItemSnooze (
+    client: SupabaseClient,
+    params: {
+      locationId: string
+      menuItemId: string
+      snoozedUntil: string | null
+      reason?: string | null
+    }
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client.rpc('set_item_snooze_v1', {
+      p_location_id: params.locationId,
+      p_menu_item_id: params.menuItemId,
+      p_snoozed_until: params.snoozedUntil,
+      p_reason: params.reason ?? null
+    })
+
+    if (error) {
+      console.error('Failed to set item snooze:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, error: null }
+  }
+
+  /**
+   * Set (or clear) a per-location 86/snooze on a modifier option.
+   */
+  static async setModifierSnooze (
+    client: SupabaseClient,
+    params: {
+      locationId: string
+      modifierGroupItemId: string
+      snoozedUntil: string | null
+      reason?: string | null
+    }
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client.rpc('set_modifier_snooze_v1', {
+      p_location_id: params.locationId,
+      p_modifier_group_item_id: params.modifierGroupItemId,
+      p_snoozed_until: params.snoozedUntil,
+      p_reason: params.reason ?? null
+    })
+
+    if (error) {
+      console.error('Failed to set modifier snooze:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, error: null }
+  }
+
+  /**
+   * Set (or clear) a per-location 86/snooze on an ENTIRE modifier group. The
+   * `set_modifier_group_snooze_v1` RPC fans out to every option in the group in
+   * one transaction. If that RPC isn't deployed yet, the caller should fall back
+   * to looping `setModifierSnooze` over the group's option ids.
+   */
+  static async setModifierGroupSnooze (
+    client: SupabaseClient,
+    params: {
+      locationId: string
+      modifierGroupId: string
+      snoozedUntil: string | null
+      reason?: string | null
+    }
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client.rpc('set_modifier_group_snooze_v1', {
+      p_location_id: params.locationId,
+      p_modifier_group_id: params.modifierGroupId,
+      p_snoozed_until: params.snoozedUntil,
+      p_reason: params.reason ?? null
+    })
+
+    if (error) {
+      console.error('Failed to set modifier group snooze:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, error: null }
+  }
+
+  /**
+   * Fetch the currently-active snoozes for a location (used to hydrate the
+   * countdown badge state on the POS, since get_pos_full_sync does not yet
+   * carry snoozed_until).
+   */
+  static async getActiveSnoozes (
+    client: SupabaseClient,
+    locationId: string
+  ): Promise<{
+    data: {
+      items: {
+        menu_item_id: string
+        snoozed_until: string | null
+        snooze_reason: string | null
+      }[]
+      modifiers: {
+        modifier_group_item_id: string
+        modifier_group_id?: string | null
+        snoozed_until: string | null
+        snooze_reason: string | null
+      }[]
+    } | null
+    error: any
+  }> {
+    const { data, error } = await client.rpc('get_active_snoozes', {
+      p_location_id: locationId
+    })
+
+    if (error) {
+      console.error('Failed to fetch active snoozes:', error)
+      return { data: null, error }
+    }
+
+    return { data: (data as any) ?? { items: [], modifiers: [] }, error: null }
+  }
+
   /**
    * Assign modifier groups to a menu item
    */

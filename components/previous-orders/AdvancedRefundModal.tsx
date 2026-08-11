@@ -22,9 +22,9 @@ import BottomSheet, {
     BottomSheetScrollView,
     BottomSheetTextInput,
     BottomSheetView,
-} from "@gorhom/bottom-sheet";
-import { BottomSheetDefaultFooterProps } from "@gorhom/bottom-sheet/lib/typescript/components/bottomSheetFooter/types";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+} from "@/components/ui/bottomSheet";
+import { BottomSheetDefaultFooterProps } from "@/components/ui/bottomSheet";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, CreditCard, DollarSign, X } from "lucide-react-native";
 import React, {
@@ -541,7 +541,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
     show({
       title: "Refund Discarded",
       message: "The refund attempt has been marked as not completed.",
-      type: "info",
+      type: "warning",
     });
   };
 

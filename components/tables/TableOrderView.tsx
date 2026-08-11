@@ -41,7 +41,12 @@ import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { getIsOnline } from "@/services/offlineSyncService";
+import {
+  isSyncAndClearEnabled,
+  reconcileOrdersForClose,
+} from "@/services/tables/serverPaidCloseGate";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
 import { CreditCard } from "lucide-react-native";
@@ -295,6 +300,13 @@ const TableOrderView = React.forwardRef<
     (activeOrder?.reopen_count ?? 0) < 1;
   const isClosedCheckMenuDisabled =
     activeOrder?.check_status === "Closed" && !canReopenClosedCheck;
+  // Also disable the menu when the table's bill has no resolved order — the
+  // bill shows "No active order." in that state, and taps would otherwise add
+  // items to whatever the global activeOrderId happens to point at (e.g. a
+  // QSR draft from order-processing). Transitional gaps are already covered
+  // by the skeleton guards below, so this only fires on a genuinely orderless
+  // table view.
+  const isMenuPanelDisabled = isClosedCheckMenuDisabled || !activeOrder;
   // Only derive displayBalanceDue when totals are available; otherwise keep previous value
   // to prevent transient null → 0 from making the UI think the bill is $0 / fully paid.
   const displayBalanceDueRaw = hasPayments
@@ -429,8 +441,26 @@ const TableOrderView = React.forwardRef<
   // in PaymentSuccessView.handleDone now, not here, so the operator stays on
   // the table while the success view is open.
   const hadSessionRef = useRef(!!session);
+  const sessionGoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (hadSessionRef.current && !session) {
+    // Session present (or came back): cancel any pending close, remember we had one.
+    if (session) {
+      if (sessionGoneTimerRef.current) {
+        clearTimeout(sessionGoneTimerRef.current);
+        sessionGoneTimerRef.current = null;
+      }
+      hadSessionRef.current = true;
+      return;
+    }
+    // Session absent. Do NOT navigate away immediately: a realtime sessions
+    // refresh (orders/tables broadcast) can momentarily drop this table's entry,
+    // and closing on that transient flicker made the order view open-then-
+    // instantly-close. Debounce and re-check — only leave if it STAYS gone
+    // (a genuine remote Clear/void by another station).
+    if (!hadSessionRef.current || sessionGoneTimerRef.current) return;
+    sessionGoneTimerRef.current = setTimeout(() => {
+      sessionGoneTimerRef.current = null;
+      if (useTableSessionStore.getState().sessions[currentTableId]) return; // flicker — stay
       isNavigatingAwayRef.current = true;
       usePaymentStore.getState().close();
       markNavigatingAway();
@@ -441,11 +471,16 @@ const TableOrderView = React.forwardRef<
       } else {
         router.back();
       }
-      const timeoutId = setTimeout(hideLoading, 300);
-      return () => clearTimeout(timeoutId);
-    }
-    hadSessionRef.current = !!session;
-  }, [session, markNavigatingAway, router, hideLoading, onClose]);
+      setTimeout(hideLoading, 300);
+    }, 600);
+  }, [session, markNavigatingAway, router, hideLoading, onClose, currentTableId]);
+  // Clear the pending-close timer on unmount so it can't fire after teardown.
+  useEffect(
+    () => () => {
+      if (sessionGoneTimerRef.current) clearTimeout(sessionGoneTimerRef.current);
+    },
+    [],
+  );
   useEffect(() => {
     if (!__DEV__) return;
     console.log(
@@ -515,6 +550,19 @@ const TableOrderView = React.forwardRef<
     }
     return activeOrder?.paid_status === "Paid";
   }, [activeOrder?.paid_status, hasPayments, totals, displayBalanceDue]);
+
+  // Wave A — deterministically reconcile the active order against server truth
+  // when it looks unpaid locally but has items. A fully-captured, server-settled
+  // check self-heals to Paid, so the footer offers Close Table instead of "Pay"
+  // (the cash-tender trap) or leaving void as the only manager exit.
+  useEffect(() => {
+    if (isFullyPaid) return;
+    const oid = activeOrder?.id;
+    if (!oid || (activeOrder?.items?.length ?? 0) === 0) return;
+    if (!isSyncAndClearEnabled() || !getIsOnline()) return;
+    void reconcileOrdersForClose([oid], { force: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrder?.id, isFullyPaid]);
 
   // --- Action handlers ---
 
@@ -1632,7 +1680,7 @@ const TableOrderView = React.forwardRef<
                 isCurrentCourseSent={isCurrentCourseSent}
                 onStartNewCourse={handleStartNewCourse}
                 onOrderClosedCheck={checkOrderClosedAndWarn}
-                isMenuDisabled={isClosedCheckMenuDisabled}
+                isMenuDisabled={isMenuPanelDisabled}
               />
             </View>
           </View>

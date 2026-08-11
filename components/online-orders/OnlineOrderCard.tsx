@@ -4,11 +4,13 @@ import CancelOnlineOrderDialog, {
 import MarkOrderReadyDialog from "@/components/online-orders/MarkOrderReadyDialog";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
+import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Href, Link } from "expo-router";
+import { Ban, Bell, Check, CheckCheck, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
@@ -170,14 +172,16 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   const itemCount = itemsLoaded
     ? order.items!.reduce((n, i) => n + (i.quantity || 0), 0)
     : (order._broadcastItemCount ?? 0);
-  // Delivery-platform orders show the marketplace's own order number — that's
-  // what the driver/customer reference. Dexa numbers only for first-party orders.
-  const dexaNumber = order.display_number || order.order_number || order.id;
-  const label = order.platform_order_number
-    ? order.platform_order_number
-    : dexaNumber.startsWith("#")
+  const label = resolveOrderLabel(order);
+  // When a platform short code (e.g. "C424D") is the primary label, keep the
+  // Dexa number visible as a small secondary reference so staff can look it up.
+  const dexaNumber = order.display_number || order.order_number || null;
+  const dexaLabel = dexaNumber
+    ? dexaNumber.startsWith("#")
       ? dexaNumber
-      : `#${dexaNumber}`;
+      : `#${dexaNumber}`
+    : null;
+  const showDexaSecondary = !!dexaLabel && dexaLabel !== label;
   const total = order.total_amount ?? 0;
   const canCancel = variant !== "done"; // New + In Kitchen + Ready
   // Mark-ready only for delivery-platform (OrderOut) orders in the kitchen lane —
@@ -266,6 +270,14 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           >
             {label}
           </Text>
+          {showDexaSecondary ? (
+            <Text
+              style={{ fontSize: s(11), color: colors.muted }}
+              numberOfLines={1}
+            >
+              {dexaLabel}
+            </Text>
+          ) : null}
           <Text
             style={{ fontSize: s(14), color: colors.label }}
             numberOfLines={1}
@@ -362,9 +374,18 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
               {submitting === "decline" ? (
                 <ActivityIndicator color={colors.label} />
               ) : (
-                <Text style={{ fontWeight: "700", color: colors.label }}>
-                  Decline
-                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(6),
+                  }}
+                >
+                  <X size={s(16)} color={colors.label} />
+                  <Text style={{ fontWeight: "700", color: colors.label }}>
+                    Decline
+                  </Text>
+                </View>
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -381,9 +402,18 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
               {submitting === "accept" ? (
                 <ActivityIndicator color={colors.onSolid} />
               ) : (
-                <Text style={{ fontWeight: "700", color: colors.onSolid }}>
-                  Accept
-                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(6),
+                  }}
+                >
+                  <Check size={s(16)} color={colors.onSolid} />
+                  <Text style={{ fontWeight: "700", color: colors.onSolid }}>
+                    Accept
+                  </Text>
+                </View>
               )}
             </TouchableOpacity>
           </View>
@@ -396,15 +426,24 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
             {submitting === "cancel" ? (
               <ActivityIndicator size="small" color={colors.danger} />
             ) : (
-              <Text
+              <View
                 style={{
-                  fontSize: s(12),
-                  fontWeight: "600",
-                  color: colors.danger,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(4),
                 }}
               >
-                Cancel order
-              </Text>
+                <Ban size={s(13)} color={colors.danger} />
+                <Text
+                  style={{
+                    fontSize: s(12),
+                    fontWeight: "600",
+                    color: colors.danger,
+                  }}
+                >
+                  Cancel Order
+                </Text>
+              </View>
             )}
           </TouchableOpacity>
         </View>
@@ -428,23 +467,31 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     paddingHorizontal: s(12),
                     paddingVertical: s(6),
                     borderRadius: s(8),
-                    borderWidth: 1,
-                    backgroundColor: colors.teal + "14",
-                    borderColor: colors.teal + "40",
+                    backgroundColor: colors.teal,
+                    opacity: submitting && submitting !== "ready" ? 0.5 : 1,
                   }}
                 >
                   {submitting === "ready" ? (
-                    <ActivityIndicator size="small" color={colors.teal} />
+                    <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
-                    <Text
+                    <View
                       style={{
-                        fontSize: s(12),
-                        fontWeight: "600",
-                        color: colors.teal,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(5),
                       }}
                     >
-                      Mark ready
-                    </Text>
+                      <Bell size={s(14)} color={colors.onSolid} />
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: "700",
+                          color: colors.onSolid,
+                        }}
+                      >
+                        Mark Ready
+                      </Text>
+                    </View>
                   )}
                 </TouchableOpacity>
               )}
@@ -456,23 +503,31 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     paddingHorizontal: s(12),
                     paddingVertical: s(6),
                     borderRadius: s(8),
-                    borderWidth: 1,
-                    backgroundColor: colors.success + "14",
-                    borderColor: colors.success + "40",
+                    backgroundColor: colors.success,
+                    opacity: submitting && submitting !== "done" ? 0.5 : 1,
                   }}
                 >
                   {submitting === "done" ? (
-                    <ActivityIndicator size="small" color={colors.success} />
+                    <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
-                    <Text
+                    <View
                       style={{
-                        fontSize: s(12),
-                        fontWeight: "600",
-                        color: colors.success,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(5),
                       }}
                     >
-                      Mark done
-                    </Text>
+                      <CheckCheck size={s(14)} color={colors.onSolid} />
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: "700",
+                          color: colors.onSolid,
+                        }}
+                      >
+                        Mark Done
+                      </Text>
+                    </View>
                   )}
                 </TouchableOpacity>
               )}
@@ -484,23 +539,31 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     paddingHorizontal: s(12),
                     paddingVertical: s(6),
                     borderRadius: s(8),
-                    borderWidth: 1,
-                    backgroundColor: colors.danger + "14",
-                    borderColor: colors.danger + "40",
+                    backgroundColor: colors.danger,
+                    opacity: submitting && submitting !== "cancel" ? 0.5 : 1,
                   }}
                 >
                   {submitting === "cancel" ? (
-                    <ActivityIndicator size="small" color={colors.danger} />
+                    <ActivityIndicator size="small" color={colors.onSolid} />
                   ) : (
-                    <Text
+                    <View
                       style={{
-                        fontSize: s(12),
-                        fontWeight: "600",
-                        color: colors.danger,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(5),
                       }}
                     >
-                      Cancel order
-                    </Text>
+                      <Ban size={s(14)} color={colors.onSolid} />
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: "700",
+                          color: colors.onSolid,
+                        }}
+                      >
+                        Cancel Order
+                      </Text>
+                    </View>
                   )}
                 </TouchableOpacity>
               )}

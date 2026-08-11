@@ -145,6 +145,12 @@ export interface DailySummary {
   // Payments
   cardTotal: number;
   cashTotal: number;
+  /**
+   * In-kind (non-tender) settlements: revenue posted at card pricing with
+   * no money collected. Kept out of cardTotal/cashTotal so both stay
+   * reconcilable against the processor settlement and the physical drawer.
+   */
+  inKindTotal: number;
   otherTotal: number;
   totalTips: number;
   // Labor

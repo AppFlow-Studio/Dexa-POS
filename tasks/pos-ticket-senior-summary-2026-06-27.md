@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document summarizes the POS tickets handled on branch `alidika-dev-pos` so far. There are 10 POS tickets in scope:
+This document summarizes the POS tickets handled on branch `alidika-dev-pos` so far. There are 11 POS tickets in scope:
 
 | # | Ticket | Current status | Migration needed |
 | --- | --- | --- | --- |
@@ -16,6 +16,7 @@ This document summarizes the POS tickets handled on branch `alidika-dev-pos` so 
 | 8 | POS platform logos on KDS and Previous Orders | Code complete, on-device QA pending | No |
 | 9 | POS/Web location POS settings + station overrides | POS/schema code ready, web UI and QA pending | Yes |
 | 10 | Timesheets configurable auto clock-out | POS/backend migration ready, web UI separate, staging QA pending | Yes |
+| 11 | KDS rushed/prioritized tickets top-band sort | POS/KDS code and migration ready, staging QA pending | Yes |
 
 The migrations currently added for these tickets are:
 
@@ -24,6 +25,7 @@ The migrations currently added for these tickets are:
 - `supabase/migrations/20260629130000_order_numbers_location_timezone.sql`
 - `supabase/migrations/20260630120000_station_pos_config_overrides.sql`
 - `supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql`
+- `supabase/migrations/20260712120000_kds_rush_priority_sort.sql`
 
 Important note on the stale cash-price migration: the first Supabase run could not find the expected Charcoal Gardenia rows, so that migration was changed to no-op with a notice when target rows are absent. If it no-ops, the stale cash-price ticket is not corrected yet and still needs the correct target IDs or a website re-price flow.
 
@@ -562,6 +564,7 @@ Manual QA still required:
 | `supabase/migrations/20260629130000_order_numbers_location_timezone.sql` | Order numbers local midnight | Replaces both order-number generators so sequence date keys use `locations.timezone` instead of UTC `CURRENT_DATE` | Must be applied after confirming the live RPC bodies still match the contract, because `CREATE OR REPLACE FUNCTION` replaces the full body |
 | `supabase/migrations/20260630120000_station_pos_config_overrides.sql` | POS settings station overrides | Adds `stations.pos_config_overrides`, effective config resolver, deep merge helper, and guarded station override write RPC | Must be applied before station override QA; coordinate with web settings UI branch so UI writes use the same contract |
 | `supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql` | Timesheets auto clock-out | Adds location cutoff settings, idempotent auto-close RPC, break closure, audit logging, and optional pg_cron schedule | Must be applied before auto-clock-out QA; confirm pg_cron exists or schedule the RPC externally |
+| `supabase/migrations/20260712120000_kds_rush_priority_sort.sql` | KDS rush/priority top-band sort | Adds ticket-level `any_rush` to `get_kds_tickets_v2` and orders active tickets by `(any_rush OR prioritized) DESC, start_time ASC` | Must be sequenced after any other pending `get_kds_tickets_v2` replacement so server-name/show-server behavior is preserved |
 
 No migrations are required for:
 
@@ -581,6 +584,7 @@ npx jest --runTestsByPath __tests__/menu-sync-dedupe.test.ts
 npx jest --runTestsByPath __tests__/order-platform-resolver.test.ts
 npx jest --runTestsByPath __tests__/kdsTimer.test.ts
 npx jest --runTestsByPath __tests__/kdsAutomation.test.ts
+npx jest --runTestsByPath __tests__/kdsRushPrioritySort.test.ts
 ```
 
 For the order-number ticket, no app Jest test was added because the change is a Supabase RPC migration. Static/local verification confirmed the POS Previous Orders path is timestamp-sorted; staging SQL verification is still required after migration.
@@ -595,6 +599,7 @@ Repo-wide TypeScript/build checks were intentionally not run because the repo ha
 - DESSERT grid: duplicate `Strawberry Banana Crepe` card is gone on device.
 - Dual-pricing data: correct environment/IDs are confirmed, affected rows are re-priced, and verification queries return expected results.
 - KDS server name: staging order from POS staff shows server name, online/no-staff order falls back to source/platform, and `show_server_name = false` hides the field.
+- KDS rush/priority sort: rushed and prioritized active tickets jump into the top band immediately, while normal tickets remain below them.
 - Order numbers: staging orders across UTC midnight do not reset, local midnight does reset, and Previous Orders remains newest-first.
 - POS platform logos: KDS all active states/Done and POS Previous Orders show marketplace, first-party, and generic-online badges correctly; POS orders show no badge.
 - POS settings station overrides: migration applies cleanly, station override affects only one station, sibling stations inherit location defaults, and POS station switching rehydrates the correct effective config.
@@ -607,6 +612,7 @@ Repo-wide TypeScript/build checks were intentionally not run because the repo ha
 - The stale cash-price data migration is intentionally guarded and environment-safe after the first Supabase run failed to find the expected merchant rows.
 - The stale cash-price ticket should not be marked Done until the data is corrected in the correct environment and the POS/web sweep is recorded.
 - The KDS server-name migration touches the same RPC as other KDS server-authoritative work, so sequence it carefully if another branch also replaces `get_kds_tickets_v2`.
+- The KDS rush/priority migration also replaces `get_kds_tickets_v2`; apply after the server-name version or use the newest combined body so `server_name`, `ready_time`, `is_to_go`, and display-scoped acknowledgement behavior are not lost.
 - The order-number migration replaces full RPC bodies. If production/staging functions have newer changes than the ticket contract, rebase the migration body before applying.
 - The platform-logo ticket is POS-only in this repo. Web Orders list/details remain outside this change and should be coordinated separately.
 - The POS settings/station override ticket is POS/schema-only in this branch. Web dashboard UI must coordinate with `update_station_pos_config_overrides` or the same guarded write contract before QA.

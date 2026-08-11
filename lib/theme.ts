@@ -43,6 +43,9 @@ export const colors = new Proxy({} as ThemeColors, {
   info: string
   // On-solid
   onSolid: string
+  // inKind (non-tender settlement) — field/on pair, inverted between themes
+  inKindField: string
+  inKindOn: string
   // Table status
   tableAvailable: string
   tableInUse: string

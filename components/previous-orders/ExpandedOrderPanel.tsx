@@ -1,3 +1,4 @@
+import { INKIND_LABEL } from "@/lib/paymentMethod";
 import {
     derivePaymentRefundState,
     getCashPricedOrderTotal,
@@ -12,6 +13,7 @@ import {
     Clock,
     CreditCard,
     DollarSign,
+    HandCoins,
     Mail,
     MapPin,
     Phone,
@@ -120,11 +122,15 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
     );
     let paymentMethodLabel = "";
     let isCashPayment = false;
+    let isInKindPayment = false;
     if (activePayments.length > 0) {
       const p = activePayments[0];
       if (p.method === "Cash") {
         paymentMethodLabel = "Cash";
         isCashPayment = true;
+      } else if (p.method === "InKind") {
+        paymentMethodLabel = INKIND_LABEL;
+        isInKindPayment = true;
       } else {
         const brand = p.cardBrand || "Card";
         paymentMethodLabel = p.last4 ? `${brand} ending in ${p.last4}` : brand;
@@ -146,6 +152,7 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
       showCashPrice,
       paymentMethodLabel,
       isCashPayment,
+      isInKindPayment,
       isCashPricing,
     };
   }, [order]);
@@ -419,11 +426,19 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             <View className="flex-row items-center" style={{ gap: s(2), marginTop: s(3) }}>
               {paymentSummary.isCashPayment ? (
                 <Banknote color={colors.teal} size={s(14)} />
+              ) : paymentSummary.isInKindPayment ? (
+                <HandCoins color={colors.inKindOn} size={s(14)} />
               ) : (
                 <CreditCard color={colors.teal} size={s(14)} />
               )}
               <Text
-                style={{ fontSize: s(12), fontWeight: "700", color: colors.teal }}
+                style={{
+                  fontSize: s(12),
+                  fontWeight: "700",
+                  color: paymentSummary.isInKindPayment
+                    ? colors.inKindOn
+                    : colors.teal,
+                }}
               >
                 {paymentSummary.paymentMethodLabel}
               </Text>

@@ -1,6 +1,7 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
 import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
@@ -33,6 +34,7 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
     paymentMethod,
     themeMode
   } = useCFDDisplayData()
+  const uiScale = useUiScale()
 
   const isCash = paymentMethod === 'cash'
   const isManual = paymentMethod === 'manual'
@@ -87,99 +89,102 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
   }))
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulseOpacity.value }))
 
-  const styles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.screen
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      backgroundColor: colors.panel
-    },
-    headerLeft: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12
-    },
-    iconBox: {
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    restaurantName: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.heading,
-      marginBottom: 2
-    },
-    headerSubtitle: {
-      fontSize: 11,
-      fontWeight: '500',
-      color: colors.label
-    },
-    headerRight: {
-      alignItems: 'flex-end'
-    },
-    paymentMethodLabel: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.teal,
-      marginBottom: 2
-    },
-    body: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 32
-    },
-    iconCircle: {
-      width: 88,
-      height: 88,
-      borderRadius: 44,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 32
-    },
-    amount: {
-      fontSize: 72,
-      fontWeight: '700',
-      color: colors.teal,
-      marginBottom: 12
-    },
-    tipLine: {
-      fontSize: 16,
-      color: colors.label,
-      marginBottom: 8
-    },
-    savingsLine: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: colors.teal,
-      marginBottom: 16
-    },
-    instruction: {
-      fontSize: 20,
-      fontWeight: '500',
-      color: colors.heading,
-      textAlign: 'center',
-      marginTop: 8
-    }
-  }), [themeMode])
+  const styles = useMemo(() => {
+    const s = (n: number) => Math.round(n * uiScale)
+    return StyleSheet.create({
+      container: {
+        flex: 1,
+        backgroundColor: colors.screen
+      },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: s(20),
+        paddingVertical: s(14),
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.panel
+      },
+      headerLeft: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(12)
+      },
+      iconBox: {
+        width: s(40),
+        height: s(40),
+        borderRadius: s(10),
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        alignItems: 'center',
+        justifyContent: 'center'
+      },
+      restaurantName: {
+        fontSize: s(16),
+        fontWeight: '700',
+        color: colors.heading,
+        marginBottom: s(2)
+      },
+      headerSubtitle: {
+        fontSize: s(11),
+        fontWeight: '500',
+        color: colors.label
+      },
+      headerRight: {
+        alignItems: 'flex-end'
+      },
+      paymentMethodLabel: {
+        fontSize: s(14),
+        fontWeight: '600',
+        color: colors.teal,
+        marginBottom: s(2)
+      },
+      body: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: s(32)
+      },
+      iconCircle: {
+        width: s(88),
+        height: s(88),
+        borderRadius: s(44),
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: s(32)
+      },
+      amount: {
+        fontSize: s(72),
+        fontWeight: '700',
+        color: colors.teal,
+        marginBottom: s(12)
+      },
+      tipLine: {
+        fontSize: s(16),
+        color: colors.label,
+        marginBottom: s(8)
+      },
+      savingsLine: {
+        fontSize: s(15),
+        fontWeight: '600',
+        color: colors.teal,
+        marginBottom: s(16)
+      },
+      instruction: {
+        fontSize: s(20),
+        fontWeight: '500',
+        color: colors.heading,
+        textAlign: 'center',
+        marginTop: s(8)
+      }
+    })
+  }, [themeMode, uiScale])
 
   return (
     <View style={styles.container}>
@@ -190,7 +195,7 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
       >
         <View style={styles.headerLeft}>
           <View style={styles.iconBox}>
-            <UtensilsCrossed size={20} color={colors.teal} />
+            <UtensilsCrossed size={Math.round(20 * uiScale)} color={colors.teal} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.restaurantName}>
@@ -233,9 +238,9 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
               <Animated.View
                 style={[
                   {
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
+                    width: Math.round(40 * uiScale),
+                    height: Math.round(40 * uiScale),
+                    borderRadius: Math.round(20 * uiScale),
                     borderWidth: 3,
                     borderColor: colors.teal,
                     borderTopColor: 'transparent'
@@ -244,9 +249,9 @@ export function PaymentScreen ({ processing }: { processing?: boolean }) {
                 ]}
               />
             ) : isCash ? (
-              <Banknote size={40} color={colors.teal} />
+              <Banknote size={Math.round(40 * uiScale)} color={colors.teal} />
             ) : (
-              <CreditCard size={40} color={colors.teal} />
+              <CreditCard size={Math.round(40 * uiScale)} color={colors.teal} />
             )}
           </Animated.View>
         </Animated.View>

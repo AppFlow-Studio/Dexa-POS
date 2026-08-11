@@ -50,6 +50,7 @@ Targeted local checks passed on 2026-07-12:
 
 ```powershell
 rg "any_rush|isKdsTicketElevated|isTicketElevated" types stores app supabase/migrations/20260712120000_kds_rush_priority_sort.sql
+npx jest --runTestsByPath __tests__/kdsRushPrioritySort.test.ts
 npx jest --runTestsByPath __tests__/kdsTimer.test.ts __tests__/kdsAutomation.test.ts
 npx jest --runTestsByPath __tests__/badWifiWave2.test.ts __tests__/kdsRecalledTtl.test.ts
 ```
@@ -82,6 +83,7 @@ Manual QA still required:
 - `types/kds.ts`
 - `stores/useKDSStore.ts`
 - `app/(main)/kds.tsx`
+- `__tests__/kdsRushPrioritySort.test.ts`
 - `tasks/kds-rush-priority-sort.md`
 - `tasks/ticket-log.md`
 

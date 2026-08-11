@@ -11,6 +11,7 @@ import type {
   BroadcastOrderItemData,
   BroadcastOrderPaymentData
 } from '@/hooks/realtime/useOrdersRealtime'
+import { fromDbPaymentMethod, isInKindMethod } from '@/lib/paymentMethod'
 import { resolveInboundToGo } from '@/lib/pendingToGo'
 import { normalizePlatform } from '@/lib/platformAliases'
 import type {
@@ -412,8 +413,9 @@ function transformBroadcastPaymentToProfile (
           payment.is_cash_priced
         )
 
-  // Determine PaymentType for UI
-  const method = payment.payment_method === 'cash' ? 'Cash' : 'Card'
+  // Determine PaymentType for UI. Canonical converter: resolves 'inkind'
+  // to "InKind" rather than mislabelling a non-tender settlement as Card.
+  const method = fromDbPaymentMethod(payment.payment_method)
 
   // Calculate cash savings — falls back to order-level ratio when original_amount is missing
   const cashSavings = deriveCashSavings(payment, orderCardTotal, orderCashTotal)
@@ -452,7 +454,15 @@ function transformBroadcastPaymentToProfile (
   const castlesTxn = terminalResponse?.castles_transaction as
     | Record<string, any>
     | undefined
-  const terminalVendor = terminalResponse?.terminal_vendor as string | undefined
+  // Valor stores its blob in processor_response (not terminal_response); read
+  // both so rehydration works regardless of which column the RPC wrote to.
+  const processorResponse = (payment as any).processor_response as
+    | Record<string, any>
+    | undefined
+  const valorTxn = (processorResponse?.valor_transaction ??
+    terminalResponse?.valor_transaction) as Record<string, any> | undefined
+  const terminalVendor = (terminalResponse?.terminal_vendor ??
+    processorResponse?.terminal_vendor) as string | undefined
 
   return {
     id: `payment_${payment.id}`,
@@ -461,8 +471,10 @@ function transformBroadcastPaymentToProfile (
     method,
     tip_amount: payment.tip_amount,
     total_collected: payment.total_amount,
-    cardBrand: payment.card_type ?? undefined,
-    last4: payment.card_last_four ?? undefined,
+    // Valor pre-auth pre-v4 leaves the flat card columns null; fall back to the
+    // valor_transaction JSONB so last4 (the CARD_NO void/completion fallback) survives.
+    cardBrand: payment.card_type ?? valorTxn?.cardType ?? undefined,
+    last4: payment.card_last_four ?? valorTxn?.cardLast4 ?? undefined,
     amountTendered: payment.amount_tendered ?? undefined,
     changeGiven: payment.change_given > 0 ? payment.change_given : undefined,
     isCashPriced: payment.is_cash_priced || undefined,
@@ -483,20 +495,31 @@ function transformBroadcastPaymentToProfile (
     ...(isPreAuth
       ? {
           preAuthAmount: payment.amount,
-          preAuthRrn: castlesTxn?.rrn ?? payment.rrn ?? undefined,
+          preAuthRrn:
+            castlesTxn?.rrn ?? valorTxn?.rrn ?? payment.rrn ?? undefined,
           preAuthStan: castlesTxn?.stan ?? undefined,
+          // Valor completion/void reference — survives refresh via the JSONB blob
+          // (transaction_id is where v4 mirrors tranNo, matching process_payment_v17).
+          preAuthTranNo:
+            valorTxn?.tranNo ?? (payment as any).transaction_id ?? undefined,
           preAuthAuthCode:
             castlesTxn?.approvalCode ??
+            valorTxn?.approvalCode ??
             payment.authorization_code ??
             payment.auth_code ??
             undefined,
           preAuthReferenceId:
-            castlesTxn?.referenceId ?? payment.reference_id ?? undefined,
+            castlesTxn?.referenceId ??
+            valorTxn?.reqTxnId ??
+            payment.reference_id ??
+            undefined,
           preAuthTerminalType: (terminalVendor === 'castles'
             ? 'castles'
+            : terminalVendor === 'valor'
+            ? 'valor'
             : terminalVendor === 'dejavoo'
             ? 'dejavoo'
-            : undefined) as 'dejavoo' | 'castles' | undefined
+            : undefined) as 'dejavoo' | 'castles' | 'valor' | undefined
         }
       : {}),
     isVoided: payment.is_voided,
@@ -633,6 +656,10 @@ export function mapOrderType (
 ): OrderProfile['order_type'] {
   switch (orderType) {
     case 'dine_in':
+    // QR / table-ordering flow writes `qr_dine_in`. It is dine-in; without this
+    // case it fell through to the `takeout` default and every QR order was
+    // labelled "Takeaway".
+    case 'qr_dine_in':
       return 'dine_in'
     case 'takeout':
       return 'takeout'
@@ -1112,9 +1139,16 @@ function normalizeFetchedItems (
 function normalizeFetchedPayment (
   payment: FetchedOrderPayment
 ): BroadcastOrderPaymentData {
-  // Simplify payment_method to 'cash' | 'card'
-  const normalizedMethod: 'cash' | 'card' =
-    payment.payment_method === 'cash' ? 'cash' : 'card'
+  // Simplify payment_method to 'cash' | 'card' | 'inkind'.
+  // in-kind is preserved rather than collapsed into 'card': it is a
+  // non-tender settlement, and a receiving station must not render it as a
+  // real card payment.
+  const normalizedMethod: BroadcastOrderPaymentData['payment_method'] =
+    payment.payment_method === 'cash'
+      ? 'cash'
+      : isInKindMethod(payment.payment_method)
+        ? 'inkind'
+        : 'card'
 
   // Normalize status to simplified enum
   const normalizedStatus = ((): BroadcastOrderPaymentData['status'] => {

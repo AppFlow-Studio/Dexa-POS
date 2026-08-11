@@ -6,6 +6,7 @@ import Animated, {
   FadeIn,
   FadeOut,
   interpolate,
+  SharedValue,
   useAnimatedProps,
   useSharedValue,
   withTiming,
@@ -95,7 +96,7 @@ export const PieChartSegment: FC<{
   circumference: number;
   angle: number; // Start Angle of the segment
   percent: number;
-  progress: Animated.SharedValue<number>;
+  progress: SharedValue<number>;
   onPress?: () => void;
   isPressed?: boolean;
 }> = ({

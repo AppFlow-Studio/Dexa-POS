@@ -7,7 +7,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";

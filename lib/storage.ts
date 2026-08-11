@@ -311,6 +311,25 @@ export function flushPendingWrite(name: string): void {
 const lazyWriters: Record<string, ReturnType<typeof debounce>> = {};
 
 /**
+ * Per-key persist debounce tuning. The default 300ms is right for small
+ * stores, but for the order store it sits exactly inside a rapid-ordering tap
+ * cadence (~400ms/item): every add re-armed the writer and the debounce
+ * expired between taps, so EVERY item paid the full 50-300KB stringify on the
+ * JS thread mid-burst. 900ms rides out the burst; maxWait caps how long a
+ * sustained burst can defer durability (a stringify lands at least every 3s).
+ * flushAllPendingWrites / flushPendingWrite still force synchronous writes on
+ * app-background and critical commits, so the crash-loss window only grows
+ * for the case where the process dies mid-burst with no background signal —
+ * and every non-draft item is already on the backend via its add RPC.
+ */
+const PERSIST_DEBOUNCE_OVERRIDES: Record<
+  string,
+  { delay: number; maxWait: number }
+> = {
+  "order-store-storage": { delay: 900, maxWait: 3000 },
+};
+
+/**
  * Last persisted slice reference per key. If the next setItem carries the
  * *same* partialized-slice reference (Immer structural sharing means an
  * unchanged slice keeps its identity), we can skip JSON.stringify entirely —
@@ -347,9 +366,10 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
   lastPersistedValue[name] = slice;
   recordCount(persistKeyIds(name).arm);
 
-  const delay = 300;
+  const override = PERSIST_DEBOUNCE_OVERRIDES[name];
+  const delay = override?.delay ?? 300;
   if (!lazyWriters[name]) {
-    lazyWriters[name] = debounce((v: unknown) => {
+    const writer = (v: unknown) => {
       const stringifyStart = performance.now();
       const str = JSON.stringify(v);
       // Prime suspect in the rush-lag model: full-slice stringify wall time
@@ -370,7 +390,10 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
           storage.set(name, str);
         });
       }
-    }, delay);
+    };
+    lazyWriters[name] = override
+      ? debounce(writer, delay, { maxWait: override.maxWait })
+      : debounce(writer, delay);
   }
   lazyWriters[name](value);
 }
@@ -778,29 +801,45 @@ export function getStorageStats(): {
   };
 }
 
-export function getStorageSizeStats(): {
-  general: { keyCount: number; totalBytes: number };
-  secure: { keyCount: number; totalBytes: number };
-  sync: { keyCount: number; totalBytes: number };
-} {
-  const measureBucket = (bucket: typeof storage) => {
-    const keys = bucket.getAllKeys();
-    let totalBytes = 0;
-    for (const key of keys) {
-      const value = bucket.getString(key);
-      if (value != null) {
-        totalBytes += value.length;
-      }
-    }
-    return {
-      keyCount: keys.length,
-      totalBytes,
-    };
-  };
+/**
+ * The three storage buckets, addressable by name for monitoring/diagnostics.
+ */
+const BUCKETS = {
+  general: storage,
+  secure: secureStorage,
+  sync: syncStorage,
+} as const;
 
+export type StorageBucketName = keyof typeof BUCKETS;
+
+/**
+ * Allocated size of each bucket, in bytes.
+ *
+ * Reads MMKV's native `size` — an O(1) property read of the memory-mapped
+ * file, not a key/value enumeration. This runs on the boot path (the storage
+ * monitor in PosSyncProvider), so it must not scale with accumulated
+ * operational data.
+ *
+ * Note this is *allocated* size, not the sum of live values: MMKV grows in
+ * pages and does not shrink when keys are deleted (hence `trim()`), so it
+ * reads at or above the live total. That is the right number for a growth
+ * alarm — unreclaimed space is precisely the failure mode worth alerting on.
+ */
+export function getStorageSizeStats(): Record<StorageBucketName, number> {
   return {
-    general: measureBucket(storage),
-    secure: measureBucket(secureStorage),
-    sync: measureBucket(syncStorage),
+    general: storage.size,
+    secure: secureStorage.size,
+    sync: syncStorage.size,
   };
+}
+
+/**
+ * Number of keys in a single bucket.
+ *
+ * Enumerates keys but reads no values, so it is far cheaper than a full scan —
+ * still O(keys) though, so call it on demand (e.g. to annotate an alarm that
+ * has already fired) rather than on the boot path.
+ */
+export function getBucketKeyCount(name: StorageBucketName): number {
+  return BUCKETS[name].getAllKeys().length;
 }

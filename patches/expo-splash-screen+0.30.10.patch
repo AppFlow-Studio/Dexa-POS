@@ -1,0 +1,63 @@
+diff --git a/node_modules/expo-splash-screen/android/src/main/java/expo/modules/splashscreen/SplashScreenManager.kt b/node_modules/expo-splash-screen/android/src/main/java/expo/modules/splashscreen/SplashScreenManager.kt
+index 1ad7158..df404a4 100644
+--- a/node_modules/expo-splash-screen/android/src/main/java/expo/modules/splashscreen/SplashScreenManager.kt
++++ b/node_modules/expo-splash-screen/android/src/main/java/expo/modules/splashscreen/SplashScreenManager.kt
+@@ -2,6 +2,8 @@ package expo.modules.splashscreen
+ 
+ import android.app.Activity
+ import android.os.Build
++import android.os.Handler
++import android.os.Looper
+ import android.view.View
+ import android.view.ViewTreeObserver.OnPreDrawListener
+ import android.view.animation.AccelerateInterpolator
+@@ -35,19 +37,41 @@ object SplashScreenManager {
+ 
+     splashScreen.setOnExitAnimationListener { splashScreenViewProvider ->
+       val splashScreenView = splashScreenViewProvider.view
++
++      // LOCAL PATCH (patch-package): make splash removal idempotent and
++      // unconditional.
++      //
++      // Upstream removes the splash view ONLY from `withEndAction`, which
++      // ViewPropertyAnimator does not run when the animation is CANCELLED
++      // (view detached, decor re-layout, or another animate() on the same
++      // view — all of which this app can trigger at boot while it toggles the
++      // immersive system bars). A cancelled fade leaves the splash view in the
++      // window at alpha 0: invisible, full-screen, and consuming every touch.
++      // The app underneath renders and looks completely normal but is totally
++      // unresponsive, and only an Activity recreation clears it.
++      val removeSplash = Runnable {
++        if (splashScreenView.parent == null) return@Runnable
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
++          splashScreenViewProvider.remove()
++        } else {
++          // Avoid calling applyThemesSystemBarAppearance
++          (splashScreenView as SplashScreenView).remove()
++        }
++      }
++
+       splashScreenView
+         .animate()
+         .setDuration(duration)
+         .alpha(0.0f)
+         .setInterpolator(AccelerateInterpolator())
+-        .withEndAction {
+-          if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+-            splashScreenViewProvider.remove();
+-          } else {
+-            // Avoid calling applyThemesSystemBarAppearance
+-            (splashScreenView as SplashScreenView).remove();
+-          }
+-        }.start()
++        .withEndAction(removeSplash)
++        .start()
++
++      // Safety net for the cancelled-animation path. Posted to the main looper
++      // (not the view) so it still fires if the view is detached from its
++      // window. No-op when the fade completed normally — the parent==null
++      // guard above makes a second removal harmless.
++      Handler(Looper.getMainLooper()).postDelayed(removeSplash, duration + 250L)
+     }
+   }
+ 

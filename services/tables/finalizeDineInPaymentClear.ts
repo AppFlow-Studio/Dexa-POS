@@ -1,4 +1,6 @@
-import { FloorPlanService } from "@/services/floorPlanService";
+import { queueFailedOperation } from "@/services/offlineSyncInit";
+import { getIsOnline } from "@/services/offlineSyncService";
+import { OrderService } from "@/services/orderService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
@@ -72,34 +74,84 @@ export function finalizeDineInPaymentClear(args: {
 
   useTableSessionStore.getState().dispatch(tableId, { type: "CLEAR" });
 
-  const supabase = getOrderStoreSupabaseClient();
-  const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId;
-  if (supabase && staffId) {
-    FloorPlanService.updateTableSessionStatus(supabase, {
-      p_session_id: sessionId,
-      p_status: "available",
-      p_staff_id: staffId,
-    })
-      .then(({ error }) => {
-        if (error) {
-          console.warn(
-            `[finalizeDineInPaymentClear] backend update failed for session ${sessionId}:`,
-            error,
-          );
-          return;
-        }
-        useFloorPlanStore
-          .getState()
-          .loadFloorPlanStatus()
-          .catch(() => {});
-      })
-      .catch((err) => {
-        console.warn(
-          `[finalizeDineInPaymentClear] backend update threw for session ${sessionId}:`,
-          err,
-        );
-      });
-  }
+  // Wave B — reliable, replay-safe backend free. Route through the atomic
+  // close_and_free_session RPC (closes the check + frees the session THROUGH
+  // the event projector, stamping paid_at + emitting the lifecycle events).
+  // On any failure/offline it is enqueued on the existing offline-sync queue,
+  // which retries on reconnect and replays on relaunch — so a completed payment
+  // can never leave the session active on the server (the 3h37m phantom bug).
+  const paidOrder =
+    sessionOrders.find((o) => o.db_order_id) ?? sessionOrders[0];
+  void freeSessionReliably({
+    sessionId,
+    dbOrderId: paidOrder?.db_order_id,
+    localOrderId: paidOrder?.id,
+    staffId: useEmployeeStore.getState().loggedInEmployee?.profileId ?? null,
+  });
 
   return { cleared: true };
+}
+
+/**
+ * Frees the dine-in session on the backend, reliably. Tries the atomic RPC
+ * inline when online; on any failure (or when offline / order-not-yet-synced)
+ * it hands the op to the offline-sync queue for retry + relaunch replay. The
+ * RPC is idempotent (returns already_freed when the session is already freed),
+ * so an inline attempt that races a queued retry can't double-free.
+ */
+async function freeSessionReliably(args: {
+  sessionId: string;
+  dbOrderId?: string;
+  localOrderId?: string;
+  staffId: string | null;
+}): Promise<void> {
+  const { sessionId, dbOrderId, localOrderId, staffId } = args;
+
+  const enqueue = () =>
+    queueFailedOperation(
+      "close_and_free_session",
+      {
+        p_order_id: dbOrderId ?? null,
+        p_session_id: sessionId,
+        p_staff_id: staffId,
+      },
+      localOrderId ?? dbOrderId ?? sessionId,
+    ).catch((e) =>
+      console.warn(
+        "[finalizeDineInPaymentClear] failed to enqueue close_and_free_session",
+        e,
+      ),
+    );
+
+  const supabase = getOrderStoreSupabaseClient();
+
+  // Offline, no client, or order not yet synced → straight to the queue.
+  if (!supabase || !dbOrderId || !getIsOnline()) {
+    await enqueue();
+    return;
+  }
+
+  try {
+    const result = await OrderService.closeAndFreeSession(
+      supabase,
+      dbOrderId,
+      sessionId,
+      staffId,
+    );
+    if (result.success || result.already_freed) {
+      useFloorPlanStore
+        .getState()
+        .loadFloorPlanStatus()
+        .catch(() => {});
+      return;
+    }
+    // Server reachable but the RPC failed — retry via the queue.
+    await enqueue();
+  } catch (err) {
+    console.warn(
+      `[finalizeDineInPaymentClear] close_and_free_session failed for session ${sessionId}; queued for retry:`,
+      err,
+    );
+    await enqueue();
+  }
 }

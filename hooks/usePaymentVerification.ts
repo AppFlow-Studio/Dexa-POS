@@ -2,6 +2,7 @@ import { connectionQuality, type Quality } from "@/lib/network/connectionQuality
 import { DEADLINES, PAYMENT_VERIFY_TIMER_MS } from "@/lib/network/deadlines";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { OrderService } from "@/services/orderService";
+import { getSharedValorService } from "@/services/terminals/valor-service";
 import {
     completePaymentJournal,
     failPaymentJournal,
@@ -376,25 +377,56 @@ export function usePaymentVerification() {
       null;
 
     const consumedId = verification.journalId;
-    // process_payment_v9 sniffs for `castles_transaction` key to set
-    // order_payments.terminal_type='castles' (line 716-720 of the SQL).
-    // Without it the row defaults to 'dejavoo'. We populate every Castles
-    // field we can salvage from the journal — card details / RRN / STAN /
-    // approval code are gone with the lost TCP response.
     const recoveredAt = new Date().toISOString();
-    const params: any = {
-      p_order_id: verification.orderDbId,
-      p_payment_method: (verification.paymentMethod ?? "card").toLowerCase(),
-      p_amount: verification.amountCents / 100,
-      p_tip_amount: (verification.tipCents ?? 0) / 100,
-      p_terminal_id: terminalId,
-      p_station_id: stationId,
-      p_terminal_response: {
-        // Top-level marker — picked up by reconciliation tooling
+    const terminalType =
+      useStoreSettingsStore.getState().selectedStation?.payment_terminal
+        ?.terminal_type;
+
+    // Build the terminal_response the RPC sniffs to set order_payments.terminal_type.
+    let terminalResponse: Record<string, unknown>;
+
+    if (terminalType === "valor") {
+      // Valor upgrade over Castles: instead of trusting the operator's eyeball,
+      // re-query the terminal authoritatively by STAN (TRAN_MODE 90). The STAN
+      // was captured into the journal's terminalTxnId at S2 (before card).
+      const stan = verification.terminalTxnId ?? undefined;
+      let recovered: Record<string, unknown> | null = null;
+      if (stan) {
+        try {
+          const rec = await getSharedValorService().transactionStatus(stan);
+          if (rec.outcome === "approved" && rec.terminalResponse) {
+            recovered = rec.terminalResponse;
+          }
+        } catch {
+          // Fall through to the operator-confirmed marker.
+        }
+      }
+      terminalResponse = recovered ?? {
+        manual_reconciliation: true,
+        recovered_at: recoveredAt,
+        terminal_vendor: "valor",
+        // Server keys off this nested field to set terminal_type='valor'.
+        valor_transaction: {
+          reqTxnId: null,
+          stanNo: stan ?? null,
+          amountBase: (verification.amountCents / 100).toFixed(2),
+          amountTip: ((verification.tipCents ?? 0) / 100).toFixed(2),
+          amountTotal: (
+            (verification.amountCents + (verification.tipCents ?? 0)) /
+            100
+          ).toFixed(2),
+          transactionType: "sale",
+          manual_reconciliation: true,
+          recovered_at: recoveredAt,
+        },
+      };
+    } else {
+      // Castles (and default): manual marker — card details / RRN / STAN /
+      // approval code are gone with the lost TCP response.
+      terminalResponse = {
         manual_reconciliation: true,
         recovered_at: recoveredAt,
         terminal_vendor: "castles",
-        // Server keys off this nested field to set terminal_type='castles'
         castles_transaction: {
           referenceId: verification.terminalTxnId ?? null,
           amountBase: (verification.amountCents / 100).toFixed(2),
@@ -407,7 +439,17 @@ export function usePaymentVerification() {
           manual_reconciliation: true,
           recovered_at: recoveredAt,
         },
-      },
+      };
+    }
+
+    const params: any = {
+      p_order_id: verification.orderDbId,
+      p_payment_method: (verification.paymentMethod ?? "card").toLowerCase(),
+      p_amount: verification.amountCents / 100,
+      p_tip_amount: (verification.tipCents ?? 0) / 100,
+      p_terminal_id: terminalId,
+      p_station_id: stationId,
+      p_terminal_response: terminalResponse,
     };
 
     try {

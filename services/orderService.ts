@@ -26,6 +26,11 @@ import {
     UpdateOrderItemQuantityResult,
     UpdateOrderItemResult,
 } from "@/types/db-order-management-types";
+import {
+    buildHistoryOrderQuery,
+    EMPTY_DRAFT_EXCLUSION_OR,
+    type HistoryOrderFilters,
+} from "@/services/historyOrderFilters";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -141,6 +146,49 @@ export type ReopenCheckResult = {
   reopen_count?: number;
 };
 
+/**
+ * Short-lived cache of a POSITIVE session-validity result.
+ *
+ * `ensureSessionValid` runs as a serial pre-flight before hot mutations, so an
+ * uncached call adds a full extra round trip in front of the RPC the user is
+ * actually waiting on — it's a large part of the "Creating order" wait on a
+ * slow connection.
+ *
+ * Safe to cache on the ORDER paths because this guard is the last and weakest
+ * of four kick-detection layers: `useSessionKickListener` already covers kicks
+ * via realtime broadcast (instant), a 30s poll, and app-foreground
+ * revalidation — and this function fails open on any RPC error anyway. The
+ * default TTL matches that poller's 30s interval, so the guard is never staler
+ * than the primary detection the app already relies on.
+ *
+ * NOT used on the payment path: `processPayment` passes `maxAgeMs: 0` to force
+ * a live check. Money movement is the one place where a stale "still valid"
+ * isn't an acceptable trade, and payments are already gated behind a
+ * multi-second terminal round trip, so the extra RPC is invisible there.
+ *
+ * Only `is_valid: true` is cached. A negative result is never cached, so a
+ * kicked session re-checks on every call.
+ *
+ * The key includes deviceId + sessionId, so a new session (re-login, station
+ * switch) can never read an entry belonging to the previous one.
+ */
+const SESSION_VALID_TTL_MS = 30_000;
+let _sessionValidCache: { key: string; checkedAt: number } | null = null;
+
+/**
+ * Minimal projection of an order used only to count/bucket it. Deliberately
+ * excludes items, payments and joins — see `getHistoryOrderSummaries`.
+ */
+export interface HistoryOrderSummary {
+  id: string;
+  created_at: string;
+  order_type: string | null;
+  order_source: string | null;
+  delivery_platform: string | null;
+  status: string | null;
+  payment_status: string | null;
+}
+
 export class OrderService {
   /**
    * Validates that the current station session is still active.
@@ -149,14 +197,29 @@ export class OrderService {
    *
    * This is a lightweight guard to prevent kicked devices from continuing
    * to perform operations if all realtime kick channels failed.
+   *
+   * @param opts.maxAgeMs How stale a cached positive result may be. Defaults to
+   *   SESSION_VALID_TTL_MS. Pass 0 to force a live check (payment path).
    */
-  static async ensureSessionValid(client: SupabaseClient): Promise<boolean> {
+  static async ensureSessionValid(
+    client: SupabaseClient,
+    opts?: { maxAgeMs?: number },
+  ): Promise<boolean> {
     try {
       const deviceId = getDeviceId();
       const sessionId = useStoreSettingsStore.getState().stationSessionId;
 
       if (!deviceId || !sessionId) {
         // No active session - allow operation (might be during setup)
+        return true;
+      }
+
+      const maxAgeMs = opts?.maxAgeMs ?? SESSION_VALID_TTL_MS;
+      const cacheKey = `${deviceId}:${sessionId}`;
+      if (
+        _sessionValidCache?.key === cacheKey &&
+        Date.now() - _sessionValidCache.checkedAt < maxAgeMs
+      ) {
         return true;
       }
 
@@ -186,9 +249,12 @@ export class OrderService {
           `[OrderService] SESSION INVALID - status: ${result.status}, ` +
             `kicked_by: ${result.kicked_by}. Blocking operation.`,
         );
+        // Not cached: a kicked session must re-check on every call.
+        _sessionValidCache = null;
         return false;
       }
 
+      _sessionValidCache = { key: cacheKey, checkedAt: Date.now() };
       return true;
     } catch (err) {
       // Fail open on unexpected errors
@@ -715,8 +781,12 @@ export class OrderService {
     params: ProcessPaymentV2Params,
     opts?: { keyOverride?: string },
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
-    // Session guard: prevent kicked devices from processing payments
-    const sessionValid = await OrderService.ensureSessionValid(client);
+    // Session guard: prevent kicked devices from processing payments.
+    // maxAgeMs: 0 — never trust a cached result on the money path. The extra
+    // round trip is invisible next to the terminal's own multi-second flow.
+    const sessionValid = await OrderService.ensureSessionValid(client, {
+      maxAgeMs: 0,
+    });
     if (!sessionValid) {
       return {
         data: null,
@@ -766,6 +836,15 @@ export class OrderService {
       // order (e.g. a $0.02 custom item split 2 ways) that fallback flipped the
       // order to `paid` after the FIRST $0.01 portion — amount_paid=$0.01 with a
       // real portion still owed — and enforce_order_math rejected it (P0005).
+      //
+      // NOTE: in-kind payments need NO process_payment change. 'inkind' is not
+      // 'cash', so every version from v12 up already routes it down the
+      // card-pricing path — which is exactly the desired behaviour. The
+      // tender-metadata corrections (zero fees, terminal_type 'none', no
+      // phantom settlement batch) are applied by the
+      // trg_inkind_normalize BEFORE INSERT trigger on order_payments, which is
+      // version-independent and therefore survives the next fork of this
+      // lineage. See 20260802100100_order_payments_inkind_normalize_trigger.sql.
       "process_payment_v16",
       params,
       {
@@ -1217,6 +1296,250 @@ export class OrderService {
 
     const { data, error } = await query;
     return { data, error };
+  }
+
+  /**
+   * Cheap staleness probe for a date window: the exact row count plus the most
+   * recent `updated_at`.
+   *
+   * Lets the screen show a cached page instantly and only refetch when the
+   * backend actually moved. `updated_at` (not `created_at`) is the signal
+   * because it also changes on the edits that matter here — a payment landing,
+   * a refund, a void, a check reopening — none of which alter the count.
+   *
+   * Two small queries, no rows returned by the first, one row by the second.
+   */
+  static async getHistoryWindowSignature(
+    client: SupabaseClient,
+    locationId: string,
+    startTs?: string | null,
+    endTs?: string | null,
+    signal?: AbortSignal,
+  ): Promise<{
+    count: number | null;
+    latestUpdatedAt: string | null;
+    error: any;
+  }> {
+    const scope = (q: any) => {
+      let scoped = q.eq("location_id", locationId);
+      if (startTs) scoped = scoped.gte("created_at", startTs);
+      if (endTs) scoped = scoped.lt("created_at", endTs);
+      if (signal) scoped = scoped.abortSignal(signal);
+      return scoped;
+    };
+
+    const countQuery = scope(
+      client.from("orders").select("id", { count: "exact", head: true }),
+    );
+    const latestQuery = scope(
+      client
+        .from("orders")
+        .select("updated_at")
+        .order("updated_at", { ascending: false })
+        .limit(1),
+    );
+
+    const [countRes, latestRes] = await Promise.all([countQuery, latestQuery]);
+
+    const error = (countRes as any)?.error ?? (latestRes as any)?.error ?? null;
+    if (error) return { count: null, latestUpdatedAt: null, error };
+
+    return {
+      count: (countRes as any)?.count ?? null,
+      latestUpdatedAt:
+        ((latestRes as any)?.data?.[0]?.updated_at as string | undefined) ??
+        null,
+      error: null,
+    };
+  }
+
+  /**
+   * Fetch one page of filtered history, plus the exact total matching the same
+   * filters.
+   *
+   * This replaces the "fetch 30 by created_at, then filter/sort/search/count in
+   * JS" approach. Because `buildHistoryOrderQuery` is applied to both the page
+   * and the count, the "N of M" the merchant reads is always consistent with
+   * the rows beneath it, and sort/search cover the whole date window rather
+   * than the loaded pages.
+   *
+   * Discrete offset paging: page N is fetched independently, so the merchant
+   * can jump forward AND backward. (An earlier keyset/cursor design only walked
+   * forward, which suits infinite scroll but can't express "previous page".)
+   * Offset paging is the right trade here — 50-row pages over a date-bounded
+   * window keep the skip shallow, and correctness beats constant-time.
+   *
+   * `totalCount` is requested only when asked for, since the total is a
+   * property of the filters and doesn't change between pages of one result set.
+   */
+  static async getFilteredHistoryPage(
+    client: SupabaseClient,
+    params: {
+      locationId: string;
+      filters: HistoryOrderFilters;
+      /** Rows per page. */
+      limit: number;
+      /** Zero-based row offset — `pageIndex * limit`. */
+      offset?: number;
+      startTs?: string | null;
+      endTs?: string | null;
+      /** Request the exact total alongside the page. */
+      withCount?: boolean;
+      signal?: AbortSignal;
+    },
+  ): Promise<{
+    data: any[] | null;
+    error: any;
+    hasMore: boolean;
+    totalCount: number | null;
+  }> {
+    const {
+      locationId,
+      filters,
+      limit,
+      offset = 0,
+      startTs,
+      endTs,
+      withCount = false,
+      signal,
+    } = params;
+
+    const applyScope = (q: any) => {
+      let scoped = q.eq("location_id", locationId);
+      if (startTs) scoped = scoped.gte("created_at", startTs);
+      if (endTs) scoped = scoped.lt("created_at", endTs);
+      return scoped;
+    };
+
+    // ── Page query ───────────────────────────────────────────
+    let pageQuery: any = client.from("orders").select(
+      `
+        *,
+        order_items (*),
+        order_payments (*),
+        order_discounts (*),
+        stations (station_name),
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name),
+        online_orders:online_orders!online_orders_order_id_fkey (order_id, provider, delivery_company)
+      `,
+    );
+    pageQuery = applyScope(pageQuery).eq("order_items.is_voided", false);
+    pageQuery = buildHistoryOrderQuery(pageQuery, filters);
+    pageQuery = pageQuery.range(offset, offset + limit - 1);
+
+    if (signal) pageQuery = pageQuery.abortSignal(signal);
+
+    // ── Count query (first page only) ────────────────────────
+    // head:true returns no rows — just the Content-Range total.
+    const countPromise = withCount
+      ? (() => {
+          let countQuery: any = client
+            .from("orders")
+            .select("id", { count: "exact", head: true });
+          countQuery = applyScope(countQuery);
+          countQuery = buildHistoryOrderQuery(countQuery, filters);
+          if (signal) countQuery = countQuery.abortSignal(signal);
+          return countQuery;
+        })()
+      : null;
+
+    const [pageResult, countResult] = await Promise.all([
+      pageQuery,
+      countPromise ?? Promise.resolve(null),
+    ]);
+
+    const { data, error } = pageResult as { data: any[] | null; error: any };
+    if (error) {
+      return { data: null, error, hasMore: false, totalCount: null };
+    }
+
+    const rows = data ?? [];
+    const totalCount =
+      (countResult as { count?: number | null } | null)?.count ?? null;
+
+    return {
+      data: rows,
+      error: null,
+      // With a known total, "more" is exact. Without one, a full page implies
+      // there is probably another.
+      hasMore:
+        totalCount != null ? offset + rows.length < totalCount : rows.length === limit,
+      totalCount,
+    };
+  }
+
+  /**
+   * Fetch the discriminator columns for EVERY order in a date window — no
+   * joins, no items, no payments.
+   *
+   * The history list is paginated 30 rows at a time, so any count derived from
+   * `previousOrders` is a count of the loaded page, not of the window. Over a
+   * two-month range that made the Previous Orders channel tabs read "Online 6"
+   * when the window actually held far more. This query is what the tab and
+   * provider-chip counts are computed from: one cheap round trip per window
+   * change that covers the whole range.
+   *
+   * Search and status are applied server-side so the counts always describe the
+   * same population the list is showing. Channel and provider are NOT applied —
+   * those are the axes being counted.
+   *
+   * Capped at 5000 rows. Beyond that the counts under-report rather than
+   * blowing up the response — see `truncated` on the result.
+   */
+  static async getHistoryOrderSummaries(
+    client: SupabaseClient,
+    locationId: string,
+    startTs?: string | null,
+    endTs?: string | null,
+    signal?: AbortSignal,
+    /**
+     * Search + status from the active filters. Channel/provider are omitted on
+     * purpose — they're the axes being counted, so constraining them would make
+     * every tab report its own count as the total.
+     */
+    filters?: HistoryOrderFilters,
+  ): Promise<{
+    data: HistoryOrderSummary[] | null
+    error: any
+    truncated: boolean
+  }> {
+    const CAP = 5000
+    let query: any = client
+      .from('orders')
+      .select(
+        'id, created_at, order_type, order_source, delivery_platform, status, payment_status'
+      )
+      .eq('location_id', locationId)
+
+    if (startTs) query = query.gte('created_at', startTs)
+    if (endTs) query = query.lt('created_at', endTs)
+
+    if (filters) {
+      query = buildHistoryOrderQuery(query, {
+        ...filters,
+        channel: 'all',
+        provider: 'all',
+        // Sort is irrelevant to a count and would add an ORDER BY for nothing.
+        sort: 'date_desc',
+      })
+    } else {
+      // No filters → buildHistoryOrderQuery never ran, so the empty-draft
+      // exclusion it normally applies must be added here or the counts would
+      // include drafts the list excludes.
+      query = query
+        .or(EMPTY_DRAFT_EXCLUSION_OR)
+        .order('created_at', { ascending: false })
+    }
+
+    query = query.limit(CAP)
+    if (signal) query = query.abortSignal(signal)
+
+    const { data, error } = await query
+    return {
+      data: data as HistoryOrderSummary[] | null,
+      error,
+      truncated: (data?.length ?? 0) >= CAP
+    }
   }
 
   /**
@@ -1993,6 +2316,51 @@ export class OrderService {
     }
 
     return result;
+  }
+
+  /**
+   * Wave B — atomically close the check AND free the dine-in session via the
+   * close_and_free_session RPC, so the terminal transitions route through the
+   * event projector (stamping paid_at + emitting payment_complete/table_cleared/
+   * table_cleaned). Idempotent + replay-safe: returns { already_freed: true }
+   * when the session was already freed by a prior attempt or another station.
+   */
+  static async closeAndFreeSession(
+    client: SupabaseClient,
+    orderId: string,
+    sessionId: string,
+    staffId?: string | null,
+    idempotencyKey?: string | null,
+  ): Promise<{ success: boolean; already_freed?: boolean; error?: string }> {
+    const { data, error } = await _runWithDeadline<any>(
+      "close_and_free_session",
+      DEADLINES.closeCheck,
+      async (signal) => {
+        const { data: d, error: e } = await client
+          .rpc("close_and_free_session", {
+            p_order_id: orderId,
+            p_session_id: sessionId,
+            p_staff_id: staffId || null,
+            p_idempotency_key: idempotencyKey || null,
+          })
+          .abortSignal(signal);
+        return { data: d, error: e };
+      },
+    );
+
+    if (error) {
+      console.error("[OrderService:closeAndFreeSession] RPC error:", error);
+      return { success: false, error: error.message };
+    }
+
+    const result = (data ?? {}) as {
+      success?: boolean;
+      already_freed?: boolean;
+    };
+    return {
+      success: result.success === true,
+      already_freed: result.already_freed === true,
+    };
   }
 
   /**

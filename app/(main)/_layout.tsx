@@ -6,6 +6,8 @@ import NotificationBottomSheet from "@/components/notifications/NotificationBott
 import OnlineOrderDrawer from "@/components/online-orders/OnlineOrderDrawer";
 import OnlineOrderEdgeTab from "@/components/online-orders/OnlineOrderEdgeTab";
 import MyProfilePanel from "@/components/profile/MyProfilePanel";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
+import { PanelSheetHostContext } from "@/components/ui/PanelSheet";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
@@ -14,7 +16,18 @@ import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { useTableSessionInit } from "@/hooks/useTableSessionInit";
 import { setHeaderHeight } from "@/lib/headerHeight";
+import { hintNativeGc } from "@/lib/nativeMemory";
 import { isOnlineOrderSource } from "@/lib/orderSource";
+import {
+  KEY_FANOUT_KDS_MS,
+  KEY_FANOUT_ORDER_STORE_MS,
+  KEY_FANOUT_PREV_ORDERS_MS,
+} from "@/lib/telemetry/keys";
+import {
+  noteBroadcastFanoutEnd,
+  recordSpan,
+  setCurrentRoute,
+} from "@/lib/telemetry/registry";
 import { colors, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { hydrateDrawerSession } from "@/services/cashDrawerService";
@@ -22,13 +35,14 @@ import KDSSoundService from "@/services/kds/kdsSoundService";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
-import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import {
   selectIsOpen as selectModifierOpen,
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
+import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import {
   getOrderStoreSupabaseClient,
+  shouldSuppressOwnEchoBroadcast,
   useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -37,7 +51,6 @@ import { useProfileOverlayStore } from "@/stores/useProfileOverlayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
 import { useAuth } from "@clerk/clerk-expo";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { PortalHost } from "@rn-primitives/portal";
 import { Redirect, Slot, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -51,18 +64,15 @@ import {
   unstable_batchedUpdates,
   View,
 } from "react-native";
-import { hintNativeGc } from "@/lib/nativeMemory";
-import {
-  KEY_FANOUT_KDS_MS,
-  KEY_FANOUT_ORDER_STORE_MS,
-  KEY_FANOUT_PREV_ORDERS_MS,
-} from "@/lib/telemetry/keys";
-import {
-  noteBroadcastFanoutEnd,
-  recordSpan,
-  setCurrentRoute,
-} from "@/lib/telemetry/registry";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+/**
+ * Hoisted so the reference is stable across renders. This layout re-renders on
+ * every navigation (usePathname), and an inline `() => {}` would be a new prop
+ * each time, defeating React.memo on the sheet it's passed to.
+ */
+const NOOP = () => {};
+
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge({ locationId }: { locationId: string }) {
   useOrderSyncRecovery(locationId);
@@ -105,8 +115,16 @@ export default function MainLayout() {
   const clearSheetRef = useNotificationSheetStore(
     (state) => state.clearSheetRef,
   );
-  const { setSearchSheetRef, clearSearchSheetRef } =
-    useMenuManagementSearchStore();
+  // Selector-scoped: calling useMenuManagementSearchStore() bare subscribes this
+  // layout to the WHOLE store, so an unrelated `setActiveTab` (menu-management
+  // sidebar) re-rendered the entire app shell — Header, every persistent sheet
+  // and the <Slot/> subtree. These two actions are stable store functions.
+  const setSearchSheetRef = useMenuManagementSearchStore(
+    (s) => s.setSearchSheetRef,
+  );
+  const clearSearchSheetRef = useMenuManagementSearchStore(
+    (s) => s.clearSearchSheetRef,
+  );
 
   // Complementary mitigation to the screens animation fix (lib/screenConfig.ts):
   // hint a GC after every navigation so native cleaners drain promptly.
@@ -119,8 +137,8 @@ export default function MainLayout() {
 
   // Wave-0 telemetry: tag long-task samples with the screen they blocked.
   useEffect(() => {
-    setCurrentRoute(pathname)
-  }, [pathname])
+    setCurrentRoute(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (!isKDS) {
@@ -232,7 +250,19 @@ export default function MainLayout() {
 
   const handleOrderChange = useCallback((payload: OrderPayload) => {
     const broadcastPayload = payload as unknown as OrderBroadcastPayload;
-    if (__DEV__) {
+
+    // Own-echo fast path: an UPDATE broadcast that is just the server echoing
+    // this station's own mutation back (inside the mutation window, no status
+    // advance) carries nothing any consumer needs — the RPC ack already
+    // reconciled local state. The order store additionally gates internally,
+    // but running the previous-orders and KDS handlers for these echoes was
+    // two extra merge passes per echo, twice per add, mid-burst. Route it to
+    // the order store only (which marks detail stale and returns) and skip
+    // the rest — including the dev log, which was itself measurable spam
+    // during a rapid ordering burst.
+    const suppressedEcho = shouldSuppressOwnEchoBroadcast(broadcastPayload);
+
+    if (__DEV__ && !suppressedEcho) {
       console.log("🔔 [MainLayout] Broadcast received:", {
         operation: broadcastPayload.operation,
         orderId: broadcastPayload.data?.order?.id,
@@ -246,6 +276,7 @@ export default function MainLayout() {
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
       const t1 = performance.now();
       recordSpan(KEY_FANOUT_ORDER_STORE_MS, t1 - t0);
+      if (suppressedEcho) return;
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
       const t2 = performance.now();
       recordSpan(KEY_FANOUT_PREV_ORDERS_MS, t2 - t1);
@@ -412,7 +443,7 @@ export default function MainLayout() {
             bottomSheetRef={
               notificationSheetRef as React.RefObject<BottomSheetMethods>
             }
-            onClose={() => {}}
+            onClose={NOOP}
           />
           <PaymentBottomSheet />
           <View
@@ -466,8 +497,14 @@ export default function MainLayout() {
             presentationStyle="fullScreen"
             onRequestClose={closeProfile}
           >
-            <MyProfilePanel onClose={closeProfile} />
-            <PortalHost name="profile-overlay" />
+            {/* Sheets opened inside the profile Modal must portal into a host that
+                lives *inside* the Modal, or they'd render behind this fullScreen
+                window. The context makes every PanelSheet in this subtree default to
+                the 'profile-overlay' host. */}
+            <PanelSheetHostContext.Provider value="profile-overlay">
+              <MyProfilePanel onClose={closeProfile} />
+              <PortalHost name="profile-overlay" />
+            </PanelSheetHostContext.Provider>
           </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>

@@ -41,16 +41,25 @@ export default function AuthLayout() {
       className="flex-1 flex-row items-center justify-center p-8"
       style={{ backgroundColor: colors.screen }}
     >
-      {/* Left side: branding panel on pin-login, burger image on others */}
+      {/* Left side: branding panel on pin-login, Dexa logo on others */}
       <View className="flex-1 h-full w-1/2">
         {isPinLogin ? (
           <MerchantBrandingPanel />
         ) : (
-          <Image
-            source={images.loginBurger}
-            className="w-full h-full rounded-2xl"
-            resizeMode="cover"
-          />
+          <View
+            className="flex-1 h-full items-center justify-center rounded-2xl p-12"
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Image
+              source={images.dexalogo}
+              className="w-full h-full"
+              resizeMode="contain"
+            />
+          </View>
         )}
       </View>
 

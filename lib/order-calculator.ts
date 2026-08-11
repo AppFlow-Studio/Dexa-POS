@@ -904,15 +904,32 @@ export function calculateOrderTotals (
     // authoritative, and the card-equivalent payment reconstruction (amount + cashSavings) under-counts
     // mixed cash/card payments, manufacturing a phantom residual (ORD-S2-0001). This mirrors the
     // downward clamp below, which is already disabled under preserveItemLevelOutstanding.
-    const customRefundBalance = preserveItemLevelOutstanding
-      ? new Decimal(0)
-      : Decimal.max(
-          paymentBasedOutstanding.minus(outstandingCardTotal),
-          new Decimal(0)
-        )
+    //
+    // ALSO skip when the order has per-ITEM refunds. The item-level outstanding
+    // already re-exposes a refunded item at its OWN card and cash price (via
+    // refundedQuantity → subtotal / cash_subtotal), i.e. correctly dual-priced.
+    // The payment-level residual, by contrast, reconstructs the refund's
+    // card-equivalent PROPORTIONALLY (cardEquivalent × refunded/amount), which
+    // is wrong when items have different card/cash spreads — it inflates BOTH
+    // bases and, added flat, makes card and cash diverge unreconcilably
+    // (e.g. refunding a low-spread item on an order with a high-spread item).
+    // Letting item-level win here keeps the two bases reconcilable. The downward
+    // clamp below still guards genuine over-counts (e.g. split-evenly, which does
+    // NOT mark items and so never sets refundedQuantity — this gate stays inert
+    // there). This only diverges from the payment-level path in the rare case of
+    // an item refund coexisting with a payment gap (underpayment / custom refund),
+    // where item-level — populated only by real payment allocations — is trusted.
+    const hasItemRefunds = items.some((i) => (i.refundedQuantity ?? 0) > 0)
+    const customRefundBalance =
+      preserveItemLevelOutstanding || hasItemRefunds
+        ? new Decimal(0)
+        : Decimal.max(
+            paymentBasedOutstanding.minus(outstandingCardTotal),
+            new Decimal(0)
+          )
     outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance)
-    // This balance is the shared order-level SC (and its tax). Cash and card
-    // carry the same flat remainder, so do not dual-price it.
+    // Non-item residual (shared SC, custom refund, reopen rounding) is flat by
+    // nature — the same remainder on both bases, so do not dual-price it.
     outstandingCashTotal = outstandingCashTotal.plus(customRefundBalance)
 
     // Clamping: when payments exceed item-level tracking (e.g., split-evenly doesn't mark items),

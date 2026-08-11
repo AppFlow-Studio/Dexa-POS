@@ -5,6 +5,8 @@ import {
 } from "@/lib/kitchenStatusUtils";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
+import { isNothingLeftToCollect } from "@/lib/paymentGuards";
+import { toDbPaymentMethod } from "@/lib/paymentMethod";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
@@ -448,6 +450,18 @@ function calculateOrderTotals(
     ...buildServiceChargeInputForOrder(order),
   });
 }
+
+/**
+ * Order-aware live totals for surfaces that must recompute an order's totals
+ * OUTSIDE the store subscription (e.g. the Previous Orders overlay). Resolves the
+ * service-charge inputs (rule + party size + server-confirmed fallback) from the
+ * live stores, then computes via the module calculator (TTL-cached). Mirrors what
+ * useOrderTotals shows, so recomputing here matches the table view / payment sheet
+ * on the FIRST render — before _ensureTotalsFresh has refreshed the persisted
+ * `service_charge` / `total_amount` scalars (which only happens once the order is
+ * opened).
+ */
+export const calculateOrderTotalsForOrder = calculateOrderTotals;
 
 // ============================================================================
 // HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
@@ -960,6 +974,28 @@ const ORDER_CREATION_TIMEOUT_MS = 30000; // 30 seconds
 const pendingItemAdditions: Map<string, Promise<boolean>> = new Map();
 // Per-order serial chain to prevent concurrent ensureOrderCreated calls
 const orderAdditionChains = new Map<string, Promise<any>>();
+
+/**
+ * Run `fn` after the current frame has been handed to the renderer.
+ *
+ * requestAnimationFrame fires before the frame is committed, so the nested
+ * setTimeout(0) is what actually pushes the work into the following task —
+ * past the React commit and paint triggered by the caller's store write. Used
+ * by addItemToActiveOrder to keep the cart write alone on the DONE frame.
+ *
+ * Deliberately NOT InteractionManager.runAfterInteractions: that queue is
+ * starved while the user keeps tapping, so during a rapid ordering burst the
+ * deferred work would pile up and then flush all at once on the first pause.
+ */
+const scheduleAfterPaint = (fn: () => void): void => {
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(() => {
+      setTimeout(fn, 0);
+    });
+    return;
+  }
+  setTimeout(fn, 0);
+};
 
 // Global per-order sync dedupe to prevent duplicate fetch/hydration work.
 const inFlightDbOrderSyncs = new Map<string, Promise<string | null>>();
@@ -2851,6 +2887,16 @@ const syncPaymentToBackend = async (
       return details.castlesTransaction as Record<string, unknown>;
     }
 
+    // Valor: pre-built JSONB from buildValorTerminalResponse() — pass through directly
+    if (details.valorTransaction) {
+      return details.valorTransaction as Record<string, unknown>;
+    }
+
+    // ATOM: pre-built JSONB from buildAtomTerminalResponse() — pass through directly
+    if (details.atomTransaction) {
+      return details.atomTransaction as Record<string, unknown>;
+    }
+
     const tx = details.dejavooTransaction;
     const entryType = tx?.entryType ?? tx?.entryMode;
     const amounts = tx?.amounts || {
@@ -2935,7 +2981,9 @@ const syncPaymentToBackend = async (
     // Build payment params for process_payment_v8 (will be resolved when order syncs)
     const paymentParams = {
       p_order_id: order.id, // Will be resolved to db_order_id at sync time
-      p_payment_method: isCash ? "cash" : "card",
+      // Canonical mapping so a queued OFFLINE in-kind payment replays as
+      // 'inkind' rather than being flattened to a card sale on sync.
+      p_payment_method: toDbPaymentMethod(paymentDetails.method),
       p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
       p_tip_amount: paymentDetails.tipAmount || 0,
       p_amount_tendered: isCash
@@ -2978,7 +3026,11 @@ const syncPaymentToBackend = async (
   try {
     // Determine if this is a cash or card payment
     const isCash = paymentDetails.method === "Cash";
-    const paymentMethod = isCash ? "cash" : "card";
+    // Canonical mapping — NOT `isCash ? "cash" : "card"`. In-kind must reach
+    // the backend as 'inkind'; collapsing it to 'card' here would record a
+    // phantom card sale, inflate the card settlement total, and defeat
+    // trg_inkind_normalize (which keys off the method).
+    const paymentMethod = toDbPaymentMethod(paymentDetails.method);
     const terminalResponse = buildTerminalResponse();
 
     // Build item allocations for per-item payments (convert to backend format)
@@ -3034,11 +3086,13 @@ const syncPaymentToBackend = async (
       //                            pay-for-items client paths already scale
       //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      // v16 — split-payment fully-paid requires ALL portions captured (drops
-      // v15's `balance <= 0.02` dust fallback that flipped a tiny split to paid
-      // after the first portion). MUST match orderService.processPayment, which
-      // also calls v16 — this is the direct (non-OrderService) payment path.
-      "process_payment_v16",
+      // v17 — forks v16 byte-identical + a valor_transaction branch that funnels
+      // Valor's nested card fields (cardLast4/rrn/approvalCode/entryMode) into the
+      // order_payments columns and stamps terminal_type='valor'. Without it the
+      // client called v16 (no valor arm) so Valor payments persisted with null
+      // last4/rrn/auth and a 'dejavoo' label. MUST match
+      // orderService.processPayment, which also calls v17.
+      "process_payment_v17",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -3278,7 +3332,8 @@ const syncPaymentToBackend = async (
 
       const paymentParams = {
         p_order_id: order.db_order_id,
-        p_payment_method: isCashRetry ? "cash" : "card",
+        // Canonical mapping — a retried in-kind payment must stay 'inkind'.
+        p_payment_method: toDbPaymentMethod(paymentDetails.method),
         p_amount: isFullRemainingPaymentRetry ? null : paymentDetails.amount,
         p_tip_amount: paymentDetails.tipAmount || 0,
         p_amount_tendered: isCashRetry
@@ -4199,6 +4254,86 @@ const nextPendingPaymentSeq = () => ++_pendingPaymentSeqCounter;
 const lastLocalMutationAt: Record<string, number> = {};
 const OWN_STATION_MUTATION_WINDOW_MS = 3000;
 
+// --- Merge-quantity sync coalescer (see the isMergeOperation branch in
+// addItemToActiveOrder). Keyed by cart-item id; each pending entry holds the
+// barrier resolvers of every tap folded into the window so kitchen-send /
+// payment barriers observe the coalesced RPC's real outcome.
+const pendingMergeQtySyncs = new Map<
+  string,
+  {
+    timer: ReturnType<typeof setTimeout>;
+    resolvers: Array<(ok: boolean) => void>;
+  }
+>();
+// Trailing window per item: long enough to fold a fast tap-DONE-tap cadence
+// on the same item into one RPC, short enough that the sync indicator still
+// settles promptly after the burst.
+const MERGE_QTY_SYNC_COALESCE_MS = 250;
+
+// --- Deferred-totals bookkeeping (module state, deliberately NOT store
+// state — see _scheduleTotalsRecompute). Cleared for an order when it is
+// removed; a leaked entry is harmless (ensureTotalsFresh no-ops on a missing
+// order and deletes the flag).
+const pendingTotalsRecalc = new Set<string>();
+const pendingTotalsTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Trailing debounce for the totals pass. 120ms puts the recompute in the gap
+// BETWEEN two human taps (a fast cycle is ~200-500ms/item) instead of on the
+// DONE frame itself, and coalesces adds that land closer together than that.
+// Commit points flush synchronously via _ensureTotalsFresh, so a payment or
+// kitchen-send never sees stale totals no matter how fast the taps were.
+const TOTALS_RECALC_DEBOUNCE_MS = 120;
+
+// Status ranking shared by the own-echo suppression gate (and mirroring the
+// rank table used for status-advance refresh decisions further down): an
+// own-station echo inside the mutation window is only allowed through when
+// the backend status outranks the local one.
+const ORDER_STATUS_RANK_FOR_ECHO: Record<string, number> = {
+  draft: 0,
+  accepted: 1,
+  sent_to_kitchen: 1,
+  preparing: 1,
+  ready: 2,
+  closed: 3,
+  declined: 4,
+  void: 4,
+};
+
+/**
+ * Same predicate as the own-echo gate inside _handleOrderBroadcast, exported
+ * for the fan-out layer (app/(main)/_layout.tsx). The order store drops these
+ * echoes itself, but the fan-out was still running the previous-orders AND
+ * KDS handlers for every one — two more merge passes per echo, twice per add
+ * during a burst. The fan-out calls this once and skips both when true.
+ * (_handleOrderBroadcast keeps its internal gate so no caller can regress it.)
+ */
+export function shouldSuppressOwnEchoBroadcast(
+  payload: OrderBroadcastPayload,
+): boolean {
+  if (payload?.operation !== "UPDATE") return false;
+  const backendOrder = payload.data?.order;
+  const dbOrderId = backendOrder?.id;
+  if (!dbOrderId) return false;
+  const state = useOrderStore.getState();
+  if (
+    !state.currentStationId ||
+    backendOrder.station_id !== state.currentStationId
+  ) {
+    return false;
+  }
+  const localOrderKey = state.dbOrderIdIndex[dbOrderId] ?? dbOrderId;
+  const localOrder = state.ordersById[localOrderKey];
+  if (!localOrder) return false;
+  const ts =
+    lastLocalMutationAt[dbOrderId] ?? lastLocalMutationAt[localOrderKey];
+  if (ts == null || Date.now() - ts >= OWN_STATION_MUTATION_WINDOW_MS) {
+    return false;
+  }
+  const localRank =
+    ORDER_STATUS_RANK_FOR_ECHO[localOrder.order_status ?? ""] ?? 0;
+  const backendRank = ORDER_STATUS_RANK_FOR_ECHO[backendOrder.status ?? ""] ?? 0;
+  return backendRank <= localRank;
+}
+
 // Clear per-order broadcast-throttle module state when an order leaves
 // ordersById, so these dicts don't grow unbounded across a long shift (an
 // order is created+archived many times per day). The throttle dicts are keyed
@@ -4336,6 +4471,10 @@ function mergeTransactionDetails(
       broadcast.castlesTransaction ?? local.castlesTransaction,
     dejavooTransaction:
       broadcast.dejavooTransaction ?? local.dejavooTransaction,
+    valorTransaction:
+      broadcast.valorTransaction ?? local.valorTransaction,
+    atomTransaction:
+      broadcast.atomTransaction ?? local.atomTransaction,
   };
 }
 
@@ -4807,11 +4946,10 @@ export const useOrderStore = create<OrderState>()(
           tableOrderIdIndex: {},
           persistableOrderIds: {},
 
-          // Orders whose cached totals fields are stale because addItemToActiveOrder /
-          // incrementItemQuantity took the deferred fast-path. Drained by
-          // `_scheduleTotalsRecompute` (setTimeout 0, coalesces rapid adds into one
-          // recompute) or synchronously by `_ensureTotalsFresh` (called at commit
-          // points like kitchen-send and payment).
+          // Legacy field — the pending-totals flag now lives in the
+          // module-level `pendingTotalsRecalc` Set (see below). Kept in state
+          // shape only so persisted snapshots from older builds hydrate
+          // cleanly; nothing reads it.
           _pendingTotalsRecalc: {} as Record<string, true>,
 
           // === WORKING SET (Phase 5) ===
@@ -4822,29 +4960,46 @@ export const useOrderStore = create<OrderState>()(
           paymentSyncStatus: "idle",
 
           // --- DEFERRED TOTALS (perf: rapid-add coalescing) ---
+          //
+          // The dirty flag is module state (`pendingTotalsRecalc`), NOT store
+          // state. As store state, arming and clearing it were two extra
+          // zustand commits per add — each one running every mounted selector
+          // and the persist partialize — purely for internal bookkeeping no
+          // component reads. An add is now exactly one commit (items) plus one
+          // coalesced totals commit per burst.
+          //
+          // Debounced TRAILING at TOTALS_RECALC_DEBOUNCE_MS: during a rapid
+          // tap-DONE-tap burst each add re-arms the timer, so the whole burst
+          // pays ONE calculateOrderTotals + ONE commit instead of one per
+          // item. Correctness is unchanged — every commit point that needs
+          // fresh numbers (kitchen-send, payment, discount, present-check)
+          // already calls `_ensureTotalsFresh(orderId)`, which flushes
+          // synchronously regardless of the timer.
           _scheduleTotalsRecompute: (orderId: string) => {
-            const s = get();
-            if (s._pendingTotalsRecalc[orderId]) return;
-            set((state) => {
-              state._pendingTotalsRecalc[orderId] = true as const;
-            });
-            // setTimeout(0) — not queueMicrotask — so React commits the items-only
-            // update and paints before this fires. Coalesces all adds within one
-            // event-loop turn into a single recompute.
-            setTimeout(() => {
-              if (!get()._pendingTotalsRecalc[orderId]) return; // flushed already
-              get()._ensureTotalsFresh(orderId);
-            }, 0);
+            pendingTotalsRecalc.add(orderId);
+            const existing = pendingTotalsTimers.get(orderId);
+            if (existing) clearTimeout(existing);
+            pendingTotalsTimers.set(
+              orderId,
+              setTimeout(() => {
+                pendingTotalsTimers.delete(orderId);
+                if (!pendingTotalsRecalc.has(orderId)) return; // flushed already
+                get()._ensureTotalsFresh(orderId);
+              }, TOTALS_RECALC_DEBOUNCE_MS),
+            );
           },
 
           _ensureTotalsFresh: (orderId: string) => {
             const s = get();
-            if (!s._pendingTotalsRecalc[orderId]) return;
+            if (!pendingTotalsRecalc.has(orderId)) return;
+            pendingTotalsRecalc.delete(orderId);
+            const timer = pendingTotalsTimers.get(orderId);
+            if (timer) {
+              clearTimeout(timer);
+              pendingTotalsTimers.delete(orderId);
+            }
             const order = s.ordersById[orderId];
             if (!order) {
-              set((state) => {
-                delete state._pendingTotalsRecalc[orderId];
-              });
               return;
             }
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -4869,7 +5024,6 @@ export const useOrderStore = create<OrderState>()(
             set((state) => {
               const o = state.ordersById[orderId];
               if (!o) {
-                delete state._pendingTotalsRecalc[orderId];
                 return;
               }
               if (itemsForState !== order.items) o.items = itemsForState;
@@ -4927,7 +5081,6 @@ export const useOrderStore = create<OrderState>()(
                 state.activeOrderOutstandingCash =
                   totals.cash_outstanding_total;
               }
-              delete state._pendingTotalsRecalc[orderId];
             });
 
             // Service charge: fire the server-authoritative sync if our
@@ -5196,6 +5349,52 @@ export const useOrderStore = create<OrderState>()(
             // DECISION POINT 1: Is this our own station's order?
             const isOwnStationOrder =
               backendOrder.station_id === currentStationId;
+
+            // ═══════════════════════════════════════════════════════════════
+            // OWN-ECHO SUPPRESSION (the "eventual echo fix" the Wave-0
+            // KEY_RT_OWN_ECHO_SLIP telemetry was capturing for).
+            //
+            // Every local mutation RPC makes the server emit UPDATE broadcasts
+            // that come straight back to this station — often two per add (the
+            // item RPC and the totals bump). The RPC acknowledgement has
+            // already reconciled local state by then, so the echo carries
+            // nothing we need; but 67-79% of echoes slipped past the
+            // noMeaningfulChange compare (deferred local totals vs server
+            // totals, pending item ids, …) and ran the FULL merge pipeline —
+            // item-level diff, immer commit, previous-orders + KDS fan-out —
+            // on the JS thread mid-burst. That is exactly the "lag when adding
+            // items fast" window.
+            //
+            // Inside OWN_STATION_MUTATION_WINDOW_MS of a local mutation, drop
+            // own-station UPDATE echoes outright — UNLESS the backend reports
+            // a status the local order hasn't reached yet (rank-advance), the
+            // one own-echo case that can carry genuinely new information
+            // (e.g. an auto-transition performed server-side). Cross-station
+            // broadcasts (different station_id) are untouched, as are
+            // INSERT/DELETE.
+            if (isOwnStationOrder && operation === "UPDATE" && localOrder) {
+              const _echoMutationTs =
+                lastLocalMutationAt[dbOrderId] ??
+                lastLocalMutationAt[localOrderKey];
+              if (
+                _echoMutationTs != null &&
+                Date.now() - _echoMutationTs < OWN_STATION_MUTATION_WINDOW_MS
+              ) {
+                const localRank =
+                  ORDER_STATUS_RANK_FOR_ECHO[localOrder.order_status ?? ""] ??
+                  0;
+                const backendRank =
+                  ORDER_STATUS_RANK_FOR_ECHO[backendOrder.status ?? ""] ?? 0;
+                if (backendRank <= localRank) {
+                  recordCount(KEY_RT_OWN_ECHO);
+                  // Header fields may still have drifted (server-computed
+                  // totals land via the RPC ack; anything else reconciles on
+                  // the next out-of-window broadcast or bulk fetch).
+                  markOrderDetailStale(dbOrderId);
+                  return;
+                }
+              }
+            }
 
             // PERFORMANCE FIX: Skip broadcast processing while user has pending local changes
             // This prevents cascading re-renders during rapid item additions
@@ -8197,22 +8396,26 @@ export const useOrderStore = create<OrderState>()(
               // 4. New item: add to cart
               syncItemId = newItem.id;
 
-              // Wave 2.6: clear stale sync state for this id BEFORE we attach
-              // the cart item. `generateCartItemId(menuItemId, customizations)`
-              // (in ModifierScreen) is deterministic, so adding the same menu
-              // item with the same modifier combo on a NEW order reuses an old
+              // Wave 2.6: clear stale sync state for this id.
+              // `generateCartItemId(menuItemId, customizations)` (in
+              // ModifierScreen) is deterministic, so adding the same menu item
+              // with the same modifier combo on a NEW order reuses an old
               // cart-item id. Without this cleanup, the old order's failed
-              // `useSyncStatusStore` entry — or a dead-lettered op persisted
-              // in MMKV — surfaces on the new cart line as
+              // `useSyncStatusStore` entry — or a dead-lettered op persisted in
+              // MMKV — surfaces on the new cart line as
               // "Add failed — Failed N times — N attempts just now".
-              // Both calls are no-ops when no stale state exists.
-              useSyncStatusStore.getState().clearSyncStatus(syncItemId);
-              dropQueuedOpsForItem(syncItemId).catch((err) =>
-                console.error(
-                  "[addItemToActiveOrder] dropQueuedOpsForItem failed:",
-                  err,
-                ),
-              );
+              //
+              // The explicit clearSyncStatus() call that used to sit here is
+              // gone: setSyncStatus(syncItemId, 'pending') below already
+              // overwrites the status, drops itemFailedAt, and (since the
+              // non-failed branch in useSyncStatusStore) drops the stale error.
+              // The old pair cloned all three status Maps twice and committed
+              // the store twice per added item — on the DONE frame — to reach
+              // the same end state one commit reaches.
+              //
+              // dropQueuedOpsForItem is deferred with the rest of the sync work
+              // below; it only touches persisted queue state that nothing on
+              // this frame reads.
 
               const newCartItem: CartItem = {
                 ...newItem,
@@ -8263,10 +8466,6 @@ export const useOrderStore = create<OrderState>()(
                 : mergeCandidate || newItem;
 
             if (!itemToSync.isDraft) {
-              // Phase 7D: Set pending status in sync store for BillItem indicator
-              useSyncStatusStore
-                .getState()
-                .setSyncStatus(syncItemId, "pending");
               const orderToSync = get().ordersById[activeOrderId];
               if (orderToSync) {
                 const updateItemSyncStatusAction = get().updateItemSyncStatus;
@@ -8292,56 +8491,139 @@ export const useOrderStore = create<OrderState>()(
 
                 const setOrderDbIdAction = applySetOrderDbId;
 
-                // Create and track the sync promise - wrapped in queue to serialize additions
-                // Pass isMerge flag for merge candidates that already have db_order_item_id
-                const syncPromise = queueItemAddition(currentOrderId, () =>
-                  addItemToBackend(
-                    orderToSync,
-                    itemToSync,
-                    setOrderDbIdAction,
-                    markItemFailedAction, // Changed from removeItemAction
-                    undefined, // No need to recalculate - already done synchronously
-                    {
-                      isMerge: isMergeOperation,
-                      addedQuantity: newItem.quantity,
-                    },
-                  ),
-                )
-                  .then((success) => {
-                    // Resolve current order ID (may have been re-keyed)
-                    const resolvedOrderId = get().ordersById[currentOrderId]
-                      ? currentOrderId
-                      : get().activeOrderId || currentOrderId;
-                    if (!success) {
-                      updateItemSyncStatusAction(
-                        resolvedOrderId,
-                        syncItemId,
-                        "failed",
-                        "Backend sync failed",
-                      );
-                    }
-                    return success;
-                  })
-                  .catch((err) => {
-                    console.error("Background sync failed:", err);
-                    const resolvedOrderId = get().ordersById[currentOrderId]
-                      ? currentOrderId
-                      : get().activeOrderId || currentOrderId;
-                    updateItemSyncStatusAction(
-                      resolvedOrderId,
-                      syncItemId,
-                      "failed",
-                      err?.message || "Unknown error",
-                    );
-                    return false;
-                  })
-                  .finally(() => {
-                    // Unregister the sync operation when done
-                    unregisterSyncOp(syncItemId);
-                  });
-
-                // Register the sync promise for barrier tracking
+                // ============================================================
+                // Everything below is off the DONE frame.
+                //
+                // The cart write above is the only part the user needs to see.
+                // The sync-status commit, the offline-queue scan and the
+                // add_order_item RPC kickoff (which itself awaits
+                // ensureOrderCreated) all used to run in the same task as that
+                // write, so a single DONE press stacked several store commits
+                // and a network kickoff onto one frame — and during a rapid
+                // ordering burst each press landed inside the previous one's
+                // work. None of it is read by anything painting this frame.
+                //
+                // The barrier promise is registered SYNCHRONOUSLY via a
+                // deferred resolver, so waitForPendingSyncs (kitchen-send,
+                // payment) still sees this item as in-flight from the instant
+                // it enters the cart. Only the work moves; the visibility of
+                // that work to the barriers does not.
+                let resolveSync!: (success: boolean) => void;
+                const syncPromise = new Promise<boolean>((resolve) => {
+                  resolveSync = resolve;
+                });
                 registerSyncOp(syncItemId, syncPromise);
+
+                scheduleAfterPaint(() => {
+                  // Phase 7D: pending status drives the BillItem indicator.
+                  useSyncStatusStore
+                    .getState()
+                    .setSyncStatus(syncItemId, "pending");
+
+                  // Wave 2.5/2.6: drop stale queued ops bound to this
+                  // (deterministic) cart-item id. Fast-paths to a no-op when
+                  // nothing matches.
+                  dropQueuedOpsForItem(syncItemId).catch((err) =>
+                    console.error(
+                      "[addItemToActiveOrder] dropQueuedOpsForItem failed:",
+                      err,
+                    ),
+                  );
+
+                  // Fire the backend sync. The item is re-resolved LIVE at
+                  // fire time (not the tap-time snapshot): for coalesced
+                  // merges the snapshot quantity is stale by design — later
+                  // taps bumped it — and for all paths a fresher
+                  // db_order_item_id narrows the merge-while-in-flight race.
+                  const fireSync = (): Promise<boolean> =>
+                    queueItemAddition(currentOrderId, () => {
+                      const liveState = useOrderStore.getState();
+                      const liveKey = liveState.ordersById[currentOrderId]
+                        ? currentOrderId
+                        : liveState.activeOrderId || currentOrderId;
+                      const liveOrder = liveState.ordersById[liveKey];
+                      const liveItem = liveOrder?.items.find(
+                        (i) => i.id === syncItemId,
+                      );
+                      if (!liveOrder || !liveItem) {
+                        // Removed/voided before the sync fired — nothing to do.
+                        return Promise.resolve(true);
+                      }
+                      return addItemToBackend(
+                        liveOrder,
+                        liveItem,
+                        setOrderDbIdAction,
+                        markItemFailedAction, // Changed from removeItemAction
+                        undefined, // No need to recalculate - already done synchronously
+                        {
+                          isMerge: isMergeOperation,
+                          addedQuantity: newItem.quantity,
+                        },
+                      );
+                    })
+                      .then((success) => {
+                        // Resolve current order ID (may have been re-keyed)
+                        const resolvedOrderId = get().ordersById[currentOrderId]
+                          ? currentOrderId
+                          : get().activeOrderId || currentOrderId;
+                        if (!success) {
+                          updateItemSyncStatusAction(
+                            resolvedOrderId,
+                            syncItemId,
+                            "failed",
+                            "Backend sync failed",
+                          );
+                        }
+                        return success;
+                      })
+                      .catch((err) => {
+                        console.error("Background sync failed:", err);
+                        const resolvedOrderId = get().ordersById[currentOrderId]
+                          ? currentOrderId
+                          : get().activeOrderId || currentOrderId;
+                        updateItemSyncStatusAction(
+                          resolvedOrderId,
+                          syncItemId,
+                          "failed",
+                          err?.message || "Unknown error",
+                        );
+                        return false;
+                      })
+                      .finally(() => {
+                        // Unregister the sync operation when done
+                        unregisterSyncOp(syncItemId);
+                      });
+
+                  if (isMergeOperation) {
+                    // MERGE COALESCING: rapid same-item taps each produce a
+                    // merge carrying an ABSOLUTE quantity, and §4 parallel
+                    // mode fired them concurrently — several
+                    // updateOrderItemQuantity RPCs contending on the same
+                    // row. Under a fast enough burst one hits its deadline,
+                    // the item flips to "failed", and the user's Retry
+                    // succeeds trivially because the contention is gone.
+                    // Coalescing turns N taps inside the window into ONE RPC
+                    // that reads the final quantity at fire time. Every tap's
+                    // barrier promise resolves with that single result, so
+                    // kitchen-send/payment barriers still cover the item.
+                    const existing = pendingMergeQtySyncs.get(syncItemId);
+                    if (existing) clearTimeout(existing.timer);
+                    const resolvers = existing?.resolvers ?? [];
+                    resolvers.push(resolveSync);
+                    const timer = setTimeout(() => {
+                      pendingMergeQtySyncs.delete(syncItemId);
+                      fireSync().then(
+                        (ok) => resolvers.forEach((r) => r(ok)),
+                        () => resolvers.forEach((r) => r(false)),
+                      );
+                    }, MERGE_QTY_SYNC_COALESCE_MS);
+                    pendingMergeQtySyncs.set(syncItemId, { timer, resolvers });
+                  } else {
+                    // Settle the barrier promise registered synchronously
+                    // above; fireSync's finally has already unregistered.
+                    fireSync().then(resolveSync, () => resolveSync(false));
+                  }
+                });
               }
             }
 
@@ -11190,13 +11472,17 @@ export const useOrderStore = create<OrderState>()(
                     })
                     .catch((err) => {
                       console.error("[removeCheckDiscount] RPC error:", err);
-                      // Queue for retry
+                      // Queue for retry. Capture staffId NOW — the executor
+                      // otherwise reads loggedInEmployee at replay time, which
+                      // is null after a logout/PIN-lock (useEmployeeStore:309)
+                      // and mis-attributes the void to whoever is on shift then.
                       queueOperation({
                         type: "void_discount",
                         params: {
                           localOrderId: orderId,
                           order_discount_id: discount.order_discount_id,
                           void_reason: null,
+                          staffId,
                         },
                         localOrderId: orderId,
                       } as any);
@@ -11204,7 +11490,9 @@ export const useOrderStore = create<OrderState>()(
                 }
               }
             } else if (discountsToVoid.length > 0) {
-              // Offline - queue void operations
+              // Offline - queue void operations. staffId is captured here (not
+              // read at replay time) so a shift change between queueing and
+              // sync can't leave the op without an attributable staff member.
               for (const discount of discountsToVoid) {
                 if (discount.order_discount_id) {
                   queueOperation({
@@ -11213,6 +11501,7 @@ export const useOrderStore = create<OrderState>()(
                       localOrderId: orderId,
                       order_discount_id: discount.order_discount_id,
                       void_reason: null,
+                      staffId,
                     },
                     localOrderId: orderId,
                   } as any);
@@ -11794,25 +12083,17 @@ export const useOrderStore = create<OrderState>()(
                 ? Math.max(storedOutstanding, computedOutstanding)
                 : computedOutstanding;
 
-            // A legitimate final even-split portion can be a sub-cent remainder
-            // (e.g. $0.05 split 3 ways → last portion is $0.03 but a $0.02 total
-            // can leave $0.01 owing). In that case outstanding == the portion we
-            // are about to collect, so this is NOT "already paid" — let it through.
-            // We only treat it as a true final portion when the explicit amount
-            // still covers what's owed.
-            const isFinalSplitPortion =
-              splitCount !== undefined &&
-              splitPortionIndex !== undefined &&
-              splitPortionIndex === splitCount;
-            const collectsRemaining =
-              forceExplicitAmount &&
-              amount > 0 &&
-              amount >= outstandingBeforePayment - 0.001;
-
-            if (
-              outstandingBeforePayment <= 0.01 &&
-              !(isFinalSplitPortion && collectsRemaining)
-            ) {
+            // Reject a payment only when there is genuinely nothing left to
+            // collect. Sub-cent dust (< $0.005) is "already paid", but a real 1¢
+            // balance is money the guest still owes and must be collectable — a
+            // $0.01 order, or a tiny final split remainder (e.g. $0.05 split 3
+            // ways leaves $0.01). The old <= $0.01 guard rejected legitimate 1¢
+            // checkouts because its escape only fired for explicit split
+            // portions; the by-item / full-pay paths don't set
+            // forceExplicitAmount, so a $0.01 charge falsely read as "paid".
+            // (Regressed once — 90f0ed1e reverted 40dee0fd — so the predicate
+            // now lives in lib/paymentGuards.ts with a unit test.)
+            if (isNothingLeftToCollect(outstandingBeforePayment, amount)) {
               toastService.show({
                 title: "Already Paid",
                 message: "No unpaid items remaining on this order.",
@@ -14986,66 +15267,70 @@ export const useOrderStore = create<OrderState>()(
               );
 
               try {
-                // Fetch order, items, payments, and item payments in parallel.
-                // Deadline-wrapped: previously, missing indexes caused Postgres
-                // statement timeouts (~30s) that froze the UI. Fail fast at
-                // DEADLINES.read so the store can recover.
-                const [orderResult, itemsResult, paymentsResult] =
-                  await withDeadline(
-                    (signal) =>
-                      Promise.all([
-                        supabase
-                          .from("orders")
-                          .select("*")
-                          .eq("id", dbOrderId)
-                          .abortSignal(signal)
-                          .single(),
-                        supabase
-                          .from("order_items")
-                          .select("*, order_item_modifiers (*)")
-                          .eq("order_id", dbOrderId)
-                          .eq("is_voided", false)
-                          .abortSignal(signal),
-                        supabase
-                          .from("order_payments")
-                          .select("*")
-                          .eq("order_id", dbOrderId)
-                          .abortSignal(signal),
-                      ]),
-                    DEADLINES.read,
-                    "syncOrderFromDatabase",
-                  );
+                // Fetch the full order via the get_order_details RPC in ONE
+                // round-trip. This RPC is SECURITY DEFINER (so it bypasses RLS
+                // and actually returns payments — the raw order_payments select
+                // returned 0 rows for the app role) and replaces the 3 raw
+                // selects whose fan-out saturated the pool on boot/reconnect and
+                // tripped statement timeouts (57014). Same RPC the
+                // syncOrderFromBackendComplete path already uses.
+                const { data, error: rpcError } = await withDeadline<{
+                  data: any;
+                  error: any;
+                }>(
+                  async (signal) =>
+                    await supabase
+                      .rpc("get_order_details", { p_order_id: dbOrderId })
+                      .abortSignal(signal),
+                  DEADLINES.read,
+                  "syncOrderFromDatabase",
+                );
 
-                if (orderResult.error) {
+                if (rpcError) {
+                  // Includes the RPC's RAISE 'Order not found or access denied'.
+                  // Throw so the outer catch returns null (the soft-fail contract
+                  // every caller depends on) and the in-flight dedupe entry is
+                  // cleared — same net behavior as the old .single() error path.
                   console.error(
-                    "[syncOrderFromDatabase] Order fetch error:",
-                    orderResult.error,
+                    "[syncOrderFromDatabase] get_order_details error:",
+                    rpcError,
                   );
-                  throw new Error(orderResult.error.message);
+                  throw new Error(rpcError.message);
                 }
 
-                const dbOrder = orderResult.data;
+                const dbOrder = data?.order;
                 if (!dbOrder) {
                   throw new Error("Order not found in database");
                 }
 
-                if (itemsResult.error) {
-                  console.error(
-                    "[syncOrderFromDatabase] Items fetch error:",
-                    itemsResult.error,
-                  );
-                  throw new Error(itemsResult.error.message);
-                }
+                // Unwrap items to the exact flat + embedded shape the old
+                // `order_items.select('*, order_item_modifiers (*)')` returned so
+                // the downstream update-merge and item build work unchanged.
+                const dbItems = ((data.items ?? []) as any[]).map((w) => ({
+                  ...w.item,
+                  order_item_modifiers: w.modifiers ?? [],
+                }));
+                const dbPayments = (data.payments ?? []) as any[];
+                const paymentItems = (data.payment_items ?? []) as any[];
+                // Discount / reversal / refund-item collections the RPC returns.
+                // syncOrderFromBackendComplete wires these; this path historically
+                // dropped them, so the Refunds tab, discount badge, and reversals
+                // timeline went blank whenever an order was hydrated here (prefetch,
+                // focus refresh, cold load) until a full-detail sync happened to run.
+                const reversalsData = (data.reversals ?? []) as any[];
+                const orderRefundItemsData = (data.order_refund_items ??
+                  []) as any[];
+                const orderDiscountsData = (data.order_discounts ?? []) as any[];
 
-                const dbItems = itemsResult.data;
-                const dbPayments = paymentsResult.data;
-
-                if (paymentsResult.error) {
-                  console.error(
-                    "[syncOrderFromDatabase] Payments fetch error:",
-                    paymentsResult.error,
-                  );
-                  // Non-fatal - continue without payments
+                // Per-payment item coverage lives in the order_payment_items
+                // junction (C2) — the old mapper read a non-existent `item_ids`
+                // column, so coverage was always empty.
+                const paymentItemsByPaymentId = new Map<string, any[]>();
+                for (const pi of paymentItems) {
+                  const key = pi.order_payment_id;
+                  if (!paymentItemsByPaymentId.has(key))
+                    paymentItemsByPaymentId.set(key, []);
+                  paymentItemsByPaymentId.get(key)!.push(pi);
                 }
 
                 if (__DEV__) {
@@ -15310,8 +15595,14 @@ export const useOrderStore = create<OrderState>()(
                   const syncedPayments: OrderProfilePayment[] =
                     dbPayments && dbPayments.length > 0
                       ? dbPayments.map((p) => {
-                      // Proper status mapping — preserve authorized for pre-auth
+                      // Proper status mapping — preserve authorized for pre-auth.
+                      // C1: the DB writes status='void' (not 'voided') and the
+                      // RPC's payments subquery has no is_voided filter, so voided
+                      // rows now arrive here — key off is_voided / both spellings
+                      // or a voided payment resurrects as a live "pending" one.
                       const status: OrderProfilePayment["status"] =
+                        p.is_voided === true ||
+                        p.status === "void" ||
                         p.status === "voided"
                           ? "voided"
                           : p.status === "refunded"
@@ -15328,6 +15619,14 @@ export const useOrderStore = create<OrderState>()(
                       const castlesTxn =
                         terminalResponse?.castles_transaction as
                           Record<string, any> | undefined;
+                      // Valor blob lives in processor_response; read both columns.
+                      const valorTxn = ((p as any).processor_response
+                        ?.valor_transaction ??
+                        terminalResponse?.valor_transaction) as
+                          Record<string, any> | undefined;
+                      const terminalVendor = (terminalResponse?.terminal_vendor ??
+                        (p as any).processor_response?.terminal_vendor) as
+                          string | undefined;
 
                       // Refund evidence: take max across DB + local. Apply
                       // refund didn't always advance `status`, so we have to
@@ -15353,18 +15652,27 @@ export const useOrderStore = create<OrderState>()(
                         last4: p.card_last_four,
                         tip_amount: p.tip_amount || 0,
                         total_collected: p.amount + (p.tip_amount || 0),
-                        itemsCovered: (p.item_ids || []).map(
-                          (itemId: string) => ({
-                            itemId,
-                            itemName: "Item",
-                            quantity: 1,
-                            unitPrice: 0,
-                            subtotal: 0,
-                          }),
-                        ),
+                        // C2: per-payment coverage from the order_payment_items
+                        // junction (the old `p.item_ids` column does not exist, so
+                        // coverage was always empty and the per-item PAID badge dead).
+                        itemsCovered: (
+                          paymentItemsByPaymentId.get(p.id) ?? []
+                        ).map((pi: any) => ({
+                          itemId: pi.order_item_id,
+                          itemName:
+                            dbItems.find(
+                              (it: any) => it.id === pi.order_item_id,
+                            )?.item_name ?? "Item",
+                          quantity: pi.quantity_paid,
+                          unitPrice: pi.unit_price_paid,
+                          subtotal: pi.subtotal_paid,
+                        })),
                         timestamp: p.created_at,
                         status,
-                        isVoided: p.status === "voided",
+                        isVoided:
+                          p.is_voided === true ||
+                          p.status === "void" ||
+                          p.status === "voided",
                         sync_status: "synced" as const,
                         sync_attempt_count: 0,
                         // Cash pricing fields — falls back to order-level ratio when original_amount is missing
@@ -15403,19 +15711,26 @@ export const useOrderStore = create<OrderState>()(
                         ...(isPreAuth
                           ? {
                               preAuthAmount: p.amount,
-                              preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                              preAuthRrn:
+                                (p as any).rrn || castlesTxn?.rrn || valorTxn?.rrn,
                               preAuthStan: castlesTxn?.stan,
+                              preAuthTranNo:
+                                valorTxn?.tranNo || (p as any).transaction_id,
                               preAuthAuthCode:
                                 (p as any).authorization_code ||
-                                castlesTxn?.approvalCode,
+                                castlesTxn?.approvalCode ||
+                                valorTxn?.approvalCode,
                               preAuthReferenceId:
                                 (p as any).reference_number ||
-                                castlesTxn?.referenceId,
+                                castlesTxn?.referenceId ||
+                                valorTxn?.reqTxnId,
                               preAuthTerminalType:
-                                (terminalResponse?.terminal_vendor === "castles"
+                                (terminalVendor === "castles"
                                   ? "castles"
+                                  : terminalVendor === "valor"
+                                  ? "valor"
                                   : "dejavoo") as
-                                  "dejavoo" | "castles" | undefined,
+                                  "dejavoo" | "castles" | "valor" | undefined,
                             }
                           : {}),
                       };
@@ -15460,32 +15775,44 @@ export const useOrderStore = create<OrderState>()(
                     ? state.orderIds
                     : [...state.orderIds, localOrderId];
 
-                  // When the direct order_payments read came back empty and we
-                  // kept local payments (RLS returns 0 rows in this env), the raw
-                  // orders-row financials are stale/unpopulated — amount_paid/
-                  // amount_due are computed from order_payments by the RPCs, not
-                  // stored authoritatively on the orders row. Preserve the local,
-                  // RPC-reconciled financials so Amount Paid / Balance Due stay
-                  // consistent with the payments we just kept (otherwise the footer
-                  // loses "Paid" and Total Due snaps back to the full total).
-                  const keptLocalPayments =
-                    !(dbPayments && dbPayments.length > 0) &&
-                    (localOrder?.payments?.length ?? 0) > 0;
+                  // The orders-row financials (amount_paid/amount_due/
+                  // cash_amount_due) are real columns process_payment writes
+                  // atomically — trust them. EXCEPT the read-after-write race:
+                  // keep local financials only when a committed local payment
+                  // (db_payment_id, captured, not voided) is missing from THIS RPC
+                  // read, or an unsettled pre-auth is in flight. Mirrors
+                  // syncOrderFromBackendComplete's keepLocalFinancials — replaces
+                  // the old empty-read heuristic, which is dead now the RPC
+                  // (SECURITY DEFINER) returns real payment rows.
+                  const dbPaymentIds = new Set(
+                    (dbPayments ?? []).map((p: any) => p?.id).filter(Boolean),
+                  );
+                  const keepLocalFinancials = (localOrder?.payments ?? []).some(
+                    (p) =>
+                      (!!p.db_payment_id &&
+                        p.status === "captured" &&
+                        !p.isVoided &&
+                        !dbPaymentIds.has(p.db_payment_id)) ||
+                      (p.isPreAuth &&
+                        p.status === "authorized" &&
+                        !p.isVoided &&
+                        !p.db_payment_id &&
+                        p.sync_status === "pending"),
+                  );
 
                   const updatedOrderProfile: OrderProfile = {
                     ...baseOrderProfile,
                     items: allItems,
                     payments: syncedPayments,
-                    // Use database as source of truth for financial data — except
-                    // when we kept local payments over an empty DB read (above),
-                    // in which case the orders-row financials are stale/unpopulated.
-                    amount_paid: keptLocalPayments
+                    // DB is the source of truth for financials; only keep local
+                    // when a just-committed payment raced this read (above).
+                    amount_paid: keepLocalFinancials
                       ? (localOrder?.amount_paid ?? dbOrder.amount_paid ?? 0)
                       : (dbOrder.amount_paid || 0),
-                    amount_due: keptLocalPayments
+                    amount_due: keepLocalFinancials
                       ? (localOrder?.amount_due ?? dbOrder.amount_due ?? 0)
                       : (dbOrder.amount_due || 0),
-                    cash_amount_due: keptLocalPayments
+                    cash_amount_due: keepLocalFinancials
                       ? (localOrder?.cash_amount_due ?? dbOrder.cash_amount_due)
                       : dbOrder.cash_amount_due,
                     total_amount: dbOrder.card_total || dbOrder.total_amount,
@@ -15511,6 +15838,24 @@ export const useOrderStore = create<OrderState>()(
                         (dbOrder as any).metadata?.delivery_company,
                       ) ??
                       null,
+                    // M1: discount / reversal / refund-item metadata from the RPC.
+                    // Empty-guard: an empty (or RLS-raced) read must not wipe a
+                    // locally-applied-but-unsynced discount/refund. When the backend
+                    // returns nothing, keep whatever the local order already had
+                    // (baseOrderProfile is spread above, so local is the fallback).
+                    // syncOrderFromBackendComplete stays the authoritative overwrite;
+                    // this lighter path only fills the gap it used to leave blank.
+                    reversals:
+                      reversalsData.length > 0
+                        ? reversalsData
+                        : (localOrder?.reversals ?? []),
+                    order_refund_items:
+                      orderRefundItemsData.length > 0
+                        ? orderRefundItemsData
+                        : (localOrder?.order_refund_items ?? []),
+                    ...(orderDiscountsData.length > 0
+                      ? restoreDiscountsFromBackend(orderDiscountsData)
+                      : {}),
                     sync_status: "synced",
                     reopen_count:
                       (dbOrder as any).reopen_count ??
@@ -15672,6 +16017,14 @@ export const useOrderStore = create<OrderState>()(
                     Record<string, any> | undefined;
                   const castlesTxn = terminalResponse?.castles_transaction as
                     Record<string, any> | undefined;
+                  // Valor blob lives in processor_response; read both columns.
+                  const valorTxn = ((p as any).processor_response
+                    ?.valor_transaction ??
+                    terminalResponse?.valor_transaction) as
+                    Record<string, any> | undefined;
+                  const terminalVendor = (terminalResponse?.terminal_vendor ??
+                    (p as any).processor_response?.terminal_vendor) as
+                    string | undefined;
 
                   return {
                     id: `payment_${p.id}`,
@@ -15719,18 +16072,26 @@ export const useOrderStore = create<OrderState>()(
                     ...(isPreAuth
                       ? {
                           preAuthAmount: p.amount,
-                          preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                          preAuthRrn:
+                            (p as any).rrn || castlesTxn?.rrn || valorTxn?.rrn,
                           preAuthStan: castlesTxn?.stan,
+                          preAuthTranNo:
+                            valorTxn?.tranNo || (p as any).transaction_id,
                           preAuthAuthCode:
                             (p as any).authorization_code ||
-                            castlesTxn?.approvalCode,
+                            castlesTxn?.approvalCode ||
+                            valorTxn?.approvalCode,
                           preAuthReferenceId:
                             (p as any).reference_number ||
-                            castlesTxn?.referenceId,
+                            castlesTxn?.referenceId ||
+                            valorTxn?.reqTxnId,
                           preAuthTerminalType:
-                            (terminalResponse?.terminal_vendor === "castles"
+                            (terminalVendor === "castles"
                               ? "castles"
-                              : "dejavoo") as "dejavoo" | "castles" | undefined,
+                              : terminalVendor === "valor"
+                              ? "valor"
+                              : "dejavoo") as
+                              "dejavoo" | "castles" | "valor" | undefined,
                         }
                       : {}),
                   };
@@ -16806,6 +17167,16 @@ export const useOrderStore = create<OrderState>()(
                       Record<string, any> | undefined;
                     const dejavooTxn = terminalResp?.dejavoo_transaction as
                       Record<string, any> | undefined;
+                    // Valor stores its blob in processor_response (not
+                    // terminal_response): { terminal_vendor, valor_transaction }.
+                    const atomTxn = (payment.processor_response as any)
+                      ?.atom_transaction as Record<string, any> | undefined;
+                    // Read both columns: process_preauth stores the blob in
+                    // terminal_response; capture/sale dual-store in processor_response.
+                    const valorTxn = ((payment.processor_response as any)
+                      ?.valor_transaction ??
+                      (terminalResp as any)?.valor_transaction) as
+                      Record<string, any> | undefined;
 
                     return {
                       // Core identifiers
@@ -16945,10 +17316,14 @@ export const useOrderStore = create<OrderState>()(
                         cardType:
                           payment.card_type ??
                           castlesTxn?.cardType ??
+                          valorTxn?.cardType ??
+                          atomTxn?.cardType ??
                           dejavooTxn?.CardType,
                         last4:
                           payment.card_last_four ??
                           castlesTxn?.cardLast4 ??
+                          valorTxn?.cardLast4 ??
+                          atomTxn?.cardLast4 ??
                           dejavooTxn?.Last4,
                         transactionId: payment.transaction_id,
                         amountTendered: payment.amount_tendered,
@@ -16959,15 +17334,38 @@ export const useOrderStore = create<OrderState>()(
                         dejavooTransaction:
                           payment.processor_response?.dejavoo_transaction,
                         // Additional terminal fields
-                        rrn: payment.rrn,
+                        rrn: payment.rrn ?? valorTxn?.rrn ?? atomTxn?.rrn,
                         batchNumber:
-                          payment.batch_number || payment.dejavoo_batch_number,
+                          payment.batch_number ||
+                          payment.dejavoo_batch_number ||
+                          valorTxn?.batchNumber,
                         invoiceNumber: payment.dejavoo_invoice_number,
                         entryMode:
                           payment.processor_response?.dejavoo_transaction
-                            ?.entryMode ?? castlesTxn?.entryMode,
+                            ?.entryMode ??
+                          castlesTxn?.entryMode ??
+                          valorTxn?.entryMode ??
+                          atomTxn?.entryMode,
                         referenceId: payment.reference_number,
                         castlesTransaction: castlesTxn,
+                        // Full Valor blob for the detail sheet (reads
+                        // valorTransaction.valor_transaction.*). Only set for
+                        // actual Valor payments so Dejavoo/NMI processor_response
+                        // blobs don't get misread as card data.
+                        valorTransaction:
+                          (payment.processor_response as any)
+                            ?.terminal_vendor === "valor"
+                            ? payment.processor_response
+                            : undefined,
+                        // Full ATOM blob for the detail sheet (reads
+                        // atomTransaction.atom_transaction.*). Only set for
+                        // actual ATOM payments so other processor_response blobs
+                        // aren't misread as card data.
+                        atomTransaction:
+                          (payment.processor_response as any)
+                            ?.terminal_vendor === "atom"
+                            ? payment.processor_response
+                            : undefined,
                       },
 
                       // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)
@@ -16975,18 +17373,26 @@ export const useOrderStore = create<OrderState>()(
                       ...(payment.status === "authorized"
                         ? {
                             preAuthAmount: payment.amount,
-                            preAuthRrn: payment.rrn || castlesTxn?.rrn,
+                            preAuthRrn:
+                              payment.rrn || castlesTxn?.rrn || valorTxn?.rrn,
                             preAuthStan: castlesTxn?.stan,
+                            preAuthTranNo:
+                              valorTxn?.tranNo ||
+                              (payment as any).transaction_id,
                             preAuthAuthCode:
                               payment.authorization_code ||
-                              castlesTxn?.approvalCode,
+                              castlesTxn?.approvalCode ||
+                              valorTxn?.approvalCode,
                             preAuthReferenceId:
                               payment.reference_number ||
-                              castlesTxn?.referenceId,
+                              castlesTxn?.referenceId ||
+                              valorTxn?.reqTxnId,
                             preAuthTerminalType: (payment.terminal_type ===
                             "castles"
                               ? "castles"
-                              : "dejavoo") as "castles" | "dejavoo",
+                              : payment.terminal_type === "valor" || valorTxn
+                              ? "valor"
+                              : "dejavoo") as "castles" | "dejavoo" | "valor",
                           }
                         : {}),
 
