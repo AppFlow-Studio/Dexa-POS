@@ -12,6 +12,14 @@ const corsHeaders = {
 const RATE_LIMIT_SENDS = 3
 const RATE_LIMIT_WINDOW_HOURS = 1
 
+// Public hosted receipt page (lives in the website repo). The kiosk
+// confirmation SMS links here as `${RECEIPT_BASE_URL}/${order.receipt_token}`.
+// Overridable via env so staging / a different path can be pointed at without a
+// code change. NOTE: confirm the exact path spelling matches the website route.
+const RECEIPT_BASE_URL = (
+  Deno.env.get('RECEIPT_BASE_URL') || 'https://dexaposai.com/receipts'
+).replace(/\/+$/, '')
+
 interface SendReceiptBody {
   order_id: string
   delivery_method: 'email' | 'sms'
@@ -280,6 +288,7 @@ async function fetchMerchantLogoUrl(
 type ReceiptOrder = {
   display_number?: string | null
   order_number?: string | null
+  receipt_token?: string | null
   created_at: string
   order_type?: string | null
   table_number?: string | number | null
@@ -660,12 +669,15 @@ function renderReceiptText(
     'Thank you!'
   ].filter(Boolean)
 
-  // Kiosk confirmation: a personalized greeting on top of the receipt.
+  // Kiosk confirmation: a short "Order #<n> at <business>" line plus a link to
+  // the hosted receipt page — no item list, totals, or card/amount details.
   if (opts.confirmation) {
-    const firstName = (order.customer_name ?? '').trim().split(/\s+/)[0]
-    const greeting = firstName ? `Hi ${firstName}! ` : ''
-    const header = `${greeting}Your order #${orderNumber} is confirmed. We'll text you when it's ready.`
-    return [header, '', ...lines].join('\n')
+    const confirmLines = [`Order #${orderNumber} at ${businessName}`]
+    const receiptToken = order.receipt_token?.trim()
+    if (receiptToken) {
+      confirmLines.push(`Receipt: ${RECEIPT_BASE_URL}/${receiptToken}`)
+    }
+    return confirmLines.join('\n')
   }
 
   return lines.join('\n')

@@ -3,14 +3,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /**
  * Shared idle/inactivity timer for kiosk ordering flows.
  *
- * Two behaviors depending on whether the customer has anything to lose:
- *  - No active cart/order: after `idleTimeoutSeconds` of inactivity, reset
- *    straight to idle (nothing to confirm).
- *  - Active cart/order: after `cartResetTimeoutSeconds` of inactivity, show
- *    an "Are you still there?" warning with a countdown. If the customer
- *    doesn't respond within another `cartResetTimeoutSeconds`, reset.
+ * In BOTH states we always show an "Are you still there?" confirmation before
+ * returning to the attract screen — the customer is never kicked out silently.
+ * Only the inactivity threshold differs by how much there is to lose:
+ *  - No active cart/order: warn after `idleTimeoutSeconds` of inactivity.
+ *  - Active cart/order: warn sooner, after `cartResetTimeoutSeconds`.
  *
- * Call `registerActivity()` on any touch to keep the session alive.
+ * Once the warning shows, the customer has a `cartResetTimeoutSeconds` grace
+ * window (a live countdown) to tap "Yes, I'm still here". If they don't
+ * respond, the kiosk resets to attract.
+ *
+ * Call `registerActivity()` on any touch to keep the session alive / dismiss
+ * the warning.
  */
 export function useKioskIdleTimer({
   idleTimeoutSeconds,
@@ -36,23 +40,22 @@ export function useKioskIdleTimer({
     const interval = setInterval(() => {
       const elapsedSeconds = (Date.now() - lastActivityRef.current) / 1000;
 
-      if (!hasActiveCart) {
-        if (elapsedSeconds >= idleTimeoutSeconds) {
-          onReset();
-        }
-        return;
-      }
+      // Threshold to warn depends on whether there's an order to protect: an
+      // active cart warns sooner. The grace/countdown window before the reset
+      // is `cartResetTimeoutSeconds` in either case.
+      const warnAfter = hasActiveCart
+        ? cartResetTimeoutSeconds
+        : idleTimeoutSeconds;
+      const resetAfter = warnAfter + cartResetTimeoutSeconds;
 
-      if (elapsedSeconds >= cartResetTimeoutSeconds * 2) {
+      if (elapsedSeconds >= resetAfter) {
         onReset();
         return;
       }
 
-      if (elapsedSeconds >= cartResetTimeoutSeconds) {
+      if (elapsedSeconds >= warnAfter) {
         setShowWarning(true);
-        setSecondsLeft(
-          Math.max(0, Math.ceil(cartResetTimeoutSeconds * 2 - elapsedSeconds)),
-        );
+        setSecondsLeft(Math.max(0, Math.ceil(resetAfter - elapsedSeconds)));
       }
     }, 1000);
 

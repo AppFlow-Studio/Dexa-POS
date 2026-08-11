@@ -141,6 +141,7 @@
     "react-native-uuid": "^2.0.3",
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5",
+    "reanimated-color-picker": "^5.1.2",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^3.4.17",
     "use-immer": "^0.11.0",

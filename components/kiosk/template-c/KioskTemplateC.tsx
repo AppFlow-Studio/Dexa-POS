@@ -74,6 +74,14 @@ export function KioskTemplateC({ config, onExit }: KioskTemplateProps) {
             }}
           />
         </KioskScreenTransition>
+        {showWarning && (
+          <KioskIdleModal
+            config={config}
+            secondsLeft={secondsLeft}
+            onContinue={registerActivity}
+            hasActiveCart={hasActiveCart}
+          />
+        )}
       </View>
     );
   }
@@ -98,6 +106,7 @@ export function KioskTemplateC({ config, onExit }: KioskTemplateProps) {
           config={config}
           secondsLeft={secondsLeft}
           onContinue={registerActivity}
+          hasActiveCart={hasActiveCart}
         />
       )}
 

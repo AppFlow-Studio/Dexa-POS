@@ -14,19 +14,25 @@ import {
   Info,
   LayoutGrid,
   Palette,
+  Pipette,
   Power,
   RefreshCw,
   Settings2,
+  X,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
+  Pressable,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import ColorPicker, { BrightnessSlider, Panel3 } from "reanimated-color-picker";
 
 /**
  * On-device editor for the kiosk profile (kiosk_profiles row) — the same
@@ -488,22 +494,26 @@ function ColorField({
   value: string;
   onChangeText: (v: string) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const valid = /^#([0-9a-fA-F]{3,8})$/.test(value.trim());
   return (
     <View style={{ width: "50%", paddingRight: 8 }}>
       <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
       <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-2">
-        <View
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 7,
-            marginRight: 8,
-            backgroundColor: valid ? value.trim() : "#FFFFFF",
-            borderWidth: 1,
-            borderColor: "#E0E0E0",
-          }}
-        />
+        {/* Tap the swatch (or the pipette) to open the color wheel. */}
+        <Pressable onPress={() => setPickerOpen(true)} hitSlop={8}>
+          <View
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              marginRight: 8,
+              backgroundColor: valid ? value.trim() : "#FFFFFF",
+              borderWidth: 1,
+              borderColor: "#E0E0E0",
+            }}
+          />
+        </Pressable>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -514,8 +524,158 @@ function ColorField({
           className="flex-1 text-sm text-black"
           style={{ fontFamily: "monospace", padding: 0 }}
         />
+        <Pressable
+          onPress={() => setPickerOpen(true)}
+          hitSlop={8}
+          className="w-7 h-7 rounded-lg bg-white border border-gray-200 items-center justify-center ml-1"
+        >
+          <Pipette size={14} color={TEAL} />
+        </Pressable>
       </View>
+
+      <ColorWheelModal
+        visible={pickerOpen}
+        label={label}
+        color={valid ? value.trim() : "#000000"}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(hex) => {
+          onChangeText(hex);
+          setPickerOpen(false);
+        }}
+      />
     </View>
+  );
+}
+
+const modalShadow = {
+  shadowColor: "#0F172A",
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.18,
+  shadowRadius: 24,
+  elevation: 12,
+} as const;
+
+/**
+ * Full color-wheel picker (hue + saturation wheel with a brightness slider),
+ * shown in a modal when a color swatch is tapped. Commits on "Use color" so a
+ * mid-drag value never lands in the profile draft. The wheel + slider come from
+ * reanimated-color-picker (pure JS on top of the reanimated + gesture-handler
+ * already bundled) so there's no native rebuild. Gestures inside a RN Modal
+ * need their own GestureHandlerRootView.
+ */
+function ColorWheelModal({
+  visible,
+  label,
+  color,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  label: string;
+  color: string;
+  onClose: () => void;
+  onSelect: (hex: string) => void;
+}) {
+  const [local, setLocal] = useState(color);
+
+  // Reset the working color each time the sheet opens.
+  useEffect(() => {
+    if (visible) setLocal(color);
+  }, [visible, color]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <Pressable
+          onPress={onClose}
+          className="flex-1 bg-black/50 items-center justify-center px-6"
+        >
+          {/* Inner Pressable swallows taps so the card doesn't dismiss. */}
+          <Pressable
+            onPress={() => {}}
+            className="w-full bg-white rounded-3xl p-6"
+            style={[{ maxWidth: 380 }, modalShadow]}
+          >
+            <View className="flex-row items-center justify-between mb-5">
+              <Text className="text-lg font-bold text-black capitalize">
+                {label} color
+              </Text>
+              <Pressable
+                onPress={onClose}
+                className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
+              >
+                <X size={18} color="#6B7280" />
+              </Pressable>
+            </View>
+
+            {visible ? (
+              <ColorPicker
+                value={color}
+                onCompleteJS={(c) => setLocal(c.hex)}
+                style={{ gap: 24 }}
+              >
+                <Panel3
+                  style={{ width: 240, height: 240, alignSelf: "center" }}
+                  thumbSize={28}
+                />
+                <BrightnessSlider
+                  style={{ borderRadius: 999 }}
+                  sliderThickness={26}
+                  thumbSize={28}
+                />
+              </ColorPicker>
+            ) : null}
+
+            {/* Preview + resolved hex */}
+            <View className="flex-row items-center gap-3 mt-6">
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 12,
+                  backgroundColor: local,
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                }}
+              />
+              <View className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-3">
+                <Text
+                  className="text-base text-black"
+                  style={{ fontFamily: "monospace" }}
+                >
+                  {local.toUpperCase()}
+                </Text>
+              </View>
+            </View>
+
+            <View className="flex-row gap-3 mt-5">
+              <Pressable
+                onPress={onClose}
+                className="flex-1 py-3.5 rounded-2xl bg-gray-100 items-center"
+              >
+                <Text className="text-base font-bold text-gray-700">
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => onSelect(local)}
+                className="flex-1 py-3.5 rounded-2xl bg-teal-600 items-center"
+              >
+                <Text className="text-base font-bold text-white">
+                  Use color
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </GestureHandlerRootView>
+    </Modal>
   );
 }
 

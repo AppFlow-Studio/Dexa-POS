@@ -1,13 +1,14 @@
 import appJson from "@/app.json";
+import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import { getDeviceId } from "@/lib/deviceId";
+import { terminalTypeLabel } from "@/lib/processorLabels";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { toastService } from "@/lib/toastService";
 import { clearStationData } from "@/services/cacheService";
-import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import {
     useKioskDeviceSettingsStore,
     type KioskMenuColumns,
@@ -18,13 +19,16 @@ import type { KioskConfig } from "@/types/kiosk";
 import type { StationPaymentTerminal } from "@/types/station";
 import {
     Check,
-    ChevronDown,
-    ChevronUp,
     CreditCard,
+    Info,
+    LayoutGrid,
     LogOut,
+    type LucideIcon,
+    MonitorSmartphone,
     Pencil,
     Plus,
     RefreshCw,
+    SlidersHorizontal,
     Usb,
     Wifi,
     WifiOff,
@@ -40,14 +44,76 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    type ViewStyle,
 } from "react-native";
 
+const TEAL = "#0D9488";
+
+/** Sections shown in the sidebar. */
+type SectionId = "overview" | "profile" | "menu" | "terminal" | "about";
+
+const SECTIONS: {
+  id: SectionId;
+  label: string;
+  Icon: LucideIcon;
+  title: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "overview",
+    label: "Overview",
+    Icon: MonitorSmartphone,
+    title: "Overview",
+    subtitle: "Connectivity and station identity",
+  },
+  {
+    id: "profile",
+    label: "Kiosk Profile",
+    Icon: SlidersHorizontal,
+    title: "Kiosk Profile",
+    subtitle: "Display, appearance, and checkout options",
+  },
+  {
+    id: "menu",
+    label: "Menu Layout",
+    Icon: LayoutGrid,
+    title: "Menu Layout",
+    subtitle: "How menu items are arranged on this device",
+  },
+  {
+    id: "terminal",
+    label: "Payment Terminal",
+    Icon: CreditCard,
+    title: "Payment Terminal",
+    subtitle: "Manage the card reader wired to this station",
+  },
+  {
+    id: "about",
+    label: "About",
+    Icon: Info,
+    title: "About",
+    subtitle: "Application and device information",
+  },
+];
+
+/** Soft elevation used on content cards to lift them off the canvas. */
+const cardShadow: ViewStyle = {
+  shadowColor: "#0F172A",
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.05,
+  shadowRadius: 4,
+  elevation: 1,
+};
+
 /**
- * Read-only kiosk diagnostics / settings overview. Reached by holding the
- * logo on the attract screen and entering a manager PIN. Shows the resolved
- * kiosk profile, station/location wiring, and live connectivity — enough for
- * staff to confirm "is this kiosk configured correctly and online" without
- * leaving the device.
+ * Kiosk diagnostics / settings overview. Reached by holding the logo on the
+ * attract screen and entering a manager PIN. Shows the resolved kiosk profile,
+ * station/location wiring, and live connectivity — enough for staff to confirm
+ * "is this kiosk configured correctly and online" without leaving the device.
+ *
+ * Laid out as a sidebar + content workspace to match the POS settings surface:
+ * a fixed nav rail on the left (with live connectivity + destructive actions
+ * pinned to its footer) and a scrollable card canvas on the right.
  */
 export function KioskDiagnosticsScreen({
   config,
@@ -62,6 +128,11 @@ export function KioskDiagnosticsScreen({
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const { isOnline, rawIsOnline, quality, pendingSyncCount } =
     useNetworkStatus();
+
+  // ── Active sidebar section ──
+  const [activeSection, setActiveSection] = useState<SectionId>("overview");
+  const activeMeta =
+    SECTIONS.find((s) => s.id === activeSection) ?? SECTIONS[0];
 
   // ── Menu layout (device-local) ──
   const menuColumns = useKioskDeviceSettingsStore((s) => s.menuColumns);
@@ -91,7 +162,6 @@ export function KioskDiagnosticsScreen({
   );
 
   // Terminal UI state
-  const [expandedTerminal, setExpandedTerminal] = useState(true);
   const [showTerminalPicker, setShowTerminalPicker] = useState(false);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [registerFormType, setRegisterFormType] = useState<
@@ -649,880 +719,807 @@ export function KioskDiagnosticsScreen({
     }
   };
 
-  return (
-    <View className="flex-1 bg-white">
-      <View className="flex-row items-center justify-between px-6 pt-14 pb-4 border-b border-gray-200">
-        <Text className="text-2xl font-bold text-black">Kiosk Diagnostics</Text>
-        <Pressable
-          onPress={onClose}
-          className="w-11 h-11 rounded-full bg-gray-100 items-center justify-center"
-        >
-          <X size={22} color="#0A0A0A" />
-        </Pressable>
-      </View>
+  // ── Section renderers ──────────────────────────────────────────────
 
-      <ScrollView
-        className="flex-1 px-6 py-4"
-        contentContainerStyle={{ gap: 16 }}
+  const renderOverview = () => (
+    <>
+      <Section
+        title="Connectivity"
+        Icon={rawIsOnline ? Wifi : WifiOff}
+        accent={rawIsOnline ? "#16A34A" : "#DC2626"}
       >
-        <Section title="Connectivity">
-          <Row
-            label="Network"
-            value={rawIsOnline ? "Online" : "Offline"}
-            icon={
-              rawIsOnline ? (
-                <Wifi size={18} color="#16A34A" />
+        <Row
+          label="Network"
+          value={rawIsOnline ? "Online" : "Offline"}
+          icon={
+            rawIsOnline ? (
+              <Wifi size={18} color="#16A34A" />
+            ) : (
+              <WifiOff size={18} color="#DC2626" />
+            )
+          }
+        />
+        <Row label="Connection quality" value={quality} />
+        <Row
+          label="Effective status"
+          value={isOnline ? "Online" : "Degraded / Offline"}
+        />
+        <Row label="Pending syncs" value={String(pendingSyncCount)} last />
+      </Section>
+
+      <Section title="Station" Icon={MonitorSmartphone}>
+        <Row label="Location" value={selectedStore?.name ?? "—"} />
+        <Row label="Station" value={selectedStation?.station_name ?? "—"} />
+        <Row label="Station ID" value={selectedStation?.id ?? "—"} mono last />
+      </Section>
+    </>
+  );
+
+  const renderMenuLayout = () => (
+    <Section title="Items per row" Icon={LayoutGrid}>
+      <View className="px-5 py-5">
+        <Text className="text-sm text-gray-500 mb-4">
+          How many menu items show across each row. “Auto” uses the template
+          default ({config.orientation === "vertical" ? "3" : "4"} for this
+          orientation).
+        </Text>
+        <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+          {(["auto", 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
+            const active = menuColumns === opt;
+            return (
+              <TouchableOpacity
+                key={String(opt)}
+                onPress={() => setMenuColumns(opt)}
+                activeOpacity={0.85}
+                className={`flex-1 py-3.5 items-center rounded-xl ${
+                  active ? "bg-white" : ""
+                }`}
+                style={active ? cardShadow : undefined}
+              >
+                <Text
+                  className={`text-base font-bold ${
+                    active ? "text-teal-700" : "text-gray-400"
+                  }`}
+                >
+                  {opt === "auto" ? "Auto" : opt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    </Section>
+  );
+
+  const renderAbout = () => (
+    <Section title="Application" Icon={Info}>
+      <Row label="App version" value={appJson.expo.version} />
+      <Row label="Kiosk profile" value={config.profileName || "Kiosk"} />
+      <Row label="Profile ID" value={config.id} mono last />
+    </Section>
+  );
+
+  const renderTerminalPanel = () => (
+    <View
+      className="rounded-3xl border border-gray-200 bg-white overflow-hidden"
+      style={cardShadow}
+    >
+      {showRegisterForm ? (
+        <View className="px-5 py-5">
+          <View className="flex-row items-center justify-between mb-4">
+            <View className="flex-row items-center gap-2">
+              <Plus size={18} color={TEAL} />
+              <Text className="text-base font-bold text-gray-900">
+                {registerFormType === "castles"
+                  ? "Add Castles Terminal"
+                  : "Register Dejavoo Terminal"}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setShowRegisterForm(false)}
+              className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
+            >
+              <X size={18} color="#6B7280" />
+            </Pressable>
+          </View>
+
+          {registerFormType === "castles" ? (
+            <>
+              <View className="mb-3">
+                <FieldLabel>Connection</FieldLabel>
+                <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+                  {[
+                    {
+                      id: "local_socket" as const,
+                      label: "TCP / WiFi",
+                      Icon: Wifi,
+                    },
+                    { id: "usb" as const, label: "USB (wired)", Icon: Usb },
+                  ].map((opt) => {
+                    const active = registerForm.connectionType === opt.id;
+                    const Icon = opt.Icon;
+                    return (
+                      <TouchableOpacity
+                        key={opt.id}
+                        onPress={() =>
+                          setRegisterForm((f) => ({
+                            ...f,
+                            connectionType: opt.id,
+                          }))
+                        }
+                        activeOpacity={0.85}
+                        className={`flex-1 py-3 flex-row items-center justify-center gap-1.5 rounded-xl ${
+                          active ? "bg-white" : ""
+                        }`}
+                        style={active ? cardShadow : undefined}
+                      >
+                        <Icon size={15} color={active ? TEAL : "#9CA3AF"} />
+                        <Text
+                          className={`text-sm font-bold ${
+                            active ? "text-teal-700" : "text-gray-400"
+                          }`}
+                        >
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {registerForm.connectionType === "local_socket" ? (
+                <View className="flex-row gap-3 mb-3">
+                  <View className="flex-[3]">
+                    <FieldLabel>IP Address *</FieldLabel>
+                    <Input
+                      value={registerForm.ipAddress}
+                      onChangeText={(v) =>
+                        setRegisterForm((f) => ({ ...f, ipAddress: v }))
+                      }
+                      placeholder="192.168.1.100"
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <View className="flex-[1.2]">
+                    <FieldLabel>Port</FieldLabel>
+                    <Input
+                      value={registerForm.port}
+                      onChangeText={(v) =>
+                        setRegisterForm((f) => ({ ...f, port: v }))
+                      }
+                      placeholder="8080"
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                </View>
               ) : (
-                <WifiOff size={18} color="#DC2626" />
-              )
+                <View className="p-3.5 mb-3 rounded-2xl border border-teal-200 bg-teal-50 flex-row items-center gap-2.5">
+                  <Usb size={16} color={TEAL} />
+                  <Text className="flex-1 text-sm text-gray-600">
+                    USB — no IP needed. The terminal is identified by USB device
+                    serial.
+                  </Text>
+                </View>
+              )}
+
+              <View className="mb-4">
+                <FieldLabel>Terminal Name *</FieldLabel>
+                <Input
+                  value={registerForm.name}
+                  onChangeText={(v) =>
+                    setRegisterForm((f) => ({ ...f, name: v }))
+                  }
+                  placeholder="e.g. Front Counter"
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              {[
+                {
+                  key: "name",
+                  label: "Terminal Name *",
+                  placeholder: "e.g. Front Counter",
+                },
+                {
+                  key: "tpn",
+                  label: "TPN *",
+                  placeholder: "Terminal Point Number",
+                },
+                {
+                  key: "authKey",
+                  label: "Auth Key *",
+                  placeholder: "Authentication Key",
+                  secure: true,
+                },
+              ].map((field) => (
+                <View key={field.key} className="mb-3">
+                  <FieldLabel>{field.label}</FieldLabel>
+                  <Input
+                    value={(registerForm as any)[field.key]}
+                    onChangeText={(v) =>
+                      setRegisterForm((f) => ({ ...f, [field.key]: v }))
+                    }
+                    placeholder={field.placeholder}
+                    secureTextEntry={field.secure}
+                  />
+                </View>
+              ))}
+              <View className="mb-4">
+                <FieldLabel>Environment</FieldLabel>
+                <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+                  {(["sandbox", "production"] as const).map((env) => {
+                    const active = registerForm.environment === env;
+                    return (
+                      <TouchableOpacity
+                        key={env}
+                        onPress={() =>
+                          setRegisterForm((f) => ({ ...f, environment: env }))
+                        }
+                        activeOpacity={0.85}
+                        className={`flex-1 py-3 items-center rounded-xl ${
+                          active ? "bg-white" : ""
+                        }`}
+                        style={active ? cardShadow : undefined}
+                      >
+                        <Text
+                          className={`text-sm font-bold capitalize ${
+                            active ? "text-teal-700" : "text-gray-400"
+                          }`}
+                        >
+                          {env}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </>
+          )}
+
+          <PrimaryButton
+            onPress={handleRegisterTerminal}
+            disabled={!isRegisterFormValid || isRegistering}
+            loading={isRegistering}
+            icon={Check}
+            label={
+              registerFormType === "castles"
+                ? "Save & Connect"
+                : "Register Terminal"
             }
           />
-          <Row label="Connection quality" value={quality} />
-          <Row
-            label="Effective status"
-            value={isOnline ? "Online" : "Degraded / Offline"}
-          />
-          <Row label="Pending syncs" value={String(pendingSyncCount)} />
-        </Section>
-
-        <Section title="Station">
-          <Row label="Location" value={selectedStore?.name ?? "—"} />
-          <Row label="Station" value={selectedStation?.station_name ?? "—"} />
-          <Row label="Station ID" value={selectedStation?.id ?? "—"} mono />
-        </Section>
-
-        {/* Editable kiosk profile — same options as the web dashboard, with
-            Sync (pull) + Save (push) to kiosk_profiles. */}
-        <KioskProfileEditor
-          config={config}
-          onRefreshKioskConfig={onRefreshKioskConfig}
-        />
-
-        {/* ── Menu Layout (device-local) ── */}
-        <View style={{ gap: 8 }}>
-          <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-            Menu Layout
-          </Text>
-          <View className="rounded-2xl border border-gray-200 px-4 py-3">
-            <Text className="text-base text-gray-600 mb-1">
-              Items per row
+        </View>
+      ) : showTerminalPicker ? (
+        <View className="px-5 py-5">
+          <View className="flex-row items-center justify-between mb-4">
+            <Text className="text-base font-bold text-gray-900">
+              Available Terminals
             </Text>
-            <Text className="text-xs text-gray-400 mb-3">
-              How many menu items show across each row. “Auto” uses the
-              template default ({config.orientation === "vertical" ? "3" : "4"}{" "}
-              for this orientation).
+            <Pressable
+              onPress={() => setShowTerminalPicker(false)}
+              className="px-3 py-1.5 rounded-full bg-gray-100"
+            >
+              <Text className="text-sm font-semibold text-gray-600">
+                Cancel
+              </Text>
+            </Pressable>
+          </View>
+          {terminals.length === 0 ? (
+            <Text className="text-sm text-gray-400 text-center py-6">
+              No terminals found.
             </Text>
-            <View className="flex-row bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
-              {(["auto", 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
-                const active = menuColumns === opt;
-                return (
-                  <TouchableOpacity
-                    key={String(opt)}
-                    onPress={() => setMenuColumns(opt)}
-                    className={`flex-1 py-2.5 items-center ${
-                      active ? "bg-teal-100" : ""
-                    }`}
-                  >
-                    <Text
-                      className={`text-sm font-semibold ${
-                        active ? "text-teal-600" : "text-gray-400"
+          ) : (
+            terminals.map((t) => {
+              const isCurrent = t.id === currentTerminal?.id;
+              const isOtherStation =
+                t.isActive &&
+                t.stationId &&
+                t.stationId !== selectedStation?.id;
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  onPress={() => !isCurrent && handleAssignTerminal(t)}
+                  disabled={isCurrent || isAssigning}
+                  activeOpacity={0.85}
+                  className={`px-4 py-3.5 rounded-2xl mb-2.5 border ${
+                    isCurrent
+                      ? "bg-teal-50 border-teal-300"
+                      : "bg-gray-50 border-gray-200"
+                  }`}
+                >
+                  <View className="flex-row items-center">
+                    <View
+                      className={`w-3 h-3 rounded-full mr-3 ${
+                        t.isConnected ? "bg-green-500" : "bg-gray-300"
                       }`}
-                    >
-                      {opt === "auto" ? "Auto" : opt}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                    />
+                    <View className="flex-1">
+                      <Text className="text-base font-semibold text-gray-900">
+                        {t.name}
+                      </Text>
+                      <View className="flex-row items-center mt-1 flex-wrap gap-1.5">
+                        <View className="px-2 py-0.5 rounded-md bg-teal-100">
+                          <Text className="text-[11px] font-bold text-teal-700">
+                            {terminalTypeLabel(t.terminalType)}
+                          </Text>
+                        </View>
+                        {t.terminalType === "castles" && (
+                          <View className="px-2 py-0.5 rounded-md bg-gray-100 flex-row items-center gap-1">
+                            {t.connectionType === "usb" ? (
+                              <Usb size={10} color="#D97706" />
+                            ) : (
+                              <Wifi size={10} color="#9CA3AF" />
+                            )}
+                            <Text className="text-[11px] font-semibold text-gray-500">
+                              {t.connectionType === "usb" ? "USB" : "TCP"}
+                            </Text>
+                          </View>
+                        )}
+                        {t.model && (
+                          <Text className="text-[11px] text-gray-400">
+                            {t.model}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    {isCurrent && (
+                      <View className="px-2.5 py-1 rounded-lg border border-teal-300 bg-teal-100">
+                        <Text className="text-[11px] font-bold text-teal-700">
+                          Current
+                        </Text>
+                      </View>
+                    )}
+                    {isOtherStation && (
+                      <View className="px-2.5 py-1 rounded-lg bg-amber-100">
+                        <Text className="text-[11px] font-bold text-amber-700">
+                          Tap to move here
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+          <TouchableOpacity
+            onPress={() => {
+              setShowTerminalPicker(false);
+              setShowRegisterForm(true);
+            }}
+            className="flex-row items-center justify-center mt-2 py-3"
+          >
+            <Plus size={17} color={TEAL} />
+            <Text className="text-sm font-bold text-teal-700 ml-1.5">
+              Register New Terminal
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : isEditingTerminal && currentTerminal ? (
+        <View className="px-5 py-5">
+          <View className="flex-row items-center justify-between mb-4">
+            <View className="flex-row items-center gap-2">
+              <Pencil size={17} color={TEAL} />
+              <Text className="text-base font-bold text-gray-900">
+                Edit Terminal
+              </Text>
+              <View className="px-2 py-0.5 rounded-md bg-teal-100">
+                <Text className="text-[11px] font-bold text-teal-700">
+                  {terminalTypeLabel(currentTerminal.terminal_type)}
+                </Text>
+              </View>
             </View>
+            <Pressable
+              onPress={() => setIsEditingTerminal(false)}
+              className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
+            >
+              <X size={18} color="#6B7280" />
+            </Pressable>
+          </View>
+
+          <View className="mb-3">
+            <FieldLabel>Terminal Name *</FieldLabel>
+            <Input
+              value={editForm.name}
+              onChangeText={(v) => setEditForm((f) => ({ ...f, name: v }))}
+              placeholder="e.g. Front Counter"
+            />
+          </View>
+
+          {currentTerminal.terminal_type === "castles" && (
+            <>
+              <View className="mb-3">
+                <FieldLabel>Connection</FieldLabel>
+                <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+                  {[
+                    {
+                      id: "local_socket" as const,
+                      label: "TCP / WiFi",
+                      Icon: Wifi,
+                    },
+                    { id: "usb" as const, label: "USB (wired)", Icon: Usb },
+                  ].map((opt) => {
+                    const active = editForm.connectionType === opt.id;
+                    const Icon = opt.Icon;
+                    return (
+                      <TouchableOpacity
+                        key={opt.id}
+                        onPress={() =>
+                          setEditForm((f) => ({
+                            ...f,
+                            connectionType: opt.id,
+                          }))
+                        }
+                        activeOpacity={0.85}
+                        className={`flex-1 py-3 flex-row items-center justify-center gap-1.5 rounded-xl ${
+                          active ? "bg-white" : ""
+                        }`}
+                        style={active ? cardShadow : undefined}
+                      >
+                        <Icon size={15} color={active ? TEAL : "#9CA3AF"} />
+                        <Text
+                          className={`text-sm font-bold ${
+                            active ? "text-teal-700" : "text-gray-400"
+                          }`}
+                        >
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {editForm.connectionType === "local_socket" ? (
+                <View className="flex-row gap-3 mb-3">
+                  <View className="flex-[3]">
+                    <FieldLabel>IP Address *</FieldLabel>
+                    <Input
+                      value={editForm.ipAddress}
+                      onChangeText={(v) =>
+                        setEditForm((f) => ({ ...f, ipAddress: v }))
+                      }
+                      placeholder="192.168.1.100"
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <View className="flex-[1.2]">
+                    <FieldLabel>Port</FieldLabel>
+                    <Input
+                      value={editForm.port}
+                      onChangeText={(v) =>
+                        setEditForm((f) => ({ ...f, port: v }))
+                      }
+                      placeholder="8080"
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                </View>
+              ) : (
+                <View className="p-3.5 mb-3 rounded-2xl border border-teal-200 bg-teal-50 flex-row items-center gap-2.5">
+                  <Usb size={16} color={TEAL} />
+                  <Text className="flex-1 text-sm text-gray-600">
+                    USB — no IP needed. The terminal is identified by USB device
+                    serial.
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+          {currentTerminal.terminal_type !== "castles" && (
+            <>
+              <View className="mb-3">
+                <FieldLabel>TPN *</FieldLabel>
+                <Input
+                  value={editForm.tpn}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, tpn: v }))}
+                  placeholder="Terminal Point Number"
+                />
+              </View>
+              <View className="mb-3">
+                <FieldLabel>Auth Key</FieldLabel>
+                <Input
+                  value={editForm.authKey}
+                  onChangeText={(v) =>
+                    setEditForm((f) => ({ ...f, authKey: v }))
+                  }
+                  placeholder="Leave blank to keep current"
+                  secureTextEntry
+                />
+              </View>
+            </>
+          )}
+
+          <View className="mt-1">
+            <PrimaryButton
+              onPress={handleSaveEdit}
+              disabled={!isEditFormValid || isSavingEdit}
+              loading={isSavingEdit}
+              icon={Check}
+              label="Save Changes"
+            />
+          </View>
+        </View>
+      ) : currentTerminal ? (
+        <View className="px-5 py-5">
+          <View
+            className={`rounded-2xl border p-4 mb-4 ${
+              currentTerminal.is_connected
+                ? "border-green-300 bg-green-50/40"
+                : "border-gray-200 bg-gray-50"
+            }`}
+          >
+            <View className="flex-row items-start justify-between">
+              <View className="flex-1 pr-3">
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-lg font-bold text-gray-900">
+                    {currentTerminal.terminal_name}
+                  </Text>
+                  <View className="px-2 py-0.5 rounded-md bg-teal-100">
+                    <Text className="text-[11px] font-bold text-teal-700">
+                      {terminalTypeLabel(
+                        currentTerminal.terminal_type,
+                      ).toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              {(() => {
+                const statusColor = terminalConnectActivity
+                  ? TEAL
+                  : currentTerminal.is_connected
+                    ? "#16A34A"
+                    : "#DC2626";
+                return (
+                  <View
+                    className="flex-row items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+                    style={{
+                      backgroundColor: statusColor + "1A",
+                      maxWidth: 180,
+                    }}
+                  >
+                    <View
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: statusColor }}
+                    />
+                    <Text
+                      className="text-xs font-bold"
+                      style={{ color: statusColor }}
+                      numberOfLines={1}
+                    >
+                      {terminalConnectActivity ??
+                        (currentTerminal.is_connected ? "Online" : "Offline")}
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
+
+            {currentTerminal.terminal_type === "castles" ? (
+              <View className="mt-3 pt-3 border-t border-gray-200 gap-1.5">
+                <KV
+                  k="Address"
+                  v={
+                    currentTerminal.ip_address
+                      ? `${currentTerminal.ip_address}:${currentTerminal.port || 8080}`
+                      : "—"
+                  }
+                />
+                <KV
+                  k="Serial"
+                  v={currentTerminal.serial_number ?? "— not yet discovered —"}
+                />
+                {currentTerminal.terminal_model && (
+                  <KV k="Model" v={currentTerminal.terminal_model} />
+                )}
+                <KV k="ID" v={currentTerminal.id.slice(0, 8)} />
+              </View>
+            ) : currentTerminal.register_id ? (
+              <View className="mt-3 pt-3 border-t border-gray-200">
+                <KV k="TPN" v={currentTerminal.register_id} />
+              </View>
+            ) : null}
+          </View>
+
+          <View className="flex-row gap-2.5">
+            <ActionButton
+              onPress={handleTestConnection}
+              disabled={isTestingConnection}
+              loading={isTestingConnection}
+              loadingLabel={terminalConnectActivity ?? "Testing…"}
+              icon={RefreshCw}
+              label="Test"
+              primary
+            />
+            <ActionButton
+              onPress={handleStartEdit}
+              icon={Pencil}
+              label="Edit"
+            />
+            <ActionButton
+              onPress={() => setShowTerminalPicker(true)}
+              icon={CreditCard}
+              label="Switch"
+            />
+            <ActionButton
+              onPress={() => setShowRegisterForm(true)}
+              icon={Plus}
+              label="Add"
+            />
+          </View>
+        </View>
+      ) : (
+        <View className="px-5 py-6">
+          <View className="items-center mb-5">
+            <View className="w-14 h-14 rounded-2xl bg-gray-100 items-center justify-center mb-3">
+              <CreditCard size={26} color="#9CA3AF" />
+            </View>
+            <Text className="text-base font-semibold text-gray-900">
+              No terminal on this station
+            </Text>
+            <Text className="text-sm text-gray-400 mt-1 text-center">
+              Assign an existing reader or register a new one.
+            </Text>
+          </View>
+          <View className="flex-row gap-3">
+            {terminals.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setShowTerminalPicker(true)}
+                activeOpacity={0.85}
+                className="flex-1 py-4 rounded-2xl items-center flex-row justify-center border border-teal-300 bg-teal-50"
+              >
+                <CreditCard size={17} color={TEAL} />
+                <Text className="text-base font-bold text-teal-700 ml-2">
+                  Assign Existing
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => setShowRegisterForm(true)}
+              activeOpacity={0.9}
+              className="flex-1 py-4 rounded-2xl items-center flex-row justify-center bg-teal-600"
+            >
+              <Plus size={17} color="#FFFFFF" />
+              <Text className="text-base font-bold text-white ml-2">
+                Register New
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
+  // ── Layout ─────────────────────────────────────────────────────────
+
+  return (
+    <View className="flex-1 flex-row bg-gray-50">
+      {/* ── Sidebar ── */}
+      <View className="w-72 bg-white border-r border-gray-200">
+        {/* Brand header */}
+        <View className="px-5 pt-12 pb-5 border-b border-gray-100">
+          <View className="flex-row items-center gap-3">
+            <View className="w-12 h-12 rounded-2xl bg-teal-600 items-center justify-center">
+              <SlidersHorizontal size={24} color="#FFFFFF" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-lg font-bold text-gray-900">
+                Kiosk Settings
+              </Text>
+              <Text className="text-xs text-gray-400" numberOfLines={1}>
+                {selectedStation?.station_name ?? "Diagnostics"}
+              </Text>
+            </View>
+          </View>
+
+          {/* Live connectivity pill */}
+          <View
+            className={`flex-row items-center gap-2 mt-4 self-start px-3 py-1.5 rounded-full ${
+              rawIsOnline ? "bg-green-100" : "bg-red-100"
+            }`}
+          >
+            <View
+              className={`w-2 h-2 rounded-full ${
+                rawIsOnline ? "bg-green-500" : "bg-red-500"
+              }`}
+            />
+            <Text
+              className={`text-xs font-bold ${
+                rawIsOnline ? "text-green-700" : "text-red-700"
+              }`}
+            >
+              {rawIsOnline ? "Online" : "Offline"}
+            </Text>
           </View>
         </View>
 
-        {/* ── Payment Terminal ── */}
-        <View style={{ gap: 8 }}>
-          <Pressable
-            onPress={() => setExpandedTerminal((p) => !p)}
-            className="flex-row items-center justify-between"
-          >
-            <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-              Payment Terminal
-            </Text>
-            {expandedTerminal ? (
-              <ChevronUp size={18} color="#9CA3AF" />
-            ) : (
-              <ChevronDown size={18} color="#9CA3AF" />
-            )}
-          </Pressable>
-          {expandedTerminal && (
-            <View className="rounded-2xl border border-gray-200 overflow-hidden">
-              {showRegisterForm ? (
-                <View className="px-4 py-3">
-                  <View className="flex-row items-center justify-between mb-3">
-                    <View className="flex-row items-center gap-2">
-                      <Plus size={16} color="#0D9488" />
-                      <Text className="text-sm font-bold text-black">
-                        {registerFormType === "castles"
-                          ? "Add Castles Terminal"
-                          : "Register Dejavoo Terminal"}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowRegisterForm(false);
-                      }}
-                    >
-                      <X size={18} color="#9CA3AF" />
-                    </TouchableOpacity>
-                  </View>
+        {/* Nav */}
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ padding: 12 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {SECTIONS.map((section) => (
+            <NavItem
+              key={section.id}
+              icon={section.Icon}
+              label={section.label}
+              active={activeSection === section.id}
+              onPress={() => setActiveSection(section.id)}
+            />
+          ))}
+        </ScrollView>
 
-                  {registerFormType === "castles" ? (
-                    <>
-                      <View className="mb-2">
-                        <Text className="text-xs text-gray-500 mb-1.5">
-                          Connection
-                        </Text>
-                        <View className="flex-row bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
-                          {[
-                            {
-                              id: "local_socket" as const,
-                              label: "TCP / WiFi",
-                              Icon: Wifi,
-                            },
-                            {
-                              id: "usb" as const,
-                              label: "USB (wired)",
-                              Icon: Usb,
-                            },
-                          ].map((opt) => {
-                            const active =
-                              registerForm.connectionType === opt.id;
-                            const Icon = opt.Icon;
-                            return (
-                              <TouchableOpacity
-                                key={opt.id}
-                                onPress={() =>
-                                  setRegisterForm((f) => ({
-                                    ...f,
-                                    connectionType: opt.id,
-                                  }))
-                                }
-                                className={`flex-1 py-2.5 flex-row items-center justify-center gap-1.5 ${
-                                  active ? "bg-teal-100" : ""
-                                }`}
-                              >
-                                <Icon
-                                  size={13}
-                                  color={active ? "#0D9488" : "#9CA3AF"}
-                                />
-                                <Text
-                                  className={`text-xs font-semibold ${
-                                    active ? "text-teal-600" : "text-gray-400"
-                                  }`}
-                                >
-                                  {opt.label}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      </View>
-
-                      {registerForm.connectionType === "local_socket" ? (
-                        <View className="flex-row gap-2 mb-2">
-                          <View className="flex-[3]">
-                            <Text className="text-xs text-gray-500 mb-1">
-                              IP Address *
-                            </Text>
-                            <TextInput
-                              value={registerForm.ipAddress}
-                              onChangeText={(v) =>
-                                setRegisterForm((f) => ({
-                                  ...f,
-                                  ipAddress: v,
-                                }))
-                              }
-                              placeholder="192.168.1.100"
-                              placeholderTextColor="#9CA3AF"
-                              keyboardType="decimal-pad"
-                              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                            />
-                          </View>
-                          <View className="flex-[1.2]">
-                            <Text className="text-xs text-gray-500 mb-1">
-                              Port
-                            </Text>
-                            <TextInput
-                              value={registerForm.port}
-                              onChangeText={(v) =>
-                                setRegisterForm((f) => ({ ...f, port: v }))
-                              }
-                              placeholder="8080"
-                              placeholderTextColor="#9CA3AF"
-                              keyboardType="number-pad"
-                              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                            />
-                          </View>
-                        </View>
-                      ) : (
-                        <View className="p-2.5 mb-2 rounded-xl border border-teal-200 bg-teal-50 flex-row items-center gap-2">
-                          <Usb size={14} color="#0D9488" />
-                          <Text className="flex-1 text-xs text-gray-600">
-                            USB — no IP needed. The terminal is identified by
-                            USB device serial.
-                          </Text>
-                        </View>
-                      )}
-
-                      <View className="mb-3">
-                        <Text className="text-xs text-gray-500 mb-1">
-                          Terminal Name *
-                        </Text>
-                        <TextInput
-                          value={registerForm.name}
-                          onChangeText={(v) =>
-                            setRegisterForm((f) => ({ ...f, name: v }))
-                          }
-                          placeholder="e.g. Front Counter"
-                          placeholderTextColor="#9CA3AF"
-                          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                        />
-                      </View>
-                    </>
-                  ) : (
-                    <>
-                      {[
-                        {
-                          key: "name",
-                          label: "Terminal Name *",
-                          placeholder: "e.g. Front Counter",
-                        },
-                        {
-                          key: "tpn",
-                          label: "TPN *",
-                          placeholder: "Terminal Point Number",
-                        },
-                        {
-                          key: "authKey",
-                          label: "Auth Key *",
-                          placeholder: "Authentication Key",
-                          secure: true,
-                        },
-                      ].map((field) => (
-                        <View key={field.key} className="mb-2">
-                          <Text className="text-xs text-gray-500 mb-1">
-                            {field.label}
-                          </Text>
-                          <TextInput
-                            value={(registerForm as any)[field.key]}
-                            onChangeText={(v) =>
-                              setRegisterForm((f) => ({
-                                ...f,
-                                [field.key]: v,
-                              }))
-                            }
-                            placeholder={field.placeholder}
-                            placeholderTextColor="#9CA3AF"
-                            secureTextEntry={field.secure}
-                            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                          />
-                        </View>
-                      ))}
-                      <View className="mb-3">
-                        <Text className="text-xs text-gray-500 mb-1.5">
-                          Environment
-                        </Text>
-                        <View className="flex-row bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
-                          {(["sandbox", "production"] as const).map((env) => (
-                            <TouchableOpacity
-                              key={env}
-                              onPress={() =>
-                                setRegisterForm((f) => ({
-                                  ...f,
-                                  environment: env,
-                                }))
-                              }
-                              className={`flex-1 py-2.5 items-center ${
-                                registerForm.environment === env
-                                  ? "bg-teal-100"
-                                  : ""
-                              }`}
-                            >
-                              <Text
-                                className={`text-sm font-medium capitalize ${
-                                  registerForm.environment === env
-                                    ? "text-teal-600"
-                                    : "text-gray-400"
-                                }`}
-                              >
-                                {env}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-                    </>
-                  )}
-
-                  <TouchableOpacity
-                    onPress={handleRegisterTerminal}
-                    disabled={!isRegisterFormValid || isRegistering}
-                    className={`py-3 rounded-xl items-center flex-row justify-center border ${
-                      isRegisterFormValid && !isRegistering
-                        ? "bg-teal-50 border-teal-300"
-                        : "bg-gray-50 border-gray-200"
-                    }`}
-                  >
-                    {isRegistering ? (
-                      <ActivityIndicator size="small" color="#0D9488" />
-                    ) : (
-                      <>
-                        <Check
-                          size={15}
-                          color={isRegisterFormValid ? "#0D9488" : "#9CA3AF"}
-                        />
-                        <Text
-                          className={`text-sm font-bold ml-1.5 ${
-                            isRegisterFormValid
-                              ? "text-teal-600"
-                              : "text-gray-400"
-                          }`}
-                        >
-                          {registerFormType === "castles"
-                            ? "Save & Connect"
-                            : "Register Terminal"}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              ) : showTerminalPicker ? (
-                <View className="px-4 py-3">
-                  <View className="flex-row items-center justify-between mb-4">
-                    <Text className="text-sm font-bold text-black">
-                      Available Terminals
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => setShowTerminalPicker(false)}
-                    >
-                      <Text className="text-sm text-teal-600">Cancel</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {terminals.length === 0 ? (
-                    <Text className="text-sm text-gray-400 text-center py-4">
-                      No terminals found.
-                    </Text>
-                  ) : (
-                    terminals.map((t) => {
-                      const isCurrent = t.id === currentTerminal?.id;
-                      const isOtherStation =
-                        t.isActive &&
-                        t.stationId &&
-                        t.stationId !== selectedStation?.id;
-                      return (
-                        <TouchableOpacity
-                          key={t.id}
-                          onPress={() => !isCurrent && handleAssignTerminal(t)}
-                          disabled={isCurrent || isAssigning}
-                          className={`px-3 py-3 rounded-xl mb-2 border ${
-                            isCurrent
-                              ? "bg-teal-50 border-teal-300"
-                              : "bg-gray-50 border-gray-200"
-                          }`}
-                        >
-                          <View className="flex-row items-center">
-                            <View
-                              className={`w-2.5 h-2.5 rounded-full mr-2.5 ${
-                                t.isConnected ? "bg-green-500" : "bg-gray-300"
-                              }`}
-                            />
-                            <View className="flex-1">
-                              <Text className="text-sm font-medium text-black">
-                                {t.name}
-                              </Text>
-                              <View className="flex-row items-center mt-0.5 flex-wrap gap-1">
-                                <View className="px-1.5 py-0.5 rounded bg-teal-100">
-                                  <Text className="text-[10px] font-medium text-teal-600">
-                                    {t.terminalType === "castles"
-                                      ? "Castles"
-                                      : "Dejavoo"}
-                                  </Text>
-                                </View>
-                                {t.terminalType === "castles" && (
-                                  <View className="px-1.5 py-0.5 rounded bg-gray-100 flex-row items-center gap-0.5">
-                                    {t.connectionType === "usb" ? (
-                                      <Usb size={9} color="#D97706" />
-                                    ) : (
-                                      <Wifi size={9} color="#9CA3AF" />
-                                    )}
-                                    <Text className="text-[10px] font-semibold text-gray-500">
-                                      {t.connectionType === "usb"
-                                        ? "USB"
-                                        : "TCP"}
-                                    </Text>
-                                  </View>
-                                )}
-                                {t.model && (
-                                  <Text className="text-[10px] text-gray-400">
-                                    {t.model}
-                                  </Text>
-                                )}
-                              </View>
-                            </View>
-                            {isCurrent && (
-                              <View className="px-2 py-0.5 rounded border border-teal-300 bg-teal-50">
-                                <Text className="text-[10px] font-bold text-teal-600">
-                                  Current
-                                </Text>
-                              </View>
-                            )}
-                            {isOtherStation && (
-                              <View className="px-2 py-0.5 rounded bg-amber-50">
-                                <Text className="text-[10px] font-bold text-amber-600">
-                                  Tap to move here
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-                  <TouchableOpacity
-                    onPress={() => {
-                      setShowTerminalPicker(false);
-                      setShowRegisterForm(true);
-                    }}
-                    className="flex-row items-center justify-center mt-2 py-2"
-                  >
-                    <Plus size={16} color="#0D9488" />
-                    <Text className="text-sm font-medium text-teal-600 ml-1">
-                      Register New Terminal
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : isEditingTerminal && currentTerminal ? (
-                <View className="px-4 py-3">
-                  <View className="flex-row items-center justify-between mb-4">
-                    <View className="flex-row items-center gap-2">
-                      <Pencil size={16} color="#0D9488" />
-                      <Text className="text-sm font-bold text-black">
-                        Edit Terminal
-                      </Text>
-                      <View className="px-2 py-0.5 rounded bg-teal-100">
-                        <Text className="text-[11px] font-bold text-teal-600">
-                          {currentTerminal.terminal_type === "castles"
-                            ? "Castles"
-                            : "Dejavoo"}
-                        </Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => setIsEditingTerminal(false)}
-                    >
-                      <X size={18} color="#9CA3AF" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View className="mb-3">
-                    <Text className="text-xs text-gray-500 mb-1">
-                      Terminal Name *
-                    </Text>
-                    <TextInput
-                      value={editForm.name}
-                      onChangeText={(v) =>
-                        setEditForm((f) => ({ ...f, name: v }))
-                      }
-                      placeholder="e.g. Front Counter"
-                      placeholderTextColor="#9CA3AF"
-                      className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                    />
-                  </View>
-
-                  {currentTerminal.terminal_type === "castles" && (
-                    <>
-                      <View className="mb-3">
-                        <Text className="text-xs text-gray-500 mb-1.5">
-                          Connection
-                        </Text>
-                        <View className="flex-row bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
-                          {[
-                            {
-                              id: "local_socket" as const,
-                              label: "TCP / WiFi",
-                              Icon: Wifi,
-                            },
-                            {
-                              id: "usb" as const,
-                              label: "USB (wired)",
-                              Icon: Usb,
-                            },
-                          ].map((opt) => {
-                            const active = editForm.connectionType === opt.id;
-                            const Icon = opt.Icon;
-                            return (
-                              <TouchableOpacity
-                                key={opt.id}
-                                onPress={() =>
-                                  setEditForm((f) => ({
-                                    ...f,
-                                    connectionType: opt.id,
-                                  }))
-                                }
-                                className={`flex-1 py-2.5 flex-row items-center justify-center gap-1.5 ${
-                                  active ? "bg-teal-100" : ""
-                                }`}
-                              >
-                                <Icon
-                                  size={13}
-                                  color={active ? "#0D9488" : "#9CA3AF"}
-                                />
-                                <Text
-                                  className={`text-xs font-semibold ${
-                                    active ? "text-teal-600" : "text-gray-400"
-                                  }`}
-                                >
-                                  {opt.label}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      </View>
-
-                      {editForm.connectionType === "local_socket" ? (
-                        <View className="flex-row gap-2 mb-3">
-                          <View className="flex-[3]">
-                            <Text className="text-xs text-gray-500 mb-1">
-                              IP Address *
-                            </Text>
-                            <TextInput
-                              value={editForm.ipAddress}
-                              onChangeText={(v) =>
-                                setEditForm((f) => ({ ...f, ipAddress: v }))
-                              }
-                              placeholder="192.168.1.100"
-                              placeholderTextColor="#9CA3AF"
-                              keyboardType="decimal-pad"
-                              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                            />
-                          </View>
-                          <View className="flex-[1.2]">
-                            <Text className="text-xs text-gray-500 mb-1">
-                              Port
-                            </Text>
-                            <TextInput
-                              value={editForm.port}
-                              onChangeText={(v) =>
-                                setEditForm((f) => ({ ...f, port: v }))
-                              }
-                              placeholder="8080"
-                              placeholderTextColor="#9CA3AF"
-                              keyboardType="number-pad"
-                              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                            />
-                          </View>
-                        </View>
-                      ) : (
-                        <View className="p-2.5 mb-3 rounded-xl border border-teal-200 bg-teal-50 flex-row items-center gap-2">
-                          <Usb size={14} color="#0D9488" />
-                          <Text className="flex-1 text-xs text-gray-600">
-                            USB — no IP needed. The terminal is identified by
-                            USB device serial.
-                          </Text>
-                        </View>
-                      )}
-                    </>
-                  )}
-                  {currentTerminal.terminal_type !== "castles" && (
-                    <>
-                      <View className="mb-3">
-                        <Text className="text-xs text-gray-500 mb-1">
-                          TPN *
-                        </Text>
-                        <TextInput
-                          value={editForm.tpn}
-                          onChangeText={(v) =>
-                            setEditForm((f) => ({ ...f, tpn: v }))
-                          }
-                          placeholder="Terminal Point Number"
-                          placeholderTextColor="#9CA3AF"
-                          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                        />
-                      </View>
-                      <View className="mb-3">
-                        <Text className="text-xs text-gray-500 mb-1">
-                          Auth Key
-                        </Text>
-                        <TextInput
-                          value={editForm.authKey}
-                          onChangeText={(v) =>
-                            setEditForm((f) => ({ ...f, authKey: v }))
-                          }
-                          placeholder="Leave blank to keep current"
-                          placeholderTextColor="#9CA3AF"
-                          secureTextEntry
-                          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
-                        />
-                      </View>
-                    </>
-                  )}
-
-                  <TouchableOpacity
-                    onPress={handleSaveEdit}
-                    disabled={!isEditFormValid || isSavingEdit}
-                    className={`py-3 rounded-xl items-center flex-row justify-center border ${
-                      isEditFormValid && !isSavingEdit
-                        ? "bg-teal-50 border-teal-300"
-                        : "bg-gray-50 border-gray-200"
-                    }`}
-                  >
-                    {isSavingEdit ? (
-                      <ActivityIndicator size="small" color="#0D9488" />
-                    ) : (
-                      <>
-                        <Check
-                          size={15}
-                          color={isEditFormValid ? "#0D9488" : "#9CA3AF"}
-                        />
-                        <Text
-                          className={`text-sm font-bold ml-1.5 ${
-                            isEditFormValid ? "text-teal-600" : "text-gray-400"
-                          }`}
-                        >
-                          Save Changes
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              ) : currentTerminal ? (
-                <View className="px-4 py-3">
-                  <View
-                    className={`rounded-xl border mb-3 overflow-hidden ${
-                      currentTerminal.is_connected
-                        ? "border-green-300"
-                        : "border-gray-200"
-                    }`}
-                  >
-                    <View className="flex-row items-start justify-between px-3 py-2.5">
-                      <View className="flex-1">
-                        <View className="flex-row items-center gap-1.5">
-                          <Text className="text-sm font-bold text-black">
-                            {currentTerminal.terminal_name}
-                          </Text>
-                          <View className="px-1.5 py-0.5 rounded bg-teal-100">
-                            <Text className="text-[9px] font-bold text-teal-600">
-                              {currentTerminal.terminal_type === "castles"
-                                ? "CASTLES"
-                                : "DEJAVOO"}
-                            </Text>
-                          </View>
-                        </View>
-                        <View className="mt-1 gap-0.5">
-                          {currentTerminal.terminal_type === "castles" ? (
-                            <>
-                              <View className="flex-row items-center">
-                                <Text className="text-[9px] font-semibold text-gray-400 w-[36px]">
-                                  Addr:
-                                </Text>
-                                <Text
-                                  className="text-[9px] text-black font-mono"
-                                  selectable
-                                >
-                                  {currentTerminal.ip_address ?? "—"}
-                                  {currentTerminal.ip_address
-                                    ? `:${currentTerminal.port || 8080}`
-                                    : ""}
-                                </Text>
-                              </View>
-                              <View className="flex-row items-center">
-                                <Text className="text-[9px] font-semibold text-gray-400 w-[36px]">
-                                  S/N:
-                                </Text>
-                                <Text
-                                  className="text-[9px] text-black font-mono"
-                                  selectable
-                                >
-                                  {currentTerminal.serial_number ??
-                                    "— not yet discovered —"}
-                                </Text>
-                              </View>
-                              {currentTerminal.terminal_model && (
-                                <View className="flex-row items-center">
-                                  <Text className="text-[9px] font-semibold text-gray-400 w-[36px]">
-                                    Model:
-                                  </Text>
-                                  <Text
-                                    className="text-[9px] text-black font-mono"
-                                    selectable
-                                  >
-                                    {currentTerminal.terminal_model}
-                                  </Text>
-                                </View>
-                              )}
-                              <View className="flex-row items-center">
-                                <Text className="text-[9px] font-semibold text-gray-400 w-[36px]">
-                                  ID:
-                                </Text>
-                                <Text
-                                  className="text-[9px] text-black font-mono"
-                                  selectable
-                                >
-                                  {currentTerminal.id.slice(0, 8)}
-                                </Text>
-                              </View>
-                            </>
-                          ) : currentTerminal.register_id ? (
-                            <Text className="text-[9px] text-gray-400">
-                              TPN: {currentTerminal.register_id}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                      {(() => {
-                        const statusColor = terminalConnectActivity
-                          ? "#0D9488"
-                          : currentTerminal.is_connected
-                            ? "#16A34A"
-                            : "#DC2626";
-                        return (
-                          <View
-                            className="flex-row items-center gap-1 px-2 py-1 rounded-lg"
-                            style={{
-                              backgroundColor: statusColor + "20",
-                              maxWidth: 160,
-                            }}
-                          >
-                            <View
-                              className="w-1.5 h-1.5 rounded-full"
-                              style={{ backgroundColor: statusColor }}
-                            />
-                            <Text
-                              className="text-[10px] font-semibold"
-                              style={{ color: statusColor }}
-                              numberOfLines={1}
-                            >
-                              {terminalConnectActivity ??
-                                (currentTerminal.is_connected
-                                  ? "Online"
-                                  : "Offline")}
-                            </Text>
-                          </View>
-                        );
-                      })()}
-                    </View>
-                  </View>
-
-                  <View className="flex-row gap-1.5">
-                    <TouchableOpacity
-                      onPress={handleTestConnection}
-                      disabled={isTestingConnection}
-                      className="flex-1 py-2 rounded-xl items-center flex-row justify-center border border-teal-300 bg-teal-50"
-                    >
-                      {isTestingConnection ? (
-                        <>
-                          <ActivityIndicator size="small" color="#0D9488" />
-                          <Text className="text-[11px] font-semibold text-teal-600 ml-1.5">
-                            {terminalConnectActivity ?? "Testing…"}
-                          </Text>
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw size={13} color="#0D9488" />
-                          <Text className="text-[11px] font-semibold text-teal-600 ml-1">
-                            Test
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={handleStartEdit}
-                      className="flex-1 py-2 rounded-xl items-center flex-row justify-center border border-teal-300 bg-teal-50"
-                    >
-                      <Pencil size={13} color="#0D9488" />
-                      <Text className="text-[11px] font-semibold text-teal-600 ml-1">
-                        Edit
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setShowTerminalPicker(true)}
-                      className="flex-1 py-2 rounded-xl items-center flex-row justify-center border border-teal-300 bg-teal-50"
-                    >
-                      <CreditCard size={13} color="#0D9488" />
-                      <Text className="text-[11px] font-semibold text-teal-600 ml-1">
-                        Switch
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowRegisterForm(true);
-                      }}
-                      className="flex-1 py-2 rounded-xl items-center flex-row justify-center border border-teal-300 bg-teal-50"
-                    >
-                      <Plus size={13} color="#0D9488" />
-                      <Text className="text-[11px] font-semibold text-teal-600 ml-1">
-                        Add
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <View className="px-4 py-3">
-                  <View className="flex-row gap-3">
-                    {terminals.length > 0 && (
-                      <TouchableOpacity
-                        onPress={() => setShowTerminalPicker(true)}
-                        className="flex-1 py-3 rounded-xl items-center flex-row justify-center border border-teal-300 bg-teal-50"
-                      >
-                        <CreditCard size={15} color="#0D9488" />
-                        <Text className="text-sm font-bold text-teal-600 ml-1.5">
-                          Assign Existing
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowRegisterForm(true);
-                      }}
-                      className="flex-1 py-3 rounded-xl items-center flex-row justify-center border border-gray-200 bg-gray-50"
-                    >
-                      <Plus size={15} color="#0D9488" />
-                      <Text className="text-sm font-bold text-teal-600 ml-1.5">
-                        Register New
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        <Section title="App">
-          <Row label="Version" value={appJson.expo.version} />
-        </Section>
-
-        {/* ── End Station Session ── */}
-        <View className="pt-4 pb-8">
+        {/* Footer actions */}
+        <View className="px-3 pt-3 pb-8 border-t border-gray-100 gap-2.5">
           <Pressable
             onPress={() => setShowConfirm(true)}
             disabled={isEnding}
-            className="flex-row items-center justify-center px-4 py-4 rounded-2xl border border-red-200 bg-red-50"
+            className="flex-row items-center justify-center px-4 py-3.5 rounded-2xl border border-red-200 bg-red-50"
           >
-            <LogOut size={20} color="#DC2626" />
-            <Text className="text-base font-semibold text-red-600 ml-3">
+            <LogOut size={18} color="#DC2626" />
+            <Text className="text-sm font-bold text-red-600 ml-2">
               {isEnding ? "Ending session…" : "End Station Session"}
             </Text>
           </Pressable>
-          <Text className="text-xs text-gray-400 text-center mt-2">
-            Ends the station session and returns to station selection
-          </Text>
+          <Pressable
+            onPress={onClose}
+            className="flex-row items-center justify-center px-4 py-3.5 rounded-2xl bg-gray-100"
+          >
+            <X size={18} color="#374151" />
+            <Text className="text-sm font-bold text-gray-700 ml-2">Close</Text>
+          </Pressable>
         </View>
-      </ScrollView>
+      </View>
 
+      {/* ── Content ── */}
+      <View className="flex-1">
+        {/* Content header */}
+        <View className="flex-row items-start justify-between px-8 pt-12 pb-5 border-b border-gray-100 bg-white">
+          <View className="flex-1 pr-4">
+            <Text className="text-2xl font-bold text-gray-900">
+              {activeMeta.title}
+            </Text>
+            <Text className="text-sm text-gray-400 mt-1">
+              {activeMeta.subtitle}
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            className="w-11 h-11 rounded-full bg-gray-100 items-center justify-center"
+          >
+            <X size={22} color="#374151" />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          className="flex-1 px-8 py-6"
+          contentContainerStyle={{ gap: 20, paddingBottom: 56 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {activeSection === "overview" && renderOverview()}
+          {activeSection === "profile" && (
+            <KioskProfileEditor
+              config={config}
+              onRefreshKioskConfig={onRefreshKioskConfig}
+            />
+          )}
+          {activeSection === "menu" && renderMenuLayout()}
+          {activeSection === "terminal" && renderTerminalPanel()}
+          {activeSection === "about" && renderAbout()}
+        </ScrollView>
+      </View>
+
+      {/* ── End-session confirm ── */}
       {showConfirm && (
         <View className="absolute inset-0 bg-black/40 items-center justify-center px-6">
-          <View className="w-full max-w-sm bg-white rounded-2xl p-6">
-            <Text className="text-lg font-bold text-black text-center mb-2">
+          <View
+            className="w-full max-w-sm bg-white rounded-3xl p-6"
+            style={cardShadow}
+          >
+            <View className="w-12 h-12 rounded-2xl bg-red-50 items-center justify-center self-center mb-3">
+              <LogOut size={24} color="#DC2626" />
+            </View>
+            <Text className="text-lg font-bold text-gray-900 text-center mb-2">
               End Station Session
             </Text>
             <Text className="text-sm text-gray-500 text-center mb-6">
@@ -1532,20 +1529,18 @@ export function KioskDiagnosticsScreen({
             <Pressable
               onPress={handleEndSession}
               disabled={isEnding}
-              className="py-3 rounded-xl bg-red-500 items-center mb-2"
+              className="py-4 rounded-2xl bg-red-500 items-center mb-2.5"
             >
-              <Text className="text-white font-semibold text-base">
+              <Text className="text-white font-bold text-base">
                 {isEnding ? "Ending session…" : "End Session"}
               </Text>
             </Pressable>
             <Pressable
               onPress={() => setShowConfirm(false)}
               disabled={isEnding}
-              className="py-3 rounded-xl bg-gray-100 items-center"
+              className="py-4 rounded-2xl bg-gray-100 items-center"
             >
-              <Text className="text-gray-700 font-semibold text-base">
-                Cancel
-              </Text>
+              <Text className="text-gray-700 font-bold text-base">Cancel</Text>
             </Pressable>
           </View>
         </View>
@@ -1554,21 +1549,76 @@ export function KioskDiagnosticsScreen({
   );
 }
 
+// ── Sidebar nav item ──
+
+function NavItem({
+  icon: Icon,
+  label,
+  active,
+  onPress,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      className={`flex-row items-center px-3 py-3 rounded-2xl mb-1.5 ${
+        active ? "bg-teal-50" : ""
+      }`}
+    >
+      {active && (
+        <View className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-full bg-teal-600" />
+      )}
+      <View
+        className={`w-9 h-9 rounded-xl items-center justify-center mr-3 ${
+          active ? "bg-teal-100" : "bg-gray-100"
+        }`}
+      >
+        <Icon
+          size={18}
+          color={active ? TEAL : "#6B7280"}
+          strokeWidth={active ? 2.4 : 2}
+        />
+      </View>
+      <Text
+        className={`flex-1 text-[15px] ${
+          active ? "font-bold text-teal-700" : "font-medium text-gray-600"
+        }`}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+// ── Content primitives ──
+
 function Section({
   title,
+  Icon,
+  accent,
   children,
 }: {
   title: string;
+  Icon?: LucideIcon;
+  accent?: string;
   children: React.ReactNode;
 }) {
   return (
-    <View style={{ gap: 8 }}>
-      <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-        {title}
-      </Text>
+    <View style={{ gap: 10 }}>
+      <View className="flex-row items-center gap-2">
+        {Icon ? <Icon size={16} color={accent ?? "#6B7280"} /> : null}
+        <Text className="text-sm font-bold text-gray-500 uppercase tracking-wide">
+          {title}
+        </Text>
+      </View>
       <View
-        className="rounded-2xl border border-gray-200"
-        style={{ overflow: "hidden" }}
+        className="rounded-3xl border border-gray-200 bg-white overflow-hidden"
+        style={cardShadow}
       >
         {children}
       </View>
@@ -1581,19 +1631,25 @@ function Row({
   value,
   icon,
   mono,
+  last,
 }: {
   label: string;
   value: string;
   icon?: React.ReactNode;
   mono?: boolean;
+  last?: boolean;
 }) {
   return (
-    <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100">
-      <Text className="text-base text-gray-600">{label}</Text>
-      <View className="flex-row items-center gap-2">
+    <View
+      className={`flex-row items-center justify-between px-5 py-4 ${
+        last ? "" : "border-b border-gray-100"
+      }`}
+    >
+      <Text className="text-base text-gray-500">{label}</Text>
+      <View className="flex-row items-center gap-2 flex-1 justify-end pl-4">
         {icon}
         <Text
-          className="text-base font-semibold text-black"
+          className="text-base font-semibold text-gray-900"
           style={mono ? { fontFamily: "monospace", fontSize: 12 } : undefined}
           numberOfLines={1}
         >
@@ -1601,5 +1657,140 @@ function Row({
         </Text>
       </View>
     </View>
+  );
+}
+
+/** Compact key/value line used inside the terminal detail card. */
+function KV({ k, v }: { k: string; v: string }) {
+  return (
+    <View className="flex-row items-center">
+      <Text className="text-xs font-bold text-gray-400 w-16">{k}</Text>
+      <Text
+        className="flex-1 text-xs text-gray-700"
+        style={{ fontFamily: "monospace" }}
+        selectable
+        numberOfLines={1}
+      >
+        {v}
+      </Text>
+    </View>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Text className="text-xs font-semibold text-gray-500 mb-1.5">
+      {children}
+    </Text>
+  );
+}
+
+function Input(props: React.ComponentProps<typeof TextInput>) {
+  return (
+    <TextInput
+      placeholderTextColor="#9CA3AF"
+      {...props}
+      className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3.5 text-base text-gray-900"
+    />
+  );
+}
+
+/** Full-width solid-teal confirm button (register / save). */
+function PrimaryButton({
+  onPress,
+  disabled,
+  loading,
+  icon: Icon,
+  label,
+}: {
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  icon: LucideIcon;
+  label: string;
+}) {
+  const enabled = !disabled;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.9}
+      className={`py-4 rounded-2xl items-center flex-row justify-center ${
+        enabled ? "bg-teal-600" : "bg-gray-200"
+      }`}
+    >
+      {loading ? (
+        <ActivityIndicator
+          size="small"
+          color={enabled ? "#FFFFFF" : "#9CA3AF"}
+        />
+      ) : (
+        <>
+          <Icon size={17} color={enabled ? "#FFFFFF" : "#9CA3AF"} />
+          <Text
+            className={`text-base font-bold ml-2 ${
+              enabled ? "text-white" : "text-gray-400"
+            }`}
+          >
+            {label}
+          </Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+/** One of the Test / Edit / Switch / Add buttons on the terminal card. */
+function ActionButton({
+  onPress,
+  disabled,
+  loading,
+  loadingLabel,
+  icon: Icon,
+  label,
+  primary,
+}: {
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  loadingLabel?: string;
+  icon: LucideIcon;
+  label: string;
+  primary?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.85}
+      className={`flex-1 py-3 rounded-2xl items-center flex-row justify-center ${
+        primary ? "bg-teal-600" : "border border-teal-300 bg-teal-50"
+      }`}
+    >
+      {loading ? (
+        <>
+          <ActivityIndicator size="small" color={primary ? "#FFFFFF" : TEAL} />
+          <Text
+            className={`text-xs font-bold ml-1.5 ${
+              primary ? "text-white" : "text-teal-700"
+            }`}
+            numberOfLines={1}
+          >
+            {loadingLabel ?? label}
+          </Text>
+        </>
+      ) : (
+        <>
+          <Icon size={15} color={primary ? "#FFFFFF" : TEAL} />
+          <Text
+            className={`text-[13px] font-bold ml-1.5 ${
+              primary ? "text-white" : "text-teal-700"
+            }`}
+          >
+            {label}
+          </Text>
+        </>
+      )}
+    </TouchableOpacity>
   );
 }

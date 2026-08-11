@@ -2,19 +2,23 @@ import type { KioskConfig } from "@/types/kiosk";
 import { Pressable, Text, View } from "react-native";
 
 /**
- * "Are you still there?" overlay shown when the customer has items in their
- * cart (or is mid-checkout) but has been inactive past
- * `cartResetTimeoutSeconds`. Tapping the button registers activity and
- * dismisses it; otherwise the kiosk resets to idle when `secondsLeft` runs out.
+ * "Are you still there?" overlay shown after a stretch of inactivity, before
+ * the kiosk returns to the attract screen. Tapping the button registers
+ * activity and dismisses it; otherwise the kiosk resets when `secondsLeft`
+ * runs out. `hasActiveCart` only tunes the copy — with an order in progress we
+ * warn the customer their order will be cancelled; while just browsing we say
+ * we'll return to the start screen.
  */
 export function KioskIdleModal({
   config,
   secondsLeft,
   onContinue,
+  hasActiveCart = true,
 }: {
   config: KioskConfig;
   secondsLeft: number;
   onContinue: () => void;
+  hasActiveCart?: boolean;
 }) {
   return (
     <View
@@ -33,7 +37,9 @@ export function KioskIdleModal({
         <Text
           style={{ fontSize: 16, color: `${config.textColor}99`, textAlign: "center" }}
         >
-          Your order will be cancelled in {secondsLeft}s due to inactivity.
+          {hasActiveCart
+            ? `Your order will be cancelled in ${secondsLeft}s due to inactivity.`
+            : `We'll return to the start screen in ${secondsLeft}s due to inactivity.`}
         </Text>
         <Pressable
           onPress={onContinue}
