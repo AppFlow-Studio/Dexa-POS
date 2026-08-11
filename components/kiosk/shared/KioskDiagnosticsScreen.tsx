@@ -1405,7 +1405,7 @@ export function KioskDiagnosticsScreen({
         <View className="px-5 pt-12 pb-5 border-b border-gray-100">
           <View className="flex-row items-center gap-3">
             <Image
-              source={images.dexalogoDark}
+              source={images.dexalogo}
               resizeMode="cover"
               style={{ width: 48, height: 48, borderRadius: 14 }}
             />
