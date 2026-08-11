@@ -1,5 +1,6 @@
 import { useUiScale } from '@/lib/uiScale'
 import { colors } from '@/lib/theme'
+import { round2 } from '@/utils/money'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
@@ -23,6 +24,16 @@ import {
   View
 } from 'react-native'
 import NumericPad from './NumericPad'
+
+/**
+ * US bill denominations, laid out as keypad rows. Tapping one ADDS it to the
+ * focused guest's amount rather than replacing it, so handing over three
+ * twenties is three taps — the same motion as counting the bills out.
+ */
+const CASH_BILL_ROWS = [
+  [1, 5, 10],
+  [20, 50, 100]
+]
 
 const CustomAmountView = () => {
   const uiScale = useUiScale()
@@ -98,6 +109,24 @@ const CustomAmountView = () => {
     const amount = parseFloat(text)
     updateSplitAmount(splitId, Number.isNaN(amount) ? 0 : amount)
   }
+
+  const handleAddCashBill = (bill: number) => {
+    if (!focusedSplitId) return
+    const split = splits.find(s => s.id === focusedSplitId)
+    if (!split) return
+    const draft = amountDrafts[focusedSplitId]
+    const current = draft !== undefined ? parseFloat(draft) : split.amount
+    const base = Number.isNaN(current) ? 0 : current
+    updateAmountDraft(focusedSplitId, round2(base + bill).toFixed(2))
+  }
+
+  // A bill is offered only while it still fits in what's unallocated. `remaining`
+  // already nets out this guest's current amount (it comes off totalAllocated),
+  // so this reads as "can I still hand over one more of these?" — and it goes
+  // fully dim once the bill is covered, instead of letting a tap drop the split
+  // into the over-allocated state that blocks Proceed.
+  const canAddCashBill = (bill: number) =>
+    !!focusedSplitId && bill <= remaining + 0.01
 
   const handleProceed = () => {
     // START THE PAYMENT LOOP HERE
@@ -605,7 +634,65 @@ const CustomAmountView = () => {
             alignItems: 'center'
           }}
         >
-          <View style={{ width: '100%', alignItems: 'center' }}>
+          <View style={{ width: '100%', alignItems: 'center', gap: s(10) }}>
+            {/* Cash bill presets — quick way to key common tenders without
+                typing each digit. */}
+            <View style={{ width: '100%' }}>
+              <Text
+                style={{
+                  color: colors.muted,
+                  fontSize: s(11),
+                  fontWeight: '700',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.8,
+                  marginBottom: s(8)
+                }}
+              >
+                Cash Bills
+              </Text>
+              <View style={{ gap: s(8) }}>
+                {CASH_BILL_ROWS.map((row, rowIdx) => (
+                  <View key={rowIdx} style={{ flexDirection: 'row', gap: s(8) }}>
+                    {row.map(bill => {
+                      const enabled = canAddCashBill(bill)
+                      return (
+                        <TouchableOpacity
+                          key={bill}
+                          onPress={() => handleAddCashBill(bill)}
+                          disabled={!enabled}
+                          style={{
+                            flex: 1,
+                            paddingVertical: s(10),
+                            backgroundColor: enabled
+                              ? `${colors.success}15`
+                              : colors.screen,
+                            borderWidth: 1,
+                            borderColor: enabled
+                              ? `${colors.success}40`
+                              : colors.border,
+                            borderRadius: s(8),
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: enabled ? 1 : 0.4
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(14),
+                              fontWeight: '700',
+                              color: enabled ? colors.success : colors.muted
+                            }}
+                          >
+                            ${bill}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                ))}
+              </View>
+            </View>
+
             <NumericPad
               enabled={!!focusedSplitId}
               onInput={value => {
