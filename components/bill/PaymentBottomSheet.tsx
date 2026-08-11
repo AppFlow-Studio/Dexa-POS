@@ -5,7 +5,6 @@ import { LogOut } from 'lucide-react-native'
 import React, { useState } from 'react'
 import {
   Modal,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -136,11 +135,15 @@ const PaymentBottomSheet: React.FC = () => {
       >
         <View style={getStyles().backdrop}>
           <View style={getStyles().sheet}>
-            <ScrollView
-              style={getStyles().container}
-              contentContainerStyle={getStyles().containerContent}
-              keyboardShouldPersistTaps='handled'
-            >
+            {/* Bounded flex column, deliberately NOT a ScrollView. The sheet is
+                already full-height, and every payment view roots at `flex: 1`
+                with its own internal ScrollView where it needs one. An outer
+                scroll container hands those children unbounded height, which
+                breaks them two ways: inner ScrollViews stop scrolling (they
+                just grow), and footers laid out with `justify-between` get
+                pushed past the fold instead of pinning to the bottom — which is
+                how the success view's action buttons ended up off-screen. */}
+            <View style={getStyles().container}>
               {/* Header */}
               <View
                 style={{
@@ -192,7 +195,7 @@ const PaymentBottomSheet: React.FC = () => {
 
               {/* Content Wrapper */}
               <View style={getStyles().content}>{renderContent()}</View>
-            </ScrollView>
+            </View>
           </View>
         </View>
         {/* Inline confirmation overlay — cannot use Dialog/Portal here since it portals behind the native Modal */}
@@ -338,11 +341,13 @@ const getStyles = () =>
       flex: 1,
       backgroundColor: colors.panel
     },
-    containerContent: {
-      flexGrow: 1
-    },
     content: {
       flex: 1,
+      // minHeight: 0 lets this shrink to the space the header leaves rather
+      // than being floored at its content height (the default `minHeight: auto`
+      // on a flex child), which is what keeps overflow inside the view instead
+      // of pushing the sheet taller than the screen.
+      minHeight: 0,
       paddingHorizontal: 8,
       paddingBottom: 12
     }

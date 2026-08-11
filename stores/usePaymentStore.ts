@@ -2,6 +2,7 @@ import { runAfterPaint } from "@/lib/afterPaint";
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import { calculateEvenSplitSpread } from "@/lib/order-calculator";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
+import { hasOrderBalanceDue } from "@/lib/orderBalance";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
 import {
@@ -288,6 +289,13 @@ interface PaymentState {
   ) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed
+  /**
+   * Success-view CTA for an order that was only partially settled (a
+   * custom-amount split that didn't cover the bill). Drops the split context
+   * and returns the sheet to method selection so the standard flow can collect
+   * what's left.
+   */
+  payRemainingBalance: () => void;
   openPayForItems: () => void; // Action to open the pay-for-items split review view
   /** @deprecated No-op — Modal is always full height. Kept for call-site compat. */
   expandSheetToFull: () => void;
@@ -574,6 +582,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+
+    // A partial settlement (custom-amount split that didn't cover the bill)
+    // leaves real money on the check. Dismissing the success sheet must NOT run
+    // the dine-in auto-clear or spin up the next order — either one would
+    // strand that balance on an order the operator has just navigated away
+    // from. Close only; the check stays Opened with its balance and is still
+    // reachable from the bill / tables screen. The explicit CTA for this case
+    // is payRemainingBalance().
+    if (hasOrderBalanceDue(activeOrder)) {
+      get().close();
+      return;
+    }
 
     // Prefer payment store's activeTableId — it's captured at sheet open and
     // stays set until close() runs, so it survives `auto_on_payment` archiving
@@ -1540,6 +1560,40 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     if (nextPending) {
       set({ activeSplitId: nextPending.id, view: "payment-method-selection" });
     }
+  },
+
+  payRemainingBalance: () => {
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const order = activeOrderId ? ordersById[activeOrderId] : undefined;
+
+    // Nothing left to collect (a late backend sync settled it, or the operator
+    // double-tapped). Fall through to the normal dismiss rather than dropping
+    // them into a payment view that would try to charge $0.
+    if (!hasOrderBalanceDue(order)) {
+      get().handleSuccessClose();
+      return;
+    }
+
+    // Clearing the split context hands the rest of the bill to the STANDARD
+    // payment flow, which charges activeOrderOutstandingTotal /
+    // activeOrderOutstandingCash — precisely the remaining balance. No new
+    // split needs to be constructed. `split_payment_path` stays locked on the
+    // order itself, so per-portion receipts for what was already collected keep
+    // rendering correctly. activeTableId is preserved so the eventual dine-in
+    // finalize still knows which table to clear.
+    set({
+      splits: [],
+      activeSplitId: null,
+      splitSourceView: null,
+      completedPaymentInfo: null,
+      paymentMethod: null,
+      isDirty: false,
+      view: "payment-method-selection",
+      progress: {
+        currentStep: paymentViewToStepMap["payment-method-selection"],
+        totalSteps,
+      },
+    });
   },
 
   processManualCardPayment: async (details) => {
