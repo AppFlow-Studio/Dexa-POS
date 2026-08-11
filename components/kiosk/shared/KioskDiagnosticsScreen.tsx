@@ -1,10 +1,12 @@
 import appJson from "@/app.json";
 import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
+import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import { getDeviceId } from "@/lib/deviceId";
+import { images } from "@/lib/image";
 import { terminalTypeLabel } from "@/lib/processorLabels";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { toastService } from "@/lib/toastService";
@@ -38,6 +40,7 @@ import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    Image,
     Pressable,
     ScrollView,
     Text,
@@ -792,11 +795,14 @@ export function KioskDiagnosticsScreen({
   );
 
   const renderAbout = () => (
-    <Section title="Application" Icon={Info}>
-      <Row label="App version" value={appJson.expo.version} />
-      <Row label="Kiosk profile" value={config.profileName || "Kiosk"} />
-      <Row label="Profile ID" value={config.id} mono last />
-    </Section>
+    <>
+      <Section title="Application" Icon={Info}>
+        <Row label="App version" value={appJson.expo.version} />
+        <Row label="Kiosk profile" value={config.profileName || "Kiosk"} />
+        <Row label="Profile ID" value={config.id} mono last />
+      </Section>
+      <KioskUpdateChecker />
+    </>
   );
 
   const renderTerminalPanel = () => (
@@ -1398,9 +1404,11 @@ export function KioskDiagnosticsScreen({
         {/* Brand header */}
         <View className="px-5 pt-12 pb-5 border-b border-gray-100">
           <View className="flex-row items-center gap-3">
-            <View className="w-12 h-12 rounded-2xl bg-teal-600 items-center justify-center">
-              <SlidersHorizontal size={24} color="#FFFFFF" />
-            </View>
+            <Image
+              source={images.dexalogoDark}
+              resizeMode="cover"
+              style={{ width: 48, height: 48, borderRadius: 14 }}
+            />
             <View className="flex-1">
               <Text className="text-lg font-bold text-gray-900">
                 Kiosk Settings

@@ -24,7 +24,8 @@ import {
  * Flow:
  *   1. Phone screen (on-screen numeric keypad). Continue when 10 digits.
  *   2. Look up the customer by phone (findOrCreateCustomerByPhone):
- *        - returning customer WITH a name  → greet ("Welcome back, {name}") → done
+ *        - returning customer WITH a name  → capture it and continue straight
+ *          to the next step (no name prompt, no interstitial)
  *        - new / no name on file           → ask for a name, save it → done
  *   3. The captured { id, name, phone } lands on useKioskCartStore and is
  *      attached to the order + used for the confirmation-receipt SMS.
@@ -32,7 +33,7 @@ import {
  * Resilient to a failed lookup (e.g. offline): falls through to the name screen
  * and still captures name + phone locally so checkout can proceed.
  */
-type Sub = "phone" | "name" | "welcome";
+type Sub = "phone" | "name";
 
 export function KioskCustomerInfoStep({
   config,
@@ -51,7 +52,6 @@ export function KioskCustomerInfoStep({
   const [digits, setDigits] = useState("");
   const [name, setName] = useState("");
   const [customerId, setCustomerId] = useState<string | null>(null);
-  const [greetName, setGreetName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,15 +82,15 @@ export function KioskCustomerInfoStep({
       );
       const trimmedName = found.name?.trim() ?? "";
       if (trimmedName) {
-        // Returning customer with a name — greet and finish.
+        // Returning customer with a name on file — capture it and skip straight
+        // to the next step. No name prompt, no "welcome" interstitial.
         setCustomer({ id: found.id, name: trimmedName, phone: digits });
-        setGreetName(trimmedName);
-        setSub("welcome");
-      } else {
-        // New / unnamed — ask for a name next.
-        setCustomerId(found.id);
-        setSub("name");
+        onComplete();
+        return;
       }
+      // New / unnamed — ask for a name next.
+      setCustomerId(found.id);
+      setSub("name");
     } catch {
       // Lookup failed (e.g. offline) — still collect a name and proceed; the
       // phone + name attach to the order regardless of the customer row.
@@ -99,7 +99,7 @@ export function KioskCustomerInfoStep({
     } finally {
       setLoading(false);
     }
-  }, [digits, phoneValid, loading, supabase, setCustomer]);
+  }, [digits, phoneValid, loading, supabase, setCustomer, onComplete]);
 
   const submitName = useCallback(async () => {
     const trimmed = name.trim();
@@ -142,46 +142,6 @@ export function KioskCustomerInfoStep({
       <ChevronLeft size={kioskPx(26, s)} color={config.textColor} />
     </Pressable>
   );
-
-  // ── WELCOME BACK ──
-  if (sub === "welcome") {
-    return (
-      <View
-        className="flex-1 items-center justify-center px-10"
-        style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
-      >
-        <Text
-          style={{
-            fontSize: kioskPx(34, s),
-            fontWeight: "800",
-            color: config.textColor,
-            textAlign: "center",
-          }}
-        >
-          Welcome back, {greetName}!
-        </Text>
-        <Text style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}>
-          {"We'll text your receipt and order updates to"}
-          {"\n"}
-          {formatUsPhone(digits)}
-        </Text>
-        <Pressable
-          onPress={onComplete}
-          style={{
-            marginTop: kioskPx(12, s),
-            paddingHorizontal: kioskPx(44, s),
-            paddingVertical: kioskPx(16, s),
-            borderRadius: kioskPx(18, s),
-            backgroundColor: config.primaryColor,
-          }}
-        >
-          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(19, s), fontWeight: "800" }}>
-            Continue
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
 
   // ── NAME ENTRY ──
   if (sub === "name") {
