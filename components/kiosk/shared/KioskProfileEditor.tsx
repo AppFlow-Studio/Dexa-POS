@@ -1,7 +1,23 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { toastService } from "@/lib/toastService";
-import type { KioskConfig, KioskOrientation, KioskTemplateId } from "@/types/kiosk";
-import { Check, RefreshCw } from "lucide-react-native";
+import type {
+  KioskConfig,
+  KioskOrientation,
+  KioskTemplateId,
+} from "@/types/kiosk";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  CreditCard,
+  Info,
+  LayoutGrid,
+  Palette,
+  Power,
+  RefreshCw,
+  Settings2,
+} from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,8 +37,10 @@ import {
  *   Sync  → pull the latest profile from the backend (refetch + re-normalize).
  *   Save  → write the edited fields back to kiosk_profiles.
  *
- * Edits live in a local `draft`; a background poll only refreshes the form when
- * there are no unsaved changes, so it never clobbers what the manager is typing.
+ * Options are grouped into collapsible sections so the screen is easy to scan;
+ * the Sync/Save bar stays at the top of the card. Edits live in a local `draft`;
+ * a background poll only refreshes the form when there are no unsaved changes,
+ * so it never clobbers what the manager is typing.
  */
 
 type EditableProfile = Pick<
@@ -83,6 +101,8 @@ const parsePresets = (text: string): number[] =>
     .split(/[,\s]+/)
     .map((t) => parseInt(t, 10))
     .filter((n) => Number.isFinite(n) && n >= 0);
+
+const TEAL = "#0D9488";
 
 export function KioskProfileEditor({
   config,
@@ -190,7 +210,8 @@ export function KioskProfileEditor({
     } catch (err) {
       toastService.show({
         title: "Save Failed",
-        message: err instanceof Error ? err.message : "Could not save settings.",
+        message:
+          err instanceof Error ? err.message : "Could not save settings.",
         type: "error",
       });
     } finally {
@@ -199,63 +220,71 @@ export function KioskProfileEditor({
   };
 
   return (
-    <View style={{ gap: 8 }}>
-      <View className="flex-row items-center justify-between">
+    <View style={{ gap: 10 }}>
+      <View className="flex-row items-center gap-2">
+        <Settings2 size={16} color="#6B7280" />
         <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
           Kiosk Profile
         </Text>
-        {dirty ? (
-          <Text className="text-[11px] font-semibold text-amber-600">
-            Unsaved changes
-          </Text>
-        ) : null}
       </View>
 
-      <View className="rounded-2xl border border-gray-200 px-4 py-3" style={{ gap: 14 }}>
-        {/* Sync / Save actions */}
+      {/* Sticky-ish action bar — Sync (pull) + Save (push). */}
+      <View className="rounded-2xl border border-gray-200 bg-white p-3">
+        <View className="flex-row items-center justify-between mb-2.5">
+          <Text
+            className="text-base font-bold text-black flex-1"
+            numberOfLines={1}
+          >
+            {draft.profileName || "Kiosk"}
+          </Text>
+          {dirty ? (
+            <View className="px-2 py-0.5 rounded-full bg-amber-100">
+              <Text className="text-[11px] font-bold text-amber-700">
+                Unsaved
+              </Text>
+            </View>
+          ) : (
+            <View className="px-2 py-0.5 rounded-full bg-green-100">
+              <Text className="text-[11px] font-bold text-green-700">Saved</Text>
+            </View>
+          )}
+        </View>
         <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={handleSync}
             disabled={syncing}
-            className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center border border-gray-200 bg-gray-50"
+            className="flex-1 py-3 rounded-xl items-center flex-row justify-center border border-gray-200 bg-gray-50"
           >
             {syncing ? (
-              <ActivityIndicator size="small" color="#0D9488" />
+              <ActivityIndicator size="small" color={TEAL} />
             ) : (
-              <RefreshCw size={14} color="#0D9488" />
+              <RefreshCw size={15} color={TEAL} />
             )}
             <Text className="text-sm font-bold text-teal-600 ml-1.5">
-              Sync from web
+              Sync
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
             disabled={!dirty || saving}
-            className={`flex-1 py-2.5 rounded-xl items-center flex-row justify-center border ${
-              dirty && !saving
-                ? "bg-teal-50 border-teal-300"
-                : "bg-gray-50 border-gray-200"
+            className={`flex-[1.4] py-3 rounded-xl items-center flex-row justify-center ${
+              dirty && !saving ? "bg-teal-600" : "bg-gray-200"
             }`}
           >
             {saving ? (
-              <ActivityIndicator size="small" color="#0D9488" />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Check size={15} color={dirty ? "#0D9488" : "#9CA3AF"} />
+              <Check size={16} color="#FFFFFF" />
             )}
-            <Text
-              className={`text-sm font-bold ml-1.5 ${
-                dirty ? "text-teal-600" : "text-gray-400"
-              }`}
-            >
+            <Text className="text-sm font-bold text-white ml-1.5">
               Save changes
             </Text>
           </TouchableOpacity>
         </View>
+      </View>
 
-        <Divider />
-
-        {/* General */}
-        <GroupLabel text="General" />
+      {/* Collapsible option groups. */}
+      <Collapsible title="General" Icon={Info} defaultOpen>
         <TextField
           label="Profile name"
           value={draft.profileName}
@@ -291,27 +320,25 @@ export function KioskProfileEditor({
           onChangeText={(v) => set("pickupNumberPrefix", v)}
           placeholder="e.g. A-"
         />
+      </Collapsible>
+
+      <Collapsible title="Appearance" Icon={Palette}>
+        <View className="flex-row flex-wrap" style={{ rowGap: 12 }}>
+          <ColorField label="Primary" value={draft.primaryColor} onChangeText={(v) => set("primaryColor", v)} />
+          <ColorField label="Background" value={draft.backgroundColor} onChangeText={(v) => set("backgroundColor", v)} />
+          <ColorField label="Text" value={draft.textColor} onChangeText={(v) => set("textColor", v)} />
+          <ColorField label="Header text" value={draft.headerTextColor} onChangeText={(v) => set("headerTextColor", v)} />
+          <ColorField label="Secondary" value={draft.secondaryColor} onChangeText={(v) => set("secondaryColor", v)} />
+          <ColorField label="Accent" value={draft.accentColor} onChangeText={(v) => set("accentColor", v)} />
+        </View>
         <TextField
           label="Font family"
           value={draft.fontFamily}
           onChangeText={(v) => set("fontFamily", v)}
         />
+      </Collapsible>
 
-        <Divider />
-
-        {/* Theme */}
-        <GroupLabel text="Theme" />
-        <ColorField label="Primary" value={draft.primaryColor} onChangeText={(v) => set("primaryColor", v)} />
-        <ColorField label="Background" value={draft.backgroundColor} onChangeText={(v) => set("backgroundColor", v)} />
-        <ColorField label="Text" value={draft.textColor} onChangeText={(v) => set("textColor", v)} />
-        <ColorField label="Header text" value={draft.headerTextColor} onChangeText={(v) => set("headerTextColor", v)} />
-        <ColorField label="Secondary" value={draft.secondaryColor} onChangeText={(v) => set("secondaryColor", v)} />
-        <ColorField label="Accent" value={draft.accentColor} onChangeText={(v) => set("accentColor", v)} />
-
-        <Divider />
-
-        {/* Timing */}
-        <GroupLabel text="Timing" />
+      <Collapsible title="Timing" Icon={Clock}>
         <NumberField
           label="Idle timeout (seconds)"
           value={draft.idleTimeoutSeconds}
@@ -322,11 +349,9 @@ export function KioskProfileEditor({
           value={draft.cartResetTimeoutSeconds}
           onChangeNumber={(n) => set("cartResetTimeoutSeconds", n)}
         />
+      </Collapsible>
 
-        <Divider />
-
-        {/* Checkout */}
-        <GroupLabel text="Checkout" />
+      <Collapsible title="Checkout & Tips" Icon={CreditCard}>
         <ToggleRow label="Tip screen" value={draft.tipScreenEnabled} onChange={(v) => set("tipScreenEnabled", v)} />
         <TextField
           label="Tip presets (%)"
@@ -339,18 +364,14 @@ export function KioskProfileEditor({
         <ToggleRow label="Email receipt prompt" value={draft.receiptEmailPrompt} onChange={(v) => set("receiptEmailPrompt", v)} />
         <ToggleRow label="SMS receipt prompt" value={draft.receiptSmsPrompt} onChange={(v) => set("receiptSmsPrompt", v)} />
         <ToggleRow label="Loyalty enrollment" value={draft.loyaltyEnrollmentEnabled} onChange={(v) => set("loyaltyEnrollmentEnabled", v)} />
+      </Collapsible>
 
-        <Divider />
-
-        {/* Menu display */}
-        <GroupLabel text="Menu display" />
+      <Collapsible title="Menu Display" Icon={LayoutGrid}>
         <ToggleRow label="Show calories" value={draft.showCalorieInfo} onChange={(v) => set("showCalorieInfo", v)} />
         <ToggleRow label="Show allergens" value={draft.showAllergens} onChange={(v) => set("showAllergens", v)} />
+      </Collapsible>
 
-        <Divider />
-
-        {/* Status + read-only */}
-        <GroupLabel text="Status" />
+      <Collapsible title="Status & Info" Icon={Power}>
         <ToggleRow label="Profile active" value={draft.isActive} onChange={(v) => set("isActive", v)} />
         <ReadOnlyRow label="Profile ID" value={config.id} mono />
         <ReadOnlyRow label="Published" value={config.publishedAt ?? "Never"} />
@@ -358,24 +379,54 @@ export function KioskProfileEditor({
           label="Media"
           value={`Logo ${config.logoUrl ? "set" : "none"} · edit on web`}
         />
-      </View>
+      </Collapsible>
     </View>
   );
 }
 
-// ── Small field primitives (match the diagnostics screen styling) ──
+// ── Collapsible section ──
 
-function GroupLabel({ text }: { text: string }) {
+function Collapsible({
+  title,
+  Icon,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  Icon: typeof Info;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(!!defaultOpen);
   return (
-    <Text className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-      {text}
-    </Text>
+    <View className="rounded-2xl border border-gray-200 overflow-hidden bg-white">
+      <TouchableOpacity
+        onPress={() => setOpen((o) => !o)}
+        className="flex-row items-center px-4 py-3.5"
+        activeOpacity={0.7}
+      >
+        <View className="w-8 h-8 rounded-lg bg-gray-100 items-center justify-center mr-3">
+          <Icon size={16} color="#6B7280" />
+        </View>
+        <Text className="flex-1 text-base font-semibold text-black">
+          {title}
+        </Text>
+        {open ? (
+          <ChevronDown size={20} color="#9CA3AF" />
+        ) : (
+          <ChevronRight size={20} color="#9CA3AF" />
+        )}
+      </TouchableOpacity>
+      {open ? (
+        <View className="px-4 pb-4 pt-1" style={{ gap: 14 }}>
+          {children}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
-function Divider() {
-  return <View style={{ height: 1, backgroundColor: "#F1F1F1" }} />;
-}
+// ── Field primitives ──
 
 function TextField({
   label,
@@ -392,14 +443,14 @@ function TextField({
 }) {
   return (
     <View>
-      <Text className="text-xs text-gray-500 mb-1">{label}</Text>
+      <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor="#9CA3AF"
         keyboardType={keyboardType}
-        className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
+        className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-3 text-base text-black"
       />
     </View>
   );
@@ -416,13 +467,13 @@ function NumberField({
 }) {
   return (
     <View>
-      <Text className="text-xs text-gray-500 mb-1">{label}</Text>
+      <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
       <TextInput
         value={String(value)}
         onChangeText={(t) => onChangeNumber(parseInt(t, 10) || 0)}
         keyboardType="number-pad"
         placeholderTextColor="#9CA3AF"
-        className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-black"
+        className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-3 text-base text-black"
       />
     </View>
   );
@@ -437,32 +488,33 @@ function ColorField({
   value: string;
   onChangeText: (v: string) => void;
 }) {
+  const valid = /^#([0-9a-fA-F]{3,8})$/.test(value.trim());
   return (
-    <View className="flex-row items-center">
-      <Text className="text-xs text-gray-500 flex-1">{label}</Text>
-      <View
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 6,
-          marginRight: 8,
-          backgroundColor: /^#([0-9a-fA-F]{3,8})$/.test(value.trim())
-            ? value.trim()
-            : "#FFFFFF",
-          borderWidth: 1,
-          borderColor: "#E0E0E0",
-        }}
-      />
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder="#000000"
-        placeholderTextColor="#9CA3AF"
-        className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-black"
-        style={{ width: 120, fontFamily: "monospace" }}
-      />
+    <View style={{ width: "50%", paddingRight: 8 }}>
+      <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
+      <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-2">
+        <View
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 7,
+            marginRight: 8,
+            backgroundColor: valid ? value.trim() : "#FFFFFF",
+            borderWidth: 1,
+            borderColor: "#E0E0E0",
+          }}
+        />
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="#000000"
+          placeholderTextColor="#9CA3AF"
+          className="flex-1 text-sm text-black"
+          style={{ fontFamily: "monospace", padding: 0 }}
+        />
+      </View>
     </View>
   );
 }
@@ -478,11 +530,11 @@ function ToggleRow({
 }) {
   return (
     <View className="flex-row items-center justify-between">
-      <Text className="text-sm text-gray-700">{label}</Text>
+      <Text className="text-base text-gray-700">{label}</Text>
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ true: "#0D9488", false: "#E0E0E0" }}
+        trackColor={{ true: TEAL, false: "#E0E0E0" }}
         thumbColor="#FFFFFF"
       />
     </View>
@@ -502,7 +554,7 @@ function ReadOnlyRow({
     <View className="flex-row items-center justify-between">
       <Text className="text-sm text-gray-500">{label}</Text>
       <Text
-        className="text-sm font-medium text-gray-700"
+        className="text-sm font-medium text-gray-700 flex-1 text-right"
         style={mono ? { fontFamily: "monospace", fontSize: 11 } : undefined}
         numberOfLines={1}
       >
@@ -525,7 +577,7 @@ function Segmented<T extends string>({
 }) {
   return (
     <View>
-      <Text className="text-xs text-gray-500 mb-1.5">{label}</Text>
+      <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
       <View className="flex-row bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
         {options.map((opt) => {
           const active = value === opt.value;
@@ -533,11 +585,11 @@ function Segmented<T extends string>({
             <TouchableOpacity
               key={opt.value}
               onPress={() => onChange(opt.value)}
-              className={`flex-1 py-2.5 items-center ${active ? "bg-teal-100" : ""}`}
+              className={`flex-1 py-3 items-center ${active ? "bg-teal-600" : ""}`}
             >
               <Text
                 className={`text-sm font-semibold ${
-                  active ? "text-teal-600" : "text-gray-400"
+                  active ? "text-white" : "text-gray-400"
                 }`}
               >
                 {opt.label}
