@@ -33,11 +33,21 @@ export function setRootNavigationRef(ref: NavRef) {
  * dispatches CommonActions.reset() directly through the navigation container
  * ref, which always targets the root navigator.
  */
-export function replaceRoute(groupName: string, screenName?: string) {
+export function replaceRoute(
+  groupName: string,
+  screenName?: string,
+  _attempt = 0,
+) {
   const nav = _navRef?.current;
   if (!nav) {
-    if (__DEV__) {
-      console.warn('[rootNavigation] Navigation ref not ready');
+    // The container ref populates a tick after mount, so a navigation fired
+    // right after login (e.g. PIN → kiosk) can land before it's ready. Retry
+    // briefly instead of silently dropping the navigation, which otherwise
+    // leaves the user stuck on the PIN screen until they re-enter their PIN.
+    if (_attempt < 20) {
+      setTimeout(() => replaceRoute(groupName, screenName, _attempt + 1), 50);
+    } else if (__DEV__) {
+      console.warn('[rootNavigation] Navigation ref never became ready');
     }
     return;
   }

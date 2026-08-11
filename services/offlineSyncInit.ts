@@ -87,9 +87,14 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
 
-const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null => {
+const resolveTableNameForOrder = (
+  tableIdOrName?: string | null,
+): string | null => {
   if (!tableIdOrName) return null;
-  return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
+  return (
+    useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ??
+    tableIdOrName
+  );
 };
 
 if (__DEV__) {
@@ -173,6 +178,19 @@ function _getCalculatePaidStatus() {
 const MAX_KITCHEN_REQUEUE_GENERATIONS = 3;
 
 let _supabaseClient: any = null;
+
+/**
+ * Mirror of useOrderStore's getKioskSafeCreatorStaffId().
+ * Kiosk (self_service) orders must NOT attribute the logged-in employee who
+ * entered the PIN to start the kiosk session — otherwise KDS tickets show
+ * "Server: [employee name]" instead of "Self Service".
+ */
+function getKioskSafeCreatorStaffId(): string | null {
+  const orderStore = _getOrderStore();
+  const station = orderStore.getState().currentStation;
+  if (station?.station_type === "self_service") return null;
+  return useEmployeeStore.getState().getEffectiveCreatorStaffId() || null;
+}
 
 function isAlreadyDoneSyncError(
   error: any,
@@ -303,8 +321,7 @@ async function reconcileLostOrderCreations(): Promise<number> {
           p_customer_phone: order.customer_phone || null,
           p_special_instructions: null,
           p_device_id: getDeviceId(),
-          p_created_by_staff_id:
-            useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
+          p_created_by_staff_id: getKioskSafeCreatorStaffId(),
           p_station_id:
             useStoreSettingsStore.getState().selectedStation?.id || null,
         },
@@ -1352,51 +1369,53 @@ async function executeQueuedOperation(
           : Promise.resolve(null);
 
         // Lookback window = max(time since op was queued + 5 min slack, 10 min).
-        const authCheckPromise: Promise<{ matched: boolean; raw: unknown } | null> =
-          hasCheckableOrderId
-            ? (async () => {
-                try {
-                  const opAgeMs = Date.now() - new Date(op.timestamp).getTime();
-                  const lookbackSeconds = Math.max(
-                    600,
-                    Math.ceil(opAgeMs / 1000) + 300,
-                  );
-                  const amountCents =
-                    typeof finalParams.p_amount === "number" &&
-                    finalParams.p_amount > 0
-                      ? Math.round(finalParams.p_amount * 100)
-                      : null;
+        const authCheckPromise: Promise<{
+          matched: boolean;
+          raw: unknown;
+        } | null> = hasCheckableOrderId
+          ? (async () => {
+              try {
+                const opAgeMs = Date.now() - new Date(op.timestamp).getTime();
+                const lookbackSeconds = Math.max(
+                  600,
+                  Math.ceil(opAgeMs / 1000) + 300,
+                );
+                const amountCents =
+                  typeof finalParams.p_amount === "number" &&
+                  finalParams.p_amount > 0
+                    ? Math.round(finalParams.p_amount * 100)
+                    : null;
 
-                  const { data: authCheck, error: authCheckError } =
-                    await _supabaseClient.rpc("check_recent_payment", {
-                      p_order_id: finalParams.p_order_id,
-                      p_lookback_seconds: lookbackSeconds,
-                      p_amount_cents: amountCents,
-                      p_split_portion_index:
-                        finalParams.p_split_portion_index ?? null,
-                    });
+                const { data: authCheck, error: authCheckError } =
+                  await _supabaseClient.rpc("check_recent_payment", {
+                    p_order_id: finalParams.p_order_id,
+                    p_lookback_seconds: lookbackSeconds,
+                    p_amount_cents: amountCents,
+                    p_split_portion_index:
+                      finalParams.p_split_portion_index ?? null,
+                  });
 
-                  if (authCheckError) {
-                    // Don't block on the safety check failing — defensive only
-                    console.warn(
-                      "[OfflineSync:payment] check_recent_payment failed; proceeding (defensive only):",
-                      authCheckError,
-                    );
-                    return null;
-                  }
-                  return {
-                    matched: !!(authCheck as any)?.matched,
-                    raw: authCheck,
-                  };
-                } catch (checkErr) {
+                if (authCheckError) {
+                  // Don't block on the safety check failing — defensive only
                   console.warn(
-                    "[OfflineSync:payment] check_recent_payment threw; proceeding (defensive only):",
-                    checkErr,
+                    "[OfflineSync:payment] check_recent_payment failed; proceeding (defensive only):",
+                    authCheckError,
                   );
                   return null;
                 }
-              })()
-            : Promise.resolve(null);
+                return {
+                  matched: !!(authCheck as any)?.matched,
+                  raw: authCheck,
+                };
+              } catch (checkErr) {
+                console.warn(
+                  "[OfflineSync:payment] check_recent_payment threw; proceeding (defensive only):",
+                  checkErr,
+                );
+                return null;
+              }
+            })()
+          : Promise.resolve(null);
 
         // Safe: both promises catch internally and never reject.
         const [preCheckOrderStatus, authCheckResult] = await Promise.all([
@@ -1497,7 +1516,10 @@ async function executeQueuedOperation(
               errMsg,
             );
             if (queuedJournal?.id) {
-              failPaymentJournal(queuedJournal.id, `enforce_order_math: ${errMsg}`);
+              failPaymentJournal(
+                queuedJournal.id,
+                `enforce_order_math: ${errMsg}`,
+              );
             }
             // Surfaces to the operator with a remedy instead of vanishing.
             return OpTerminal("ORDER_MATH_INCONSISTENT", errMsg);
@@ -1545,10 +1567,7 @@ async function executeQueuedOperation(
 
         // Wave Cat-B: backend confirmed; close out the journal.
         if (queuedJournal?.id && (data as any)?.payment_id) {
-          completePaymentJournal(
-            queuedJournal.id,
-            (data as any).payment_id,
-          );
+          completePaymentJournal(queuedJournal.id, (data as any).payment_id);
         }
 
         // Sync order state from backend response if available
@@ -1926,6 +1945,27 @@ async function executeQueuedOperation(
                 orderData.order_number || orderData.display_number
               }`,
             );
+
+            // Self-service (kiosk) — set order_source on the backend row so
+            // KDS tickets reflect the correct origin.
+            const orderStore = _getOrderStore();
+            const currentStation = orderStore.getState().currentStation;
+            if (
+              currentStation?.station_type === "self_service" &&
+              _supabaseClient
+            ) {
+              try {
+                await _supabaseClient
+                  .from("orders")
+                  .update({ order_source: "kiosk" })
+                  .eq("id", backendId);
+              } catch (e) {
+                console.warn(
+                  "[OfflineSync:create_order] Failed to sync kiosk order_source:",
+                  e,
+                );
+              }
+            }
 
             // Invalidate orders query so hydrateWorkspace picks up the server version
             const locationId = createOrderParams.p_location_id;
@@ -3079,10 +3119,7 @@ async function executeQueuedOperation(
             }
             // Idempotent success: course already gone server-side.
             if (
-              isAlreadyDoneSyncError(error, [
-                "does not exist",
-                "not found",
-              ])
+              isAlreadyDoneSyncError(error, ["does not exist", "not found"])
             ) {
               return true;
             }
