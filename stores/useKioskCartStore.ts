@@ -105,6 +105,28 @@ interface KioskCartState {
 const genLineId = () =>
   `kline_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+/**
+ * Canonical signature of a cart line's identity — same menu item, same selected
+ * modifier options (order-independent), same notes. Two lines with equal
+ * signatures are "the same product" and should merge into one line (summed
+ * quantity) rather than stack as duplicates.
+ */
+function lineSignature(
+  line: Pick<KioskCartLine, "menuItemId" | "modifiers" | "notes">,
+): string {
+  const mods = line.modifiers
+    .map((g) => {
+      const optionIds = g.options
+        .map((o) => o.id)
+        .sort()
+        .join(",");
+      return `${g.categoryId}:${optionIds}`;
+    })
+    .sort()
+    .join("|");
+  return `${line.menuItemId}#${mods}#${(line.notes ?? "").trim()}`;
+}
+
 export const useKioskCartStore = create<KioskCartState>((set, get) => ({
   lines: [],
   orderType: null,
@@ -122,6 +144,21 @@ export const useKioskCartStore = create<KioskCartState>((set, get) => ({
     }),
 
   addLine: (line) => {
+    // Merge into an existing identical line (same item + modifiers + notes)
+    // instead of stacking a duplicate — e.g. adding 1 muffin then 3 more
+    // becomes a single "4× muffin" line.
+    const sig = lineSignature(line);
+    const existing = get().lines.find((l) => lineSignature(l) === sig);
+    if (existing) {
+      set((state) => ({
+        lines: state.lines.map((l) =>
+          l.lineId === existing.lineId
+            ? { ...l, quantity: l.quantity + line.quantity }
+            : l,
+        ),
+      }));
+      return existing.lineId;
+    }
     const lineId = genLineId();
     set((state) => ({ lines: [...state.lines, { ...line, lineId }] }));
     return lineId;

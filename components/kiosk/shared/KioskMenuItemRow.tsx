@@ -6,7 +6,7 @@ import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { Check } from "lucide-react-native";
+import { ShoppingCart } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -134,8 +134,7 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
         styles.container,
         {
           backgroundColor: config.backgroundColor,
-          borderColor: inCart ? accent : `${accent}30`,
-          borderWidth: inCart ? 2 : 1,
+          borderColor: `${accent}30`,
         },
         isDisabled && styles.containerDisabled,
       ]}
@@ -163,7 +162,11 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
 
         {inCart && (
           <View style={[styles.inCartBadge, { backgroundColor: accent }]}>
-            <Check size={kioskPx(12, s)} color="#FFFFFF" strokeWidth={3.5} />
+            <ShoppingCart
+              size={kioskPx(11, s)}
+              color="#FFFFFF"
+              strokeWidth={2.75}
+            />
             <Text style={styles.inCartBadgeText}>{qtyInCart}</Text>
           </View>
         )}
