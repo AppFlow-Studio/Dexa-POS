@@ -58,6 +58,7 @@ import {
 } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
+import MenuStaleBanner from "./MenuStaleBanner";
 import MenuUnavailableState from "./MenuUnavailableState";
 import MenuItem from "./MenuItem";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
@@ -1232,6 +1233,14 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
         {/* Row 2: Optional content below header (e.g. order badges) */}
         {headerBelow}
+
+        {/* Row 2b: "menu may be out of date" strip. Self-hiding — renders
+            nothing unless the grid is showing cached or no-longer-fresh data. */}
+        {!forceOrdersView && activeTab === "Menu" && (
+          <View className={isTableOrder ? "px-3" : ""}>
+            <MenuStaleBanner />
+          </View>
+        )}
 
         {/* Row 3: Category controls */}
         {!forceOrdersView &&

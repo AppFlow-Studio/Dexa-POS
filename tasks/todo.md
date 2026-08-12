@@ -107,6 +107,37 @@ has to know Settings → Syncing exists. Kept as a leaf so subscribing to
 - `npx eslint` on all touched files — 0 errors, and the warning set is
   byte-identical to before (all pre-existing).
 
+## Round 2 — in-menu sync affordances
+
+The fix above stopped the blank menu, but two states were still unhelpful:
+a first sync rendered a text screen rather than the shape of the menu, and a
+menu restored from the snapshot looked *completely normal* — so an operator
+could ring up yesterday's prices with no signal and no way to refresh without
+leaving for Settings.
+
+- [x] `types/menu.ts` + `useMenuStore` — `PosSyncState.isFromCache`, set via
+      `setMenuData(data, { fromCache })`. A cache hydrate now also *preserves*
+      the live query's `isLoading`/`isError`/`error` rather than claiming the
+      fetch finished — restoring a snapshot says nothing about the live request.
+- [x] `components/menu/MenuGridSkeleton.tsx` (new) — chip row + 5-column tile
+      grid mirroring `numColumns` / `estimatedItemSize` (240 with images, 86
+      without), so the swap to the real grid isn't a jolt. Static, matching the
+      house skeleton style (`ModifierScreenSkeleton`, `TableLayoutSkeleton`) —
+      a pulse would animate on the thread the boot sync is competing for.
+      Sized to content, not `flex:1`: its sibling grid slot is already flex-1,
+      so a flex share here would halve the column and clip tiles mid-row.
+- [x] `MenuUnavailableState` — shows the skeleton for a first load, but holds
+      the "Menu Not Loaded" explanation steady once a sync has actually failed
+      (the backoff retry loop would otherwise flash skeleton↔error every
+      10–60s); the button carries the in-flight state instead.
+- [x] `components/menu/MenuStaleBanner.tsx` (new) — slim strip above the grid,
+      shown only when `isFromCache` or `isError`: "Menu may be out of date —
+      showing the last synced menu from 2:45 PM. Tap to sync now." with a Sync
+      button. Self-hiding, and suppressed when there is no menu at all so it
+      can't stack a second retry under MenuUnavailableState's.
+- [x] `__tests__/menuSyncStateProvenance.test.ts` — 7 tests over the
+      live/cache/error transitions.
+
 ### Not done / follow-ups
 
 - The 60s `DEADLINES.menuSync` deadline wraps five parallel requests, and
@@ -118,3 +149,9 @@ has to know Settings → Syncing exists. Kept as a leaf so subscribing to
   `lastSelectedMenuId` ("persisted to avoid blank state on launch") is still
   inaccurate. The snapshot cache covers the blank-menu symptom, but the
   last-selected-menu preference genuinely does not survive a restart.
+- `uuid` is ESM and isn't in Jest's `transformIgnorePatterns`, which is what
+  breaks the 11 pre-existing suites. `menuSyncStateProvenance.test.ts` works
+  around it by stubbing the lazy `useModifierSidebarStore` require inside
+  `setMenuData`. Fixing the config would likely revive all 11 — left alone
+  here because those suites haven't run in a while and may have real drift
+  hiding behind the import error.

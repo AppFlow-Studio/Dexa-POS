@@ -675,7 +675,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
       { syncedAt: cached.synced_at, menus: cached.menus?.length ?? 0 },
     );
-    setMenuData(cached);
+    setMenuData(cached, { fromCache: true });
   }, [selectedStore?.id, isKDS, setMenuData, posSyncData]);
 
   // Self-healing menu sync.
