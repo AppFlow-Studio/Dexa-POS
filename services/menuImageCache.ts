@@ -48,6 +48,17 @@ export async function resolveMenuImage (
 }
 
 /**
+ * Deterministic on-disk location for an item's cached image — the path
+ * `resolveMenuImage` writes to. Exposed so the offline menu snapshot can store
+ * a `file://` reference instead of re-serializing the base64 blob into MMKV.
+ * The file may not exist (image never offloaded, or cache cleared); callers
+ * must treat a missing file as "no image" rather than an error.
+ */
+export function menuImagePath (itemId: string): string {
+  return `${IMAGE_DIR}${itemId}.jpg`
+}
+
+/**
  * Delete cached image for a specific item (call when item is deleted or image updated).
  */
 export async function evictMenuImage (itemId: string): Promise<void> {

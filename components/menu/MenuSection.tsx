@@ -58,6 +58,7 @@ import {
 } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
+import MenuUnavailableState from "./MenuUnavailableState";
 import MenuItem from "./MenuItem";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
 import OpenItemAdder from "./OpenItemAdder";
@@ -1272,38 +1273,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               />
             </View>
           ) : (
-            <View
-              style={{
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: sc(80),
-              }}
-            >
-              <Clock size={sc(64)} color={colors.muted} />
-              <Text
-                style={{
-                  color: colors.heading,
-                  fontSize: sc(24),
-                  fontWeight: "bold",
-                  marginTop: sc(16),
-                }}
-              >
-                No Menu Available
-              </Text>
-              <Text
-                style={{
-                  color: colors.muted,
-                  fontSize: sc(16),
-                  marginTop: sc(8),
-                  textAlign: "center",
-                  paddingHorizontal: sc(40),
-                }}
-              >
-                There are currently no menus scheduled for this time. Please
-                check back later or select a different order type.
-              </Text>
-            </View>
+            <MenuUnavailableState />
           ))}
 
         <View className={`flex-1 ${isTableOrder ? "px-3" : ""}`}>
