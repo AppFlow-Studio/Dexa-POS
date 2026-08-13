@@ -79,7 +79,7 @@ import {
     TokenCache,
     useAuth,
 } from "@clerk/clerk-expo";
-import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { BottomSheetModalProvider } from "@/components/ui/bottomSheet";
 import {
     DarkTheme,
     DefaultTheme,
@@ -133,7 +133,6 @@ Sentry.init({
   // Offline: cache up to 100 envelopes on disk (default 30)
   maxCacheItems: 100,
 
-  
   tracesSampleRate: 0.1,
 
   // Native crash + hang capture. Android ANRs are captured by the native SDK by
@@ -1020,7 +1019,7 @@ export default Sentry.wrap(function RootLayout() {
           >
             <TanstackProvider>
               <PosSyncProvider>
-                <GestureHandlerRootView>
+                <GestureHandlerRootView style={{ flex: 1 }}>
                   <UiScaleProvider>
                     <SafeAreaProvider>
                       <ThemeProvider

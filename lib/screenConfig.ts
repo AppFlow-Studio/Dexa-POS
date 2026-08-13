@@ -16,6 +16,9 @@ import { enableFreeze } from 'react-native-screens';
 // Views and ViewRootImpl stay flat.
 enableFreeze(false);
 
+// Import from expo-router (not the standalone @react-navigation/native-stack):
+// expo-router vendors its own native-stack, so `<Stack screenOptions>` expects
+// expo-router's copy of this type. Sourcing it here keeps the two in sync.
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
 /**

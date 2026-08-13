@@ -845,7 +845,14 @@ export class OrderService {
       // trg_inkind_normalize BEFORE INSERT trigger on order_payments, which is
       // version-independent and therefore survives the next fork of this
       // lineage. See 20260802100100_order_payments_inkind_normalize_trigger.sql.
-      "process_payment_v16",
+      //
+      // v17 — forks v16 byte-identical + a valor_transaction branch that funnels
+      // Valor's nested card fields (cardLast4/rrn/approvalCode/entryMode) into the
+      // order_payments columns and stamps terminal_type='valor'. Without it the
+      // client called v16 (no valor arm) so Valor payments persisted with null
+      // last4/rrn/auth and a 'dejavoo' label. MUST match the direct payment path
+      // in useOrderStore.syncPaymentToBackend, which also calls v17.
+      "process_payment_v17",
       params,
       {
         deadline: DEADLINES.paymentRpc,
