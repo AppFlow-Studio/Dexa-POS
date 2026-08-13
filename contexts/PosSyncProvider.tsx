@@ -60,6 +60,7 @@ import {
     setFloorPlanSupabaseClient,
     useFloorPlanStore,
 } from "@/stores/useFloorPlanStore";
+import { menuOfflineCache } from "@/stores/menuOfflineCache";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -530,9 +531,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // Fetch menu data from API when store is selected (skip for KDS)
   const {
     data: posSyncData,
-    isLoading: isSyncing,
+    isFetching: isSyncFetching,
     isError: isSyncError,
     error: syncError,
+    fetchStatus: syncFetchStatus,
+    refetch: refetchPosSync,
   } = usePosSync(isKDS ? null : (selectedStore?.id ?? null));
 
   // Fetch standalone entities (categories, items, modifiers not in menus) (skip for KDS)
@@ -611,6 +614,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     if (posSyncData) {
       setMenuData(posSyncData);
 
+      // Snapshot the last good sync so a future boot with no/bad network shows
+      // this menu instead of an empty grid. Written after setMenuData so a
+      // serialization problem can never block the live path.
+      if (selectedStore?.id) {
+        menuOfflineCache.set(selectedStore.id, posSyncData);
+      }
+
       // Re-merge standalone data so orphan items/categories aren't lost
       // after setMenuData replaces the store with tree-only data
       if (standaloneDataRef.current) {
@@ -647,6 +657,73 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, [posSyncData, setMenuData, selectedStore?.id]);
 
+  // Boot fallback: paint the last known menu while the live sync is still in
+  // flight (or after it has failed). Declared AFTER the effect above so that on
+  // a commit where fresh data is already present, setMenuData has run first and
+  // the `menus.length` guard below short-circuits — the snapshot can never
+  // clobber a live sync.
+  useEffect(() => {
+    if (isKDS) return;
+    const locationId = selectedStore?.id;
+    if (!locationId) return;
+    if (useMenuStore.getState().menus.length > 0) return;
+
+    const cached = menuOfflineCache.get(locationId);
+    if (!cached) return;
+
+    console.log(
+      "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
+      { syncedAt: cached.synced_at, menus: cached.menus?.length ?? 0 },
+    );
+    setMenuData(cached, { fromCache: true });
+  }, [selectedStore?.id, isKDS, setMenuData, posSyncData]);
+
+  // Self-healing menu sync.
+  //
+  // pos_sync is the one query the POS cannot operate without, and it used to be
+  // able to dead-end: `retry: 2` + `staleTime: Infinity` + no refetch-on-mount
+  // (this provider never unmounts) meant three failed attempts left the query
+  // in a terminal error state forever. A single bad-network window at launch
+  // therefore produced an empty menu grid for the rest of the session, curable
+  // only from Settings → Sync POS. This keeps retrying — with backoff, and only
+  // while we genuinely have no menu — so the POS heals itself.
+  const menuRecoveryAttemptRef = useRef(0);
+  const hasMenuData = !!posSyncData;
+  useEffect(() => {
+    if (isKDS || !selectedStore?.id) return;
+    if (hasMenuData) {
+      menuRecoveryAttemptRef.current = 0;
+      return;
+    }
+    // A fetch is already in flight — let it finish; this effect re-runs when it
+    // settles, so the next attempt is scheduled from there. `paused` means
+    // TanStack is holding the retry until the network is back (offlineFirst);
+    // onlineManager resumes it, and `refetchOnReconnect` covers the rest, so
+    // waking the radio on a timer here would be pure waste.
+    if (isSyncFetching || syncFetchStatus === "paused") return;
+
+    const attempt = menuRecoveryAttemptRef.current;
+    // 10s, 20s, 40s, then every 60s. Cheap enough to run all shift, slow enough
+    // not to hammer a struggling backend.
+    const delay = Math.min(10_000 * 2 ** attempt, 60_000);
+    const timer = setTimeout(() => {
+      menuRecoveryAttemptRef.current = attempt + 1;
+      console.warn(
+        `[PosSyncProvider] Menu still empty — retrying pos_sync (attempt ${attempt + 1})`,
+      );
+      void refetchPosSync();
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [
+    isKDS,
+    selectedStore?.id,
+    hasMenuData,
+    isSyncFetching,
+    syncFetchStatus,
+    refetchPosSync,
+  ]);
+
   // Merge standalone data (categories, items, modifiers, menus including inactive)
   useEffect(() => {
     if (standaloneData) {
@@ -667,14 +744,21 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
   // Floor plan sync is now handled in the combined useEffect above
 
-  // Update sync state in store
-  // useEffect(() => {
-  //   setSyncState({
-  //     isLoading: isSyncing,
-  //     isError: isSyncError,
-  //     error: syncError instanceof Error ? syncError : null,
-  //   });
-  // }, [isSyncing, isSyncError, syncError, setSyncState]);
+  // Mirror the query's status into the menu store so the UI can tell "still
+  // loading" and "sync failed" apart from "no menus scheduled right now".
+  // Without this, `syncState` sat permanently at {isLoading:false,
+  // isError:false} and a failed sync rendered as a scheduling message —
+  // which is what sent staff hunting through Settings.
+  // `isFetching`, not `isLoading`: once the query has errored its status is
+  // 'error', so `isLoading` (first-load only) stays false through every retry —
+  // a retry in flight would render as a hard failure instead of "syncing".
+  useEffect(() => {
+    setSyncState({
+      isLoading: isSyncFetching,
+      isError: isSyncError,
+      error: syncError instanceof Error ? syncError : null,
+    });
+  }, [isSyncFetching, isSyncError, syncError, setSyncState]);
 
   // Setup and cleanup realtime subscriptions for floor plans and orders
   // Use a ref to track if we've already subscribed to prevent duplicate setups

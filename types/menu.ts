@@ -261,4 +261,11 @@ export interface PosSyncState {
   isError: boolean;
   error: Error | null;
   lastSyncedAt: string | null;
+  /**
+   * True when the menu on screen was restored from the offline snapshot rather
+   * than fetched live — i.e. it is as old as `lastSyncedAt` and may not reflect
+   * price/86 changes made since. Drives the "menu may be out of date" banner.
+   * Cleared by the next successful live sync.
+   */
+  isFromCache: boolean;
 }

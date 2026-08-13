@@ -753,13 +753,15 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
     }
   }
 
-  // Evict the Previous Orders offline-fallback snapshots (one per location),
-  // plus any legacy `today_orders:*` keys from a prior build. Both are
-  // best-effort caches, safe to drop on a full cache clear.
+  // Evict the Previous Orders + menu offline-fallback snapshots (one per
+  // location), plus any legacy `today_orders:*` keys from a prior build. All
+  // are best-effort caches, safe to drop on a full cache clear — the menu
+  // snapshot is rewritten by the next successful pos_sync.
   try {
     for (const key of syncStorage.getAllKeys()) {
       if (
         key.startsWith("prev_orders_offline:") ||
+        key.startsWith("menu_offline:") ||
         key.startsWith("today_orders:")
       ) {
         syncStorage.remove(key);
@@ -767,7 +769,7 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
       }
     }
   } catch (error) {
-    errors.push(`Failed to clear previous-orders offline cache: ${error}`);
+    errors.push(`Failed to clear offline fallback caches: ${error}`);
   }
 
   return { clearedKeys, errors };
