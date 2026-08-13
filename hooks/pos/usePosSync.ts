@@ -188,6 +188,22 @@ export const usePosSync = (locationId: string | null) => {
     networkMode: "offlineFirst", // Serve from cache if no internet
     staleTime: Infinity, // Data never becomes "stale" automatically. We control updates.
     gcTime: 1000 * 60 * 60 * 2, // Keep in garbage collection for 2 hours
+
+    // Deliberate override of the client-wide `refetchOnReconnect: false`.
+    // That default exists to stop a stale-query stampede on reconnect — but
+    // `staleTime: Infinity` means a query holding data is never stale, so this
+    // can ONLY fire when there is no menu at all (dataUpdatedAt === 0, i.e. the
+    // boot sync failed). That is exactly the case the POS must recover from:
+    // without it, three failed attempts left the menu permanently empty until
+    // someone found Settings → Sync POS. One query, one refetch, no stampede.
+    refetchOnReconnect: true,
+
+    // Give the boot sync more room before it gives up. The provider layers a
+    // backoff retry loop on top of this (see PosSyncProvider), so exhausting
+    // the budget is no longer terminal — but every attempt spent here is one
+    // the operator doesn't wait through.
+    retry: 4,
+    retryDelay: (attemptIndex) => Math.min(2_000 * 2 ** attemptIndex, 30_000),
   });
 };
 

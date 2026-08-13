@@ -288,6 +288,52 @@ function computeAddModeSelections (
 }
 
 /**
+ * Resolve the menu-tree ("effective price") copy of an item.
+ *
+ * useMenuStore keeps two copies of every item: the nested menu-tree entries
+ * carry the backend's context-specific `effective_price`, while `menuItemsById`
+ * carries the L1 base price. Callers that reach us via `getMenuItemById` hold
+ * the base-price copy, which would otherwise price the modifier screen (and the
+ * cart item built from it) below an active category/location override.
+ *
+ * Prefers the item's own category/menu context when known; otherwise falls back
+ * to the first menu-tree entry for the id. Returns null when the item isn't in
+ * the tree (e.g. location-exclusive items), leaving the caller's value intact.
+ */
+function resolveContextPricedItem (
+  item: MenuItemType,
+  categoryId?: string,
+  menuId?: string
+): MenuItemType | null {
+  const { menusById, menus } = useMenuStore.getState()
+
+  const findInMenu = (menu: any): MenuItemType | null => {
+    if (!menu?.categories) return null
+    if (categoryId) {
+      const cat = menu.categories.find((c: any) => c.id === categoryId)
+      const scoped = cat?.items?.find((i: MenuItemType) => i.id === item.id)
+      if (scoped) return scoped
+    }
+    for (const cat of menu.categories) {
+      const found = cat.items?.find((i: MenuItemType) => i.id === item.id)
+      if (found) return found
+    }
+    return null
+  }
+
+  if (menuId) {
+    const scoped = findInMenu(menusById[menuId])
+    if (scoped) return scoped
+  }
+
+  for (const menu of menus) {
+    const found = findInMenu(menu)
+    if (found) return found
+  }
+  return null
+}
+
+/**
  * Pre-compute modifier data for instant UI rendering
  * This moves the heavy computation OUT of the render cycle
  *
@@ -322,9 +368,17 @@ function precomputeModifierData (
     ? getModifierGroupsByIds(item.modifierGroupIds)
     : []
 
-  // OPTIMIZED: Use item price immediately (no blocking menu search)
-  let itemPrice = item.price
-  let itemCashPrice = item.cashPrice ?? item.price
+  // OPTIMIZED: Use item price immediately (no blocking menu search).
+  // `item` may be either the menu-tree copy (context/effective price) or the
+  // `menuItemsById` copy, whose price useMenuStore deliberately rewrites to the
+  // L1 base — bill-side pre-warms (BillItem, CourseAccordion) pass the latter.
+  // Both write into the same id-keyed preWarmCache, so without this the entry
+  // that happened to land first decided the price shown on Done. Resolve the
+  // context price up front so the cached entry is correct either way.
+  const contextPriced = resolveContextPricedItem(item, categoryId, menuId)
+  let itemPrice = contextPriced?.price ?? item.price
+  let itemCashPrice =
+    contextPriced?.cashPrice ?? contextPriced?.price ?? item.cashPrice ?? item.price
 
   // OPTIMIZED: Defer menu-context price lookup to background
   // This prevents blocking the UI while still getting accurate prices
@@ -506,27 +560,28 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
               : computeAddModeSelections(precomputed.modifiers)
           }
 
-          // PreWarm skipped setFn, so schedule deferred price lookup if menuId exists
-          if (resolvedMenuId) {
-            const { menusById } = useMenuStore.getState()
-            const itemRef = sourceItem
-            queueMicrotask(() => {
-              const menu = menusById[resolvedMenuId]
-              if (menu?.categories) {
-                for (const cat of menu.categories) {
-                  const mi = cat.items?.find(i => i.id === itemRef.id)
-                  if (mi) {
-                    if (mi.price !== itemRef.price) {
-                      set({
-                        itemPrice: mi.price,
-                        itemCashPrice: mi.cashPrice ?? mi.price
-                      })
-                    }
-                    break
-                  }
-                }
+          // The cached entry may have been warmed from the base-price copy by a
+          // bill-side pre-warm (which passes no menu context at all), so correct
+          // it against the menu tree here rather than only when menuId is known.
+          const itemRef = sourceItem
+          const contextPriced = resolveContextPricedItem(
+            itemRef,
+            resolvedCatId,
+            resolvedMenuId
+          )
+          if (contextPriced) {
+            const nextPrice = contextPriced.price
+            const nextCashPrice = contextPriced.cashPrice ?? contextPriced.price
+            if (
+              nextPrice !== precomputed.itemPrice ||
+              nextCashPrice !== precomputed.itemCashPrice
+            ) {
+              precomputed = {
+                ...precomputed,
+                itemPrice: nextPrice,
+                itemCashPrice: nextCashPrice
               }
-            })
+            }
           }
         } else {
           precomputed = precomputeModifierData(

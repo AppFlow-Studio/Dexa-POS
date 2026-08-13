@@ -68,7 +68,10 @@ interface MenuState {
   // ============================================================
   // SYNC ACTIONS
   // ============================================================
-  setMenuData: (data: PosSyncData) => void
+  // `options.fromCache` marks the data as restored from the offline snapshot
+  // (see stores/menuOfflineCache) rather than freshly fetched, so the UI can
+  // warn that prices/86s may be stale.
+  setMenuData: (data: PosSyncData, options?: { fromCache?: boolean }) => void
   setSyncState: (state: Partial<PosSyncState>) => void
   clearMenuData: () => void
 
@@ -712,7 +715,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
       isLoading: false,
       isError: false,
       error: null,
-      lastSyncedAt: null
+      lastSyncedAt: null,
+      isFromCache: false
     },
 
     // ============================================================
@@ -744,7 +748,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     // ============================================================
     // SYNC ACTIONS
     // ============================================================
-    setMenuData: (data: PosSyncData) => {
+    setMenuData: (data: PosSyncData, options?: { fromCache?: boolean }) => {
       // 1. Transform Menus, Categories, and Items (Tree Structure)
       // `menus`/`menuItems`/`menuItemsById` are reassigned below when stamping
       // 86/snooze state, so this must stay `let`.
@@ -838,10 +842,15 @@ export const useMenuStore = create<MenuState>((set, get) => {
         menusById,
         modifierGroupsById,
         syncState: {
-          isLoading: false,
-          isError: false,
-          error: null,
-          lastSyncedAt: data.synced_at
+          // A cache hydrate says nothing about the live fetch — it may still be
+          // in flight (or have failed). Only a real sync landing clears those.
+          isLoading: options?.fromCache
+            ? get().syncState.isLoading
+            : false,
+          isError: options?.fromCache ? get().syncState.isError : false,
+          error: options?.fromCache ? get().syncState.error : null,
+          lastSyncedAt: data.synced_at,
+          isFromCache: options?.fromCache ?? false
         }
       })
 
@@ -912,7 +921,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
           isLoading: false,
           isError: false,
           error: null,
-          lastSyncedAt: null
+          lastSyncedAt: null,
+          isFromCache: false
         }
       })
     },

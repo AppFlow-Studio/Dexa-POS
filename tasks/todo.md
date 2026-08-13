@@ -1,127 +1,157 @@
-# Kiosk USB Printer — Detection + Config UI
+# P1 — Order processing shows no menu items until a manual "Sync POS"
 
-## Goal
-Let a self-service kiosk (Android) detect connected USB printers (and the built-in
-printer, since hardware is "mixed/unknown") and configure one from the kiosk settings.
-**Scope now: detection + config UI + persisted config.** Actual USB print transport is a
-follow-up (explicitly out of scope).
+## Report
 
-## What already exists (reuse — do NOT rebuild)
-- **Native USB enumeration**: `native/HardwareDetection.ts` → `detectNativeHardware()` returns
-  `connectedUsbDevices: {vendorId, productId, deviceName, deviceClass}[]` plus `hasPrinter`/`hasUsbHost`.
-  `hardwareEvents` (`NativeEventEmitter`) fires `onHardwareChanged` on USB attach/detach.
-  → The device list is returned by native but **not yet surfaced in any JS UI**.
-- **Printer data model already supports USB**: `PrinterConfig.connectionType: "usb"`,
-  `usbDevicePath`, `serialNumber` (`types/printer.ts`); `printers` table has the columns
-  (`connection_type`, `usb_device_path`, `serial_number`, `station_id`) → **no DB migration needed**.
-- **Provisioning pattern**: `services/hardware/printerProvisioning.ts` (`addStarPrinter`,
-  `addBuiltinPrinter`, `addDejavooPrinter`) → each inserts a `printers` row + calls
-  `usePrinterStore.getState().fetchPrinters(locationId)`.
-- **Kiosk settings shell**: `components/kiosk/shared/KioskDiagnosticsScreen.tsx` —
-  `SectionId` type + `SECTIONS` array + section switch; Payment-Terminal panel is the
-  register→pick→edit→display template to mirror.
+Staff opened order-processing, the menu grid was empty ("No Menu Available —
+There are currently no menus scheduled for this time"). Only Settings →
+Syncing → **Sync POS** brought the items back.
 
-## Key design decisions
-1. **Persist to the `printers` table** (not a throwaway device-local store). A USB printer is
-   station-bound (physically attached to this kiosk), so mirror `addBuiltinPrinter`'s
-   `station_id` binding. The follow-up print-path work then only needs to add the USB
-   transport driver — no config re-plumb.
-2. **Detection is JS-only — no native rebuild required.** Consume the existing
-   `connectedUsbDevices` + `onHardwareChanged`. (Optional native descriptor enrichment is a
-   noted nice-to-have, not required to ship.)
-3. **Cover "mixed/unknown" hardware**: the panel offers BOTH (a) the built-in printer if
-   `hasPrinter` (→ existing `addBuiltinPrinter`), and (b) the USB device list (→ new
-   `addUsbPrinter`). User picks whatever their kiosk actually has.
-4. Store as `printer_type: "generic_escpos"`, `connection_type: "usb"` with ESC/POS defaults;
-   stash `usbVendorId`/`usbProductId`/`deviceName` in `metadata` for later matching.
+## Root cause
 
-## Wave 1 — Surface USB devices to JS
-- [ ] `lib/usbPrinterVendors.ts`: vendor-ID → `{name, likelyPrinter}` map
-  (Star 0x0519, Epson 0x04b8, Bixolon 0x154f, iMin 0x0fe6, GoDEX 0x28e9, Zebra 0x0a5f, …) +
-  helpers `describeUsbDevice(dev)` and `isLikelyUsbPrinter(dev)` (deviceClass===7 OR known vendor).
-- [ ] `hooks/hardware/useUsbDevices.ts`: on mount calls `detectNativeHardware()`, subscribes to
-  `onHardwareChanged` for hotplug refresh, returns `{ usbDevices, usbPrinterCandidates,
-  hasBuiltinPrinter, hasUsbHost, refresh(), loading }`.
-  - Verify the `hardwareEventListener` singleton isn't already claimed by PosSyncProvider in
-    kiosk mode; if it is, subscribe directly via `hardwareEvents.addListener(...)` rather than
-    the single-subscription helper. (Verification step.)
-- **Test**: temporary render on the kiosk dev-settings button; plug/unplug a USB device (or use
-  the built-in) and confirm the list updates live.
+The menu is 100% network-dependent on every cold start, and a failed boot sync
+has **no recovery path**.
 
-## Wave 2 — `addUsbPrinter()` provisioning
-- [ ] Add `addUsbPrinter(supabase, stationId, locationId, merchantId, device, role, paperWidth)`
-  to `printerProvisioning.ts`:
-  - Dedup by `location_id` + (`usb_device_path` || `serial_number` || `vendorId:productId` in
-    metadata); reactivate a matching inactive row (mirror `addBuiltinPrinter`).
-  - Insert `printer_type:'generic_escpos'`, `connection_type:'usb'`, `usb_device_path`,
-    `serial_number`, `station_id`, ESC/POS defaults (`paper_width` 58/80,
-    `max_chars_per_line` 32/48, `supports_auto_cut:true`, `supports_cash_drawer_kick:false`),
-    `metadata:{ usbVendorId, usbProductId, deviceName }`.
-  - `is_default_receipt` only if nothing else holds it; then `fetchPrinters(locationId)`.
-- **Test**: call from the panel, confirm a row lands in `printers` (staging) with correct
-  fields and appears in `usePrinterStore`.
+1. `stores/useMenuStore.ts` has **no MMKV persistence** — `create(...)` with no
+   `persist` middleware (despite the `lastSelectedMenuId` comment claiming
+   "persisted to avoid blank state on launch"). Every cold start begins with
+   `menus: []`.
+2. The TanStack Query cache is **in-memory only** — no persister is configured
+   anywhere (`contexts/TanstackProvider.tsx`), so `['pos_sync', locationId]`
+   dies with the process.
+3. `hooks/pos/usePosSync.ts` can reach a **terminal error state**:
+   `retry: 2` (client default) + `staleTime: Infinity` +
+   `refetchOnReconnect: false` + `refetchOnWindowFocus: false`, and
+   `PosSyncProvider` never unmounts — so `refetchOnMount` never fires again.
+   Once the 3 attempts are burned, **nothing ever refetches it**. Only the
+   manual `invalidateQueries(['pos_sync', …])` in `settings/syncing.tsx`
+   (or a menu edit) revives it.
+4. The timeout math makes 3 attempts easy to burn on bad WiFi:
+   `withDeadline(..., DEADLINES.menuSync = 60_000)` wraps five parallel
+   requests. Three 60s timeouts = 3 minutes, and because
+   `connectionQuality`'s timeout window is only 30s, consecutive 60s timeouts
+   are pruned before they can accumulate — the connection never trips to
+   `slow`, so retries are never *paused* (which would have resumed on
+   recovery); they're *spent*.
+5. The failure is **invisible**. The `setSyncState` wiring in
+   `PosSyncProvider` (lines 670–677) is commented out, so
+   `useMenuStore.syncState` is permanently `{isLoading:false, isError:false}`.
+   The UI falls through to MenuSection's scheduling copy, which points staff at
+   *menu schedules* rather than at a sync failure.
 
-## Wave 3 — Kiosk "Printers" settings section
-- [ ] Add `"printers"` to `SectionId` + a `SECTIONS` entry (Lucide `Printer` icon) between
-  "menu" and "terminal"; wire `{activeSection === "printers" && renderPrintersPanel()}`.
-- [ ] `renderPrintersPanel()` (mirror terminal-panel styling):
-  - **Current printer** card: active receipt printer for this station/location from
-    `usePrinterStore` (name, connection, status) + Remove/Switch.
-  - **Detect** button → `useUsbDevices().refresh()`.
-  - **Built-in** row when `hasBuiltinPrinter` → "Use built-in printer" → `addBuiltinPrinter`.
-  - **USB devices** list: each candidate shows vendor label + deviceName + `VID:PID`, a
-    "likely printer" badge, and a paper-width toggle (58/80) → "Use this printer" →
-    `addUsbPrinter`, then set as station receipt printer via existing `setStationReceiptPrinter`.
-  - Empty/permission states: no USB host, nothing connected, or built-in only.
-- **Test on device**: open kiosk settings (long-press logo + PIN, or dev button), confirm
-  detection lists real devices, provision one, reopen → persisted + shown as current.
+So: a single bad-network window at app launch → blank menu for the rest of the
+session, misdiagnosed on screen, curable only from a settings screen.
 
-## Out of scope (explicit follow-up)
-- **Actual USB printing**: needs a USB ESC/POS transport driver (native `usb-serial-for-android`
-  or `UsbManager` bulk-transfer to the printer OUT endpoint) wired into `DriverFactory`
-  (`generic_escpos` + `usb`). `NetworkDriver` is currently a stub. Also: add printer vendor IDs
-  to `android/app/src/main/res/xml/device_filter.xml` for zero-touch USB permission, and request
-  USB permission on first print. None of this is required for detection/config.
+## Plan
 
-## Risks / verification
-- Enumeration + vendorId/productId/deviceName need **no USB permission**; serial number /
-  opening the device **do** — serial may be null until the print-path wave (dedup falls back to
-  VID:PID + device path).
-- Confirm `detectNativeHardware()` runs in kiosk (`self_service`) mode (PosSyncProvider gating).
-- No migration; `database.types.ts` `printers` row already exposes the USB columns.
-- I can typecheck (`npx tsc --noEmit`) but **cannot verify USB detection without your device** —
-  I'll state plainly what was/wasn't verified.
+- [x] 1. `services/menuImageCache.ts` — export `menuImagePath(itemId)` so the
+      snapshot can reference on-disk images instead of base64.
+- [x] 2. New `stores/menuOfflineCache.ts` — MMKV snapshot of the last good
+      `PosSyncData`, per location, base64 images swapped for `file://` paths,
+      7-day TTL. Mirrors `previousOrdersOfflineCache`.
+- [x] 3. `lib/storage.ts` — sweep `menu_offline:` in `clearCacheData()`.
+- [x] 4. `contexts/PosSyncProvider.tsx`
+      - write the snapshot after every successful sync
+      - hydrate from the snapshot at boot when the store is still empty
+      - self-healing retry loop with backoff while the menu is empty
+      - re-enable the `setSyncState` wiring
+- [x] 5. `hooks/pos/usePosSync.ts` — `refetchOnReconnect: true` for this one
+      query (no-op when data is present; fires only when there's no menu).
+- [x] 6. `components/menu/MenuSection.tsx` — tell the truth in the empty state
+      ("couldn't load the menu" + Retry) instead of blaming scheduling.
+- [x] 7. Tests + typecheck.
 
 ## Review
 
-### Done
-- **Wave 1** — `lib/usbPrinterVendors.ts` (vendor map + `describeUsbDevice` / `isLikelyUsbPrinter`
-  / `usbDeviceKey` / `sortUsbDevicesForPicker`) and `hooks/hardware/useUsbDevices.ts` (reads
-  `detectNativeHardware()` on mount, refreshes from the full `onHardwareChanged` snapshot on
-  hotplug — subscribes to `hardwareEvents` directly so it doesn't collide with the singleton
-  `hardwareEventListener`).
-- **Wave 2** — `addUsbPrinter()` in `services/hardware/printerProvisioning.ts`: station-bound
-  insert of a `generic_escpos` + `usb` `printers` row with ESC/POS defaults, VID:PID/deviceName
-  in metadata, dedup by serial→VID:PID, default-receipt deference mirroring `addBuiltinPrinter`.
-- **Wave 3** — New **Printers** section in `KioskDiagnosticsScreen.tsx` (SectionId + SECTIONS +
-  switch): current-printer card (with non-destructive **Unassign**), Detect button, 58/80mm
-  paper-width toggle, built-in-printer option (`addBuiltinPrinter` via
-  `getCachedCapabilities()` ?? `detectDeviceCapabilities()`), and a live USB device list with
-  "Use" → `addUsbPrinter` + `setStationReceiptPrinter`. New `UsbDeviceCard` presentational
-  component.
+### What changed
 
-### Verified
-- `npx tsc --noEmit` — **clean, 0 errors** project-wide.
-- `npx eslint` on all 4 touched files — **0 errors**, 4 warnings all pre-existing (terminal
-  `terminalStatus` unused, 2 terminal exhaustive-deps, `printerRowToConfig` unused import) —
-  none from new code.
-- No existing tests reference these modules.
+**`stores/menuOfflineCache.ts` (new)** — per-location MMKV snapshot of the last
+good `PosSyncData`, 7-day TTL. Stores the raw RPC payload, so rehydration goes
+through the exact same `setMenuData` transform a live sync does (no second code
+path to drift). Base64 `image` blobs are swapped for the `file://` path
+`resolveMenuImage` already writes them to, keeping a multi-MB payload out of
+MMKV. Refuses to persist an empty menu — that would overwrite a good snapshot
+with the blank state the cache exists to prevent.
 
-### NOT verified — needs the device
-- Real USB detection: whether the kiosk's actual printer shows up in `connectedUsbDevices`
-  and whether `hasPrinter` is set for a built-in. All static checks only — no device run.
-- The dedup / provisioning round-trip against the staging `printers` table.
+**`contexts/PosSyncProvider.tsx`**
+- Writes the snapshot after every successful sync.
+- Hydrates from it at boot when `menus` is still empty. Declared *after* the
+  `posSyncData` effect so a live sync always wins the ordering.
+- **Self-healing retry loop**: while the location is set and there's still no
+  `pos_sync` data, schedules a `refetch` on 10s → 20s → 40s → 60s backoff.
+  Resets on success; skips while a fetch is in flight or `paused`
+  (offline — `onlineManager` owns resuming that one).
+- Re-enabled the commented-out `setSyncState` wiring, fed from `isFetching`
+  rather than `isLoading` (once the query errors, its status is `error`, so
+  `isLoading` stays false through every retry and a retry-in-flight would have
+  rendered as a hard failure).
 
-### Out of scope (unchanged) — follow-up to actually print
-- USB ESC/POS transport driver + `DriverFactory` wiring (`generic_escpos`+`usb`), printer
-  vendor IDs in `device_filter.xml`, USB-permission request on first print.
+**`hooks/pos/usePosSync.ts`** — `refetchOnReconnect: true` (safe here and only
+here: `staleTime: Infinity` means it can *only* fire when there's no menu at
+all), `retry: 4` with exponential backoff.
+
+**`components/menu/MenuUnavailableState.tsx` (new)** — splits the two causes
+behind one symptom. `menus.length > 0` keeps the scheduling copy; `=== 0` now
+says the menu couldn't be downloaded and offers a Retry button, so staff never
+has to know Settings → Syncing exists. Kept as a leaf so subscribing to
+`syncState` doesn't re-render the menu grid.
+
+**`lib/storage.ts`** — `clearCacheData()` sweeps `menu_offline:`.
+
+### Verification
+
+- `npx tsc --noEmit` — clean.
+- `npx jest __tests__/menuOfflineCache.test.ts` — 8/8 pass.
+- Full suite: 1419 passed / 30 failed. The same 11 suites (30 tests) fail on a
+  stashed clean tree — pre-existing, mostly a `uuid` ESM transform issue. Net
+  effect of this change is +8 passing, 0 regressions.
+- `npx eslint` on all touched files — 0 errors, and the warning set is
+  byte-identical to before (all pre-existing).
+
+## Round 2 — in-menu sync affordances
+
+The fix above stopped the blank menu, but two states were still unhelpful:
+a first sync rendered a text screen rather than the shape of the menu, and a
+menu restored from the snapshot looked *completely normal* — so an operator
+could ring up yesterday's prices with no signal and no way to refresh without
+leaving for Settings.
+
+- [x] `types/menu.ts` + `useMenuStore` — `PosSyncState.isFromCache`, set via
+      `setMenuData(data, { fromCache })`. A cache hydrate now also *preserves*
+      the live query's `isLoading`/`isError`/`error` rather than claiming the
+      fetch finished — restoring a snapshot says nothing about the live request.
+- [x] `components/menu/MenuGridSkeleton.tsx` (new) — chip row + 5-column tile
+      grid mirroring `numColumns` / `estimatedItemSize` (240 with images, 86
+      without), so the swap to the real grid isn't a jolt. Static, matching the
+      house skeleton style (`ModifierScreenSkeleton`, `TableLayoutSkeleton`) —
+      a pulse would animate on the thread the boot sync is competing for.
+      Sized to content, not `flex:1`: its sibling grid slot is already flex-1,
+      so a flex share here would halve the column and clip tiles mid-row.
+- [x] `MenuUnavailableState` — shows the skeleton for a first load, but holds
+      the "Menu Not Loaded" explanation steady once a sync has actually failed
+      (the backoff retry loop would otherwise flash skeleton↔error every
+      10–60s); the button carries the in-flight state instead.
+- [x] `components/menu/MenuStaleBanner.tsx` (new) — slim strip above the grid,
+      shown only when `isFromCache` or `isError`: "Menu may be out of date —
+      showing the last synced menu from 2:45 PM. Tap to sync now." with a Sync
+      button. Self-hiding, and suppressed when there is no menu at all so it
+      can't stack a second retry under MenuUnavailableState's.
+- [x] `__tests__/menuSyncStateProvenance.test.ts` — 7 tests over the
+      live/cache/error transitions.
+
+### Not done / follow-ups
+
+- The 60s `DEADLINES.menuSync` deadline wraps five parallel requests, and
+  `connectionQuality`'s 30s timeout window means consecutive 60s `pos_sync`
+  timeouts get pruned before they can accumulate — so the connection never
+  trips to `slow` on menu-sync failures alone. Worth revisiting whether that
+  window should be relative to the deadline it's judging.
+- `useMenuStore` still has no `persist` middleware; the comment on
+  `lastSelectedMenuId` ("persisted to avoid blank state on launch") is still
+  inaccurate. The snapshot cache covers the blank-menu symptom, but the
+  last-selected-menu preference genuinely does not survive a restart.
+- `uuid` is ESM and isn't in Jest's `transformIgnorePatterns`, which is what
+  breaks the 11 pre-existing suites. `menuSyncStateProvenance.test.ts` works
+  around it by stubbing the lazy `useModifierSidebarStore` require inside
+  `setMenuData`. Fixing the config would likely revive all 11 — left alone
+  here because those suites haven't run in a while and may have real drift
+  hiding behind the import error.
