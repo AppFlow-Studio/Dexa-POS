@@ -185,7 +185,10 @@ function _isFinalState(profile: OrderProfile): boolean {
     profile.paid_status === "Refunded" ||
     profile.order_status === "completed" ||
     profile.order_status === "void" ||
-    profile.order_status === "cancelled"
+    profile.order_status === "cancelled" ||
+    // Refuse-at-intake twin of `cancelled`; without it a declined online order
+    // never archived from a broadcast and only appeared after a full refetch.
+    profile.order_status === "declined"
   );
 }
 
@@ -295,7 +298,9 @@ function summarizeCachedOrder(po: PreviousOrder): HistoryOrderSummary {
     order_type: normalizeOrderTypeToken(po.type),
     order_source: po.order_source ?? null,
     delivery_platform: po.delivery_platform ?? null,
-    status: po.voided ? "void" : po.refunded ? "refunded" : "completed",
+    status:
+      po.order_status ??
+      (po.voided ? "void" : po.refunded ? "refunded" : "completed"),
     payment_status:
       po.paymentStatus === "Paid"
         ? "paid"
@@ -611,6 +616,7 @@ function _transformFetchedOrder(
     service_charge_is_taxable: profile.service_charge_is_taxable ?? null,
     items: profile.items,
     notes: profile.notes,
+    order_status: profile.order_status,
     voided: profile.order_status === "void",
     refunded:
       profile.paid_status === "Refunded" ||
@@ -828,14 +834,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     addOrderToHistory: (order: OrderProfile) => {
       // An order should be added to history if it has reached a final state.
       // Final states are:
-      // 1. Order Status: completed, void, or cancelled (order lifecycle complete)
+      // 1. Order Status: completed, void, cancelled, or declined (lifecycle over)
       // 2. Check Status: Closed (dine-in check has been closed for audit trail)
       // 3. Payment Status: Paid (order has been fully paid regardless of other status)
 
       const isFinalOrderStatus =
         order.order_status === "completed" ||
         order.order_status === "void" ||
-        order.order_status === "cancelled";
+        order.order_status === "cancelled" ||
+        order.order_status === "declined";
 
       const isClosedCheck = order.check_status === "Closed";
 
@@ -926,6 +933,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         service_charge_is_taxable: order.service_charge_is_taxable ?? null,
         items: order.items,
         notes: order.notes, // Order-level notes (customer requests, special instructions)
+        order_status: order.order_status,
+        voided: order.order_status === "void",
         // Additional fields for refund tracking
         refunded: false,
         refundedAmount: 0,
@@ -1989,6 +1998,11 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       if (existing) {
         get().patchPreviousOrder(existing.db_order_id || existing.orderId, {
           paymentStatus: _derivePaymentStatus(profile),
+          // `status` is a consumed field in every broadcast version, so a row
+          // that goes cancelled/voided AFTER it was listed flips in place rather
+          // than waiting for the next full fetch.
+          order_status: profile.order_status,
+          voided: profile.order_status === "void",
           refunded:
             profile.paid_status === "Refunded" ||
             (profile.order_status === "refunded" &&

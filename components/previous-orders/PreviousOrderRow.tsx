@@ -87,6 +87,16 @@ const statusColorMap: Record<string, { color: string; bgOpacity: string }> = {
   "Partially Refunded": { color: colors.warning, bgOpacity: "20" },
 };
 
+// Lifecycle statuses that end the order. These take over the status pill, since
+// the payment status underneath them is no longer something the merchant can
+// act on. `declined` is the online-order refuse-at-intake twin of `cancelled`
+// (post-acceptance) — both arrive on `orders.status` from the OrderOut bridge.
+const TERMINAL_STATE_LABELS: Record<string, string> = {
+  void: "Voided",
+  cancelled: "Cancelled",
+  declined: "Declined",
+};
+
 // Order type → semantic color + icon mapping
 const orderTypeColorMap: Record<
   string,
@@ -172,6 +182,12 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     bgOpacity: "15",
   };
 
+  // Terminal lifecycle states replace the payment pill entirely: an order that
+  // was cancelled or declined has no meaningful payment state to report, and
+  // showing one ("Awaiting Payment" on a cancelled online order) reads as an
+  // open ticket that still owes money.
+  const terminalState = TERMINAL_STATE_LABELS[order.order_status ?? ""] ?? null;
+
   const orderType = order.order_type || "Dine In";
   const typeConfig = orderTypeColorMap[orderType] ?? {
     color: colors.teal,
@@ -196,7 +212,10 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     return null;
   });
 
-  const needsAttention = status === "Pending" || status === "Unpaid";
+  // A cancelled/voided order owes nothing, so it must not carry the amber
+  // "unpaid, deal with this" wash or the warning triangle.
+  const needsAttention =
+    !terminalState && (status === "Pending" || status === "Unpaid");
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -229,8 +248,6 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     );
     return cardPayments.length > 0 && cardPayments.every((p) => p.is_settled);
   }, [order.payments]);
-
-  const isVoided = order.order_status === "void";
 
   // Online orders lead with the provider mark (DoorDash / Uber Eats / …);
   // everything else leads with its channel icon. Provider identity always goes
@@ -366,7 +383,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
 
         {/* Status pill + secondary note */}
         <View style={{ alignItems: "flex-end", gap: s(2) }}>
-          {isVoided ? (
+          {terminalState ? (
             <View
               style={{
                 flexDirection: "row",
@@ -388,7 +405,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                   color: colors.danger,
                 }}
               >
-                Voided
+                {terminalState}
               </Text>
             </View>
           ) : (
@@ -579,7 +596,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                 onPrint(order);
               }}
             />
-            {onVoid && (
+            {onVoid && !terminalState && (
               <>
                 <View
                   style={{

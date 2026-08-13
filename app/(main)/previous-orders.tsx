@@ -236,6 +236,7 @@ const PreviousOrdersScreen = () => {
         "completed",
         "void",
         "cancelled",
+        "declined",
         "voided",
       ]);
       const ids = new Set<string>();
@@ -276,7 +277,13 @@ const PreviousOrdersScreen = () => {
   // values. useShallow keeps this from re-rendering unless an open order changes.
   const liveOpenById = useOrderStore(
     useShallow((s) => {
-      const FINAL = new Set(["completed", "void", "cancelled", "voided"]);
+      const FINAL = new Set([
+        "completed",
+        "void",
+        "cancelled",
+        "declined",
+        "voided",
+      ]);
       const map: Record<string, OrderProfile> = {};
       for (const id of s.orderIds) {
         const o = s.ordersById[id];
@@ -346,13 +353,20 @@ const PreviousOrdersScreen = () => {
           customer_name: po.customer,
           customer_phone: po.customer_phone ?? undefined,
           server_name: po.server,
-          order_status: po.voided
-            ? "void"
-            : po.refunded && po.paymentStatus !== "Paid"
-              ? "refunded"
-              : po.closed_at
-                ? "completed"
-                : "pending",
+          // Prefer the backend's own lifecycle status. Re-deriving it from the
+          // voided/refunded booleans could only ever produce four values, so a
+          // CANCELLED or DECLINED online order came out as "pending" and rendered
+          // as an ordinary unpaid order. The derivation stays as the fallback for
+          // offline-cached rows written before `order_status` was carried.
+          order_status:
+            po.order_status ??
+            (po.voided
+              ? "void"
+              : po.refunded && po.paymentStatus !== "Paid"
+                ? "refunded"
+                : po.closed_at
+                  ? "completed"
+                  : "pending"),
           check_status: po.checkStatus || "Opened",
           paid_status: po.paymentStatus,
           order_type: po.type,
@@ -541,7 +555,12 @@ const PreviousOrdersScreen = () => {
       const canContinue =
         item.paid_status !== "Paid" &&
         item.order_status !== "refunded" &&
-        item.order_status !== "void";
+        item.order_status !== "void" &&
+        // Cancelled/declined online orders are terminal on the platform side —
+        // reopening one into the cart would let a station keep working a ticket
+        // the customer no longer has.
+        item.order_status !== "cancelled" &&
+        item.order_status !== "declined";
       return (
         <PreviousOrderRow
           order={item}

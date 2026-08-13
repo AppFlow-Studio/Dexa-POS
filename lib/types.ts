@@ -498,6 +498,17 @@ export interface PreviousOrder {
   items: CartItem[]; // The detailed list of items for the notes modal
   notes?: string; // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile["payments"]; // Add payments array
+  /**
+   * Raw `orders.status` carried straight through from the backend row.
+   *
+   * The booleans below only distinguish voided/refunded, so every other terminal
+   * status collapsed into them — a CANCELLED or DECLINED online order arrived
+   * with both false and was re-derived as "pending" by the history screen, which
+   * then rendered it as an ordinary unpaid order. Read this field for lifecycle
+   * state; the booleans stay for the refund maths and for cached rows written
+   * before this field existed (hence optional).
+   */
+  order_status?: OrderProfile["order_status"];
   // Refund tracking fields
   refunded?: boolean;
   voided?: boolean;
