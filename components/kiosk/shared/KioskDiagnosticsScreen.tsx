@@ -19,6 +19,21 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
 import type { KioskConfig } from "@/types/kiosk";
 import type { StationPaymentTerminal } from "@/types/station";
+import { useUsbDevices } from "@/hooks/hardware/useUsbDevices";
+import {
+    describeUsbDevice,
+    usbDeviceKey,
+    type UsbDeviceInfo,
+} from "@/lib/usbPrinterVendors";
+import {
+    detectDeviceCapabilities,
+    getCachedCapabilities,
+} from "@/services/hardware/deviceDetection";
+import {
+    addBuiltinPrinter,
+    addUsbPrinter,
+} from "@/services/hardware/printerProvisioning";
+import { usePrinterStore } from "@/stores/usePrinterStore";
 import {
     Check,
     CreditCard,
@@ -29,6 +44,7 @@ import {
     MonitorSmartphone,
     Pencil,
     Plus,
+    Printer,
     RefreshCw,
     SlidersHorizontal,
     Usb,
@@ -53,7 +69,13 @@ import {
 const TEAL = "#0D9488";
 
 /** Sections shown in the sidebar. */
-type SectionId = "overview" | "profile" | "menu" | "terminal" | "about";
+type SectionId =
+  | "overview"
+  | "profile"
+  | "menu"
+  | "printers"
+  | "terminal"
+  | "about";
 
 const SECTIONS: {
   id: SectionId;
@@ -82,6 +104,13 @@ const SECTIONS: {
     Icon: LayoutGrid,
     title: "Menu Layout",
     subtitle: "How menu items are arranged on this device",
+  },
+  {
+    id: "printers",
+    label: "Printers",
+    Icon: Printer,
+    title: "Printers",
+    subtitle: "Detect and assign a receipt printer for this kiosk",
   },
   {
     id: "terminal",
@@ -163,6 +192,134 @@ export function KioskDiagnosticsScreen({
     currentTerminal?.id ?? undefined,
     currentTerminal ?? undefined,
   );
+
+  // ── Printers ──────────────────────────────────────────────────────
+  const usbHw = useUsbDevices();
+  const printers = usePrinterStore((s) => s.printers);
+  const setStationReceiptPrinter = usePrinterStore(
+    (s) => s.setStationReceiptPrinter,
+  );
+  const fetchPrinters = usePrinterStore((s) => s.fetchPrinters);
+  // `provisioningKey` marks which device row is mid-provision ("__builtin__"
+  // for the integrated printer, else the device's usbDeviceKey).
+  const [provisioningKey, setProvisioningKey] = useState<string | null>(null);
+  const [usbPaperWidth, setUsbPaperWidth] = useState<number>(80);
+  const [unassigningPrinter, setUnassigningPrinter] = useState(false);
+
+  const stationPrinterId = selectedStation?.current_receipt_printer_id ?? null;
+  const currentPrinter =
+    printers.find((p) => p.id === stationPrinterId) ??
+    printers.find(
+      (p) => p.stationId === selectedStation?.id && p.isActive,
+    ) ??
+    null;
+
+  const handleUseUsbDevice = async (dev: UsbDeviceInfo) => {
+    if (!supabase || !selectedStore || !selectedStation) return;
+    const key = usbDeviceKey(dev);
+    setProvisioningKey(key);
+    try {
+      const desc = describeUsbDevice(dev);
+      const printerId = await addUsbPrinter(
+        supabase,
+        selectedStation.id,
+        selectedStore.id,
+        selectedStore.merchant_id,
+        {
+          vendorId: dev.vendorId,
+          productId: dev.productId,
+          deviceName: dev.deviceName,
+        },
+        "receipt",
+        { paperWidth: usbPaperWidth, printerName: `${desc.label} (USB)` },
+      );
+      if (printerId) {
+        await setStationReceiptPrinter(selectedStation.id, printerId);
+        await fetchPrinters(selectedStore.id);
+        toastService.show({
+          title: "Printer added",
+          message: `${desc.label} is now this kiosk's receipt printer.`,
+          type: "success",
+        });
+      } else {
+        toastService.show({
+          title: "Couldn't add printer",
+          message: "Provisioning failed. Check the logs and try again.",
+          type: "error",
+        });
+      }
+    } catch (e: any) {
+      toastService.show({
+        title: "Couldn't add printer",
+        message: e?.message ?? "Unknown error",
+        type: "error",
+      });
+    } finally {
+      setProvisioningKey(null);
+    }
+  };
+
+  const handleUseBuiltin = async () => {
+    if (!supabase || !selectedStore || !selectedStation) return;
+    setProvisioningKey("__builtin__");
+    try {
+      const caps = getCachedCapabilities() ?? (await detectDeviceCapabilities());
+      const printerId = await addBuiltinPrinter(
+        supabase,
+        selectedStation.id,
+        selectedStore.id,
+        selectedStore.merchant_id,
+        caps,
+      );
+      if (printerId) {
+        await setStationReceiptPrinter(selectedStation.id, printerId);
+        await fetchPrinters(selectedStore.id);
+        toastService.show({
+          title: "Built-in printer added",
+          message: "Set as this kiosk's receipt printer.",
+          type: "success",
+        });
+      } else {
+        toastService.show({
+          title: "Couldn't add printer",
+          message: "Provisioning failed. Check the logs and try again.",
+          type: "error",
+        });
+      }
+    } catch (e: any) {
+      toastService.show({
+        title: "Couldn't add printer",
+        message: e?.message ?? "Unknown error",
+        type: "error",
+      });
+    } finally {
+      setProvisioningKey(null);
+    }
+  };
+
+  // Non-destructive: clears the station's receipt-printer claim. The printer
+  // row is left intact so it can be re-assigned later.
+  const handleUnassignPrinter = async () => {
+    if (!selectedStore || !selectedStation) return;
+    setUnassigningPrinter(true);
+    try {
+      await setStationReceiptPrinter(selectedStation.id, null);
+      await fetchPrinters(selectedStore.id);
+      toastService.show({
+        title: "Printer unassigned",
+        message: "This kiosk no longer has an assigned receipt printer.",
+        type: "success",
+      });
+    } catch (e: any) {
+      toastService.show({
+        title: "Couldn't unassign printer",
+        message: e?.message ?? "Unknown error",
+        type: "error",
+      });
+    } finally {
+      setUnassigningPrinter(false);
+    }
+  };
 
   // Terminal UI state
   const [showTerminalPicker, setShowTerminalPicker] = useState(false);
@@ -968,6 +1125,158 @@ export function KioskDiagnosticsScreen({
         <Row label="Profile ID" value={config.id} mono last />
       </Section>
       <KioskUpdateChecker />
+    </>
+  );
+
+  const connLabel = (c: string) =>
+    c === "usb"
+      ? "USB"
+      : c === "network"
+        ? "Network"
+        : c === "builtin"
+          ? "Built-in"
+          : c === "bluetooth"
+            ? "Bluetooth"
+            : c;
+
+  const renderPrintersPanel = () => (
+    <>
+      {/* Current assignment */}
+      <Section title="This kiosk's receipt printer" Icon={Printer}>
+        {currentPrinter ? (
+          <>
+            <Row label="Printer" value={currentPrinter.printerName} />
+            <Row
+              label="Connection"
+              value={connLabel(currentPrinter.connectionType)}
+            />
+            <Row
+              label="Paper width"
+              value={`${currentPrinter.paperWidth}mm`}
+            />
+            <Row
+              label="Status"
+              value={currentPrinter.isConnected ? "Connected" : "Not verified"}
+            />
+            <View className="px-5 py-4 border-t border-gray-100">
+              <TouchableOpacity
+                onPress={handleUnassignPrinter}
+                disabled={unassigningPrinter}
+                className="flex-row items-center justify-center py-3 rounded-2xl border border-red-200 bg-red-50"
+              >
+                {unassigningPrinter ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <X size={16} color="#DC2626" />
+                )}
+                <Text className="text-sm font-bold text-red-600 ml-2">
+                  {unassigningPrinter ? "Unassigning…" : "Unassign printer"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          <View className="px-5 py-6">
+            <Text className="text-sm text-gray-500">
+              No printer is assigned to this kiosk yet. Detect a connected
+              printer below and tap “Use” to set it as the receipt printer.
+            </Text>
+          </View>
+        )}
+      </Section>
+
+      {/* Detection + device list */}
+      <Section title="Connected printers" Icon={Usb}>
+        <View className="px-5 py-5" style={{ gap: 14 }}>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm text-gray-500 flex-1 pr-3">
+              {usbHw.hasUsbHost
+                ? "USB devices plugged into this kiosk. Likely printers are highlighted."
+                : "This device does not report a USB host port."}
+            </Text>
+            <TouchableOpacity
+              onPress={() => usbHw.refresh()}
+              disabled={usbHw.loading}
+              className="flex-row items-center px-4 py-2.5 rounded-2xl bg-gray-100"
+            >
+              {usbHw.loading ? (
+                <ActivityIndicator size="small" color={TEAL} />
+              ) : (
+                <RefreshCw size={16} color={TEAL} />
+              )}
+              <Text className="text-sm font-bold text-teal-700 ml-2">
+                Detect
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Paper width applied to the next USB printer added */}
+          <View>
+            <FieldLabel>Paper width for new USB printer</FieldLabel>
+            <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+              {[58, 80].map((w) => {
+                const active = usbPaperWidth === w;
+                return (
+                  <TouchableOpacity
+                    key={w}
+                    onPress={() => setUsbPaperWidth(w)}
+                    className={`flex-1 py-3 items-center rounded-xl ${
+                      active ? "bg-white" : ""
+                    }`}
+                    style={active ? cardShadow : undefined}
+                  >
+                    <Text
+                      className={`text-sm font-bold ${
+                        active ? "text-teal-700" : "text-gray-400"
+                      }`}
+                    >
+                      {w}mm
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Built-in / integrated printer */}
+          {usbHw.hasBuiltinPrinter && (
+            <UsbDeviceCard
+              title={`${usbHw.deviceModel ?? "Built-in"} printer`}
+              subtitle="Integrated printer on this device"
+              badge="Built-in"
+              busy={provisioningKey === "__builtin__"}
+              onUse={handleUseBuiltin}
+            />
+          )}
+
+          {/* Connected USB devices */}
+          {usbHw.usbDevices.length === 0 && !usbHw.hasBuiltinPrinter ? (
+            <Text className="text-sm text-gray-400 py-2">
+              No USB devices detected. Plug in a printer and tap Detect.
+            </Text>
+          ) : (
+            usbHw.usbDevices.map((dev) => {
+              const desc = describeUsbDevice(dev);
+              const key = usbDeviceKey(dev);
+              return (
+                <UsbDeviceCard
+                  key={key}
+                  title={desc.label}
+                  subtitle={`${dev.deviceName} · ${desc.idLabel}`}
+                  badge={desc.likelyPrinter ? "Likely printer" : undefined}
+                  busy={provisioningKey === key}
+                  onUse={() => handleUseUsbDevice(dev)}
+                />
+              );
+            })
+          )}
+        </View>
+      </Section>
+
+      <Text className="text-xs text-gray-400 px-1">
+        Detection and assignment only. Printing to a USB printer arrives in a
+        follow-up update.
+      </Text>
     </>
   );
 
@@ -1817,6 +2126,7 @@ export function KioskDiagnosticsScreen({
             />
           )}
           {activeSection === "menu" && renderMenuLayout()}
+          {activeSection === "printers" && renderPrintersPanel()}
           {activeSection === "terminal" && renderTerminalPanel()}
           {activeSection === "about" && renderAbout()}
         </ScrollView>
@@ -1969,6 +2279,61 @@ function Row({
           {value}
         </Text>
       </View>
+    </View>
+  );
+}
+
+/** A detected printer / USB device row with a "Use" action. */
+function UsbDeviceCard({
+  title,
+  subtitle,
+  badge,
+  busy,
+  onUse,
+}: {
+  title: string;
+  subtitle: string;
+  badge?: string;
+  busy?: boolean;
+  onUse: () => void;
+}) {
+  return (
+    <View className="flex-row items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5">
+      <View className="flex-1 pr-3">
+        <View className="flex-row items-center gap-2">
+          <Text
+            className="text-sm font-bold text-gray-900"
+            numberOfLines={1}
+          >
+            {title}
+          </Text>
+          {badge ? (
+            <View className="px-2 py-0.5 rounded-full bg-teal-100">
+              <Text className="text-[10px] font-bold text-teal-700">
+                {badge}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Text
+          className="text-xs text-gray-500 mt-0.5"
+          numberOfLines={1}
+          style={{ fontFamily: "monospace" }}
+        >
+          {subtitle}
+        </Text>
+      </View>
+      <TouchableOpacity
+        onPress={onUse}
+        disabled={busy}
+        className={`px-4 py-2.5 rounded-xl ${busy ? "bg-gray-200" : "bg-teal-600"}`}
+      >
+        {busy ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Text className="text-sm font-bold text-white">Use</Text>
+        )}
+      </TouchableOpacity>
     </View>
   );
 }
