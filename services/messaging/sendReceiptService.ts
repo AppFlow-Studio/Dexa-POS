@@ -8,6 +8,13 @@ export interface SendReceiptParams {
   deliveryMethod: SendReceiptDeliveryMethod;
   recipient: string;
   receiptTemplateId?: string;
+  /**
+   * When true, the receipt is prefixed with a personalized order-confirmation
+   * greeting (customer name + order number). Used by the self-service kiosk so
+   * the single post-payment text reads as a confirmation + receipt. Ignored by
+   * older edge-function deployments (they just send the plain receipt).
+   */
+  confirmation?: boolean;
 }
 
 export interface SendReceiptResult {
@@ -41,6 +48,7 @@ export async function sendReceipt(
           delivery_method: params.deliveryMethod,
           recipient,
           receipt_template_id: params.receiptTemplateId,
+          ...(params.confirmation ? { confirmation: true } : {}),
         },
       }
     );

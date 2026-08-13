@@ -185,6 +185,18 @@ import {
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
 
+/**
+ * Return the staff profile id to attribute as the order creator — but only when
+ * the station is NOT a self-service kiosk. Kiosk orders must not be attributed
+ * to the employee who happened to enter the PIN to start the kiosk session,
+ * otherwise KDS tickets show "Server: [employee name]" instead of "Self Service".
+ */
+function getKioskSafeCreatorStaffId(): string | null {
+  const station = useOrderStore.getState().currentStation;
+  if (station?.station_type === "self_service") return null;
+  return useEmployeeStore.getState().getEffectiveCreatorStaffId() || null;
+}
+
 const resolveTableNameForOrder = (
   tableIdOrName?: string | null,
 ): string | null => {
@@ -1186,7 +1198,11 @@ const ensureOrderCreated = async (
   // above already short-circuit orders that exist). Dine-in orders are created
   // via seat_guests (guarded separately at the seating path), but if one ever
   // reaches here pre-seating it should be gated too.
+  // Self-service kiosk orders are exempt — no staff is ringing the order.
+  const currentStation = useOrderStore.getState().currentStation;
+  const isKiosk = currentStation?.station_type === "self_service";
   if (
+    !isKiosk &&
     useStoreSettingsStore.getState().requirePinPerOrder &&
     useEmployeeStore.getState().orderAttributionOrderId !== order.id
   ) {
@@ -1239,8 +1255,7 @@ const ensureOrderCreated = async (
       p_customer_phone: order.customer_phone || null,
       p_special_instructions: null,
       p_device_id: getDeviceId(),
-      p_created_by_staff_id:
-        useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
+      p_created_by_staff_id: getKioskSafeCreatorStaffId(),
       p_station_id:
         useStoreSettingsStore.getState().selectedStation?.id || null,
     };
@@ -1379,8 +1394,7 @@ const ensureOrderCreated = async (
         p_customer_phone: order.customer_phone || null,
         p_special_instructions: null,
         p_device_id: getDeviceId(),
-        p_created_by_staff_id:
-          useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
+        p_created_by_staff_id: getKioskSafeCreatorStaffId(),
         p_station_id:
           useStoreSettingsStore.getState().selectedStation?.id || null,
       };
@@ -1511,6 +1525,22 @@ const ensureOrderCreated = async (
             } catch (e) {
               console.warn(
                 "[ensureOrderCreated] Failed to sync pre-set customer_id:",
+                e,
+              );
+            }
+          }
+
+          // Self-service (kiosk) — set order_source on the backend row so KDS
+          // tickets and order-source filtering reflect the correct origin.
+          if (order.order_source === "kiosk" && supabase) {
+            try {
+              await supabase
+                .from("orders")
+                .update({ order_source: "kiosk" })
+                .eq("id", backendId);
+            } catch (e) {
+              console.warn(
+                "[ensureOrderCreated] Failed to sync kiosk order_source:",
                 e,
               );
             }
@@ -8087,6 +8117,16 @@ export const useOrderStore = create<OrderState>()(
             // Phase 1 Foundation: Get station context for new orders
             const { currentStationId, currentStation } = get();
 
+            // Self-service (kiosk) — no employee is ringing the order, so
+            // server_name is "Self Service" and there's no staff attribution.
+            const isKiosk = currentStation?.station_type === "self_service";
+            const serverName = isKiosk
+              ? "Self Service"
+              : activeEmployee?.fullName || "Unknown";
+            const staffProfileId = isKiosk
+              ? null
+              : activeEmployee?.profileId || null;
+
             // Generate local order numbers (station-aware if station is set)
             const selectedStore =
               useStoreSettingsStore.getState().selectedStore;
@@ -8123,7 +8163,8 @@ export const useOrderStore = create<OrderState>()(
               payments: [],
               opened_at: new Date().toISOString(),
               guest_count: details?.guestCount || 1,
-              server_name: activeEmployee?.fullName || "Unknown",
+              server_name: serverName,
+              order_source: isKiosk ? "kiosk" : undefined,
 
               // Local order numbers (station-aware)
               display_number: localNumbers?.displayNumber,
@@ -8147,7 +8188,7 @@ export const useOrderStore = create<OrderState>()(
               _sourceStationName: currentStation?.station_name || null,
 
               // Staff attribution
-              created_by_staff_profile_id: activeEmployee?.profileId || null,
+              created_by_staff_profile_id: staffProfileId,
             };
             set((state) => {
               state.ordersById[newOrder.id] = newOrder;
@@ -8239,10 +8280,14 @@ export const useOrderStore = create<OrderState>()(
             // attribution since cleared) accept items without a second PIN, while
             // still gating brand-new QSR orders. Covers every add surface since
             // they all funnel through here.
+            // Self-service kiosk orders are exempt — no staff is ringing.
+            const currentStation = get().currentStation;
+            const isKiosk = currentStation?.station_type === "self_service";
             const orderNotYetCreated =
               !activeOrder.db_order_id &&
               !getOrderCreationOperationId(activeOrder.id);
             if (
+              !isKiosk &&
               orderNotYetCreated &&
               useStoreSettingsStore.getState().requirePinPerOrder &&
               useEmployeeStore.getState().orderAttributionOrderId !==

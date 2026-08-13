@@ -212,6 +212,134 @@ export async function addBuiltinPrinter(
 }
 
 // ============================================================================
+// ADD USB PRINTER (generic ESC/POS over USB)
+// ============================================================================
+
+/**
+ * Provision a generic ESC/POS printer physically attached to this station over
+ * USB. Detection/config only — the USB *print transport* driver is a follow-up
+ * (DriverFactory maps `generic_escpos` → the NetworkDriver stub today), so this
+ * writes the config row that the future driver will consume.
+ *
+ * Station-bound like the built-in printer (a USB cable is device-local). Dedup
+ * matches the same physical device by serial (preferred) or VID:PID in
+ * metadata — the USB device path is unstable across reconnects so it's only a
+ * fallback identity, never the match key.
+ */
+export async function addUsbPrinter(
+  supabase: SupabaseClient,
+  stationId: string,
+  locationId: string,
+  merchantId: string,
+  device: {
+    vendorId: number;
+    productId: number;
+    deviceName: string;
+    serialNumber?: string | null;
+  },
+  role: "receipt" | "kitchen" = "receipt",
+  opts?: { paperWidth?: number; printerName?: string },
+): Promise<string | null> {
+  const paperWidth = opts?.paperWidth ?? 80;
+  const maxCharsPerLine = paperWidth >= 80 ? 48 : 32;
+  const hex4 = (n: number) => (n >>> 0).toString(16).padStart(4, "0");
+  const printerName =
+    opts?.printerName ??
+    `USB Printer (${hex4(device.vendorId)}:${hex4(device.productId)})`;
+
+  const metadata = {
+    usbVendorId: device.vendorId,
+    usbProductId: device.productId,
+    deviceName: device.deviceName,
+  };
+
+  // Find an existing USB printer row for this station that maps to the same
+  // physical device.
+  const { data: existingRows } = await supabase
+    .from("printers")
+    .select("id, is_active, serial_number, metadata")
+    .eq("station_id", stationId)
+    .eq("connection_type", "usb");
+
+  const match = (existingRows ?? []).find((row: any) => {
+    if (device.serialNumber && row.serial_number) {
+      return row.serial_number === device.serialNumber;
+    }
+    const meta = (row.metadata ?? {}) as Record<string, unknown>;
+    return (
+      meta.usbVendorId === device.vendorId &&
+      meta.usbProductId === device.productId
+    );
+  });
+
+  // Only claim the default-receipt role if nothing active already holds it.
+  const { data: existingDefaults } = await supabase
+    .from("printers")
+    .select("id")
+    .eq("location_id", locationId)
+    .eq("is_default_receipt", true)
+    .eq("is_active", true)
+    .limit(1);
+  const anotherPrinterIsDefault = (existingDefaults?.length ?? 0) > 0;
+
+  if (match) {
+    await supabase
+      .from("printers")
+      .update({
+        printer_name: printerName,
+        printer_role: role,
+        usb_device_path: device.deviceName,
+        serial_number: device.serialNumber ?? null,
+        paper_width: paperWidth,
+        max_chars_per_line: maxCharsPerLine,
+        is_active: true,
+        metadata,
+      })
+      .eq("id", match.id);
+
+    console.log(`${TAG} Updated USB printer ${match.id}`);
+    usePrinterStore.getState().fetchPrinters(locationId);
+    return match.id;
+  }
+
+  const { data: inserted, error } = await supabase
+    .from("printers")
+    .insert({
+      printer_name: printerName,
+      printer_type: "generic_escpos",
+      printer_role: role,
+      connection_type: "usb",
+      usb_device_path: device.deviceName,
+      serial_number: device.serialNumber ?? null,
+      paper_width: paperWidth,
+      max_chars_per_line: maxCharsPerLine,
+      supports_auto_cut: true,
+      supports_cash_drawer_kick: false,
+      supports_qr_code: false,
+      supports_barcode: false,
+      supports_logo: false,
+      is_default_receipt: role === "receipt" && !anotherPrinterIsDefault,
+      is_active: true,
+      is_connected: false,
+      location_id: locationId,
+      merchant_id: merchantId,
+      station_id: stationId,
+      metadata,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error(`${TAG} Failed to insert USB printer:`, error.message);
+    return null;
+  }
+
+  console.log(`${TAG} Added USB printer:`, inserted?.id);
+  usePrinterStore.getState().fetchPrinters(locationId);
+  return inserted?.id ?? null;
+}
+
+// ============================================================================
 // ADD DEJAVOO PRINTER
 // ============================================================================
 
