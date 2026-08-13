@@ -1,16 +1,14 @@
 // services/terminals/valorUsbAutoConnect.ts
 // Zero-touch USB auto-connect for Valor terminals — mirrors
 // castlesUsbAutoConnect. Reuses the shared, vendor-agnostic castles-usb native
-// attach (hotplug) event and filters by the Valor VID in JS.
-//
-// ⚠️ GATED (Wave 8): VALOR_USB_VENDOR_ID is a placeholder until Valor provides
-// the terminal's real USB vendor ID, so the attach filter will not match a real
-// device yet. The structure is complete so this "just works" once the VID is set.
+// attach (hotplug) event and filters by the Valor VIDs in JS: 0x1E0E (VP550,
+// Qualcomm) and 0x067B (VP350, Prolific). Both are declared in device_filter.xml
+// so Android grants persistent USB permission and delivers USB_DEVICE_ATTACHED.
 
 import type { EventSubscription } from "expo-modules-core";
 import { addAttachedListener } from "@/modules/castles-usb";
 import { getSharedValorService } from "@/services/terminals/valor-service";
-import { VALOR_USB_VENDOR_ID } from "@/services/terminals/valor-transport-usb";
+import { isValorUsbVendorId } from "@/services/terminals/valor-transport-usb";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { VALOR_CONNECT_TIMEOUT_MS } from "@/types/valor";
 
@@ -86,7 +84,7 @@ export function isValorUsbConnectInFlight(): boolean {
 export function startValorUsbAutoConnect(): void {
   if (attachSub) return;
   attachSub = addAttachedListener((event) => {
-    if (event.vendorId !== VALOR_USB_VENDOR_ID) return;
+    if (!isValorUsbVendorId(event.vendorId)) return;
     scheduleConnect("usb-attach", ATTACH_DEBOUNCE_MS);
   });
   scheduleConnect("startup", 0);

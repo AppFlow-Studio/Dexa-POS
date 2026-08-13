@@ -1221,14 +1221,21 @@ const MenuPage: React.FC = () => {
 
       const newAvailability = item.availability === false ? true : false
 
-      // An item is "owned" by this store when it is location-local to us, OR
-      // when we are a single-location merchant (our menu IS the global core).
-      // For those, flip the item's own availability boolean directly.
-      // For a GLOBAL item on a MULTI-location merchant, we must NOT mutate the
-      // shared core — route the toggle through the per-location 86/snooze
-      // override instead (infinity = hidden, null = available). This avoids
-      // pinning price and keeps availability scoped to this location.
-      const isOwned = item.location_id === selectedStore?.id || isSingleLocation
+      // "Owned" = the item is genuinely location-local to this store, so its own
+      // menu_items row IS this location's copy and flipping its availability
+      // boolean directly is correct.
+      //
+      // A GLOBAL item must NOT mutate the shared core — route the toggle through
+      // the per-location 86/snooze override (infinity = hidden, null = available).
+      // This INCLUDES single-location merchants: their availability lives on the
+      // per-location override too (that is where the website's toggle + 86 write),
+      // so a store's is_available can always be cleared from either app. Previously
+      // single-loc was lumped in with "owned" and wrote the GLOBAL flag, which
+      // diverged from the website's per-location override and could strand an item
+      // that one app turned off (the item-311 class of bug). Writing via
+      // set_item_snooze_v1 (SECURITY DEFINER) also keeps us on the POS's RLS-safe
+      // write path — the POS never writes location_item_overrides directly.
+      const isOwned = item.location_id === selectedStore?.id
 
       // Optimistic update
       toggleItemAvailability(id)
@@ -1277,7 +1284,6 @@ const MenuPage: React.FC = () => {
       supabase,
       showToast,
       selectedStore,
-      isSingleLocation,
       triggerPosSync
     ]
   )

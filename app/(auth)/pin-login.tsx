@@ -359,8 +359,7 @@ const PinLoginScreen = () => {
 
       hideLoading();
       setPendingTakeoverPin(null);
-      const isKDS = selectedStation?.station_type === "kds";
-      replaceRoute("(main)", isKDS ? "kds" : "home");
+      replaceRoute("(main)", resolvePostLoginRoute(selectedStation?.station_type));
     } catch (error: any) {
       console.error("Takeover error details:", {
         message: error?.message,

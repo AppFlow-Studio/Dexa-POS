@@ -215,8 +215,8 @@ interface AddReservationData {
   isVip: boolean;
 }
 
-const HOURS = Array.from({ length: 14 }, (_, i) => {
-  const h = i + 9; // 9 AM → 10 PM
+const HOURS = Array.from({ length: 15 }, (_, i) => {
+  const h = i + 9; // 9 AM → 11 PM
   const ampm = h >= 12 ? "PM" : "AM";
   const h12 = h === 12 ? 12 : h > 12 ? h - 12 : h;
   return { value: String(h).padStart(2, "0"), label: `${h12} ${ampm}` };
@@ -227,6 +227,13 @@ const MINUTES = [
   { value: "30", label: ":30" },
   { value: "45", label: ":45" },
 ];
+
+// Stable value arrays for the drum wheels. Building these inline in render
+// (`HOURS.map(...)`) allocated a fresh array every parent re-render, so the
+// DrumColumn positioning effect (deps [items, selected]) re-fired on every
+// keystroke/scroll tick and yanked the wheel mid-momentum — the scroll jank.
+const HOUR_VALUES = HOURS.map((h) => h.value);
+const MINUTE_VALUES = MINUTES.map((m) => m.value);
 
 const TIME_ITEM_H = 36;
 const TIME_VISIBLE_ROWS = 3;
@@ -244,19 +251,37 @@ const DrumColumn: React.FC<{
   renderItem: (value: string, active: boolean) => React.ReactNode;
 }> = ({ items, selected, onSelect, width, renderItem }) => {
   const ref = React.useRef<ScrollView>(null);
+  // When `selected` changes because the USER scrolled this wheel, snapToInterval
+  // has already settled it on the right row — re-running scrollTo would fight
+  // that native momentum and read as stutter. handleScrollEnd flips this so the
+  // effect skips its scrollTo for user-driven changes. External changes (the
+  // < / > buttons, the initial value) still position/animate normally.
+  const skipEffectScrollRef = React.useRef(false);
+  const didInitRef = React.useRef(false);
 
   React.useEffect(() => {
     const idx = items.indexOf(selected);
-    if (idx >= 0) {
-      ref.current?.scrollTo({ y: idx * TIME_ITEM_H, animated: false });
+    if (idx < 0) return;
+    if (skipEffectScrollRef.current) {
+      skipEffectScrollRef.current = false;
+      return;
     }
+    ref.current?.scrollTo({
+      y: idx * TIME_ITEM_H,
+      // Instant on first layout; glide when changed externally (< / > buttons).
+      animated: didInitRef.current,
+    });
+    didInitRef.current = true;
   }, [items, selected]);
 
   const handleScrollEnd = (y: number) => {
     const idx = Math.round(y / TIME_ITEM_H);
     const clamped = Math.max(0, Math.min(idx, items.length - 1));
     const next = items[clamped];
-    if (next !== selected) onSelect(next);
+    if (next !== selected) {
+      skipEffectScrollRef.current = true;
+      onSelect(next);
+    }
   };
 
   const pad = TIME_ITEM_H * Math.floor(TIME_VISIBLE_ROWS / 2);
@@ -286,6 +311,12 @@ const DrumColumn: React.FC<{
       />
       <ScrollView
         ref={ref}
+        // This wheel is a vertical ScrollView nested inside the modal's outer
+        // vertical ScrollView. On Android the parent captures every vertical
+        // drag unless the child opts into nested scrolling — without this the
+        // wheel can't be spun at all and the user is stuck using the < / >
+        // buttons. Harmless (and default behaviour) on iOS.
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
         snapToInterval={TIME_ITEM_H}
         decelerationRate="fast"
@@ -714,6 +745,11 @@ const AddReservationModal: React.FC<{
                 style={{ maxHeight: s(520) }}
                 contentContainerStyle={{ padding: s(14), gap: s(10) }}
                 keyboardShouldPersistTaps="handled"
+                // Parent of the time-wheel ScrollViews. Enabling nested
+                // scrolling lets the wheels take the gesture when dragged and
+                // hands the drag back to this container everywhere else, so the
+                // form body scrolls from any non-input area on Android.
+                nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
               >
                 {/* Customer search — full width at top */}
@@ -1274,7 +1310,7 @@ const AddReservationModal: React.FC<{
                           }}
                         >
                           <DrumColumn
-                            items={HOURS.map((h) => h.value)}
+                            items={HOUR_VALUES}
                             selected={selHour}
                             onSelect={setSelHour}
                             width={s(118)}
@@ -1301,7 +1337,7 @@ const AddReservationModal: React.FC<{
                             style={{ width: 1, backgroundColor: colors.border }}
                           />
                           <DrumColumn
-                            items={MINUTES.map((m) => m.value)}
+                            items={MINUTE_VALUES}
                             selected={selMin}
                             onSelect={setSelMin}
                             width={s(86)}

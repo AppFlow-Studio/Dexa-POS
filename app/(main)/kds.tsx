@@ -9,8 +9,11 @@ import {
     type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { FlashList } from "@shopify/flash-list";
 import { getDeviceId } from "@/lib/deviceId";
 import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
+import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
@@ -49,7 +52,6 @@ import {
     GestureResponderEvent,
     Pressable,
     Animated as RNAnimated,
-    ScrollView,
     Text,
     TouchableOpacity,
     View,
@@ -424,6 +426,32 @@ const KDSSkeletonCard = () => {
 };
 
 // ─── Order Type Helpers ───────────────────────────────────────────
+/**
+ * Ticket header label: the delivery-platform short code (e.g. "C424D") for
+ * online orders, else the Dexa display number / last-4 of the order number.
+ */
+function kdsTicketLabel(ticket: KDSTicket | null | undefined): string {
+  if (!ticket) return "----";
+  // Prefer platform_order_number carried on the ticket (broadcast path, or the
+  // RPC once the get_kds_tickets_v2 migration lands). Fall back to the order
+  // store by db_order_id so a POS-hosted KDS still shows the short code before
+  // that migration is applied. (Dedicated KDS devices skip order-store bootstrap
+  // — they rely on the RPC field.)
+  const platformNumber =
+    ticket.platform_order_number ??
+    useOrderStore.getState().getOrderByDbId(ticket.db_order_id)
+      ?.platform_order_number ??
+    null;
+  const shortCode = onlineOrderShortCode({
+    id: ticket.order_id,
+    db_order_id: ticket.db_order_id,
+    platform_order_number: platformNumber,
+  });
+  return (
+    shortCode || ticket.display_number || ticket.order_number?.slice(-4) || "----"
+  );
+}
+
 function getOrderTypeLabel(type: string | null): string {
   const t = (type || "").toLowerCase();
   if (t === "delivery") return "DELIVERY";
@@ -535,17 +563,76 @@ const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
   },
 );
 
+// ─── Ticket Column (virtualized) ──────────────────────────────────
+// One independently-scrolling FlashList per visual column. Columns are kept as
+// separate lists rather than a single `numColumns` grid on purpose: tickets have
+// variable height, and a row-major grid would align them into rows and reorder
+// the queue. Assignment into columns stays upstream in `columnizedTickets` so
+// each list receives a stable, already-ordered array.
+interface KDSTicketColumnProps {
+  tickets: KDSTicket[];
+  isDoneTab: boolean;
+  renderCard: (ticket: KDSTicket) => React.ReactElement;
+  onEmptySpacePress: () => void;
+  uiScale: number;
+}
+
+// Ballpark seed for virtualization only; FlashList self-corrects after the first
+// layout pass. Done cards are compact (no item rows), active cards carry a
+// header plus item/modifier rows.
+const ESTIMATED_TICKET_HEIGHT = 260;
+const ESTIMATED_DONE_TICKET_HEIGHT = 120;
+
+const KDSTicketColumn = React.memo<KDSTicketColumnProps>(
+  ({ tickets, isDoneTab, renderCard, onEmptySpacePress, uiScale }) => {
+    const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, []);
+
+    const renderItem = useCallback(
+      ({ item }: { item: KDSTicket }) => renderCard(item),
+      [renderCard],
+    );
+
+    return (
+      <View style={{ flex: 1, paddingHorizontal: Math.round(2 * uiScale) }}>
+        <FlashList
+          data={tickets}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          estimatedItemSize={
+            isDoneTab ? ESTIMATED_DONE_TICKET_HEIGHT : ESTIMATED_TICKET_HEIGHT
+          }
+          drawDistance={500}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+          contentContainerStyle={{ paddingBottom: Math.round(20 * uiScale) }}
+          // Tapping past the last card in a column clears single-select focus,
+          // preserving the behavior the old full-grid Pressable provided. Card
+          // Pressables capture their own taps, so this only fires on empty space.
+          ListFooterComponent={
+            <Pressable
+              style={{ height: Math.round(80 * uiScale) }}
+              onPress={onEmptySpacePress}
+            />
+          }
+        />
+      </View>
+    );
+  },
+);
+
+KDSTicketColumn.displayName = "KDSTicketColumn";
+
 // ─── Ticket Card ──────────────────────────────────────────────────
 interface KDSTicketCardProps {
   ticket: KDSTicket;
-  // D6: a pre-bucketed urgency level (0-3) computed at the page level instead
-  // of the raw per-second nowEpochMs. The visible MM:SS timer lives in the
-  // isolated KDSTicketTimer leaf (subscribes to nowEpochMs itself), so the card
-  // body's only time-dependent output is the header urgency color — which only
-  // changes at minute thresholds. Bucketing collapses the per-second prop churn
-  // to a 0-3 value so the memo comparator skips the card body render between
-  // threshold crossings (~3 over a ticket's life vs ~60/min).
-  urgencyLevel: number;
+  // The card's only time-dependent output is the header urgency color, which
+  // changes at minute thresholds (~3 times over a ticket's life). It is derived
+  // inside the card via a bucketed store selector rather than passed down as a
+  // prop: a page-level `nowEpochMs` would re-render the whole KDS page — and
+  // rebuild the renderTicketCard callback — once per second just to feed a
+  // value that almost never changes. The visible MM:SS timer is likewise
+  // isolated in the KDSTicketTimer leaf, which subscribes to nowEpochMs itself.
+  urgencyThresholds: UrgencyThresholds;
   onAdvance: (
     ticketId: string,
     itemIds: string[],
@@ -573,7 +660,7 @@ interface KDSTicketCardProps {
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
   ({
     ticket,
-    urgencyLevel,
+    urgencyThresholds,
     onAdvance,
     onToggleSelect,
     onLongPress,
@@ -589,17 +676,31 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
   }) => {
     const uiScale = useUiScale();
     const s = (n: number) => Math.round(n * uiScale);
-    // D6 profile gate (TEMP — remove before merge): count card-body renders.
-    // On a 50-card board, BEFORE the urgencyLevel bucketing this fires ~50x/sec
-    // (raw nowEpochMs prop); AFTER it fires only on ticket data change + the ~3
-    // urgency threshold crossings. Commit D6 only if this BEFORE number is a
-    // measured cost (under React Compiler the body render may already be cheap).
-    if (__DEV__) console.count("KDSTicketCard.render");
     const bulkMode = useKDSStore((s) => s.bulkMode);
     const isSelected = useKDSStore(
       useCallback(
         (s) => s.selectedTicketIds.has(ticket.ticket_id),
         [ticket.ticket_id],
+      ),
+    );
+    // Subscribe to the clock but select the bucketed 0-3 level, so Zustand's
+    // equality check absorbs the per-second ticks and only re-renders this card
+    // on an actual threshold crossing. Urgency freezes at the server completion
+    // time for ready ("Served") tickets so the header color stops escalating in
+    // lockstep with the frozen timer instead of drifting per-device.
+    const frozenAt =
+      ticket.status === "ready" && ticket.ready_time_epoch
+        ? ticket.ready_time_epoch
+        : null;
+    const urgencyLevel = useKDSStore(
+      useCallback(
+        (s) =>
+          getUrgencyLevel(
+            ticket.start_time_epoch,
+            urgencyThresholds,
+            frozenAt ?? s.nowEpochMs,
+          ),
+        [ticket.start_time_epoch, urgencyThresholds, frozenAt],
       ),
     );
     const hasUrgencyColor = urgencyLevel > 0;
@@ -1155,9 +1256,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       }}
                       numberOfLines={1}
                     >
-                      {ticket.display_number ||
-                        ticket.order_number?.slice(-4) ||
-                        "----"}
+                      {kdsTicketLabel(ticket)}
                     </Text>
                     {(ticket.status === "pending" ||
                       ticket.status === "cooking") &&
@@ -1829,7 +1928,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
   (prev, next) => {
     // Skip re-render if callbacks and config are unchanged
     if (
-      prev.urgencyLevel !== next.urgencyLevel ||
+      prev.urgencyThresholds !== next.urgencyThresholds ||
       prev.onAdvance !== next.onAdvance ||
       prev.onToggleSelect !== next.onToggleSelect ||
       prev.onLongPress !== next.onLongPress ||
@@ -2037,10 +2136,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                       }}
                       numberOfLines={1}
                     >
-                      #
-                      {ticket.display_number ||
-                        ticket.order_number?.slice(-4) ||
-                        "----"}
+                      {kdsTicketLabel(ticket)}
                     </Text>
                     <DeliveryPlatformBadge
                       deliveryPlatform={ticket.delivery_platform}
@@ -2267,7 +2363,6 @@ const KitchenDisplayScreen = () => {
   const recallTicket = useKDSStore((s) => s.recallTicket);
   const doneTickets = useKDSStore((s) => s.doneTickets);
   const doneCount = useKDSStore((s) => s.doneCount);
-  const timerTick = useKDSStore((s) => s.timerTick);
   const recallDoneTicket = useKDSStore((s) => s.recallDoneTicket);
   const prioritizeTicket = useKDSStore((s) => s.prioritizeTicket);
   const toggleRush = useKDSStore((s) => s.toggleRush);
@@ -2470,11 +2565,10 @@ const KitchenDisplayScreen = () => {
   const cookingTickets = useKDSStore((s) => s.ticketsByStatus.cooking);
   const readyTickets = useKDSStore((s) => s.ticketsByStatus.ready);
 
-  // Start the single global timer (each KDSTicketTimer subscribes to timerTick directly)
+  // Start the single global clock. Nothing at page scope subscribes to it —
+  // consumers are leaf components (KDSTicketTimer for MM:SS, KDSTicketCard for
+  // its bucketed urgency level), so a tick never re-renders this page.
   useKDSTimer();
-
-  // One shared timestamp per global KDS tick to keep all cards in sync.
-  const nowEpochMs = useMemo(() => Date.now(), [timerTick]);
 
   // Initialize KDS display config for this station
   useEffect(() => {
@@ -2595,8 +2689,7 @@ const KitchenDisplayScreen = () => {
       const pendingTickets = useKDSStore.getState().ticketsByStatus.pending;
       pendingTickets.forEach((ticket) => {
         if (!shouldAutoFire(ticket.start_time_epoch, now, delayMs)) return;
-        const displayNum =
-          ticket.display_number ?? ticket.order_number?.slice(-4) ?? "?";
+        const displayNum = kdsTicketLabel(ticket);
         toast.show({
           title: `${displayNum} auto-fired`,
           message: `Started preparing after ${kdsAutoFireDelayMinutes}m`,
@@ -2643,8 +2736,7 @@ const KitchenDisplayScreen = () => {
           isTicketRecalled(ticket.ticket_id);
         if (!shouldAutoBump(ticket.start_time_epoch, now, delayMs, recalled))
           return;
-        const displayNum =
-          ticket.display_number ?? ticket.order_number?.slice(-4) ?? "?";
+        const displayNum = kdsTicketLabel(ticket);
         toast.show({
           title: `${displayNum} auto-bumped`,
           message: `Ticket served after ${autoBumpMinutes}m`,
@@ -3009,8 +3101,7 @@ const KitchenDisplayScreen = () => {
     ) => {
       // Read ticket data before advancing (advance mutates the store)
       const ticket = useKDSStore.getState()._ticketsById[ticketId];
-      const displayNum =
-        ticket?.display_number || ticket?.order_number?.slice(-4) || "----";
+      const displayNum = kdsTicketLabel(ticket);
       const statusLabel =
         newStatus === "preparing"
           ? "Cooking"
@@ -3128,18 +3219,7 @@ const KitchenDisplayScreen = () => {
     (item: KDSTicket) => (
       <KDSTicketCard
         ticket={item}
-        // D6: bucket the per-second nowEpochMs into a 0-3 urgency level here so
-        // the card only re-renders its body when a ticket crosses a threshold.
-        urgencyLevel={getUrgencyLevel(
-          item.start_time_epoch,
-          urgencyThresholds,
-          // Freeze urgency at the server completion time for ready ("Served")
-          // tickets so the header color stops escalating in lockstep with the
-          // frozen timer, instead of drifting per-device on live nowEpochMs.
-          item.status === "ready" && item.ready_time_epoch
-            ? item.ready_time_epoch
-            : nowEpochMs,
-        )}
+        urgencyThresholds={urgencyThresholds}
         onAdvance={advanceWithUndo}
         onToggleSelect={toggleTicketSelection}
         onLongPress={handleTicketLongPress}
@@ -3167,7 +3247,6 @@ const KitchenDisplayScreen = () => {
       kdsHideDoneItems,
       displaySettings,
       urgencyThresholds,
-      nowEpochMs,
       kdsTicketTapMode,
       focusedTicketId,
       handleSelectTicket,
@@ -3188,6 +3267,13 @@ const KitchenDisplayScreen = () => {
     ),
     [recallDoneTicket, focusedTicketId, handleSelectTicket, kdsShowServerName],
   );
+
+  // Stable identity so KDSTicketColumn's memo isn't defeated by a new closure
+  // on every page render. Reads focus from the store at call time rather than
+  // closing over `focusedTicketId`, which would change this on every selection.
+  const handleClearFocus = useCallback(() => {
+    if (useKDSStore.getState().focusedTicketId) setFocusedTicketId(null);
+  }, [setFocusedTicketId]);
 
   const activeTabTickets = listDataByStatus[activeStatus];
   const isDoneTab = activeStatus === "done";
@@ -3874,42 +3960,21 @@ const KitchenDisplayScreen = () => {
           </Text>
         </View>
       ) : (
-        <ScrollView
+        <View
           key={`kds-${activeStatus}-${columnCount}`}
-          contentContainerStyle={{
-            padding: s(4),
-            paddingBottom: s(20),
-            flexGrow: 1,
-          }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={true}
+          style={{ flex: 1, flexDirection: "row", padding: s(4) }}
         >
-          {/* Tapping empty space clears the single-select focus. Card Pressables
-              capture their own taps, so this only fires for the surrounding area. */}
-          <Pressable
-            style={{ flex: 1 }}
-            onPress={() => {
-              if (focusedTicketId) setFocusedTicketId(null);
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-              {columnizedTickets.map((colTickets, col) => (
-                <View
-                  key={`col-${activeStatus}-${col}`}
-                  style={{ flex: 1, paddingHorizontal: s(2) }}
-                >
-                  {colTickets.map((ticket) => (
-                    <View key={ticket.ticket_id}>
-                      {isDoneTab
-                        ? renderDoneTicketCard(ticket)
-                        : renderTicketCard(ticket)}
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </View>
-          </Pressable>
-        </ScrollView>
+          {columnizedTickets.map((colTickets, col) => (
+            <KDSTicketColumn
+              key={`col-${activeStatus}-${col}`}
+              tickets={colTickets}
+              isDoneTab={isDoneTab}
+              renderCard={isDoneTab ? renderDoneTicketCard : renderTicketCard}
+              onEmptySpacePress={handleClearFocus}
+              uiScale={uiScale}
+            />
+          ))}
+        </View>
       )}
 
       {/* ─── Action Menu Overlay ─── */}
@@ -3927,10 +3992,7 @@ const KitchenDisplayScreen = () => {
           }}
         >
           {(() => {
-            const orderLabel =
-              actionMenu.ticket.display_number ||
-              actionMenu.ticket.order_number?.slice(-4) ||
-              "----";
+            const orderLabel = kdsTicketLabel(actionMenu.ticket);
             const statusText =
               actionMenu.ticket.status === "pending"
                 ? "Pending"
@@ -4276,8 +4338,7 @@ const KitchenDisplayScreen = () => {
         (() => {
           const ticket =
             useKDSStore.getState()._ticketsById[confirmBump.ticketId];
-          const label =
-            ticket?.display_number || ticket?.order_number?.slice(-4) || "----";
+          const label = kdsTicketLabel(ticket);
           const undoneCount = ticket ? countUndoneItems(ticket) : 0;
           return (
             <ConfirmBumpModal

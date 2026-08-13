@@ -13,7 +13,7 @@ import {
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getSharedValorService } from "@/services/terminals/valor-service";
-import { VALOR_USB_VENDOR_ID } from "@/services/terminals/valor-transport-usb";
+import { isValorUsbVendorId } from "@/services/terminals/valor-transport-usb";
 import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
 import { listDevices } from "@/modules/castles-usb";
 
@@ -92,7 +92,7 @@ async function performValorHealthCheck(): Promise<void> {
     // sales). Same approach as the Castles USB health check above.
     try {
       const devices = await listDevices();
-      const found = devices.some((d) => d.vendorId === VALOR_USB_VENDOR_ID);
+      const found = devices.some((d) => isValorUsbVendorId(d.vendorId));
       if (found) {
         handleSuccess();
       } else {

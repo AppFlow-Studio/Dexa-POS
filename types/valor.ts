@@ -410,5 +410,19 @@ export const VALOR_SETTLEMENT_MUTEX_ACQUIRE_TIMEOUT_MS = 300_000;
 export const VALOR_TEST_DEADLINE_MS = 30_000;
 export const VALOR_TEST_OP_NAME = "_probe_valor_test";
 
-/** USB CDC serial baud — 9600 per Valor's USB semi-integration guide. */
-export const VALOR_USB_BAUD_RATE = 9600;
+/**
+ * USB serial baud rate — model-dependent, selected per device in
+ * valor-transport-usb.ts by vendor id.
+ *
+ * VP550 (Qualcomm CDC ACM, 0x1E0E): a virtual serial endpoint where the baud is
+ * ignored and bytes move regardless. 9600 (from Valor's semi-integration guide)
+ * is the known-good value; we keep it so this path is untouched.
+ *
+ * VP350 (Prolific PL2303, 0x067B): a REAL UART bridge where the host baud must
+ * physically match the terminal's serial rate, or nothing decodes in either
+ * direction. 115200 is the common terminal rate (Castles' Saturn1000 PL-serial
+ * runs 115200 too). If the VP350 still yields no data at 115200, retry
+ * 57600 / 38400 / 19200 / 9600.
+ */
+export const VALOR_USB_BAUD_RATE_CDC = 9600;
+export const VALOR_USB_BAUD_RATE_PROLIFIC = 115200;

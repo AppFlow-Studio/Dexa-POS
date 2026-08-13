@@ -1,4 +1,5 @@
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
+import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
@@ -223,12 +224,20 @@ const PopoverContent = React.memo<PopoverContentProps>(
       });
     }, [order.opened_at]);
 
-    // Memoize display ID
+    // Memoize display ID — append the delivery-platform short code (e.g. "C424D")
+    // for online orders so the order line matches the platform bag.
     const displayId = useMemo(() => {
-      return (
-        order.display_number || order.order_number || `#${order.id.slice(-4)}`
-      );
-    }, [order.display_number, order.order_number, order.id]);
+      const base =
+        order.display_number || order.order_number || `#${order.id.slice(-4)}`;
+      const code = onlineOrderShortCode(order);
+      return code ? `${base} · ${code}` : base;
+    }, [
+      order.display_number,
+      order.order_number,
+      order.id,
+      order.db_order_id,
+      order.platform_order_number,
+    ]);
 
     // Status pill
     const statusPill = useMemo(
@@ -819,10 +828,17 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   );
 
   const displayId = useMemo(() => {
-    return (
-      order.display_number || order.order_number || `#${order.id.slice(-4)}`
-    );
-  }, [order.display_number, order.order_number, order.id]);
+    const base =
+      order.display_number || order.order_number || `#${order.id.slice(-4)}`;
+    const code = onlineOrderShortCode(order);
+    return code ? `${base} · ${code}` : base;
+  }, [
+    order.display_number,
+    order.order_number,
+    order.id,
+    order.db_order_id,
+    order.platform_order_number,
+  ]);
 
   const statusLabel = useMemo(() => {
     if (refundState.isFullyRefunded) return "refunded";

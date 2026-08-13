@@ -307,6 +307,13 @@ const MainMenu: React.FC = () => {
       subtitle: "Manage Orders",
       route: "/kds",
     },
+    {
+      id: "kiosk",
+      icon: <Cpu color={colors.teal} size={20} />,
+      title: "Kiosk",
+      subtitle: "Self Order",
+      route: "/kiosk",
+    },
     // {
     //   id: 'scheduling',
     //   icon: <CalendarClock color={colors.teal} size={20} />,

@@ -12,11 +12,23 @@ const corsHeaders = {
 const RATE_LIMIT_SENDS = 3
 const RATE_LIMIT_WINDOW_HOURS = 1
 
+// Public hosted receipt page (lives in the website repo). The kiosk
+// confirmation SMS links here as `${RECEIPT_BASE_URL}/${order.receipt_token}`.
+// Overridable via env so staging / a different path can be pointed at without a
+// code change. NOTE: confirm the exact path spelling matches the website route.
+const RECEIPT_BASE_URL = (
+  Deno.env.get('RECEIPT_BASE_URL') || 'https://dexaposai.com/receipts'
+).replace(/\/+$/, '')
+
 interface SendReceiptBody {
   order_id: string
   delivery_method: 'email' | 'sms'
   recipient: string
   receipt_template_id?: string
+  // Kiosk self-service: prefix the SMS receipt with a personalized
+  // order-confirmation greeting (customer name + order number). Backward
+  // compatible — omitted for normal POS receipts.
+  confirmation?: boolean
 }
 
 function jsonResp(body: unknown, init: ResponseInit = {}) {
@@ -73,7 +85,8 @@ serve(async (req: Request) => {
     return jsonResp({ success: false, message: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { order_id, delivery_method, recipient, receipt_template_id } = body
+  const { order_id, delivery_method, recipient, receipt_template_id, confirmation } =
+    body
   if (!order_id || !delivery_method || !recipient) {
     return jsonResp(
       { success: false, message: 'order_id, delivery_method, recipient required' },
@@ -193,7 +206,9 @@ serve(async (req: Request) => {
       return jsonResp({ success: false, message: 'Invalid phone number' })
     }
 
-    const text = renderReceiptText(order as any, location)
+    const text = renderReceiptText(order as any, location, {
+      confirmation: confirmation === true
+    })
     const telnyxBody: Record<string, unknown> = {
       to: e164,
       text
@@ -273,6 +288,7 @@ async function fetchMerchantLogoUrl(
 type ReceiptOrder = {
   display_number?: string | null
   order_number?: string | null
+  receipt_token?: string | null
   created_at: string
   order_type?: string | null
   table_number?: string | number | null
@@ -615,7 +631,8 @@ function renderReceiptHtml(
 
 function renderReceiptText(
   order: ReceiptOrder,
-  location: ReceiptLocation | null
+  location: ReceiptLocation | null,
+  opts: { confirmation?: boolean } = {}
 ): string {
   const orderNumber = order.display_number || order.order_number || '-'
   const businessName = location?.name || 'Receipt'
@@ -651,6 +668,17 @@ function renderReceiptText(
     paidLine ? `Paid: ${paidLine}` : '',
     'Thank you!'
   ].filter(Boolean)
+
+  // Kiosk confirmation: a short "Order #<n> at <business>" line plus a link to
+  // the hosted receipt page — no item list, totals, or card/amount details.
+  if (opts.confirmation) {
+    const confirmLines = [`Order #${orderNumber} at ${businessName}`]
+    const receiptToken = order.receipt_token?.trim()
+    if (receiptToken) {
+      confirmLines.push(`Receipt: ${RECEIPT_BASE_URL}/${receiptToken}`)
+    }
+    return confirmLines.join('\n')
+  }
 
   return lines.join('\n')
 }

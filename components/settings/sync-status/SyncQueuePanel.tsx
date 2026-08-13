@@ -5,6 +5,7 @@
  * "Sync Now" and "Force Retry All" actions. Polls every 5 seconds.
  */
 
+import { describeBlockReason, describeCause } from '@/lib/offlineSyncSubtitles'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import {
@@ -400,18 +401,47 @@ export function SyncQueuePanel (): React.ReactElement {
                   </Text>
                 </View>
               </View>
-              <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}>
-                {formatTimestamp(op.timestamp)}
-                {op.retryCount > 0 ? ` · ${op.retryCount} retries` : ''}
-              </Text>
-              {op.localOrderId && (
+              {/* Why a BLOCKED op is waiting. Without this the operator sees a
+                  "BLOCKED" chip with no indication of what it needs — the most
+                  common confusion is an item op waiting on its parent order. */}
+              {op.status === 'blocked' && op.blockReason ? (
                 <Text
-                  style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}
+                  style={{
+                    fontSize: s(12),
+                    color: colors.warning,
+                    fontWeight: '600',
+                    marginTop: s(3)
+                  }}
                   numberOfLines={1}
                 >
-                  Order: {op.localOrderId.substring(0, 20)}...
+                  Waiting on: {describeBlockReason(op.blockReason)}
                 </Text>
-              )}
+              ) : null}
+
+              {/* Last failure cause for ops that are retrying but not yet dead. */}
+              {op.status !== 'blocked' && op.lastError?.code ? (
+                <Text
+                  style={{
+                    fontSize: s(12),
+                    color: colors.warning,
+                    fontWeight: '600',
+                    marginTop: s(3)
+                  }}
+                  numberOfLines={2}
+                >
+                  {describeCause(op)}
+                </Text>
+              ) : null}
+
+              <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(3) }}>
+                {formatTimestamp(op.timestamp)}
+                {op.retryCount > 0
+                  ? ` · ${op.retryCount} ${
+                      op.retryCount === 1 ? 'attempt' : 'attempts'
+                    }`
+                  : ''}
+                {op.localOrderId ? ` · ${op.localOrderId.substring(0, 14)}…` : ''}
+              </Text>
             </View>
           </View>
         )

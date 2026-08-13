@@ -39,6 +39,8 @@ export interface KDSTicket {
   order_type: string | null;
   order_source?: string | null;
   delivery_platform?: string | null;
+  platform_order_number?: string | null; // marketplace order id → last-5 short code
+
   server_id?: string | null;
   server_name?: string | null;
   table_name: string | null;

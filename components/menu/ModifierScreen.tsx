@@ -34,6 +34,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useImmerReducer } from "use-immer";
@@ -626,6 +627,21 @@ const persistToGoIfChanged = (
 const ModifierScreenContent = () => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+
+  // The options grid is a FlashList, which needs a BOUNDED height to
+  // virtualize/recycle — it can't flex-fill. A hardcoded 320 pushed
+  // quantity/notes below the fold on short or ui-scale-inflated viewports (the
+  // Landi C20Pro hits the 1.25 scale cap). Instead, size the grid to whatever
+  // space is left after the rest of the form's chrome (~430pt, scaled), capped
+  // at 320 so it never grows/stretches and floored so it always shows a few
+  // rows. The outer ScrollView remains the safety net: if this estimate is off
+  // (extra sections like allergens/custom modifiers), everything stays
+  // reachable by scrolling.
+  const { height: windowHeight } = useWindowDimensions();
+  const optionsGridHeight = Math.max(
+    s(168),
+    Math.min(320, Math.round(windowHeight - s(430))),
+  );
   const store = useModifierSidebarStore(
     // NOTE: `isOpen` is deliberately NOT selected here.
     //
@@ -1982,7 +1998,7 @@ const ModifierScreenContent = () => {
                   set. No extraData: each cell subscribes to its own
                   selection in useModifierSelectionStore, so taps never
                   re-run the list. */}
-              <View style={{ height: 320 }}>
+              <View style={{ height: optionsGridHeight }}>
                 <FlashList
                   data={optionsForCategory}
                   numColumns={OPTION_COLUMNS}

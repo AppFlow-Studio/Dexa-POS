@@ -16,6 +16,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { getHeaderHeight } from "@/lib/headerHeight";
+import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import {
   forceSetLocalSequence,
   parseSequenceFromDisplayNumber,
@@ -918,8 +919,10 @@ const OrderProcessing = () => {
   const renderOrderGridCard = useCallback(
     ({ item }: { item: OrderProfile }) => {
       const totalAmount = item.total_amount ?? 0;
+      const gridShortCode = onlineOrderShortCode(item);
       const displayId =
-        item.display_number || item.order_number || `#${item.id.slice(-4)}`;
+        (item.display_number || item.order_number || `#${item.id.slice(-4)}`) +
+        (gridShortCode ? ` · ${gridShortCode}` : "");
       const itemCount =
         item.items.length > 0
           ? item.items.length

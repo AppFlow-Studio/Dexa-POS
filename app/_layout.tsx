@@ -88,6 +88,7 @@ import {
 } from "@react-navigation/native";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack, useNavigationContainerRef } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import * as React from "react";
@@ -110,6 +111,7 @@ import {
 } from "@/services/appUpdater";
 import * as Sentry from "@sentry/react-native";
 import { isRunningInExpoGo } from "expo";
+import * as ScreenOrientation from "expo-screen-orientation";
 import * as Updates from "expo-updates";
 
 const navigationIntegration = Sentry.reactNavigationIntegration({
@@ -236,6 +238,20 @@ async function checkForUpdate() {
 }
 // IMPORTANT: Must be called once at module level for OAuth to work correctly
 WebBrowser.maybeCompleteAuthSession();
+
+// Collapse the native splash-screen exit fade to zero.
+//
+// The fade is a ViewPropertyAnimator whose `withEndAction` is the ONLY place
+// expo-splash-screen removes the splash view from the window — and that callback
+// is skipped when the animation is cancelled. A cancelled fade strands the splash
+// view over the app at alpha 0: invisible, full-screen, eating every touch, so the
+// app renders normally but no gesture lands until the Activity is recreated
+// (which is why changing the device UI/display scale "fixed" it in the field).
+//
+// patches/expo-splash-screen+0.30.10.patch guarantees removal regardless of the
+// animation outcome; this is defense-in-depth that also shrinks the exposure
+// window from 400ms to ~0 and removes 400ms of dead time from every cold start.
+SplashScreen.setOptions({ duration: 0, fade: false });
 
 // Register CFD secondary display component for Android built-in displays.
 // Must happen at module level before native side mounts the ReactRootView.
@@ -575,14 +591,38 @@ export default Sentry.wrap(function RootLayout() {
   const isKDS = useStoreSettingsStore(
     (s) => s.selectedStation?.station_type === "kds",
   );
+  const isKiosk = useStoreSettingsStore(
+    (s) => s.selectedStation?.station_type === "self_service",
+  );
   const isCFDMode = useStoreSettingsStore((s) => s.isCFDMode);
-  const isPOSMode = !isKDS && !isCFDMode;
+  const hasSelectedStation = useStoreSettingsStore((s) => !!s.selectedStation);
+  const isPOSMode = hasSelectedStation && !isKDS && !isKiosk && !isCFDMode;
   const isPinModalOpen = usePinOverrideStore((s) => s.isPinModalOpen);
   const isNoPrinterModalVisible = useNoPrinterModalStore((s) => s.visible);
   const isCustomizationOpen = useCustomizationStore((s) => s.isOpen);
   const [nativeUpdateManifest, setNativeUpdateManifest] =
     React.useState<VersionManifest | null>(null);
   setThemeMode(colorScheme === "light" ? "light" : "dark");
+
+  // Orientation management: lock to landscape when not on a kiosk station
+  // (the app's default per app.json). Lives in the root layout because it
+  // stays mounted across all navigation and layout changes, unlike
+  // (auth)/_layout or (main)/_layout.
+  React.useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (isKiosk) {
+      // Kiosk orientation is set by useKioskOrientation in the kiosk page.
+      // This effect only handles the non-kiosk lock path. Let the
+      // kiosk-specific hook manage the kiosk lock so it can use the profile.
+      return;
+    }
+    // Not a kiosk — lock to landscape (app.json default). lockAsync(DEFAULT)
+    // doesn't actually prevent rotation on Android when system auto-rotate is
+    // on; we must be explicit.
+    ScreenOrientation.lockAsync(
+      ScreenOrientation.OrientationLock.LANDSCAPE,
+    ).catch(() => {});
+  }, [isKiosk]);
 
   // Store the navigation container ref for cross-group navigation + Sentry tracing
   const navigationRef = useNavigationContainerRef();

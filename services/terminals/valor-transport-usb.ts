@@ -28,12 +28,33 @@ import {
   type UsbDeviceInfo,
 } from "@/modules/castles-usb";
 import type { ITerminalTransport } from "./valor-transport.types";
-import { VALOR_USB_BAUD_RATE } from "@/types/valor";
+import { VALOR_USB_BAUD_RATE_CDC, VALOR_USB_BAUD_RATE_PROLIFIC } from "@/types/valor";
 
-/** Valor VP terminal USB vendor id — 0x1E0E (Qualcomm "Android Diag" CDC). */
-export const VALOR_USB_VENDOR_ID = 0x1e0e;
+/** Prolific PL2303 VID (VP350) — a real UART bridge, so baud must match. */
+const VALOR_PROLIFIC_VENDOR_ID = 0x067b;
+
+/** Pick the serial baud for a device: PL2303 (VP350) needs the real UART rate;
+ *  Qualcomm CDC (VP550) ignores baud, so keep its known-good value. */
+const baudForDevice = (vendorId: number): number =>
+  vendorId === VALOR_PROLIFIC_VENDOR_ID
+    ? VALOR_USB_BAUD_RATE_PROLIFIC
+    : VALOR_USB_BAUD_RATE_CDC;
+
+/**
+ * Valor VP terminal USB vendor ids:
+ *   0x1E0E — Qualcomm "Android Diag" CDC serial (VP550 + other Qualcomm VP models).
+ *   0x067B — Prolific PL2303 USB-serial bridge (VP350).
+ * Both are SHARED VIDs (Qualcomm / Prolific ship in many serial adapters), so in
+ * a multi-device setup prefer the product-name hints below to disambiguate.
+ */
+export const VALOR_USB_VENDOR_IDS: readonly number[] = [0x1e0e, 0x067b];
+
+/** True when a USB device's vendor id belongs to a Valor VP terminal. */
+export const isValorUsbVendorId = (vendorId: number): boolean =>
+  VALOR_USB_VENDOR_IDS.includes(vendorId);
+
 /** Product-name substrings to match a Valor terminal as a fallback. */
-const VALOR_PRODUCT_HINTS = ["VALOR", "VP500", "VP100"];
+const VALOR_PRODUCT_HINTS = ["VALOR", "VP550", "VP500", "VP350", "VP100"];
 
 export class ValorUsbTransport implements ITerminalTransport {
   private _isOpen = false;
@@ -80,7 +101,13 @@ export class ValorUsbTransport implements ITerminalTransport {
       }
     }
 
-    await usbOpen(device.deviceId, VALOR_USB_BAUD_RATE);
+    const baud = baudForDevice(device.vendorId);
+    console.log(
+      `[ValorUsbTransport] Opening deviceId=${device.deviceId} ` +
+        `vid=0x${device.vendorId.toString(16)} pid=0x${device.productId.toString(16)} ` +
+        `baud=${baud} name="${device.productName ?? ""}"`,
+    );
+    await usbOpen(device.deviceId, baud);
 
     this._subscriptions.push(
       addDataListener((event) => {
@@ -171,7 +198,7 @@ export class ValorUsbTransport implements ITerminalTransport {
   }
 
   private _findValorTerminal(devices: UsbDeviceInfo[]): UsbDeviceInfo | undefined {
-    const byVendor = devices.find((d) => d.vendorId === VALOR_USB_VENDOR_ID);
+    const byVendor = devices.find((d) => isValorUsbVendorId(d.vendorId));
     if (byVendor) return byVendor;
     return devices.find((d) => {
       const name = (d.productName || "").toUpperCase();
