@@ -20,6 +20,7 @@ jest.mock("uuid", () => ({
 
 import {
   buildReceiptTemplateData,
+  isHeaderOnlyShell,
   reconcileReceiptTotals,
   resolveFullOrder,
 } from "@/services/printing/PrinterService";
@@ -296,6 +297,112 @@ describe("resolveFullOrder — uniform order source across print surfaces", () =
     useOrderStore.setState({ ordersById: {}, dbOrderIdIndex: {} } as any);
     const archived = baseOrder({ id: "old-1", items: [] });
     expect(resolveFullOrder(archived)).toBe(archived);
+  });
+
+  // #S1-0010: a 6-item $114.80 Uber Eats order printed "(no items)" with a
+  // $0.00 subtotal. The order lived in ordersById ONLY as a v3 header-only
+  // broadcast shell (items: [], item_count: 6) because an auto-accepted online
+  // order never enters the working scope, so nothing ever hydrates its detail.
+  // Previous-Orders keys its profiles by the same db uuid, so the unguarded
+  // store swap threw away the hydrated 6-item reprint for that empty shell.
+  it("does NOT trade a hydrated reprint for a header-only broadcast shell", () => {
+    const shell = baseOrder({
+      id: "db-10",
+      db_order_id: "db-10",
+      items: [],
+      _broadcastItemCount: 6,
+      total_amount: 114.8,
+      total_tax: 9.36,
+    } as Partial<OrderProfile>);
+    useOrderStore.setState({
+      ordersById: { "db-10": shell },
+      dbOrderIdIndex: { "db-10": "db-10" },
+    } as any);
+
+    const hydrated = baseOrder({
+      id: "db-10",
+      db_order_id: "db-10",
+      items: S1_0003_ITEMS(),
+    });
+    expect(resolveFullOrder(hydrated)).toBe(hydrated);
+  });
+
+  it("still prefers the store copy when neither side has items", () => {
+    const shell = baseOrder({ id: "db-11", items: [], _broadcastItemCount: 0 });
+    useOrderStore.setState({ ordersById: { "db-11": shell } } as any);
+    const lossy = { id: "db-11", items: [] } as any;
+    expect(resolveFullOrder(lossy)).toBe(shell);
+  });
+});
+
+describe("isHeaderOnlyShell — pre-print item-loss detector", () => {
+  it("flags an order the backend says has items but that loaded none", () => {
+    expect(
+      isHeaderOnlyShell(
+        baseOrder({ items: [], _broadcastItemCount: 6 } as Partial<OrderProfile>),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not flag a genuinely empty order (item_count 0)", () => {
+    expect(
+      isHeaderOnlyShell(
+        baseOrder({ items: [], _broadcastItemCount: 0 } as Partial<OrderProfile>),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not flag an order with no count hint at all (archived reprint)", () => {
+    expect(isHeaderOnlyShell(baseOrder({ items: [] }))).toBe(false);
+  });
+
+  it("does not flag a hydrated order", () => {
+    expect(
+      isHeaderOnlyShell(
+        baseOrder({
+          items: S1_0003_ITEMS(),
+          _broadcastItemCount: 4,
+        } as Partial<OrderProfile>),
+      ),
+    ).toBe(false);
+  });
+});
+
+// The renderer's `(no items)` body is only half the damage: Subtotal is derived
+// purely from the item array while Tax and TOTAL fall back to persisted
+// scalars, so the paper reconciles to nothing. Pin that shape so the guard in
+// printReceipt can never be quietly removed without this failing.
+describe("buildReceiptTemplateData — item-less finalized order (#S1-0010 shape)", () => {
+  it("produces a $0.00 subtotal under the real total — must never be printed", () => {
+    const d = buildReceiptTemplateData(
+      baseOrder({
+        items: [],
+        _broadcastItemCount: 6,
+        paid_status: "Paid",
+        closed_at: "2026-08-13T20:59:17Z",
+        total_amount: 114.8,
+        total_tax: 9.36,
+      } as Partial<OrderProfile>),
+      LOCATION,
+      PRINTER,
+    );
+    expect(d.items).toHaveLength(0);
+    expect(d.subtotal).toBe(0);
+    expect(d.tax).toBeCloseTo(9.36, 2);
+    expect(d.total).toBeCloseTo(114.8, 2);
+    // Σ(rows) = 9.36 but the footer says 114.80 — the reconcile invariant the
+    // guard exists to prevent ever reaching paper.
+    expect(
+      reconcileReceiptTotals({
+        lineSum: 0,
+        subtotal: d.subtotal,
+        discount: 0,
+        tax: d.tax,
+        serviceCharge: d.serviceCharge ?? 0,
+        total: d.total,
+        track: "card",
+      }).some((v) => v.code === "components_vs_total"),
+    ).toBe(true);
   });
 });
 

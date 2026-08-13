@@ -17907,6 +17907,16 @@ export const useOrderStore = create<OrderState>()(
                       });
                       return deduped;
                     })(),
+                    // Keep the "backend has N items" hint truthful. It is
+                    // otherwise written ONLY by the broadcast path (upsertOrder),
+                    // so a count from a header-only broadcast would outlive an
+                    // authoritative fetch that legitimately returned zero items —
+                    // and PrinterService's header-only-shell guard would then
+                    // block that order's receipt forever. This fetch IS the
+                    // better source: mirror it.
+                    _broadcastItemCount: transformedItems.filter(
+                      (item) => !item.is_voided,
+                    ).length,
                     payments: [...mergedPayments, ...localPendingPayments],
                     // Reversals and refund items from backend
                     reversals: reversalsData,
