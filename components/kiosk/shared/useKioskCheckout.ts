@@ -3,6 +3,8 @@ import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { CartItem } from "@/lib/types";
 import { sendReceipt } from "@/services/messaging/sendReceiptService";
 import { payFullCard } from "@/services/paymentService";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { getReceiptPrinter } from "@/services/printing/PrintRouter";
 import { chargeActiveTerminal } from "@/services/terminals/chargeActiveTerminal";
 import {
   lineCashUnitPrice,
@@ -10,6 +12,7 @@ import {
   useKioskCartStore,
   type KioskCartLine,
 } from "@/stores/useKioskCartStore";
+import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCallback, useState } from "react";
@@ -322,6 +325,26 @@ export function useKioskCheckout() {
           }).catch(() => {
             /* non-fatal: the order is paid regardless of SMS delivery */
           });
+        }
+
+        // 8. Print a receipt when the kiosk profile opts in AND a receipt
+        // printer is configured for this station (e.g. a USB printer assigned
+        // in kiosk settings). Fire-and-forget — never block or fault the success
+        // screen on a printer hiccup; the print queue handles its own retries.
+        try {
+          const autoPrint =
+            useKioskProfileStore.getState().config?.autoPrintReceipt ?? false;
+          const store = useStoreSettingsStore.getState().selectedStore;
+          if (autoPrint && store && getReceiptPrinter(store.id)) {
+            const paidOrder = useOrderStore.getState().ordersById[liveOrderId];
+            if (paidOrder) {
+              void PrinterService.printReceipt(paidOrder, store).catch((e) =>
+                console.warn("[kioskCheckout] receipt print failed:", e),
+              );
+            }
+          }
+        } catch (e) {
+          console.warn("[kioskCheckout] auto-print skipped:", e);
         }
 
         const finalOrder = useOrderStore.getState().ordersById[liveOrderId];

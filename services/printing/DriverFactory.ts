@@ -4,6 +4,7 @@ import { LandiDriver } from "./drivers/LandiDriver";
 import { NetworkDriver } from "./drivers/NetworkDriver";
 import { PrinterDriver } from "./drivers/PrinterDriver";
 import { StarMicronicsDriver } from "./drivers/StarMicronicsDriver";
+import { UsbEscPosDriver } from "./drivers/UsbEscPosDriver";
 
 /** Max drivers to cache before evicting the oldest non-Star entry. */
 const MAX_DRIVER_CACHE = 10;
@@ -49,7 +50,12 @@ export function getDriver(config: PrinterConfig): PrinterDriver {
       driver = new StarMicronicsDriver();
       break;
     case "generic_escpos":
-      driver = new NetworkDriver();
+      // USB-attached ESC/POS printers use the native bulk-transfer driver;
+      // network ESC/POS is still the (unimplemented) NetworkDriver stub.
+      driver =
+        config.connectionType === "usb"
+          ? new UsbEscPosDriver()
+          : new NetworkDriver();
       break;
     default:
       throw new Error(`Unknown printer driver type: ${config.printerType}`);

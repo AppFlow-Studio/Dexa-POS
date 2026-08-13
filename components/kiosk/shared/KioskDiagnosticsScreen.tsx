@@ -20,6 +20,8 @@ import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore"
 import type { KioskConfig } from "@/types/kiosk";
 import type { StationPaymentTerminal } from "@/types/station";
 import { useUsbDevices } from "@/hooks/hardware/useUsbDevices";
+import { usbPrinterRequestPermission } from "@/native/UsbPrinter";
+import { PrinterService } from "@/services/printing/PrinterService";
 import {
     describeUsbDevice,
     usbDeviceKey,
@@ -205,6 +207,7 @@ export function KioskDiagnosticsScreen({
   const [provisioningKey, setProvisioningKey] = useState<string | null>(null);
   const [usbPaperWidth, setUsbPaperWidth] = useState<number>(80);
   const [unassigningPrinter, setUnassigningPrinter] = useState(false);
+  const [testPrinting, setTestPrinting] = useState(false);
 
   const stationPrinterId = selectedStation?.current_receipt_printer_id ?? null;
   const currentPrinter =
@@ -220,6 +223,10 @@ export function KioskDiagnosticsScreen({
     setProvisioningKey(key);
     try {
       const desc = describeUsbDevice(dev);
+      // Request USB permission now, while staff are present, so the first
+      // checkout print doesn't pop a dialog mid-order. Best-effort — known
+      // vendors are already granted persistently via device_filter.xml.
+      await usbPrinterRequestPermission(dev.vendorId, dev.productId);
       const printerId = await addUsbPrinter(
         supabase,
         selectedStation.id,
@@ -294,6 +301,27 @@ export function KioskDiagnosticsScreen({
       });
     } finally {
       setProvisioningKey(null);
+    }
+  };
+
+  const handleTestPrint = async () => {
+    if (!currentPrinter) return;
+    setTestPrinting(true);
+    try {
+      await PrinterService.printTestReceipt(currentPrinter);
+      toastService.show({
+        title: "Test sent",
+        message: "A sample receipt was sent to the printer.",
+        type: "success",
+      });
+    } catch (e: any) {
+      toastService.show({
+        title: "Test print failed",
+        message: e?.message ?? "Unknown error",
+        type: "error",
+      });
+    } finally {
+      setTestPrinting(false);
     }
   };
 
@@ -1158,11 +1186,25 @@ export function KioskDiagnosticsScreen({
               label="Status"
               value={currentPrinter.isConnected ? "Connected" : "Not verified"}
             />
-            <View className="px-5 py-4 border-t border-gray-100">
+            <View className="px-5 py-4 border-t border-gray-100 flex-row gap-2.5">
+              <TouchableOpacity
+                onPress={handleTestPrint}
+                disabled={testPrinting}
+                className="flex-1 flex-row items-center justify-center py-3 rounded-2xl bg-teal-600"
+              >
+                {testPrinting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Printer size={16} color="#FFFFFF" />
+                )}
+                <Text className="text-sm font-bold text-white ml-2">
+                  {testPrinting ? "Printing…" : "Test print"}
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleUnassignPrinter}
                 disabled={unassigningPrinter}
-                className="flex-row items-center justify-center py-3 rounded-2xl border border-red-200 bg-red-50"
+                className="flex-1 flex-row items-center justify-center py-3 rounded-2xl border border-red-200 bg-red-50"
               >
                 {unassigningPrinter ? (
                   <ActivityIndicator size="small" color="#DC2626" />
@@ -1170,7 +1212,7 @@ export function KioskDiagnosticsScreen({
                   <X size={16} color="#DC2626" />
                 )}
                 <Text className="text-sm font-bold text-red-600 ml-2">
-                  {unassigningPrinter ? "Unassigning…" : "Unassign printer"}
+                  {unassigningPrinter ? "Unassigning…" : "Unassign"}
                 </Text>
               </TouchableOpacity>
             </View>

@@ -27,4 +27,22 @@
       present.
     -->
     <usb-device vendor-id="1659" />
+    <!--
+      ESC/POS receipt printers (USB). Declaring these vendors grants persistent
+      USB permission on attach so the kiosk can print without a per-plug dialog
+      (important under lock-task/kiosk mode). Keep in sync with the printer
+      vendors in lib/usbPrinterVendors.ts. Matched by vendor only to cover all
+      models. Decimal values; hex in comments.
+    -->
+    <usb-device vendor-id="1305" />  <!-- 0x0519 Star Micronics -->
+    <usb-device vendor-id="1208" />  <!-- 0x04b8 Epson -->
+    <usb-device vendor-id="5455" />  <!-- 0x154f Bixolon -->
+    <usb-device vendor-id="4070" />  <!-- 0x0fe6 iMin / ICS Advent -->
+    <usb-device vendor-id="10473" /> <!-- 0x28e9 GoDEX -->
+    <usb-device vendor-id="2655" />  <!-- 0x0a5f Zebra -->
+    <usb-device vendor-id="7568" />  <!-- 0x1d90 Citizen -->
+    <usb-device vendor-id="3540" />  <!-- 0x0dd4 Custom / SNBC -->
+    <usb-device vendor-id="26728" /> <!-- 0x6868 Zjiang / Xprinter -->
+    <usb-device vendor-id="1046" />  <!-- 0x0416 Nuvoton (POS printer) -->
+    <usb-device vendor-id="8401" />  <!-- 0x20d1 Rongta -->
 </resources>
