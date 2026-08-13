@@ -18,6 +18,8 @@ interface ProviderChipRowProps {
   counts: Record<string, number>;
   totalCount: number;
   selected: ProviderFilter;
+  /** False while the window counts load — chips show "–" instead of a fake 0. */
+  countsReady?: boolean;
   onSelect: (provider: ProviderFilter) => void;
 }
 
@@ -32,10 +34,11 @@ const GAP = 8;
 const Chip: React.FC<{
   chip: ChipDef;
   isActive: boolean;
+  countsReady?: boolean;
   onPress: () => void;
   onLayout?: (e: LayoutChangeEvent) => void;
   fullWidth?: boolean;
-}> = ({ chip, isActive, onPress, onLayout, fullWidth }) => {
+}> = ({ chip, isActive, countsReady = true, onPress, onLayout, fullWidth }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   return (
@@ -77,7 +80,7 @@ const Chip: React.FC<{
           fontVariant: ["tabular-nums"],
         }}
       >
-        ({chip.count})
+        ({countsReady ? chip.count : "–"})
       </Text>
     </Pressable>
   );
@@ -95,6 +98,7 @@ const ProviderChipRowContent: React.FC<ProviderChipRowProps> = ({
   counts,
   totalCount,
   selected,
+  countsReady = true,
   onSelect,
 }) => {
   const uiScale = useUiScale();
@@ -213,6 +217,7 @@ const ProviderChipRowContent: React.FC<ProviderChipRowProps> = ({
             key={chip.key}
             chip={chip}
             isActive={chip.key === selected}
+            countsReady={countsReady}
             onPress={() => onSelect(chip.key)}
           />
         ))}
@@ -259,6 +264,7 @@ const ProviderChipRowContent: React.FC<ProviderChipRowProps> = ({
                   key={chip.key}
                   chip={chip}
                   isActive={chip.key === selected}
+                  countsReady={countsReady}
                   onPress={() => handleOverflowSelect(chip.key)}
                   fullWidth
                 />

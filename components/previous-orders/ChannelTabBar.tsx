@@ -7,6 +7,12 @@ import { Pressable, Text, View } from "react-native";
 interface ChannelTabBarProps {
   active: ChannelTab;
   counts: Record<ChannelTab, number>;
+  /**
+   * False while the window counts are still loading. A real 0 and an unknown
+   * count look identical otherwise, and the list is often painted from cache
+   * before the counts land — five zeroes over a full list reads as broken.
+   */
+  countsReady?: boolean;
   onSelect: (tab: ChannelTab) => void;
 }
 
@@ -18,6 +24,7 @@ interface ChannelTabBarProps {
 const ChannelTabBarContent: React.FC<ChannelTabBarProps> = ({
   active,
   counts,
+  countsReady = true,
   onSelect,
 }) => {
   const uiScale = useUiScale();
@@ -85,7 +92,7 @@ const ChannelTabBarContent: React.FC<ChannelTabBarProps> = ({
                   fontVariant: ["tabular-nums"],
                 }}
               >
-                {counts[tab.key] ?? 0}
+                {countsReady ? (counts[tab.key] ?? 0) : "–"}
               </Text>
             </View>
           </Pressable>

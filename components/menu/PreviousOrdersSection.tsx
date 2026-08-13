@@ -243,6 +243,7 @@ const PreviousOrdersSection = () => {
     channelCounts,
     providerCounts,
     providerRoster,
+    countsReady,
     pageIndex,
     pageCount,
     totalMatchingCount,
@@ -590,6 +591,7 @@ const PreviousOrdersSection = () => {
             counts={providerCounts}
             totalCount={channelCounts.online}
             selected={providerFilter}
+            countsReady={countsReady}
             onSelect={selectProvider}
           />
         </View>

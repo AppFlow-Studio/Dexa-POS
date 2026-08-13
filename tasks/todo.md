@@ -1,220 +1,168 @@
-# Offline Sync — Failure Model Rebuild
+# Previous Orders — Counts / Tabs / Provider Filters Rebuild
 
-## Problem (root cause, not symptoms)
+## Symptoms reported
 
-The queue has **no failure model**. `executeQueuedOperation` returns `Promise<boolean>`,
-which cannot express the four things that actually happen:
+1. First entry: header tab counts all read **0** while rows render from local cache.
+2. Switching to the **Online** tab makes the counts correct.
+3. Online provider chips show e.g. **DoorDash (3)** / **Uber Eats (n)** but tapping
+   them yields **no rows**. Grubhub works.
+4. **House** ("home") shows far more rows than its chip count.
 
-| What happened | What the system sees |
-|---|---|
-| Succeeded | `true` |
-| Waiting on a dependency (not a failure) | `false` |
-| Transient failure — retry is correct | `false` |
-| Permanent rejection — retry is futile | `false` |
+## Root cause
 
-Three consequences, all reported by the user:
+Order **channel** and **provider** are classified in **three** independent places
+that disagree with each other:
 
-1. **"It doesn't say why it failed."** `describeCause()` reads `op.lastError.code`.
-   `lastError` is only set in `handleOperationFailure(op, error)`, and the dispatcher
-   passes `null` for every `return false` path (`offlineSyncService.ts:2539`). So the
-   only branch that ever runs is the fallback: `code: "MAX_RETRIES"` →
-   **"Failed 10 times"**, which is the retry counter describing itself, not the error.
-   A top-level `catch` at `offlineSyncInit.ts:3882-3885` swallows every *thrown*
-   error from all ~30 handlers and returns bare `false` — the largest single leak.
+| # | Where | Reads | Rule |
+|---|---|---|---|
+| 1 | `lib/previousOrdersFilters.ts` `getChannelTab` / `getProviderKey` | `OrderProfile._isOnlineOrder`, `delivery_platform` | `resolveOrderPlatformLogo` (casing/separator-normalizing) |
+| 2 | `lib/previousOrdersFilters.ts` `summaryChannel` / `summaryProvider` (tab + chip counts) | raw `order_source`, `order_type`, `delivery_platform` | same resolver, but online-ness from `order_source` only |
+| 3 | `services/historyOrderFilters.ts` `buildHistoryOrderQuery` (**the rows**) | same raw columns, server-side | **hardcoded exact-string token lists** |
 
-2. **"10 retries instantly."** `const permanent = error && !isTransientError(error)`
-   with `error === null` → `permanent === false`, *always*. Every terminal error
-   (400/403/404, FK violation, invalid enum) is classified transient and retried the
-   full budget. Worse: slow-mode reprieve resets `retryCount` 3× → **up to 44
-   executions** of an op doomed on attempt 1. Backoff is computed by
-   `scheduleAutoRetry` then bypassed — the 3s debounce, 10s NetInfo poll, and 60s
-   periodic sync all call bare `processQueue()`, so effective spacing is ~3s.
+Concretely:
 
-3. **Dead Retry buttons.** `isRetryable()` sees `MAX_RETRIES` → returns `true`, so
-   permanently-rejected ops show a Retry the operator can tap forever.
+- **(3) sym.** The cache-and-revalidate early return in `refreshPreviousOrders`
+  paints cached rows and returns **before** `getHistoryOrderSummaries` ever runs,
+  so `windowSummaries` stays `null` → every tab count renders `0`. Changing a
+  filter forces a refresh, which is why the Online tab "fixes" it.
+- **(3) sym.** `getHistoryWindowSignature`'s count omits the empty-draft
+  exclusion that the list applies, so the count it writes into
+  `totalMatchingCount` counts a different population than the rows — and the
+  freshness compare is apples-to-oranges.
+- **(3) sym.** Provider rows are matched with
+  `delivery_platform in ("doordash","DOORDASH","DoorDash","DOOR_DASH","door_dash")`.
+  Counts are matched with a normalizer that lowercases, trims and strips
+  separators. Any spelling outside the literal list (`"Doordash"`, `"door-dash"`,
+  a trailing space) is **counted but never returned**.
+- **(4) sym.** Server-side `house` = "not one of the listed marketplace tokens",
+  which swallows the whole `other` bucket **plus** every misspelled marketplace.
+  The client counts `house` strictly. Selecting `other` applies **no predicate at
+  all**, so it returns every online order.
+- Latent, same class: `order_type` enum contains `online` and `catering`.
+  `normalizeOrderType` buckets both as **Takeaway** in the counts, but the
+  Takeaway query is `order_type.in.(takeout)` — so those rows are counted in a
+  tab that can never show them, and the four tabs don't sum to All.
+- Latent, same class: `order_source` and `delivery_platform` are **nullable**.
+  `not.in` / `neq` on NULL is NULL in SQL, so NULL-sourced rows silently vanish
+  from every non-online tab while still counting toward All.
 
-Evidence the team already hit this: ~8 hand-written per-error escape hatches
-(`P0005`, `23505`, `22P02`, "already paid", "already voided", "already closed"),
-each commented "would loop forever otherwise". `markOperationBlocked` is the right
-abstraction, wired at **1 of ~128** `return false` sites because `boolean` couldn't
-express "not failed, just waiting".
+## Fix — one taxonomy, two evaluators
 
-## Scope
+New `services/historyOrderTaxonomy.ts`: a small predicate AST over the raw
+`orders` columns, with
 
-**In:** the failure model — result type, classifier, dispatcher, handler conversion,
-operator-facing reporting, retry pacing.
+- `matchesPredicate(pred, row)` — evaluates in JS (used for counts + badges), and
+- `predicateToFilterString(pred)` — serializes to PostgREST (used for the rows).
 
-**Out (deliberately):** priority ordering, idempotency keys, payment journaling,
-dead-letter storage, bundling. These are sound; changing them adds risk without
-addressing the report. The O(n²) `pendingOperations.find()` scans are real but are a
-*perf* issue — noted at the bottom, not bundled into a correctness fix.
+Every channel / provider / status bucket is defined **once** as a predicate, so
+the count and the query are the same rule by construction rather than by
+maintenance. Marketplace matching becomes `ilike` (`%door%dash%`), which is
+casing- and separator-proof. The AST deliberately has no `NOT` over compound
+nodes, which is what makes 2-valued JS evaluation agree exactly with SQL's
+3-valued logic (every NULL leaf is `false` on both sides).
 
-## Design
+## Tasks
 
-### 1. `OpResult` — the type that carries the truth
-
-```ts
-export type OpResult =
-  | { outcome: 'success' }
-  | { outcome: 'blocked'; reason: string }              // dependency wait, no retry burn
-  | { outcome: 'terminal'; code: string; message: string; remedy?: string }
-  | { outcome: 'retry'; code: string; message: string; remedy?: string }
-```
-
-Handlers keep returning `boolean` during migration — the dispatcher normalizes
-`true → success`, `false → retry{code:'UNSPECIFIED'}`. This keeps every unconverted
-handler working while batches land, so the refactor is never in a broken half-state.
-
-### 2. `classifyError(error)` — one classifier replacing ~8 escape hatches
-
-Maps a raw Supabase/Postgres/JS error to `{ outcome, code, message, remedy }`:
-
-- **Terminal (Postgres):** `23503` FK violation, `23502` not-null, `22P02` invalid
-  input/enum, `42501` RLS denied, `P0005` order-math, `P0001` raises matching
-  already-applied shapes.
-- **Terminal (HTTP):** 400, 401, 403, 404, 409, 422.
-- **Idempotent-success:** `23505`, "already paid", "already voided", "already closed",
-  "no unpaid items remaining" → `success`, not failure. Folds the existing hatches in.
-- **Transient:** 5xx, 408, 429, `40001`, network/timeout/fetch-failed.
-- **Unknown:** `retry` but with a **short budget** (see §5) — an unclassified permanent
-  error costs ~3 attempts, not 44.
-
-Critical fix: current `isTransientError` only inspects `status` when
-`typeof status === "number"`. Supabase `PostgrestError.code` is a *string*
-(`"23503"`), so it always falls through to `return true`. The classifier must handle
-string codes — this is why Postgres errors are structurally unable to be terminal today.
-
-### 3. Remedy strings — "how to solve"
-
-Each code maps to an operator-actionable line, rendered under the cause:
-
-| Cause | Remedy |
-|---|---|
-| Server rejected — invalid data | "Edit the item and try again, or remove it." |
-| Permission denied | "Log out and back in, or ask a manager." |
-| Order owned by another station | "Take over the order on this station first." |
-| Order/item no longer exists | "Refresh the order. It was likely voided elsewhere." |
-| Network too slow | "Waiting for a better connection — no action needed." |
-| Server error | "Server problem, not your device. Retry in a moment." |
-| Already applied | "Already saved. Safe to dismiss." |
-
-### 4. Dispatcher rewire (`processQueue` + `handleOperationFailure`)
-
-- Consume `OpResult`; stop passing `null`.
-- `blocked` → existing side-channel path (no `retryCount++`).
-- `terminal` → dead-letter **immediately**, `retryCount` untouched, `lastError` set
-  from the classifier.
-- `retry` → `retryCount++`, set `lastError` *every* attempt (so a mid-flight op can
-  already report a cause, not just at dead-letter).
-- `success` → clear `slowModeRetryCount` (never reset today — a recovered op keeps a
-  consumed reprieve budget permanently).
-
-### 5. Retry pacing
-
-- Add `nextAttemptAtMs`; `getReadyOperations()` skips ops whose backoff hasn't
-  elapsed. This is what makes backoff *real* — currently computed then bypassed.
-- `MAX_RETRY_ATTEMPTS` 10 → 5. **Only safe after the above**, because it will finally
-  apply solely to genuinely transient failures.
-- `UNKNOWN_ERROR_MAX_ATTEMPTS = 3` for unclassified errors.
-- Slow-mode reprieve preserved (it's correct for real bad-WiFi) but only reachable
-  from `retry`, never from `terminal`.
-
-### 6. UI
-
-`describeCause` gains the new codes; `deriveSubtitle` appends the remedy.
-`isRetryable` keys off `outcome: 'terminal'` rather than guessing from `MAX_RETRIES`,
-so dead Retry buttons disappear. `onOperationFailed` already pushes into
-`useSyncStatusStore` for item-bound ops — it starts carrying a real message.
-
-## Steps
-
-- [ ] 1. `OpResult` type + `classifyError` + remedy table (+ unit tests for the
-      classifier: Postgres string codes, HTTP numerics, idempotent-success shapes)
-- [ ] 2. Dispatcher: consume `OpResult`, thread `lastError`, clear `slowModeRetryCount`
-- [ ] 3. Replace top-level `catch` at `offlineSyncInit.ts:3882` with classified result
-      (single highest-value change — unblocks reporting for all 30 handlers at once)
-- [ ] 4. Convert handlers in batches, verifying after each:
-      (a) payments + preauth + refund, (b) items, (c) order/check/session, (d) rest
-- [ ] 5. Convert dependency-wait `return false` sites → `blocked`
-- [ ] 6. UI: cause + remedy in `OrderSyncBanner` and per-item chip
-- [ ] 7. Retry pacing: `nextAttemptAtMs`, constants retune
-- [ ] 8. `npx tsc --noEmit` + `npm test`
-
-## Verification
-
-- Existing suites must stay green: `offlineSyncBlocking`, `offlineSyncOwnershipShortCircuit`,
-  `offlineSyncRetryDrop`, `offlineSyncSubtitles`. Note `offlineSyncOwnershipShortCircuit`
-  asserts on the *source string* `'const permanent = error && !isTransientError(error)'`
-  — that line is being replaced, so the test must be updated to assert the new
-  behavior rather than the old text.
-- New classifier tests for each terminal/transient/idempotent class.
-- `__seedDeadLetter` dev helper to eyeball banner copy without burning retries.
-
-**I cannot verify on-device.** Typecheck + tests prove the logic; real terminal/
-printer/bad-WiFi behavior needs your tablet. I'll state plainly what was and wasn't
-verified.
-
-## Risk
-
-Payment handlers are the dangerous surface — a mis-parsed error could turn a real
-failure into a discarded payment. Mitigation: payment paths keep their existing
-explicit checks (`check_recent_payment`, journal complete/fail) untouched; the
-classifier only replaces the *retry-vs-dead-letter decision*, never the
-duplicate-charge guards. Payments are batch (a) so they get scrutiny while context
-is freshest.
+- [x] `services/historyOrderTaxonomy.ts` — AST, evaluator, serializer, rule table
+- [x] `services/historyOrderFilters.ts` — build the query from the rule table
+- [x] `lib/previousOrdersFilters.ts` — counts + badges from the same rule table;
+      delete the dead client-side filter/sort/search pass
+- [x] `services/orderService.ts` — window signature counts the same population
+- [x] `stores/usePreviousOrdersStore.ts` — always load window summaries (incl. the
+      cache-fresh path); cache paint capped to one page
+- [x] `hooks/pos/useHistoryFilterControls.ts` — memoized counts, `countsReady`,
+      selected provider pinned into the roster
+- [x] `ChannelTabBar` / `ProviderChipRow` — render "–" until counts are known
+- [x] Tests: bucket partition + client/server agreement over a casing corpus
+- [x] `npx tsc --noEmit`, `npm test`
 
 ## Review
 
-### Done
+**New** `services/historyOrderTaxonomy.ts` (≈470 lines) — predicate AST +
+`matchesPredicate` (JS) + `predicateToFilterString` (PostgREST), and the single
+rule table for channel / provider / status. No `NOT` combinator, by design.
 
-- `lib/network/opResult.ts` (new) — `OpResult` type, `classifyError`, remedy table.
-- Dispatcher (`offlineSyncService.ts`) — consumes `OpResult`; terminal failures
-  dead-letter on attempt 1; `lastError` set on every attempt and no longer
-  overwritten with the `MAX_RETRIES` placeholder; `nextAttemptAtMs` makes backoff
-  real; `MAX_RETRY_ATTEMPTS` 10 → 5; `slowModeRetryCount` cleared on manual retry;
-  fixed a leaked 30s timer per attempt in `executeWithTimeout`.
-- Executor (`offlineSyncInit.ts`) — top-level `catch` now classifies instead of
-  returning bare `false`; payments, items, discounts, check-status converted;
-  dependency waits return `blocked` instead of burning retries.
-- UI — bill banner, per-item chip, **settings → Syncing** (both panels) now show
-  cause + remedy; `Retry` hidden on terminal ops; blocked ops explain what
-  they're waiting for.
+**Changed**
 
-### Verified
+| File | Change |
+|---|---|
+| `services/historyOrderFilters.ts` | channel/provider/status now serialized from the rule table; query builder no longer owns any bucketing rule |
+| `lib/previousOrdersFilters.ts` | thin shell over the taxonomy; removed the dead client-side pass (`matchesStatus`, `matchesSearch`, `compareOrders`, `getChannelTab`, `buildProviderRoster`, `normalizeOrderType`, `isVoided`, `isRefunded`) that no longer ran since filtering moved server-side |
+| `services/orderService.ts` | `getHistoryWindowSignature` applies the empty-draft exclusion |
+| `stores/usePreviousOrdersStore.ts` | `_loadWindowSummaries()` extracted and called on the cache-fresh and coalesced paths; offline path synthesizes summaries from its own snapshot; cache paint capped to one page |
+| `hooks/pos/useHistoryFilterControls.ts` | memoized counts, `countsReady`, selected provider pinned into the roster |
+| `ChannelTabBar` / `ProviderChipRow` | `countsReady` → render "–" instead of a fake 0 |
 
-- `npx tsc --noEmit` — clean.
-- `npm test` — **1382 passed, 30 failed**. The 30 failures are in 11 suites that
-  fail **identically on a clean stash** (confirmed by stashing and re-running):
-  order-calculator, connectionQuality, paymentService.idempotency, wave22/24/26,
-  hydrateWorkspaceFlipAway, clearTableServedTransition, tableReopenCheckWiring,
-  broadcastMergeStationId, useOnlineOrderActions. Pre-existing drift, not caused
-  by this work. Net: **+28 new passing tests, 0 regressions**.
-- `npx eslint` on changed files — 0 errors (30 pre-existing warnings in untouched
-  regions of the two large files).
-- `offlineSyncOwnershipShortCircuit.test.ts` updated: it asserted on the literal
-  source text of the line this work replaced. Rewrote those two assertions
-  against the new expression and added a behavioral test alongside.
+**Behaviour changes worth knowing**
 
-### NOT verified — needs the device
+- Takeaway is now the catch-all tab, so `catering` / `online` / NULL order types
+  are reachable instead of only counted.
+- "Other" is a real bucket with a real predicate; "House" no longer swallows it.
+- Refunded orders are no longer listed under Unpaid, and a partial refund now
+  counts as both Paid and Refunded.
 
-Everything above is static + unit-level. None of this has run against a real
-backend, terminal, or bad-WiFi tablet. Specifically unproven:
-- Real Supabase error shapes matching the classifier's assumptions (the taxonomy
-  is built from the codes handled in this repo, not from captured prod payloads).
-- Payment replay under genuine network loss.
-- Banner/panel layout with real copy at tablet scale.
+**Verification** — `npx tsc --noEmit` clean; `npx eslint` on all changed files
+clean; 100 tests across the 7 Previous-Orders suites pass. Full suite: 11 suites
+/ 30 tests fail identically on a clean stash of this branch (uuid ESM parse +
+unrelated wave-2 suites), so nothing here regressed them.
 
-Suggested first check: `__seedDeadLetter({ type: 'add_item', localOrderId: 'order_x',
-lastError: { code: 'INVALID_INPUT', message: 'bad enum' } })` from the Metro
-console, then open settings → Syncing.
+**Not verified on-device** — the `ilike` predicates are asserted against the
+serializer and the JS evaluator, not against live PostgREST. Worth one pass over
+the Online tab with real data.
 
-### Deliberately not done
+---
 
-- Remaining ~20 lower-traffic handlers (preauth, refund, loyalty, coursing,
-  drawer, session) still return `boolean`. They are **not broken** — the legacy
-  bridge maps `false → retry`, and the top-level `catch` already classifies their
-  thrown errors, so they benefit from the fix without conversion. Converting them
-  is mechanical follow-up, best done when someone is next in that code.
-- O(n²) `pendingOperations.find()` scans inside `areDependenciesSatisfied` /
-  `findCollapseTarget`. Real at the 500-op cap, but a perf issue, not a
-  correctness one — bundling it here would have widened the blast radius.
+# Round 2 — Query cost
+
+Scope set by the user: optimize the queries themselves. No lazy-detail refactor,
+no migration.
+
+## What was costing time
+
+Confirmed against the perf audit's P1 (`POS-SUPABASE-PERFORMANCE-AUDIT-2026-08-03.md:253`):
+a populate is a business-day RPC (awaited, serial) → window signature → summary
+→ nested 50-row page → exact count, and the last two repeat on every page turn.
+
+## Changes
+
+| Change | Effect |
+|---|---|
+| `services/historyOrderProjection.ts` (new) — explicit nested column lists | `order_items` 68 → 26 columns, `order_payments` 105 → 51, `order_discounts` 20 → 14. The dropped payment columns are the heavy ones (`emv_data`, `terminal_request`, `card_token`, per-payment `metadata`, processor text/codes). Multiplied across 50 orders × their children, this is the bulk of the payload. |
+| `.is("order_discounts.voided_at", null)` on the page query | Voided discounts were transferred and then dropped client-side. |
+| `HistoryOrderSummary` drops `id` + `created_at` | Neither is read by any counting path; ~90 bytes × up to 5,000 rows per window. |
+| `_boundsCache` in the store | `get_business_day_bounds` is awaited before anything else can start and returns the same answer all day. Keyed by location + window + resolved business day, so "today" expires at rollover by construction. In-memory: a cold start still pays it once. |
+| `HISTORY_COUNT_TTL_MS` + `countIdentity()` | `count: exact` is the expensive half of a page fetch and the total rarely moves. Reused for 60s within one result set; a page turn now runs one query instead of two. |
+
+## The risk this introduced, and the guard
+
+Naming columns explicitly adds a failure mode `*` never had: an unknown name
+makes PostgREST reject the request, so the whole list fails rather than one
+field going blank. `__tests__/historyOrderProjection.test.ts` checks every name
+against `database.types.ts`.
+
+It earned its place immediately — it caught `created_at` in the payment
+projection. **`order_payments` has no `created_at` column**;
+`normalizeFetchedPayment` reads `payment.created_at` and has always received
+`undefined`. Naming it would have taken Previous Orders down completely.
+
+That is also why the constants live in their own module: `orderService` can't be
+imported under Jest (the `uuid` ESM parse failure that already breaks
+`paymentService.idempotency.test.ts`).
+
+## What was deliberately not done
+
+- **Lazy items** — the collapsed row never reads `order.items`; only the expanded
+  panel, refund modal and receipt do, and `get_order_details` / `useOrderDetails`
+  already exist to serve them. Dropping items from the list query entirely is the
+  single biggest remaining win. Out of scope by request.
+- **Server aggregate for tab counts** — one `GROUP BY` returning ~10 rows instead
+  of up to 5,000. Needs a migration.
+- **Index check** — no migration in this repo creates
+  `orders (location_id, created_at DESC)`. If it's missing on the live database
+  it dwarfs everything above. Unverifiable from here.
+
+**Verification** — `tsc --noEmit` clean; eslint clean (4 pre-existing warnings);
+91 tests across the 6 Previous-Orders suites pass, plus 12 new projection tests.
+Full suite 1424 passed / 30 failed, the same 30 that fail on a clean stash.
+Generated PostgREST URLs inspected directly; still not executed against a live
+database.

@@ -7,14 +7,25 @@ import {
     type SortKey,
     type StatusFilter,
 } from "@/lib/previousOrdersFilters";
+import { PROVIDER_ORDER } from "@/services/historyOrderTaxonomy";
 import {
     HISTORY_PAGE_SIZE,
     usePreviousOrdersStore,
 } from "@/stores/usePreviousOrdersStore";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 /** Idle time after the last keystroke before a search hits the server. */
 const SEARCH_DEBOUNCE_MS = 350;
+
+/** Stable identities, so an unloaded window doesn't churn memo dependents. */
+const EMPTY_CHANNEL_COUNTS: Record<ChannelTab, number> = {
+  all: 0,
+  online: 0,
+  dine_in: 0,
+  takeout: 0,
+  delivery: 0,
+};
+const EMPTY_PROVIDER_COUNTS: Record<string, number> = {};
 
 export type ProviderFilterValue = "all" | ProviderKey;
 
@@ -100,17 +111,41 @@ export function useHistoryFilterControls() {
   // Counts describe the whole date window, not the loaded page. Status and
   // search are already applied to the summary query server-side; channel and
   // provider are the axes being counted, so they're passed as "all" here.
-  const channelCounts: Record<ChannelTab, number> = windowSummaries
-    ? countChannelsFromSummaries(windowSummaries, "all")
-    : { all: 0, online: 0, dine_in: 0, takeout: 0, delivery: 0 };
+  //
+  // `countsReady` is false until the summaries land. The controls render a
+  // placeholder rather than 0 in that gap: a hard 0 next to a list full of
+  // orders reads as a broken screen, and this list is often painted from cache
+  // before the counts arrive.
+  const countsReady = windowSummaries != null;
 
-  const providerCounts = windowSummaries
-    ? countProvidersFromSummaries(windowSummaries, "all")
-    : {};
+  // Memoized on the summaries themselves — the window can hold thousands of
+  // rows and every unrelated re-render was re-bucketing all of them.
+  const { channelCounts, providerCounts, summaryRoster } = useMemo(() => {
+    if (!windowSummaries) {
+      return {
+        channelCounts: EMPTY_CHANNEL_COUNTS,
+        providerCounts: EMPTY_PROVIDER_COUNTS,
+        summaryRoster: [] as ProviderKey[],
+      };
+    }
+    return {
+      channelCounts: countChannelsFromSummaries(windowSummaries, "all"),
+      providerCounts: countProvidersFromSummaries(windowSummaries, "all"),
+      summaryRoster: buildProviderRosterFromSummaries(windowSummaries),
+    };
+  }, [windowSummaries]);
 
-  const providerRoster = windowSummaries
-    ? buildProviderRosterFromSummaries(windowSummaries)
-    : [];
+  // The selected provider always keeps its chip, even once the window holds
+  // none of its orders — otherwise the active filter's own control disappears
+  // and the merchant is left on an empty list with no visible way back.
+  const providerRoster = useMemo(() => {
+    if (providerFilter === "all" || summaryRoster.includes(providerFilter)) {
+      return summaryRoster;
+    }
+    return PROVIDER_ORDER.filter(
+      (key) => key === providerFilter || summaryRoster.includes(key),
+    );
+  }, [summaryRoster, providerFilter]);
 
   const activeFilterCount =
     (statusFilter !== "all" ? 1 : 0) + (providerFilter !== "all" ? 1 : 0);
@@ -149,6 +184,7 @@ export function useHistoryFilterControls() {
     channelCounts,
     providerCounts,
     providerRoster,
+    countsReady,
 
     // Pagination
     pageIndex,

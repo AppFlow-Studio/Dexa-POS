@@ -1,5 +1,3 @@
-import { ONLINE_ORDER_SOURCES } from "@/lib/orderSource";
-
 /**
  * Server-side filter/sort contract for the Previous Orders list.
  *
@@ -14,11 +12,27 @@ import { ONLINE_ORDER_SOURCES } from "@/lib/orderSource";
  * The fix is to make the SERVER own the result set. `buildHistoryOrderQuery`
  * below is applied identically to the page query and the count query, so the
  * "N of M" a merchant reads can never disagree with the rows underneath it.
+ *
+ * Channel / provider / status predicates are NOT written here — they come from
+ * `historyOrderTaxonomy.ts`, which serializes the same rule the tab and chip
+ * counts are evaluated from. That sharing is load-bearing: when this file
+ * carried its own hardcoded list of `delivery_platform` spellings, a chip could
+ * read "DoorDash (3)" and the query return nothing.
  */
+import {
+  channelPredicate,
+  predicateToFilterString,
+  providerPredicate,
+  statusPredicate,
+  type ChannelTab,
+  type Predicate,
+  type ProviderFilter,
+  type StatusFilter,
+} from "@/services/historyOrderTaxonomy";
 
-export type HistoryChannel = "all" | "online" | "dine_in" | "takeout" | "delivery";
-export type HistoryStatus = "all" | "paid" | "unpaid" | "refunded" | "voided";
-export type HistoryProvider = "all" | string;
+export type HistoryChannel = ChannelTab;
+export type HistoryStatus = StatusFilter;
+export type HistoryProvider = ProviderFilter;
 export type HistorySort =
   | "date_desc"
   | "date_asc"
@@ -67,38 +81,6 @@ export function isDefaultHistoryFilters(f: HistoryOrderFilters): boolean {
   return historyFilterKey(f) === historyFilterKey(DEFAULT_HISTORY_FILTERS);
 }
 
-/** `order_type` values that mean dine-in, including the QR ordering flow. */
-const DINE_IN_TYPES = ["dine_in", "qr_dine_in"];
-const TAKEOUT_TYPES = ["takeout"];
-const DELIVERY_TYPES = ["delivery"];
-
-/**
- * Marketplace tokens as they appear in `orders.delivery_platform`, grouped by
- * the provider key the UI uses. Casing varies by ingestion path
- * ('DOORDASH', 'doordash', 'DOOR_DASH'), so each key lists every spelling
- * rather than relying on a single form.
- */
-const PROVIDER_PLATFORM_TOKENS: Record<string, string[]> = {
-  doordash: ["doordash", "DOORDASH", "DoorDash", "DOOR_DASH", "door_dash"],
-  ubereats: [
-    "ubereats",
-    "UBEREATS",
-    "UberEats",
-    "UBER_EATS",
-    "uber_eats",
-    "Uber Eats",
-  ],
-  grubhub: ["grubhub", "GRUBHUB", "Grubhub", "GRUB_HUB", "grub_hub"],
-};
-
-/** Every marketplace token, used to express "not a marketplace" for House. */
-const ALL_MARKETPLACE_TOKENS = Object.values(PROVIDER_PLATFORM_TOKENS).flat();
-
-/** PostgREST `in.(…)` needs quoting for values that may contain spaces. */
-function inList(values: string[]): string {
-  return `(${values.map((v) => `"${v}"`).join(",")})`;
-}
-
 /**
  * Escape a user search term for PostgREST `or=(...)`. Commas and parens would
  * otherwise break out of the filter expression, and `%`/`_` are LIKE wildcards.
@@ -138,7 +120,7 @@ export const EMPTY_DRAFT_EXCLUSION_OR = [
 ].join(",");
 
 /**
- * Apply channel/status/provider/search/sort to a PostgREST query builder.
+ * Apply channel/provider/status/search/sort to a PostgREST query builder.
  *
  * Typed loosely because the Supabase filter builder and the count builder have
  * different generic parameters but the same fluent surface; the alternative is
@@ -150,66 +132,27 @@ export function buildHistoryOrderQuery<T extends any>(
 ): T {
   let q: any = query;
 
+  // Each axis is one `or()` group. PostgREST ANDs repeated `or=` params, so the
+  // axes compose without any one of them being able to widen another.
+  const applyPredicate = (predicate: Predicate | null) => {
+    if (predicate) q = q.or(predicateToFilterString(predicate));
+  };
+
   // ── Channel ──────────────────────────────────────────────
-  // "Online" is defined by order_source, matching lib/orderSource.ts and the
-  // web Orders surface. The other three tabs are non-online by definition, so
-  // they exclude online sources — that's what makes the tabs a partition whose
-  // counts sum to All.
-  const onlineList = inList([...ONLINE_ORDER_SOURCES]);
-  switch (filters.channel) {
-    case "online":
-      q = q.in("order_source", [...ONLINE_ORDER_SOURCES]);
-      break;
-    case "dine_in":
-      q = q.in("order_type", DINE_IN_TYPES).not("order_source", "in", onlineList);
-      break;
-    case "takeout":
-      q = q.in("order_type", TAKEOUT_TYPES).not("order_source", "in", onlineList);
-      break;
-    case "delivery":
-      q = q
-        .in("order_type", DELIVERY_TYPES)
-        .not("order_source", "in", onlineList);
-      break;
-    case "all":
-    default:
-      break;
-  }
+  // The four non-"all" tabs partition the window exactly: Online is decided by
+  // order_source, and Takeaway absorbs every order_type that isn't dine-in or
+  // delivery (the enum also carries `online` and `catering`). Anything less than
+  // a partition leaves orders that are counted in a tab but not reachable from
+  // one.
+  applyPredicate(channelPredicate(filters.channel));
 
   // ── Provider (Online tab only) ───────────────────────────
-  if (filters.channel === "online" && filters.provider !== "all") {
-    const tokens = PROVIDER_PLATFORM_TOKENS[filters.provider];
-    if (tokens) {
-      q = q.in("delivery_platform", tokens);
-    } else if (filters.provider === "house") {
-      // House = an online order with no marketplace on it. `or` is required
-      // because a NULL delivery_platform does not satisfy `not.in`.
-      q = q.or(
-        `delivery_platform.is.null,delivery_platform.not.in.${inList(
-          ALL_MARKETPLACE_TOKENS,
-        )}`,
-      );
-    }
+  if (filters.channel === "online") {
+    applyPredicate(providerPredicate(filters.provider));
   }
 
   // ── Status ───────────────────────────────────────────────
-  switch (filters.status) {
-    case "paid":
-      q = q.eq("payment_status", "paid").neq("status", "void");
-      break;
-    case "unpaid":
-      q = q.neq("payment_status", "paid").neq("status", "void");
-      break;
-    case "refunded":
-      q = q.or("status.eq.refunded,payment_status.eq.refunded");
-      break;
-    case "voided":
-      q = q.eq("status", "void");
-      break;
-    case "all":
-    default:
-      break;
-  }
+  applyPredicate(statusPredicate(filters.status));
 
   // ── Search ───────────────────────────────────────────────
   // Digits-only queries also probe the phone column, so "6505550198" matches a
@@ -230,9 +173,7 @@ export function buildHistoryOrderQuery<T extends any>(
 
   // ── Empty drafts ─────────────────────────────────────────
   // Applied unconditionally and last, so every consumer of this builder (page,
-  // exact count, window summaries) excludes the same rows. Chained `.or()`
-  // calls are ANDed by PostgREST, so this cannot interact with the status or
-  // search `or` groups above.
+  // exact count, window summaries, staleness probe) excludes the same rows.
   q = q.or(EMPTY_DRAFT_EXCLUSION_OR);
 
   // ── Sort ─────────────────────────────────────────────────

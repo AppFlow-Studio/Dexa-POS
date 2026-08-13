@@ -1,15 +1,9 @@
 import {
-  buildProviderRoster,
   buildProviderRosterFromSummaries,
-  compareOrders,
   countChannelsFromSummaries,
   countProvidersFromSummaries,
-  type OrderSummaryLike,
-  getChannelTab,
   getProviderKey,
-  matchesSearch,
-  matchesStatus,
-  normalizeOrderType,
+  type OrderSummaryLike,
 } from "@/lib/previousOrdersFilters";
 import type { OrderProfile } from "@/lib/types";
 
@@ -27,41 +21,8 @@ function order(overrides: Partial<OrderProfile>): OrderProfile {
   } as OrderProfile;
 }
 
-describe("normalizeOrderType", () => {
-  it("collapses backend enum and legacy display casing onto one key", () => {
-    expect(normalizeOrderType("dine_in")).toBe("dine_in");
-    expect(normalizeOrderType("Dine In")).toBe("dine_in");
-    expect(normalizeOrderType("Takeaway")).toBe("takeout");
-    expect(normalizeOrderType("takeout")).toBe("takeout");
-    expect(normalizeOrderType("Delivery")).toBe("delivery");
-  });
-
-  it("treats the QR table-ordering type as dine-in, not takeaway", () => {
-    expect(normalizeOrderType("qr_dine_in")).toBe("dine_in");
-  });
-});
-
-describe("getChannelTab", () => {
-  it("puts online orders on the Online tab regardless of fulfilment type", () => {
-    expect(
-      getChannelTab(order({ _isOnlineOrder: true, order_type: "delivery" })),
-    ).toBe("online");
-  });
-
-  it("partitions non-online orders by type so tab counts sum to All", () => {
-    const orders = [
-      order({ _isOnlineOrder: true, order_type: "delivery" }),
-      order({ order_type: "Dine In" }),
-      order({ order_type: "takeout" }),
-      order({ order_type: "delivery" }),
-    ];
-    const tabs = orders.map(getChannelTab);
-    expect(tabs).toEqual(["online", "dine_in", "takeout", "delivery"]);
-  });
-});
-
 describe("getProviderKey", () => {
-  it("resolves provider identity through the shared casing-normalized resolver", () => {
+  it("resolves a marketplace through the same patterns the query uses", () => {
     expect(
       getProviderKey(
         order({ _isOnlineOrder: true, delivery_platform: "DOOR_DASH" }),
@@ -100,94 +61,23 @@ describe("getProviderKey", () => {
     ).toBe("other");
   });
 
+  it("still names the provider when only the online_orders join says it's online", () => {
+    // `_isOnlineOrder` is `order_source OR join row`; no SQL predicate over
+    // `orders` can see the join, so such a row sits on Takeaway — but the badge
+    // must still identify it rather than going blank.
+    expect(
+      getProviderKey(
+        order({
+          _isOnlineOrder: true,
+          order_source: "pos",
+          delivery_platform: "doordash",
+        }),
+      ),
+    ).toBe("doordash");
+  });
+
   it("returns null for in-store orders", () => {
     expect(getProviderKey(order({ order_source: "pos" }))).toBeNull();
-  });
-});
-
-describe("buildProviderRoster", () => {
-  it("lists observed providers in canonical order and drops the rest", () => {
-    const roster = buildProviderRoster([
-      order({ _isOnlineOrder: true, delivery_platform: "grubhub" }),
-      order({ _isOnlineOrder: true, delivery_platform: "DOORDASH" }),
-      order({ order_source: "pos" }),
-    ]);
-    expect(roster).toEqual(["doordash", "grubhub"]);
-  });
-
-  it("is empty for a merchant with no online orders", () => {
-    expect(buildProviderRoster([order({ order_source: "pos" })])).toEqual([]);
-  });
-});
-
-describe("matchesStatus", () => {
-  it("treats voided orders as their own bucket, not unpaid", () => {
-    const voided = order({ order_status: "void", paid_status: "Unpaid" });
-    expect(matchesStatus(voided, "voided")).toBe(true);
-    expect(matchesStatus(voided, "unpaid")).toBe(false);
-    expect(matchesStatus(voided, "paid")).toBe(false);
-  });
-
-  it("matches refunds from either the order status or a payment reversal", () => {
-    expect(matchesStatus(order({ order_status: "refunded" }), "refunded")).toBe(
-      true,
-    );
-    expect(
-      matchesStatus(
-        order({ payments: [{ refundedAmount: 5 }] as any }),
-        "refunded",
-      ),
-    ).toBe(true);
-  });
-
-  it("passes everything through on All", () => {
-    expect(matchesStatus(order({ order_status: "void" }), "all")).toBe(true);
-  });
-});
-
-describe("matchesSearch", () => {
-  const target = order({
-    display_number: "#10424",
-    customer_name: "Kenji Watanabe",
-    customer_phone: "(650) 555-0198",
-    _isOnlineOrder: true,
-    delivery_platform: "DOORDASH",
-  });
-
-  it("matches order number, customer and provider name", () => {
-    expect(matchesSearch(target, "10424")).toBe(true);
-    expect(matchesSearch(target, "kenji")).toBe(true);
-    expect(matchesSearch(target, "doordash")).toBe(true);
-    expect(matchesSearch(target, "grubhub")).toBe(false);
-  });
-
-  it("matches a formatted phone from a digits-only query", () => {
-    expect(matchesSearch(target, "6505550198")).toBe(true);
-  });
-
-  it("matches 'ubereats' typed without the space", () => {
-    const ue = order({ _isOnlineOrder: true, delivery_platform: "UBER_EATS" });
-    expect(matchesSearch(ue, "ubereats")).toBe(true);
-  });
-});
-
-describe("compareOrders", () => {
-  const early = order({ opened_at: "2026-07-28T10:00:00.000Z", total_amount: 5 });
-  const late = order({ opened_at: "2026-07-28T18:00:00.000Z", total_amount: 50 });
-
-  it("defaults to newest first", () => {
-    expect([early, late].sort((a, b) => compareOrders(a, b, "date_desc"))[0]).toBe(
-      late,
-    );
-  });
-
-  it("sorts by amount in both directions", () => {
-    expect([early, late].sort((a, b) => compareOrders(a, b, "amount_desc"))[0]).toBe(
-      late,
-    );
-    expect([late, early].sort((a, b) => compareOrders(a, b, "amount_asc"))[0]).toBe(
-      early,
-    );
   });
 });
 
@@ -204,8 +94,7 @@ describe("window-wide counts from summaries", () => {
   }
 
   // Mirrors the reported bug: a wide date window whose online orders sit
-  // outside the first 30-row page. Counts must come from the window, not the
-  // loaded page.
+  // outside the first page. Counts must come from the window, not the page.
   const window: OrderSummaryLike[] = [
     ...Array.from({ length: 40 }, () => summary({})),
     ...Array.from({ length: 9 }, () =>
@@ -223,6 +112,24 @@ describe("window-wide counts from summaries", () => {
     expect(counts.online).toBe(13);
     expect(counts.all).toBe(55);
     // Tabs still partition All exactly.
+    expect(
+      counts.online + counts.dine_in + counts.takeout + counts.delivery,
+    ).toBe(counts.all);
+  });
+
+  it("keeps the partition when order_type is one the tabs don't name", () => {
+    // `order_type` also carries `online` and `catering`, and a row can have a
+    // NULL order_source. Every one of them has to land in some tab, or the tab
+    // counts stop summing to All and the row is reachable from no tab at all.
+    const odd = [
+      summary({ order_type: "catering" }),
+      summary({ order_type: "online" }),
+      summary({ order_source: null }),
+      summary({ order_type: null as any }),
+    ];
+    const counts = countChannelsFromSummaries(odd, "all");
+    expect(counts.all).toBe(4);
+    expect(counts.takeout).toBe(4);
     expect(
       counts.online + counts.dine_in + counts.takeout + counts.delivery,
     ).toBe(counts.all);
@@ -248,6 +155,19 @@ describe("window-wide counts from summaries", () => {
     expect(countChannelsFromSummaries(rows, "paid").all).toBe(0);
   });
 
+  it("keeps a refunded order out of Unpaid — nothing is owed on it", () => {
+    const rows = [summary({ payment_status: "refunded" })];
+    expect(countChannelsFromSummaries(rows, "refunded").all).toBe(1);
+    expect(countChannelsFromSummaries(rows, "unpaid").all).toBe(0);
+  });
+
+  it("counts a partial refund as both paid and refunded", () => {
+    const rows = [summary({ payment_status: "partially_refunded" })];
+    expect(countChannelsFromSummaries(rows, "paid").all).toBe(1);
+    expect(countChannelsFromSummaries(rows, "refunded").all).toBe(1);
+    expect(countChannelsFromSummaries(rows, "unpaid").all).toBe(0);
+  });
+
   it("buckets providers across the window", () => {
     expect(countProvidersFromSummaries(window, "all")).toEqual({
       house: 9,
@@ -260,5 +180,15 @@ describe("window-wide counts from summaries", () => {
       "doordash",
       "house",
     ]);
+  });
+
+  it("chip counts sum to the Online tab count", () => {
+    // The invariant the merchant actually reads: "All Sources (13)" over chips
+    // that add up to 13. It only holds because the five provider buckets
+    // partition the online rows.
+    const channels = countChannelsFromSummaries(window, "all");
+    const providers = countProvidersFromSummaries(window, "all");
+    const summed = Object.values(providers).reduce((a, b) => a + b, 0);
+    expect(summed).toBe(channels.online);
   });
 });

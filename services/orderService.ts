@@ -31,6 +31,11 @@ import {
     EMPTY_DRAFT_EXCLUSION_OR,
     type HistoryOrderFilters,
 } from "@/services/historyOrderFilters";
+import {
+    HISTORY_DISCOUNT_COLUMNS,
+    HISTORY_ITEM_COLUMNS,
+    HISTORY_PAYMENT_COLUMNS,
+} from "@/services/historyOrderProjection";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -178,10 +183,12 @@ let _sessionValidCache: { key: string; checkedAt: number } | null = null;
 /**
  * Minimal projection of an order used only to count/bucket it. Deliberately
  * excludes items, payments and joins — see `getHistoryOrderSummaries`.
+ *
+ * These are exactly the five discriminators the taxonomy predicates read, and
+ * nothing else: at up to 5,000 rows per window, carrying an unused `id` +
+ * `created_at` was roughly 90 bytes a row of pure overhead.
  */
 export interface HistoryOrderSummary {
-  id: string;
-  created_at: string;
   order_type: string | null;
   order_source: string | null;
   delivery_platform: string | null;
@@ -1308,6 +1315,12 @@ export class OrderService {
    * a refund, a void, a check reopening — none of which alter the count.
    *
    * Two small queries, no rows returned by the first, one row by the second.
+   *
+   * The empty-draft exclusion is applied here too. Without it this counted a
+   * different population than the list does, so (a) the count never matched the
+   * cached signature whenever the window held one abandoned draft — defeating
+   * the cache — and (b) the number it wrote into the pager was larger than the
+   * rows beneath it.
    */
   static async getHistoryWindowSignature(
     client: SupabaseClient,
@@ -1324,6 +1337,7 @@ export class OrderService {
       let scoped = q.eq("location_id", locationId);
       if (startTs) scoped = scoped.gte("created_at", startTs);
       if (endTs) scoped = scoped.lt("created_at", endTs);
+      scoped = scoped.or(EMPTY_DRAFT_EXCLUSION_OR);
       if (signal) scoped = scoped.abortSignal(signal);
       return scoped;
     };
@@ -1412,18 +1426,26 @@ export class OrderService {
     };
 
     // ── Page query ───────────────────────────────────────────
+    // Nested rows are the multiplied part of this payload — 50 orders times
+    // their items and payments — so they are projected explicitly rather than
+    // with `*`. See HISTORY_ITEM_COLUMNS / HISTORY_PAYMENT_COLUMNS for what
+    // defines the column set.
     let pageQuery: any = client.from("orders").select(
       `
         *,
-        order_items (*),
-        order_payments (*),
-        order_discounts (*),
+        order_items (${HISTORY_ITEM_COLUMNS}),
+        order_payments (${HISTORY_PAYMENT_COLUMNS}),
+        order_discounts (${HISTORY_DISCOUNT_COLUMNS}),
         stations (station_name),
         created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name),
         online_orders:online_orders!online_orders_order_id_fkey (order_id, provider, delivery_company)
       `,
     );
-    pageQuery = applyScope(pageQuery).eq("order_items.is_voided", false);
+    pageQuery = applyScope(pageQuery)
+      .eq("order_items.is_voided", false)
+      // Voided discounts were transferred and then dropped client-side in
+      // normalizeFetchedOrder. Drop them at the source instead.
+      .is("order_discounts.voided_at", null);
     pageQuery = buildHistoryOrderQuery(pageQuery, filters);
     pageQuery = pageQuery.range(offset, offset + limit - 1);
 
@@ -1507,7 +1529,7 @@ export class OrderService {
     let query: any = client
       .from('orders')
       .select(
-        'id, created_at, order_type, order_source, delivery_platform, status, payment_status'
+        'order_type, order_source, delivery_platform, status, payment_status'
       )
       .eq('location_id', locationId)
 

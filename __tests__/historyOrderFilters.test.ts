@@ -91,70 +91,92 @@ describe("historyPageCount", () => {
   });
 });
 
+/** Every filter expression the builder produced, joined for substring checks. */
+function clausesOf(q: any): string {
+  return q.__find("or").map((c: any) => c.args[0]).join(" || ");
+}
+
 describe("buildHistoryOrderQuery — channel", () => {
   it("selects online orders by order_source", () => {
     const q = fakeQuery();
     buildHistoryOrderQuery(q, filters({ channel: "online" }));
-    const inCalls = q.__find("in");
-    expect(inCalls[0].args[0]).toBe("order_source");
-    expect(inCalls[0].args[1]).toEqual(
-      expect.arrayContaining(["online", "orderout", "online_store"]),
-    );
+    const clauses = clausesOf(q);
+    for (const source of ["online", "orderout", "online_store"]) {
+      expect(clauses).toContain(`order_source.ilike.${source}`);
+    }
   });
 
   it("excludes online sources from the non-online tabs, keeping tabs a partition", () => {
     for (const channel of ["dine_in", "takeout", "delivery"] as const) {
-      const q = fakeQuery();
-      buildHistoryOrderQuery(q, filters({ channel }));
-      const notCall = q.__find("not")[0];
-      expect(notCall).toBeDefined();
-      expect(notCall.args[0]).toBe("order_source");
-      expect(notCall.args[1]).toBe("in");
+      const clauses = (() => {
+        const q = fakeQuery();
+        buildHistoryOrderQuery(q, filters({ channel }));
+        return clausesOf(q);
+      })();
+      expect(clauses).toContain("order_source.not.ilike.orderout");
+      // A NULL order_source is a POS order. `not.ilike` alone is NULL for it,
+      // which dropped it from every non-online tab while All still counted it.
+      expect(clauses).toContain("order_source.is.null");
     }
   });
 
   it("counts QR dine-in as dine-in", () => {
     const q = fakeQuery();
     buildHistoryOrderQuery(q, filters({ channel: "dine_in" }));
-    const typeCall = q
-      .__find("in")
-      .find((c: any) => c.args[0] === "order_type");
-    expect(typeCall.args[1]).toEqual(
-      expect.arrayContaining(["dine_in", "qr_dine_in"]),
-    );
+    const clauses = clausesOf(q);
+    expect(clauses).toContain("order_type.eq.dine_in");
+    expect(clauses).toContain("order_type.eq.qr_dine_in");
+  });
+
+  it("makes Takeaway the catch-all, so no order_type is unreachable", () => {
+    // The enum also carries `online` and `catering`. `order_type.in.(takeout)`
+    // counted those under Takeaway and then returned none of them.
+    const q = fakeQuery();
+    buildHistoryOrderQuery(q, filters({ channel: "takeout" }));
+    const clauses = clausesOf(q);
+    expect(clauses).toContain("order_type.neq.dine_in");
+    expect(clauses).toContain("order_type.neq.delivery");
+    expect(clauses).not.toContain("order_type.eq.takeout");
   });
 
   it("applies no channel predicate on All", () => {
     const q = fakeQuery();
     buildHistoryOrderQuery(q, filters({ channel: "all" }));
-    expect(
-      q.__find("in").filter((c: any) => c.args[0] === "order_source"),
-    ).toHaveLength(0);
-    expect(q.__find("not")).toHaveLength(0);
+    // Only the unconditional empty-draft exclusion remains.
+    expect(q.__find("or")).toHaveLength(1);
+    expect(q.__find("or")[0].args[0]).toBe(EMPTY_DRAFT_EXCLUSION_OR);
   });
 });
 
 describe("buildHistoryOrderQuery — provider", () => {
-  it("matches a marketplace across every casing the backend writes", () => {
+  it("matches a marketplace by pattern, not by a list of spellings", () => {
+    // A literal list is what made the chip read "DoorDash (3)" over an empty
+    // list: any casing outside it was counted but never returned.
     const q = fakeQuery();
     buildHistoryOrderQuery(
       q,
       filters({ channel: "online", provider: "doordash" }),
     );
-    const call = q
-      .__find("in")
-      .find((c: any) => c.args[0] === "delivery_platform");
-    expect(call.args[1]).toEqual(
-      expect.arrayContaining(["doordash", "DOORDASH", "DOOR_DASH"]),
-    );
+    expect(clausesOf(q)).toContain("delivery_platform.ilike.%door%dash%");
   });
 
-  it("treats House as null-or-not-a-marketplace so NULL rows are included", () => {
+  it("treats House as first-party only, not as everything non-marketplace", () => {
     const q = fakeQuery();
     buildHistoryOrderQuery(q, filters({ channel: "online", provider: "house" }));
-    const orCall = q.__find("or")[0];
-    // `not.in` alone would drop NULLs, which is precisely what House is.
-    expect(orCall.args[0]).toContain("delivery_platform.is.null");
+    const clauses = clausesOf(q);
+    // A genuine storefront order has no platform recorded…
+    expect(clauses).toContain("delivery_platform.is.null");
+    expect(clauses).toContain("order_source.ilike.online_store");
+    // …and a named first-party channel counts too.
+    expect(clauses).toContain("delivery_platform.ilike.website");
+  });
+
+  it("gives Other a real predicate instead of returning every online order", () => {
+    const q = fakeQuery();
+    buildHistoryOrderQuery(q, filters({ channel: "online", provider: "other" }));
+    const clauses = clausesOf(q);
+    expect(clauses).toContain("delivery_platform.not.ilike.%door%dash%");
+    expect(clauses).toContain("delivery_platform.not.ilike.website");
   });
 
   it("ignores the provider when the tab is not Online", () => {
@@ -163,9 +185,7 @@ describe("buildHistoryOrderQuery — provider", () => {
       q,
       filters({ channel: "all", provider: "doordash" }),
     );
-    expect(
-      q.__find("in").filter((c: any) => c.args[0] === "delivery_platform"),
-    ).toHaveLength(0);
+    expect(clausesOf(q)).not.toContain("delivery_platform");
   });
 });
 
@@ -174,25 +194,22 @@ describe("buildHistoryOrderQuery — status", () => {
     for (const status of ["paid", "unpaid"] as const) {
       const q = fakeQuery();
       buildHistoryOrderQuery(q, filters({ status }));
-      const neq = q.__find("neq");
-      expect(neq.some((c: any) => c.args[0] === "status" && c.args[1] === "void")).toBe(
-        true,
-      );
+      expect(clausesOf(q)).toContain("status.neq.void");
     }
   });
 
   it("matches refunds on either the order status or the payment status", () => {
     const q = fakeQuery();
     buildHistoryOrderQuery(q, filters({ status: "refunded" }));
-    const orCall = q.__find("or")[0];
-    expect(orCall.args[0]).toContain("status.eq.refunded");
-    expect(orCall.args[0]).toContain("payment_status.eq.refunded");
+    const clauses = clausesOf(q);
+    expect(clauses).toContain("status.eq.refunded");
+    expect(clauses).toContain("payment_status.in.(refunded,partially_refunded)");
   });
 
   it("applies no status predicate on All", () => {
     const q = fakeQuery();
     buildHistoryOrderQuery(q, filters({ status: "all" }));
-    expect(q.__find("neq")).toHaveLength(0);
+    expect(q.__find("or")).toHaveLength(1);
   });
 });
 

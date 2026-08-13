@@ -185,6 +185,7 @@ const PreviousOrdersScreen = () => {
     channelCounts,
     providerCounts,
     providerRoster,
+    countsReady,
     pageIndex,
     pageCount,
     totalMatchingCount,
@@ -651,6 +652,7 @@ const PreviousOrdersScreen = () => {
         <ChannelTabBar
           active={channelTab}
           counts={channelCounts}
+          countsReady={countsReady}
           onSelect={handleChannelTabSelect}
         />
 
@@ -662,6 +664,7 @@ const PreviousOrdersScreen = () => {
               counts={providerCounts}
               totalCount={channelCounts.online}
               selected={providerFilter}
+              countsReady={countsReady}
               onSelect={handleProviderSelect}
             />
           </View>
