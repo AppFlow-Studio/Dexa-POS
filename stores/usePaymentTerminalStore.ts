@@ -28,7 +28,7 @@ interface PaymentTerminal {
   /** Hardware serial printed on the device (backfilled from discovery/first sale) */
   serialNumber?: string | null;
   lastConnectionTest?: string;
-  lastConnectionStatus?: "Online" | "Offline" | "NotFound";
+  lastConnectionStatus?: "Online" | "Offline" | "NotFound" | "IdentityMismatch";
   consecutiveFailures?: number;
   lastErrorMessage?: string | null;
   firmwareVersion?: string | null;

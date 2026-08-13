@@ -15,6 +15,7 @@ import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
+import { reconcileTerminalSerial } from "@/services/terminals/terminalIdentity";
 import { useUiScale } from "@/lib/uiScale";
 import {
   failPaymentJournal,
@@ -692,21 +693,21 @@ const CardPaymentView = () => {
 
             // Backfill the terminal serial from the sale response. Valor's
             // TRAN_MODE 96 query returns no serial, so a completed sale is the
-            // only place we learn it. Fire-and-forget; also mirror it into the
-            // in-memory station so the settings card updates without a reload.
+            // only place we learn it. Route through reconcileTerminalSerial so a
+            // DIFFERENT serial (swapped hardware) is blocked, not overwritten.
+            // Fire-and-forget; never affects payment success.
             const saleSerial = valorTx?.hardwareSerial;
             const valorTerminalId = selectedStation?.payment_terminal?.id;
-            if (
-              saleSerial &&
-              valorTerminalId &&
-              selectedStation?.payment_terminal?.serial_number !== saleSerial
-            ) {
-              void supabase
-                .from("payment_terminals")
-                .update({ serial_number: saleSerial })
-                .eq("id", valorTerminalId)
-                .then(
-                  () => {
+            if (saleSerial && valorTerminalId) {
+              void reconcileTerminalSerial({
+                supabase,
+                terminalId: valorTerminalId,
+                discoveredSerial: saleSerial,
+              })
+                .then((r) => {
+                  if (r.kind === "filled") {
+                    // Mirror into the in-memory station so the settings card
+                    // updates without a reload — only on a genuine fill.
                     const s = useStoreSettingsStore.getState();
                     const station = s.selectedStation;
                     if (station?.payment_terminal?.id === valorTerminalId) {
@@ -714,15 +715,22 @@ const CardPaymentView = () => {
                         ...station,
                         payment_terminal: {
                           ...station.payment_terminal,
-                          serial_number: saleSerial,
+                          serial_number: r.serial,
                         },
                       });
                     }
-                  },
-                  () => {
-                    /* non-fatal: serial backfill is best-effort */
-                  },
-                );
+                  } else if (r.kind === "mismatch") {
+                    toastService.show({
+                      type: "error",
+                      title: "Terminal identity mismatch",
+                      message: `The card device reports S/N ${r.discoveredSerial}, not the registered terminal (S/N ${r.storedSerial}). Funds are safe; register the replacement as a new terminal.`,
+                      duration: 8000,
+                    });
+                  }
+                })
+                .catch(() => {
+                  /* non-fatal: serial reconcile is best-effort */
+                });
             }
 
             const captured = {
