@@ -18,6 +18,12 @@ export interface OnlineOrderDateFilter {
   endDate: string | null; // ISO date string (YYYY-MM-DD)
 }
 
+/**
+ * Rows per window. The server now applies the date window, so this bounds one
+ * business day (or one chosen range) rather than slicing an arbitrary subset.
+ */
+const PAGE_LIMIT = 200;
+
 /** Terminal online-order statuses we never show on the Kanban. */
 const EXCLUDED_STATUSES = new Set([
   "declined",
@@ -50,20 +56,25 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
   // Stable reference via useStableOrderList inside.
   const liveOrders = useOnlineOrders();
 
-  const [historicalOrders, setHistoricalOrders] = useState<OrderProfile[]>([]);
+  const [fetchedOrders, setFetchedOrders] = useState<OrderProfile[]>([]);
+  const [windowMs, setWindowMs] = useState<{ start: number; end: number } | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fetchIdRef = useRef(0);
 
-  // Only spend a network round-trip when the user picks a non-Today window.
-  // Today's live orders are already in the Zustand store via useOrdersQuery.
-  const needsHistoricalFetch = filter.preset !== "today";
-
-  const fetchHistorical = useCallback(async () => {
-    if (!needsHistoricalFetch) {
-      setHistoricalOrders([]);
-      return;
-    }
+  // Every window is fetched from the server — Today included.
+  //
+  // Today used to read the Zustand store alone, on the assumption that
+  // `useOrdersQuery` had already put today's online orders there. It hasn't:
+  // `get_active_orders_v1` returns only draft/pending/sent_to_kitchen/preparing/
+  // ready, so a *completed* online order is in no refetch result, and
+  // `hydrateWorkspace` rebuilds `ordersById` from that result — evicting it.
+  // The order then survived only under Yesterday (whose query has no status
+  // filter), which is exactly the "we had to go to yesterday to see today's
+  // orders" report.
+  const fetchOrders = useCallback(async () => {
     if (!supabase || !locationId) return;
 
     const fetchId = ++fetchIdRef.current;
@@ -80,28 +91,30 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
 
       if (!bounds || fetchId !== fetchIdRef.current) return;
 
-      // Query online_orders and join to orders via FK — catches ALL online
-      // orders regardless of what value is in orders.order_source.
-      let query = supabase
-        .from("online_orders")
+      // Query `orders` — not `online_orders` — so the date window, ordering and
+      // limit all apply to the row that actually carries `created_at`. The inner
+      // embed keeps the authoritative online-order identification (a row in
+      // `online_orders`) without trusting `orders.order_source`.
+      //
+      // The previous shape selected FROM `online_orders` with an unordered
+      // `.limit(200)` and applied the window client-side, so once a location
+      // passed 200 online orders the page was an arbitrary subset of them.
+      const { data, error: fetchError } = await supabase
+        .from("orders")
         .select(
-          `order_id,
-           orders!inner(
-             *,
-             order_items(*, order_item_modifiers(*)),
-             order_payments(*),
-             order_discounts(*),
-             stations(station_name),
-             created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)
-           )`,
+          `*,
+           order_items(*, order_item_modifiers(*)),
+           order_payments(*),
+           order_discounts(*),
+           stations(station_name),
+           created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name),
+           online_orders!online_orders_order_id_fkey!inner(order_id, provider, delivery_company)`,
         )
         .eq("location_id", locationId)
-        .limit(200);
-
-      // Note: date-range filtering + ordering done client-side below.
-      // PostgREST dot-notation is not reliable on embedded resources.
-
-      const { data, error: fetchError } = await query;
+        .gte("created_at", bounds.start_ts)
+        .lt("created_at", bounds.end_ts)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_LIMIT);
 
       if (fetchId !== fetchIdRef.current) return;
 
@@ -110,27 +123,21 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
         return;
       }
 
+      // Rows are already the order — the server applied the window, so the only
+      // gate left is the terminal-status one shared with `useOnlineOrders`.
       const orders = ((data ?? []) as unknown[])
-        .map((row: any) => {
-          // Unwrap: query from online_orders returns { order_id, orders: {...} }
-          const normalized = normalizeFetchedOrder(
-            row.orders as FetchedOrderData,
-          );
-          return transformBroadcastToOrder(normalized);
-        })
-        .filter(isVisible)
-        // Client-side date window (dot-notation not reliable in PostgREST)
-        .filter((o) => {
-          if (!bounds) return true;
-          const t = o.opened_at ? new Date(o.opened_at).getTime() : 0;
-          if (bounds.start_ts && t < new Date(bounds.start_ts).getTime())
-            return false;
-          if (bounds.end_ts && t >= new Date(bounds.end_ts).getTime())
-            return false;
-          return true;
-        }); // same gate as useOnlineOrders
+        .map((row) =>
+          transformBroadcastToOrder(
+            normalizeFetchedOrder(row as FetchedOrderData),
+          ),
+        )
+        .filter(isVisible);
 
-      setHistoricalOrders(orders);
+      setWindowMs({
+        start: new Date(bounds.start_ts).getTime(),
+        end: new Date(bounds.end_ts).getTime(),
+      });
+      setFetchedOrders(orders);
     } catch (e: any) {
       if (fetchId === fetchIdRef.current) {
         setError(e?.message ?? "Failed to fetch online orders");
@@ -141,24 +148,36 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
       }
     }
   }, [
-    needsHistoricalFetch,
     supabase,
     locationId,
+    filter.preset,
     filter.startDate,
     filter.endDate,
   ]);
 
   useEffect(() => {
-    fetchHistorical();
-  }, [fetchHistorical]);
+    fetchOrders();
+  }, [fetchOrders]);
 
-  // When viewing today, live orders ARE the full result.
+  // Live orders carry realtime state the fetch can't have yet (a brand-new
+  // order, a status the server hasn't been re-read for), so they win on
+  // conflict — but only inside the selected window. They used to be merged in
+  // unfiltered, which leaked the entire store into Yesterday / Last 7 / custom
+  // ranges: the same live orders showed up under every date the user picked.
   const merged = useMemo(() => {
-    if (!needsHistoricalFetch) return liveOrders;
-    return mergeOrders(liveOrders, historicalOrders);
-  }, [needsHistoricalFetch, liveOrders, historicalOrders]);
+    if (!windowMs) {
+      // Pre-first-fetch. Today falls back to the store rather than flashing
+      // empty; a past window has nothing to show until its rows land.
+      return filter.preset === "today" ? liveOrders : fetchedOrders;
+    }
+    const inWindow = (o: OrderProfile) => {
+      const t = o.opened_at ? new Date(o.opened_at).getTime() : 0;
+      return t >= windowMs.start && t < windowMs.end;
+    };
+    return mergeOrders(liveOrders.filter(inWindow), fetchedOrders);
+  }, [liveOrders, fetchedOrders, windowMs, filter.preset]);
 
-  return { onlineOrders: merged, isLoading, error, refresh: fetchHistorical };
+  return { onlineOrders: merged, isLoading, error, refresh: fetchOrders };
 }
 
 /**
