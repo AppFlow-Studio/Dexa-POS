@@ -940,7 +940,8 @@ const MenuPage: React.FC = () => {
   useEffect(() => {
     setMountedTabs(prev => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }))
   }, [activeTab])
-  const { isSingleLocation } = useIsSingleLocation()
+  const { isSingleLocation, isLoading: isSingleLocationLoading } =
+    useIsSingleLocation()
   const { onlineMenuId } = useOnlineMenu(selectedStore?.id)
 
   // Release decoded base64 item-image bitmaps when leaving the menu management
@@ -2416,7 +2417,7 @@ const MenuPage: React.FC = () => {
                         {modifierGroup.location_name || 'Local'}
                       </Text>
                     </View>
-                  ) : (
+                  ) : !isSingleLocation && !isSingleLocationLoading ? (
                     <View
                       style={{
                         backgroundColor: colors.teal + '20',
@@ -2437,7 +2438,7 @@ const MenuPage: React.FC = () => {
                         Global
                       </Text>
                     </View>
-                  )}
+                  ) : null}
 
                   <View
                     style={{

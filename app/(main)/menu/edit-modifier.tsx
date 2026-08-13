@@ -1,5 +1,6 @@
 import RecipeManager from "@/components/inventory/RecipeManager";
 import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
+import { MenuScopeLoadingScreen } from "@/components/menu/MenuScopeLoadingScreen";
 import { ModifierStockToggle } from "@/components/menu/ModifierStockToggle";
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
@@ -62,7 +63,8 @@ const EditModifierScreen: React.FC = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
-  const { isSingleLocation } = useIsSingleLocation();
+  const { isSingleLocation, isLoading: isSingleLocationLoading } =
+    useIsSingleLocation();
 
   const existing = useMemo(() => modifierGroups.find((m) => m.id === id), [id, modifierGroups]);
 
@@ -356,6 +358,9 @@ const EditModifierScreen: React.FC = () => {
 
   // Single-location merchants edit the global modifier directly. Multi-location
   // keeps the read-only wall but can make a local copy.
+  if (isGlobalModifier && isSingleLocationLoading) {
+    return <MenuScopeLoadingScreen />;
+  }
   if (
     (isGlobalModifier && !isSingleLocation) ||
     (!isGlobalModifier && !isLocalModifier)

@@ -1,4 +1,6 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { resolveIsSingleLocation } from "@/lib/menu/singleLocationScope";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 
@@ -10,8 +12,8 @@ import { useQuery } from "@tanstack/react-query";
  * global items must be editable. Multi-location merchants must NOT edit the
  * global core directly — they use per-location overrides instead.
  *
- * Uses the existing `get_user_accessible_locations` RPC (see store-select.tsx)
- * and caches it with the same offline-first settings as `usePosSync`.
+ * Merchant admins count all active merchant locations because they may not have
+ * location_members rows. Other staff count their active accessible locations.
  *
  * IMPORTANT: defaults to `false` (treat as multi-location) while loading or on
  * error, so we never accidentally allow a multi-location user to mutate the
@@ -23,26 +25,27 @@ export const useIsSingleLocation = (): {
 } => {
   const supabase = useSupabaseClient();
   const { userId } = useAuth();
+  const merchantId = useStoreSettingsStore(
+    (state) => state.selectedStore?.merchant_id,
+  );
 
   const { data, isLoading } = useQuery({
-    queryKey: ["accessible_locations", userId],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc(
-        "get_user_accessible_locations",
-        { p_user_id: userId as string },
-      );
-      if (error) throw error;
-      return (data ?? []) as { location_id: string }[];
-    },
-    enabled: !!userId,
+    queryKey: ["single_location_scope", userId, merchantId],
+    queryFn: () =>
+      resolveIsSingleLocation(
+        supabase,
+        userId as string,
+        merchantId as string,
+      ),
+    enabled: !!userId && !!merchantId,
     networkMode: "offlineFirst",
     staleTime: Infinity,
     gcTime: 1000 * 60 * 60 * 2,
   });
 
   return {
-    // Default to multi-location (false) unless we positively know there's <= 1.
-    isSingleLocation: (data?.length ?? 0) > 0 && (data as any[]).length <= 1,
+    // Fail closed unless the resolver positively confirms a single location.
+    isSingleLocation: data === true,
     isLoading,
   };
 };

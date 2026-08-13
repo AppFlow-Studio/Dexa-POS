@@ -2,8 +2,8 @@
 
 ## Status
 
-Physical-device measurement pending. No production optimization has been
-approved or implemented.
+Repository preparation complete. Physical-device measurement is pending. No
+production optimization has been approved or implemented.
 
 ## Objective
 
@@ -15,7 +15,7 @@ target Landi hardware under poor connectivity.
 
 | Field                | Value                 |
 | -------------------- | --------------------- |
-| Commit               | Pending               |
+| Commit               | `01e51efe` baseline   |
 | Build variant        | Android release       |
 | Landi model          | Pending               |
 | Android version      | Pending               |
@@ -30,26 +30,30 @@ records that cannot contact a live processor.
 
 Existing instrumentation provides:
 
-- `pos.queue_flush` for total replay duration and ready/blocked/pending counts.
+- `perf.pos.queue_flush` for total replay duration. The source span also sends
+  ready/blocked/pending and success/failure attributes to Sentry.
 - The telemetry long-task watcher for JS stalls and route attribution.
-- Hidden Settings telemetry export through a long-press on the version label.
+- Hidden telemetry export through a 600 ms long-press on `Current Version` in
+  `Settings > Devices & Connections`.
 - Logcat fallback using `[telemetry-export]` records.
+- The queue depth and operation list in `Settings > Syncing > Sync Queue`.
 
 Existing instrumentation does not separate the synchronous queue save into
-filter, `JSON.stringify`, and MMKV `set` durations. For the measurement build
-only, use an uncommitted diagnostic patch around `saveQueueToStorage()`:
+filter, `JSON.stringify`, and MMKV `set` durations. The release manifest is not
+debuggable/profileable, so Android Studio cannot recover this JS-level split
+from the current release APK.
 
-1. Time `pendingOperations.filter(...)` with `performance.now()`.
-2. Time `JSON.stringify(toSave)` separately.
-3. Persist that string through `setSyncString(STORAGE_KEY, serialized)` and
-   time the MMKV call separately.
-4. Emit one structured `[aud14]` record containing depth, bytes, filter ms,
-   stringify ms, write ms, and total ms.
-5. Remove the diagnostic patch after exporting results. Do not include it in
-   the production PR.
+This is a measurement tooling gap, not evidence of a product defect. Complete
+the release baseline first. To collect the exact split required by the ticket,
+obtain approval for one of these measurement-only options:
 
-`setSyncString` uses the same `dexa-pos-sync` MMKV instance as `setSyncJSON`, so
-the diagnostic build preserves the storage target and serialized payload.
+1. A profileable internal release build with a profiler that can attribute the
+   JS work accurately.
+2. A temporary local patch around `saveQueueToStorage()` that emits depth,
+   bytes, filter ms, stringify ms, MMKV write ms, and total ms.
+
+Do not commit or push the temporary patch. Do not implement batching, SQLite,
+or queue behavior changes before the report is reviewed.
 
 ## Queue Mix
 
@@ -66,55 +70,74 @@ Use the same deterministic mix at every depth:
 Use distinct idempotency keys and preserve each operation's real dependency
 shape. Do not synthesize independent rows that bypass queue ordering.
 
-### Reproducible Seeder
+### Queue Population Rules
 
-Do not hand-edit MMKV or insert arbitrary queue JSON. Invalid RPC parameters
-would measure repeated failures rather than the production replay path.
+Do not hand-edit MMKV, insert arbitrary queue JSON, or use production data. Build
+the queue through normal POS actions at a staging location so replay exercises
+real operation parameters and dependencies.
 
-For the measurement build, add a temporary development-only action beside the
-existing offline-sync diagnostics. The action must call the same exported
-`queueOperation` / dependent-operation helpers used by normal POS mutations and
-must be removed before the PR is prepared.
-
-1. In staging, capture one valid, non-payment operation fixture for each row in
-   the Queue Mix table by performing the action normally and exporting the
-   resulting queued operation while offline.
-2. Replace every captured order/item UUID and idempotency key with a generated
-   value per seeded test order. Never reuse a production UUID.
-3. Queue the create-order operation first and retain its returned operation ID.
-4. Queue item and follow-up mutations with their real `dependsOn` relationship
-   to that create operation. Preserve operation order within each test order.
-5. Repeat the fixed mix until the requested depth is reached; assert the queue
-   length equals exactly 100, 300, or 500 before recording.
-6. Export a SHA-256 hash of the normalized fixture plus the generated seed so
-   every run at a given depth can be reproduced.
-7. Restore each replay run by clearing only the staging station's queue and
-   invoking the seeder with the same fixture, seed, and target depth.
-
-The harness must reject any fixture containing a production project URL,
-merchant/location ID, live payment processor operation, or missing dependency.
-Record the temporary harness commit or patch hash in the Build And Device table,
-then discard the harness after evidence collection.
+- Create distinct orders and distinct items. Repeated quantity, modifier,
+  status, or detail updates for the same entity can collapse into one queued
+  operation and will not reliably increase queue depth.
+- Never perform a real card charge. Use non-payment actions and only a
+  staging-safe payment-adjacent flow approved by QA.
+- Confirm the exact depth from `Settings > Syncing > Sync Queue`; the panel
+  refreshes every five seconds.
+- Record the operation counts by type at each depth so all repeated runs use a
+  comparable mix.
+- If manually rebuilding the same queue five times is not practical, request a
+  test-harness follow-up. Do not add that harness to this branch before the
+  measurement-first gate is satisfied.
 
 ## Procedure
 
-1. Install the release measurement build and clear only the staging test
-   station's local app data.
-2. Start telemetry and clear logcat with `adb logcat -c`.
-3. Force the app offline and run the reproducible seeder to depth 100; record
-   its fixture hash and seed.
-4. Record at least 20 additional queue transitions at that depth.
-5. Force-kill, relaunch while offline, and confirm all queued operations load.
-6. Restore a degraded/flapping connection and measure replay to an empty queue.
-7. Repeat replay five times, restoring the same seed between runs.
-8. Repeat steps 3-7 for depths 300 and 500.
-9. At one run per depth, force-kill during replay and verify recovery without
-   duplicate effects or dependency inversion.
-10. Export telemetry and `[aud14]` logcat records after every run.
+1. Install the release APK on the Landi tablet and sign into a staging test
+   location. Confirm telemetry is enabled in Settings.
+2. Connect USB debugging, run `adb devices`, then clear old logs with
+   `adb logcat -c`.
+3. Take the tablet fully offline and use normal POS actions to reach depth 100.
+   Confirm the count in `Settings > Syncing > Sync Queue`.
+4. Record 20 additional queue transitions while watching for frozen taps or
+   delayed navigation. Record start/end wall-clock times.
+5. Force-stop the app, relaunch while still offline, and confirm the same queue
+   depth restores. Use `adb shell am force-stop com.temurappflowstudios.dexapos`
+   when a reproducible force-stop is required.
+6. Restore a measured degraded/flapping connection. Open Sync Queue, tap
+   `Sync Now` if replay does not start automatically, and time reconnect until
+   the queue reaches zero.
+7. Repeat replay five times per depth using the same operation mix. Rebuild the
+   queue through normal POS actions between runs.
+8. Repeat steps 3-7 at depths 300 and 500.
+9. During one replay at each depth, force-stop the app. Relaunch and verify that
+   the remaining operations recover without duplicates or dependency inversion.
+10. After every run, long-press `Current Version` under
+    `Settings > Devices & Connections` for 600 ms and export the telemetry JSON.
 
 Network phases per depth: fully offline, high latency, packet loss, connection
 flapping, then stable reconnect. Record the actual shaping method and settings;
 do not label Wi-Fi as degraded without measured latency/loss values.
+
+### Windows ADB Export
+
+If the tablet has no usable share target, reconstruct the most recent telemetry
+export from Logcat in Windows PowerShell:
+
+```powershell
+adb logcat -d > aud14-logcat.txt
+$lines = Get-Content .\aud14-logcat.txt |
+  Select-String '\[telemetry-export\]' |
+  ForEach-Object { $_.Line -replace '^.*\[telemetry-export\]\s+', '' }
+$chunks = $lines |
+  Where-Object { $_ -notmatch '^(BEGIN|END)\s' } |
+  ForEach-Object { $_ -replace '^\d+/\d+\s+', '' }
+($chunks -join '') | Set-Content -NoNewline .\aud14-telemetry.json
+Get-Content .\aud14-telemetry.json -Raw | ConvertFrom-Json | Out-Null
+```
+
+Clear Logcat before each export so chunks from separate runs cannot be mixed.
+The local replay span key in the JSON is `perf.pos.queue_flush`; long-task
+samples use `longtask`. A long task is recorded when event-loop drift exceeds
+100 ms.
 
 ## Results
 
@@ -145,7 +168,8 @@ result. Any batching or SQLite proposal requires a separate reviewed ticket.
 ## Evidence
 
 - Raw telemetry JSON: Pending
-- Raw `[aud14]` logcat data: Pending
+- Raw measurement-only timing data: Pending approval/instrumentation
+- Network shaping configuration: Pending
 - Screen recording: Pending
 - Non-implementer verifier: Pending
 
