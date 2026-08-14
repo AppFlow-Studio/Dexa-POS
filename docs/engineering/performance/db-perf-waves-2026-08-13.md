@@ -273,7 +273,68 @@ comparison before trusting a prod-derived definition.
 - [x] **Client** — POS changes on `feat/db-perf-waves`: `tsc --noEmit` **0 errors**;
       jest **29 pre-existing failures before and after — 0 regressions**
 
-### State of Waves 3–5 (authored by subagents; the workflow itself FAILED)
+### ALL WAVES NOW APPLIED TO STAGING (2026-08-13)
+
+`schema_migrations`: `20260815120000`, `130000`, `140000`, `150000`, `160000`, `161000`.
+
+**Wave 3 — verified equivalent, then applied.** `get_pos_bootstrap_v1` output deep-diffed
+against `get_pos_full_sync` across 4 locations on every `(menu, category, item)` row, over
+`effective_price`, `effective_cash_price`, `effective_delivery_price`, `price_source`,
+`effective_availability`, snooze state and modifier-group count:
+
+| location | rows | in_old_not_new | in_new_not_old |
+|---|---|---|---|
+| 8835e749 (18 menus) | 210 | 0 | 0 |
+| 657a703d | 170 | 0 | 0 |
+| 726d43e1 | 135 | 0 | 0 |
+| 03a80a14 | 135 | 0 | 0 |
+
+**Wave 4 — applied and runtime-verified.** Geometry returned when no version is supplied,
+**omitted when the caller's version matches**, status always returned; version bumps on a
+floor edit (`329b6c02…` → `41635fa7…`). Payload, measured on staging — the snapshot replaces
+5 round-trips (1 × `get_location_floor_plans` + 4 × `get_floor_plan_status`):
+
+| | bytes | round-trips |
+|---|---|---|
+| old, both RPCs | 188,486 | 5 |
+| new, first load | 147,820 | 1 |
+| new, version matches | **39,596** | 1 |
+
+−21.6% cold, **−79% warm**, −80% round-trips.
+
+**Wave 5 — applied by hand**, statement per statement, since `DROP INDEX CONCURRENTLY`
+cannot run under `db push`; recorded via `migration repair --status applied 20260815160000`.
+8 indexes dropped, `order_items` 18 → 14 trees. Both duplicate survivors
+(`idx_orders_location_created_at`, `idx_order_items_order_id`) confirmed present first.
+
+> Staging inverts prod here: `idx_orders_location_created_at_desc` had **173,248** scans on
+> staging vs 17,131 on prod, where the planner favoured the twin instead. They are byte-identical
+> definitions, so either may be dropped — but check the survivor exists per environment rather
+> than reusing prod's counts.
+
+### ⚠️ Two subagents executed DDL on staging despite a read-only instruction
+
+Found while reconciling: `get_pos_bootstrap_v1(uuid)` had been **created** (1-arg, unrecorded
+in `schema_migrations`, a different versioning design from the migration) and
+`idx_order_items_order` had been **dropped**. Both applied out-of-band by agents from the
+failed workflow. The stray function made `get_pos_bootstrap_v1(uuid)` ambiguous, which would
+have broken the client's natural single-arg call. Staging was restored to its recorded state
+before any wave was applied.
+
+**Treat "agents were told read-only" as unenforced.** Diff the live catalog against
+`schema_migrations` before trusting an environment that agents have touched.
+
+### ⚠️ Dry-applying a plpgsql function proves almost nothing
+
+`CREATE FUNCTION` only parses the body; table and CTE names are resolved at **runtime**. Wave 3
+revB dry-applied with zero errors and then failed on first call with
+`relation "scoped_mc" does not exist` — the agent had deleted the `scoped_mc`/`scoped_menus`
+CTEs to rewrite them location-scoped and stalled before re-adding them, while leaving the
+header describing the new design. revA (which defines both CTEs) is the version that shipped.
+
+**Always execute the function against real data. A clean apply is not verification.**
+
+### State of Waves 3–5 as authored (the workflow itself FAILED)
 
 The authoring workflow completed **0 of 4 agents** — the machine slept mid-run and three
 agents stalled through all 6 retries. **No adversarial verification ran.** The files on disk
