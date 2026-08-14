@@ -20,6 +20,45 @@
 --   money, and is passed through unchanged to preserve existing tax semantics.
 -- ============================================================================
 
+-- ----------------------------------------------------------------------------
+-- Single-signature guard
+--
+-- Wave 3 (recorded as schema_migrations 20260815140000) installed a TWO-argument
+-- get_pos_bootstrap_v1(uuid, <version token>) on staging, and that SQL was never
+-- committed to this repo. THIS FILE is the authoritative definition, and it
+-- takes ONE argument.
+--
+-- Leaving both overloads in place makes the client's natural single-arg call
+-- ambiguous — which is exactly the breakage recorded under "Two subagents
+-- executed DDL on staging" in
+-- docs/engineering/performance/db-perf-waves-2026-08-13.md. So drop every
+-- overload that is not exactly (uuid) before defining this one.
+--
+-- Written as a catalog sweep rather than a literal DROP FUNCTION because the
+-- Wave 3 signature is not recorded anywhere in this repo: its second argument
+-- may be text or uuid, and guessing wrong would silently leave the overload in
+-- place.
+-- ----------------------------------------------------------------------------
+DO $guard$
+DECLARE
+    r record;
+BEGIN
+    FOR r IN
+        SELECT p.oid::regprocedure AS sig
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'public'
+           AND p.proname = 'get_pos_bootstrap_v1'
+           -- identity args are types only, no names/defaults: '' , 'uuid',
+           -- 'uuid, text', ...
+           AND pg_get_function_identity_arguments(p.oid) <> 'uuid'
+    LOOP
+        RAISE NOTICE 'get_pos_bootstrap_v1: dropping superseded overload %', r.sig;
+        EXECUTE format('DROP FUNCTION %s', r.sig);
+    END LOOP;
+END
+$guard$;
+
 CREATE OR REPLACE FUNCTION public.get_pos_bootstrap_v1(p_location_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -291,6 +330,13 @@ GRANT EXECUTE ON FUNCTION public.get_pos_bootstrap_v1(uuid) TO authenticated;
 -- ============================================================================
 -- Verification (run manually, do not include in the migration transaction)
 -- ============================================================================
+-- 0. EXACTLY ONE overload must survive — this is what keeps the client's
+--    single-arg call unambiguous:
+--    SELECT pg_get_function_identity_arguments(p.oid)
+--      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--     WHERE n.nspname = 'public' AND p.proname = 'get_pos_bootstrap_v1';
+--    -- expect: exactly one row, 'uuid'
+--
 -- 1. Payload sanity + size:
 --    SELECT jsonb_pretty(public.get_pos_bootstrap_v1('<location-uuid>'));
 --    SELECT pg_size_pretty(length(public.get_pos_bootstrap_v1('<location-uuid>')::text)::bigint);
