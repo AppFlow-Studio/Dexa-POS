@@ -6,6 +6,8 @@ import {
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline as _runWithDeadline } from "@/lib/network/runWithDeadline";
 import { clearPendingToGo, markPendingToGo } from "@/lib/pendingToGo";
+import type { RpcResult } from "@/lib/network/rpcVersionFallback";
+import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -2145,7 +2147,13 @@ export class OrderService {
     if (kdsDisplayId) {
       params.p_kds_display_id = kdsDisplayId;
     }
-    const { data, error } = await client.rpc("get_kds_tickets_v2", params);
+    // Prefer the location-scoped v3 (see useKDSStore for the measured rationale);
+    // fall back to v2 where v3 has not been deployed yet.
+    const { data, error } = await rpcWithVersionFallback<any>(
+      "get_kds_tickets_v3",
+      () => client.rpc("get_kds_tickets_v3", params) as unknown as Promise<RpcResult<any>>,
+      () => client.rpc("get_kds_tickets_v2", params) as unknown as Promise<RpcResult<any>>,
+    );
     return { data, error };
   }
 

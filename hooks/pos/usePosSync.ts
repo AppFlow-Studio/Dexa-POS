@@ -1,5 +1,7 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DEADLINES } from "@/lib/network/deadlines";
+import type { RpcResult } from "@/lib/network/rpcVersionFallback";
+import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -47,28 +49,79 @@ export const usePosSync = (locationId: string | null) => {
       // untouched, and the RPC fallback stays wired so that if
       // `get_pos_full_sync` ever starts returning recipes they flow straight
       // through without another client change.
-      const [syncResult, taxRatesResult, snoozesResult] =
-        await withDeadline(
-          (signal) =>
-            Promise.all([
+      // PERF (db-perf-waves Wave 3 / AUD-1): prefer the single-round-trip
+      // bootstrap envelope. get_pos_full_sync calls get_menu_with_categories
+      // once PER MENU, and that function rebuilds the modifier subtree per menu
+      // ITEM even though it depends on neither the menu nor the category
+      // (262.68ms mean on prod). get_pos_bootstrap_v1 composes the tree once in
+      // CTEs and returns menus + tax_rates + snoozes + recipes together, so this
+      // hook drops from 3 round-trips to 1.
+      //
+      // Its menu tree was deep-diffed against get_pos_full_sync across 4
+      // locations on every (menu, category, item) row over effective_price,
+      // effective_cash_price, effective_delivery_price, price_source,
+      // effective_availability and snooze state: 0 differences.
+      //
+      // Fallback keeps the legacy 3-call path for environments that don't have
+      // the RPC yet; the helper memoises its absence so a legacy environment
+      // pays the failed probe once per session rather than on every sync.
+      const [syncResult, taxRatesResult, snoozesResult] = await withDeadline(
+        async (signal) => {
+          const boot = await rpcWithVersionFallback<any>(
+            "get_pos_bootstrap_v1",
+            () =>
               supabase
-                .rpc("get_pos_full_sync", { p_location_id: locationId })
-                .abortSignal(signal),
-              supabase
-                .from("tax_rates")
-                .select("id, location_id, name, percentage, tax_category, is_active, created_at, updated_at")
-                .eq("location_id", locationId)
-                .eq("is_active", true)
-                .abortSignal(signal),
-              // Per-location active 86/snooze rows (badge/countdown state).
-              // Non-critical — a failure just means no badges this sync.
-              supabase
-                .rpc("get_active_snoozes", { p_location_id: locationId })
-                .abortSignal(signal),
-            ]),
-          DEADLINES.menuSync,
-          "pos_sync",
-        );
+                .rpc("get_pos_bootstrap_v1", {
+                  p_location_id: locationId,
+                  // Always request the full body for now. The versioned
+                  // short-circuit needs the MMKV render-ready snapshot from the
+                  // audit's Phase 2 to be useful; sending a token without a
+                  // cache to satisfy it would just risk an empty menu.
+                  p_known_version: null,
+                })
+                .abortSignal(signal) as unknown as Promise<RpcResult<any>>,
+            () => Promise.resolve({ data: null, error: null }),
+          );
+
+          if (!boot.usedFallback) {
+            if (boot.error) {
+              return [
+                { data: null, error: boot.error },
+                { data: null, error: null },
+                { data: null, error: null },
+              ] as const;
+            }
+            const env = (boot.data ?? {}) as Record<string, any>;
+            // Reshape into the legacy triple so everything downstream is
+            // untouched — one contract, two sources.
+            return [
+              { data: { menus: env.menus ?? [] }, error: null },
+              { data: env.tax_rates ?? [], error: null },
+              { data: env.snoozes ?? {}, error: null },
+            ] as const;
+          }
+
+          // Legacy: three round-trips.
+          return await Promise.all([
+            supabase
+              .rpc("get_pos_full_sync", { p_location_id: locationId })
+              .abortSignal(signal),
+            supabase
+              .from("tax_rates")
+              .select("id, location_id, name, percentage, tax_category, is_active, created_at, updated_at")
+              .eq("location_id", locationId)
+              .eq("is_active", true)
+              .abortSignal(signal),
+            // Per-location active 86/snooze rows (badge/countdown state).
+            // Non-critical — a failure just means no badges this sync.
+            supabase
+              .rpc("get_active_snoozes", { p_location_id: locationId })
+              .abortSignal(signal),
+          ]);
+        },
+        DEADLINES.menuSync,
+        "pos_sync",
+      );
 
       if (syncResult.error) {
         // Log this to Sentry immediately - critical failure
