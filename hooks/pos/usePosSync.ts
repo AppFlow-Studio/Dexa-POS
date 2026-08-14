@@ -5,28 +5,40 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   ActiveModifierSnoozeSync,
   ActiveSnoozeSync,
+  MenuItemIngredientSync,
+  ModifierIngredientSync,
   PosSyncData,
   TaxRate,
 } from "@/types/menu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-interface MenuItemRecipeRow {
-  id: string;
-  menu_item_id: string;
-  inventory_item_id: string | null;
-  quantity_used: number | null;
-}
-
-interface ModifierGroupItemRecipeRow {
-  id: string;
-  modifier_group_item_id: string;
-  inventory_item_id: string;
-  quantity_used: number;
+/**
+ * Raw envelope returned by `get_pos_bootstrap_v1`.
+ *
+ * Differs from `PosSyncData` in one place: `snoozes` arrives as the grouped
+ * `{ items, modifiers }` object that `get_active_snoozes` produces, and is
+ * flattened into the two arrays the menu store wants below.
+ */
+interface PosBootstrapPayload {
+  version: string;
+  generated_at: string;
+  synced_at: string;
+  location_id: string;
+  menus: PosSyncData["menus"];
+  menu_item_ingredients: MenuItemIngredientSync[] | null;
+  modifier_group_item_ingredients: ModifierIngredientSync[] | null;
+  tax_rates: TaxRate[] | null;
+  snoozes: { items?: any[]; modifiers?: any[] } | null;
 }
 
 /**
  * Hook to sync POS data from the backend.
- * This fetches the full menu hierarchy for a given location.
+ *
+ * ONE round trip: `get_pos_bootstrap_v1` returns the menu tree, recipes, tax
+ * rates and active snoozes in a single versioned envelope. This replaced five
+ * parallel requests (get_pos_full_sync + two recipe tables + tax_rates +
+ * get_active_snoozes), two of which duplicated queries useStandaloneSync was
+ * also running on the boot path.
  *
  * @param locationId - The UUID of the location to sync data for
  * @returns TanStack Query result with PosSyncData
@@ -41,143 +53,75 @@ export const usePosSync = (locationId: string | null) => {
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
 
-      // Fetch Menu, Ingredients, Modifier Ingredients, and tax rates in parallel.
-      // Wrapped with deadline so bad WiFi falls back to TanStack `offlineFirst` cache
-      // instead of hanging the UI. See plan: lets-look-into-this-stateless-blossom.md.
-      const [
-        syncResult,
-        menuItemIngredientsResult,
-        modifierIngredientsResult,
-        taxRatesResult,
-        snoozesResult,
-      ] =
-        await withDeadline(
-          (signal) =>
-            Promise.all([
-              supabase
-                .rpc("get_pos_full_sync", { p_location_id: locationId })
-                .abortSignal(signal),
-              supabase
-                .from("menu_item_recipes")
-                .select("id, menu_item_id, inventory_item_id, quantity_used")
-                .abortSignal(signal),
-              supabase
-                .from("modifier_group_item_recipes")
-                .select("id, modifier_group_item_id, inventory_item_id, quantity_used")
-                .abortSignal(signal),
-              supabase
-                .from("tax_rates")
-                .select("id, location_id, name, percentage, tax_category, is_active, created_at, updated_at")
-                .eq("location_id", locationId)
-                .eq("is_active", true)
-                .abortSignal(signal),
-              // Per-location active 86/snooze rows (badge/countdown state).
-              // Non-critical — a failure just means no badges this sync.
-              supabase
-                .rpc("get_active_snoozes", { p_location_id: locationId })
-                .abortSignal(signal),
-            ]),
-          DEADLINES.menuSync,
-          "pos_sync",
-        );
+      // Single round trip. Wrapped with deadline so bad WiFi falls back to
+      // TanStack `offlineFirst` cache instead of hanging the UI.
+      const result = await withDeadline(
+        async (signal) =>
+          await supabase
+            .rpc("get_pos_bootstrap_v1", { p_location_id: locationId })
+            .abortSignal(signal),
+        DEADLINES.menuSync,
+        "pos_sync",
+      );
 
-      if (syncResult.error) {
+      if (result.error) {
         // Log this to Sentry immediately - critical failure
-        console.error("POS SYNC FAILED:", syncResult.error);
-        throw syncResult.error;
+        console.error("POS SYNC FAILED:", result.error);
+        throw result.error;
       }
 
-      const data = syncResult.data as unknown as PosSyncData;
+      const data = result.data as unknown as PosBootstrapPayload | null;
+      if (!data) throw new Error("get_pos_bootstrap_v1 returned no payload");
 
-      if (menuItemIngredientsResult.error) {
+      // Tax rates now ride along in the envelope. The zero-row case is still
+      // worth shouting about: it usually means a stale JWT or a location
+      // outside the user's set rather than a genuinely untaxed location, and
+      // setTaxRates preserves existing rates instead of zeroing tax.
+      const taxRates = data.tax_rates ?? [];
+      if (taxRates.length === 0) {
         console.warn(
-          "menu_item_ingredients fetch warning:",
-          menuItemIngredientsResult.error,
+          "tax_rates empty in bootstrap payload — preserving existing rates if any",
         );
-      }
-
-      if (modifierIngredientsResult.error) {
-        console.warn(
-          "modifier_group_item_ingredients fetch warning:",
-          modifierIngredientsResult.error,
-        );
-      }
-
-      if (taxRatesResult.error) {
-        console.warn("tax_rates fetch warning:", taxRatesResult.error);
       } else {
-        if ((taxRatesResult.data?.length ?? 0) === 0) {
-          // No error but zero rows — usually RLS silently filtering (stale JWT /
-          // location not in user's set), not a real "location has no tax" state.
-          // setTaxRates preserves any existing rates instead of zeroing tax.
-          console.warn(
-            "tax_rates fetch returned 0 rows (no error) — preserving existing rates if any",
-          );
-        } else {
-          console.log("DEBUG: Synced Tax Rates:", taxRatesResult.data);
-        }
-        useStoreSettingsStore
-          .getState()
-          .setTaxRates((taxRatesResult.data || []) as TaxRate[]);
+        console.log("DEBUG: Synced Tax Rates:", taxRates);
       }
+      useStoreSettingsStore.getState().setTaxRates(taxRates);
 
-      // Map active snoozes (json { items, modifiers }) into flat lists for the
-      // store to stamp onto menu items + modifier options. Non-fatal on error.
-      let snoozes: ActiveSnoozeSync[] = [];
-      let modifierSnoozes: ActiveModifierSnoozeSync[] = [];
-      if (snoozesResult.error) {
-        console.warn("get_active_snoozes fetch warning:", snoozesResult.error);
-      } else {
-        const raw =
-          (snoozesResult.data as {
-            items?: any[];
-            modifiers?: any[];
-          } | null) ?? {};
-        snoozes = (raw.items ?? []).map((s: any) => ({
+      // Flatten active snoozes ({ items, modifiers }) into the two lists the
+      // menu store stamps onto menu items + modifier options.
+      const rawSnoozes = data.snoozes ?? {};
+      const snoozes: ActiveSnoozeSync[] = (rawSnoozes.items ?? []).map(
+        (s: any) => ({
           menu_item_id: s.menu_item_id,
           snoozed_until: s.snoozed_until ?? null,
           snooze_reason: s.snooze_reason ?? null,
-        }));
-        modifierSnoozes = (raw.modifiers ?? []).map((m: any) => ({
-          modifier_group_item_id: m.modifier_group_item_id,
-          modifier_group_id: m.modifier_group_id ?? null,
-          snoozed_until: m.snoozed_until ?? null,
-          snooze_reason: m.snooze_reason ?? null,
-        }));
-      }
+        }),
+      );
+      const modifierSnoozes: ActiveModifierSnoozeSync[] = (
+        rawSnoozes.modifiers ?? []
+      ).map((m: any) => ({
+        modifier_group_item_id: m.modifier_group_item_id,
+        modifier_group_id: m.modifier_group_id ?? null,
+        snoozed_until: m.snoozed_until ?? null,
+        snooze_reason: m.snooze_reason ?? null,
+      }));
 
-      console.log("DEBUG: Synced Menu Data:", data.menus?.[0]);
+      console.log("DEBUG: Synced Menu Data:", {
+        version: data.version,
+        menus: data.menus?.length ?? 0,
+        firstMenu: data.menus?.[0],
+      });
 
-      // Keep recipe data returned by the RPC as the source of truth.
-      // Only fall back to direct table queries when they actually return rows.
       return {
-        ...data,
+        version: data.version,
+        synced_at: data.synced_at,
+        location_id: data.location_id,
+        menus: data.menus ?? [],
         snoozes,
         modifierSnoozes,
-        menu_item_ingredients:
-          menuItemIngredientsResult.data &&
-          menuItemIngredientsResult.data.length > 0
-            ? (menuItemIngredientsResult.data as MenuItemRecipeRow[])
-                .filter((row) => !!row.inventory_item_id)
-                .map((row) => ({
-                  id: row.id,
-                  menu_item_id: row.menu_item_id,
-                  inventory_item_id: row.inventory_item_id as string,
-                  quantity: row.quantity_used ?? 0,
-                }))
-            : data.menu_item_ingredients || [],
+        menu_item_ingredients: data.menu_item_ingredients ?? [],
         modifier_group_item_ingredients:
-          modifierIngredientsResult.data &&
-          modifierIngredientsResult.data.length > 0
-            ? (
-                modifierIngredientsResult.data as ModifierGroupItemRecipeRow[]
-              ).map((row) => ({
-                id: row.id,
-                modifier_group_item_id: row.modifier_group_item_id,
-                inventory_item_id: row.inventory_item_id,
-                quantity: row.quantity_used ?? 0,
-              }))
-            : data.modifier_group_item_ingredients || [],
+          data.modifier_group_item_ingredients ?? [],
       };
     },
 
