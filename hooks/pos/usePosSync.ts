@@ -10,20 +10,6 @@ import {
 } from "@/types/menu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-interface MenuItemRecipeRow {
-  id: string;
-  menu_item_id: string;
-  inventory_item_id: string | null;
-  quantity_used: number | null;
-}
-
-interface ModifierGroupItemRecipeRow {
-  id: string;
-  modifier_group_item_id: string;
-  inventory_item_id: string;
-  quantity_used: number;
-}
-
 /**
  * Hook to sync POS data from the backend.
  * This fetches the full menu hierarchy for a given location.
@@ -41,29 +27,32 @@ export const usePosSync = (locationId: string | null) => {
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
 
-      // Fetch Menu, Ingredients, Modifier Ingredients, and tax rates in parallel.
+      // Fetch menu, tax rates and active snoozes in parallel.
       // Wrapped with deadline so bad WiFi falls back to TanStack `offlineFirst` cache
       // instead of hanging the UI. See plan: lets-look-into-this-stateless-blossom.md.
-      const [
-        syncResult,
-        menuItemIngredientsResult,
-        modifierIngredientsResult,
-        taxRatesResult,
-        snoozesResult,
-      ] =
+      //
+      // PERF (db-perf-waves, 2026-08): this used to also issue two unfiltered
+      // reads against `menu_item_recipes` and `modifier_group_item_recipes` to
+      // populate `menu_item_ingredients` / `modifier_group_item_ingredients`.
+      // Both were dead weight on every boot:
+      //   - both tables hold 0 rows on prod, so the "use direct rows when they
+      //     return anything" branch could never be taken; and
+      //   - `get_pos_full_sync` never returns recipe data either (its definition
+      //     contains no reference to recipes/ingredients), so the fallback
+      //     `data.menu_item_ingredients || []` already resolved to [].
+      // Both keys therefore always evaluated to [] — removing the two queries
+      // drops 2 of the 5 boot round-trips with no observable behaviour change.
+      // The keys are still emitted below (see the return) so every downstream
+      // consumer — PosSyncProvider.applyRecipes, useMenuStore.setMenuData — is
+      // untouched, and the RPC fallback stays wired so that if
+      // `get_pos_full_sync` ever starts returning recipes they flow straight
+      // through without another client change.
+      const [syncResult, taxRatesResult, snoozesResult] =
         await withDeadline(
           (signal) =>
             Promise.all([
               supabase
                 .rpc("get_pos_full_sync", { p_location_id: locationId })
-                .abortSignal(signal),
-              supabase
-                .from("menu_item_recipes")
-                .select("id, menu_item_id, inventory_item_id, quantity_used")
-                .abortSignal(signal),
-              supabase
-                .from("modifier_group_item_recipes")
-                .select("id, modifier_group_item_id, inventory_item_id, quantity_used")
                 .abortSignal(signal),
               supabase
                 .from("tax_rates")
@@ -88,20 +77,6 @@ export const usePosSync = (locationId: string | null) => {
       }
 
       const data = syncResult.data as unknown as PosSyncData;
-
-      if (menuItemIngredientsResult.error) {
-        console.warn(
-          "menu_item_ingredients fetch warning:",
-          menuItemIngredientsResult.error,
-        );
-      }
-
-      if (modifierIngredientsResult.error) {
-        console.warn(
-          "modifier_group_item_ingredients fetch warning:",
-          modifierIngredientsResult.error,
-        );
-      }
 
       if (taxRatesResult.error) {
         console.warn("tax_rates fetch warning:", taxRatesResult.error);
@@ -148,36 +123,16 @@ export const usePosSync = (locationId: string | null) => {
 
       console.log("DEBUG: Synced Menu Data:", data.menus?.[0]);
 
-      // Keep recipe data returned by the RPC as the source of truth.
-      // Only fall back to direct table queries when they actually return rows.
+      // Recipe data returned by the RPC is the only source of truth. The keys
+      // are always present (never undefined) so downstream consumers keep the
+      // exact same contract they had when the direct table reads existed.
       return {
         ...data,
         snoozes,
         modifierSnoozes,
-        menu_item_ingredients:
-          menuItemIngredientsResult.data &&
-          menuItemIngredientsResult.data.length > 0
-            ? (menuItemIngredientsResult.data as MenuItemRecipeRow[])
-                .filter((row) => !!row.inventory_item_id)
-                .map((row) => ({
-                  id: row.id,
-                  menu_item_id: row.menu_item_id,
-                  inventory_item_id: row.inventory_item_id as string,
-                  quantity: row.quantity_used ?? 0,
-                }))
-            : data.menu_item_ingredients || [],
+        menu_item_ingredients: data.menu_item_ingredients || [],
         modifier_group_item_ingredients:
-          modifierIngredientsResult.data &&
-          modifierIngredientsResult.data.length > 0
-            ? (
-                modifierIngredientsResult.data as ModifierGroupItemRecipeRow[]
-              ).map((row) => ({
-                id: row.id,
-                modifier_group_item_id: row.modifier_group_item_id,
-                inventory_item_id: row.inventory_item_id,
-                quantity: row.quantity_used ?? 0,
-              }))
-            : data.modifier_group_item_ingredients || [],
+          data.modifier_group_item_ingredients || [],
       };
     },
 

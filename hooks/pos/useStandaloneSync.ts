@@ -4,20 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import { MenuItemIngredientSync, ModifierIngredientSync } from "@/types/menu";
 
-interface MenuItemRecipeRow {
-  id: string;
-  menu_item_id: string;
-  inventory_item_id: string | null;
-  quantity_used: number | null;
-}
-
-interface ModifierGroupItemRecipeRow {
-  id: string;
-  modifier_group_item_id: string;
-  inventory_item_id: string;
-  quantity_used: number;
-}
-
 /**
  * Types for standalone data (not part of menu hierarchy)
  */
@@ -156,14 +142,19 @@ export const useStandaloneSync = (
       }
       console.log("merchantId", merchantId);
       console.log("locationId", locationId);
-      // Fetch all 4 in parallel
+      // Fetch all 4 in parallel.
+      //
+      // PERF (db-perf-waves, 2026-08): queries 5 and 6 — merchant-filtered reads
+      // of `menu_item_recipes` and `modifier_group_item_recipes` — were removed.
+      // Both tables hold 0 rows on prod, so `menu_item_ingredients` and
+      // `modifier_group_item_ingredients` always mapped to []. The keys are
+      // still returned as [] below so `StandaloneSyncData` and every consumer
+      // (PosSyncProvider.applyRecipes, useMenuStore) are unchanged.
       const [
         categoriesResult,
         itemsResult,
         modifiersResult,
         menusResult,
-        menuItemIngredientsResult,
-        modifierIngredientsResult,
       ] = await Promise.all([
         // 1. Categories via RPC
         supabase.rpc("get_categories_for_location", {
@@ -214,36 +205,12 @@ export const useStandaloneSync = (
           .or(`location_id.is.null,location_id.eq.${locationId}`)
           .order("display_order", { ascending: true, nullsFirst: false })
           .order("created_at", { ascending: false }),
-
-        // 5. Menu Item Recipes
-        supabase
-          .from("menu_item_recipes")
-          .select("id, menu_item_id, inventory_item_id, quantity_used")
-          .eq("merchant_id", merchantId),
-
-        // 6. Modifier Group Item Recipes
-        supabase
-          .from("modifier_group_item_recipes")
-          .select("id, modifier_group_item_id, inventory_item_id, quantity_used")
-          .eq("merchant_id", merchantId),
       ]);
       // Log errors but don't fail completely
       if (categoriesResult.error) {
         console.error(
           "Categories standalone fetch error:",
           categoriesResult.error
-        );
-      }
-      if (menuItemIngredientsResult.error) {
-        console.error(
-          "Menu Item Ingredients fetch error:",
-          menuItemIngredientsResult.error
-        );
-      }
-      if (modifierIngredientsResult.error) {
-        console.error(
-          "Modifier Ingredients fetch error:",
-          modifierIngredientsResult.error
         );
       }
       if (itemsResult.error) {
@@ -259,10 +226,8 @@ export const useStandaloneSync = (
         console.error("Menus standalone fetch error:", menusResult.error);
       }
 
-      // Debug: Log ingredient counts
+      // Debug: Log result counts
       console.log("DEBUG: useStandaloneSync raw results:", {
-        menuItemIngredients: menuItemIngredientsResult.data?.length,
-        modifierIngredients: modifierIngredientsResult.data?.length,
         items: itemsResult.data?.length,
       });
 
@@ -304,26 +269,10 @@ export const useStandaloneSync = (
         modifierGroups:
           (modifiersResult.data as unknown as StandaloneModifierGroup[]) || [],
         menus: (menusResult.data || []) as StandaloneMenu[],
-        menu_item_ingredients: (
-          (menuItemIngredientsResult.data as MenuItemRecipeRow[] | null) || []
-        )
-          .filter((row) => !!row.inventory_item_id)
-          .map((row) => ({
-            id: row.id,
-            menu_item_id: row.menu_item_id,
-            inventory_item_id: row.inventory_item_id as string,
-            quantity: row.quantity_used ?? 0,
-          })),
-        modifier_group_item_ingredients: (
-          (modifierIngredientsResult.data as
-            | ModifierGroupItemRecipeRow[]
-            | null) || []
-        ).map((row) => ({
-          id: row.id,
-          modifier_group_item_id: row.modifier_group_item_id,
-          inventory_item_id: row.inventory_item_id,
-          quantity: row.quantity_used ?? 0,
-        })),
+        // Kept on the contract (see PERF note above) — always empty because the
+        // recipe tables they were sourced from are empty.
+        menu_item_ingredients: [],
+        modifier_group_item_ingredients: [],
       };
     },
 
