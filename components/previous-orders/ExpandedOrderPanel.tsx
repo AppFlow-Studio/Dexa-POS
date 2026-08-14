@@ -140,6 +140,12 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
       }
     }
 
+    // Cash tender / change back — surfaced in the quick view so staff don't have
+    // to open the full detail sheet to see what change was owed.
+    const cashPayment = activePayments.find((p) => p.method === "Cash");
+    const amountTendered = cashPayment?.amountTendered;
+    const changeGiven = cashPayment?.changeGiven;
+
     return {
       subtotal,
       tax,
@@ -154,6 +160,8 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
       isCashPayment,
       isInKindPayment,
       isCashPricing,
+      amountTendered,
+      changeGiven,
     };
   }, [order]);
 
@@ -442,6 +450,24 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
               >
                 {paymentSummary.paymentMethodLabel}
               </Text>
+            </View>
+          ) : null}
+          {/* Cash tender & change back (quick view) */}
+          {paymentSummary.isCashPayment &&
+          paymentSummary.amountTendered != null ? (
+            <View style={{ marginTop: s(4) }}>
+              <PaymentLine
+                label="Cash Tendered"
+                amount={paymentSummary.amountTendered}
+              />
+              {paymentSummary.changeGiven != null &&
+              paymentSummary.changeGiven > 0 ? (
+                <PaymentLine
+                  label="Change Given"
+                  amount={paymentSummary.changeGiven}
+                  colorValue={colors.teal}
+                />
+              ) : null}
             </View>
           ) : null}
         </View>
