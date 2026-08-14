@@ -95,6 +95,24 @@ export interface BatchSummary {
     interchange_fees: number | null;
     assessment_fees: number | null;
   };
+  /**
+   * Batch-report-only: all-tender totals for the batch's business day.
+   * Cash never carries a settlement_batch_id (cash_drawer rows are skipped by
+   * _lazy_settlement_batch_link), so a per-batch query can't see it — this
+   * block is the only place cash surfaces on a batch summary. Deliberately
+   * kept OUT of `sales`/`net` above, which stay true card-settlement figures.
+   * Absent on closing reports, whose `sales` section already spans the whole
+   * day; the renderer gates the section on this field's presence.
+   */
+  business_day?: {
+    business_date?: string | null;
+    cash_total: number;
+    cash_count?: number;
+    card_total: number;
+    gift_total?: number;
+    house_total?: number;
+    gross: number;
+  };
   // Closing-report-only — always present on day summaries, optional on
   // settled-batch reports.
   unsettled?: { count: number; amount: number };
@@ -340,7 +358,13 @@ function pushBody(nodes: PrintNode[], s: BatchSummary): void {
   // 2. SALES
   pushSection(nodes, "SALES");
   pushAmountRow(nodes, "Credit/Debit", s.sales.credit_total);
-  pushAmountRow(nodes, "Cash", s.sales.cash_total);
+  // Cash never belongs to a card settlement batch, so on a batch report this
+  // figure is always $0.00 and is redundant with the BUSINESS DAY section
+  // below (which carries the real day cash). Omit it there. Closing reports
+  // have no `business_day` block and keep Cash here — it's a real day total.
+  if (!s.business_day) {
+    pushAmountRow(nodes, "Cash", s.sales.cash_total);
+  }
   pushAmountRow(nodes, "Gift Card", s.sales.gift_total);
   if ((s.sales.house_total ?? 0) > 0) {
     pushAmountRow(nodes, "House Account", s.sales.house_total ?? 0);
@@ -351,6 +375,26 @@ function pushBody(nodes: PrintNode[], s: BatchSummary): void {
     pushAmountRow(nodes, `${INKIND_LABEL} (no payment)`, s.sales.inkind_total ?? 0);
   }
   pushAmountRow(nodes, "Gross Sales", s.sales.gross, BOLD);
+
+  // 2b. BUSINESS DAY (all tenders) — batch report only. Cash has no
+  // settlement batch, so this whole-day figure is the only place it appears.
+  // It is intentionally separate from the card batch Gross/Net above, which
+  // remain true acquirer-deposit figures. Closing reports omit `business_day`
+  // (their SALES section already spans the whole day), so this section never
+  // double-renders there.
+  if (s.business_day) {
+    const bd = s.business_day;
+    pushSection(nodes, "BUSINESS DAY (ALL TENDERS)");
+    pushAmountRow(nodes, "Cash", bd.cash_total);
+    pushAmountRow(nodes, "Credit/Debit", bd.card_total);
+    if ((bd.gift_total ?? 0) > 0) {
+      pushAmountRow(nodes, "Gift Card", bd.gift_total ?? 0);
+    }
+    if ((bd.house_total ?? 0) > 0) {
+      pushAmountRow(nodes, "House Account", bd.house_total ?? 0);
+    }
+    pushAmountRow(nodes, "Day Gross", bd.gross, BOLD);
+  }
 
   // 3. REFUNDS
   pushSection(nodes, "REFUNDS / RETURNS");

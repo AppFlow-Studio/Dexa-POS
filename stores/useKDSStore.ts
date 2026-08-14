@@ -13,6 +13,8 @@ import {
 } from "@/lib/network/idempotencyKey";
 import { isRecallExpired } from "@/lib/kdsAutomation";
 import { DEADLINES } from "@/lib/network/deadlines";
+import type { RpcResult } from "@/lib/network/rpcVersionFallback";
+import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { normalizePlatform } from "@/lib/platformAliases";
 import { createLazyPersistStorage, getJSON, setJSON } from "@/lib/storage";
@@ -1598,10 +1600,32 @@ export const useKDSStore = create<KDSState>()(
             "get_kds_tickets",
             DEADLINES.read,
             async (signal) => {
-              const res = await client
-                .rpc("get_kds_tickets_v2", params)
-                .abortSignal(signal);
-              return { data: res.data as KDSTicket[] | null, error: res.error };
+              // v3 scopes to the location BEFORE aggregating order_items; v2
+              // aggregates platform-wide and discards the surplus (556k calls /
+              // 21,706s of DB time). Output is byte-identical -- verified across
+              // all 5 locations x 5 KDS displays on staging.
+              // v3 may not be deployed in every environment yet, hence the
+              // fallback; the helper memoises its absence so a v2-only
+              // environment does not pay a failed probe on every poll.
+              const res = await rpcWithVersionFallback<KDSTicket[]>(
+                "get_kds_tickets_v3",
+                () =>
+                  client
+                    .rpc("get_kds_tickets_v3", params)
+                    .abortSignal(signal) as unknown as Promise<
+                    RpcResult<KDSTicket[]>
+                  >,
+                () =>
+                  client
+                    .rpc("get_kds_tickets_v2", params)
+                    .abortSignal(signal) as unknown as Promise<
+                    RpcResult<KDSTicket[]>
+                  >,
+              );
+              return {
+                data: res.data as KDSTicket[] | null,
+                error: res.error as any,
+              };
             },
           );
 
@@ -1762,10 +1786,26 @@ export const useKDSStore = create<KDSState>()(
             "get_kds_tickets",
             DEADLINES.read,
             async (signal) => {
-              const res = await client
-                .rpc("get_kds_tickets_v2", params)
-                .abortSignal(signal);
-              return { data: res.data as KDSTicket[] | null, error: res.error };
+              // Same v3-preferred / v2-fallback path as fetchTickets above.
+              const res = await rpcWithVersionFallback<KDSTicket[]>(
+                "get_kds_tickets_v3",
+                () =>
+                  client
+                    .rpc("get_kds_tickets_v3", params)
+                    .abortSignal(signal) as unknown as Promise<
+                    RpcResult<KDSTicket[]>
+                  >,
+                () =>
+                  client
+                    .rpc("get_kds_tickets_v2", params)
+                    .abortSignal(signal) as unknown as Promise<
+                    RpcResult<KDSTicket[]>
+                  >,
+              );
+              return {
+                data: res.data as KDSTicket[] | null,
+                error: res.error as any,
+              };
             },
           );
 

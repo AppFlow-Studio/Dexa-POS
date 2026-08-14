@@ -10,6 +10,10 @@ import { images } from "@/lib/image";
 import { terminalTypeLabel } from "@/lib/processorLabels";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { toastService } from "@/lib/toastService";
+import {
+    normalizeSerial,
+    reconcileTerminalSerial,
+} from "@/services/terminals/terminalIdentity";
 import { clearStationData } from "@/services/cacheService";
 import {
     useKioskDeviceSettingsStore,
@@ -571,7 +575,7 @@ export function KioskDiagnosticsScreen({
                 "Could not connect to the Valor terminal. Check the IP, port, and that Valor Connect is enabled on the terminal, then try again.",
             );
           }
-          discoveredSN = preTest.serialNumber;
+          discoveredSN = normalizeSerial(preTest.serialNumber) || undefined;
         } else if (registerForm.connectionType === "usb") {
           // USB: no TCP pre-test. Serial backfills from the first sale.
         } else {
@@ -665,12 +669,12 @@ export function KioskDiagnosticsScreen({
             ipAddress: registerForm.ipAddress,
             port: localPort ?? 8080,
           });
-          discoveredSN = preTest.serialNumber;
+          discoveredSN = normalizeSerial(preTest.serialNumber) || undefined;
         } else if (
           registerForm.connectionType === "usb" &&
           registerForm.serialNumber
         ) {
-          discoveredSN = registerForm.serialNumber;
+          discoveredSN = normalizeSerial(registerForm.serialNumber) || undefined;
         }
 
         let existingId: string | null = null;
@@ -873,8 +877,9 @@ export function KioskDiagnosticsScreen({
           editForm.connectionType === "local_socket"
             ? parseInt(editForm.port, 10) || 8080
             : null;
-        if (testResult.serialNumber)
-          updatePayload.serial_number = testResult.serialNumber;
+        // serial_number is NOT written here — it is the physical-device
+        // identity and is reconciled below so a swapped device can never
+        // silently overwrite the registered serial.
       } else if (currentTerminal.terminal_type === "valor") {
         updatePayload.connection_type =
           editForm.connectionType === "usb" ? "usb" : "local";
@@ -893,8 +898,7 @@ export function KioskDiagnosticsScreen({
         updatePayload.valor_cancel_port =
           parseInt(editForm.cancelPort, 10) || 5001;
         updatePayload.valor_epi = editForm.epi.trim() || null;
-        if (testResult.serialNumber)
-          updatePayload.serial_number = testResult.serialNumber;
+        // serial_number reconciled below (see Castles branch note).
       } else {
         updatePayload.tpn = editForm.tpn.trim();
         updatePayload.register_id = editForm.tpn.trim();
@@ -907,6 +911,24 @@ export function KioskDiagnosticsScreen({
         .update(updatePayload)
         .eq("id", currentTerminal.id);
       if (dbErr) throw dbErr;
+
+      // Reconcile the discovered serial as identity: fill if unset, no-op if
+      // unchanged, BLOCK (never overwrite) if a different device answered.
+      if (testResult.serialNumber) {
+        const r = await reconcileTerminalSerial({
+          supabase,
+          terminalId: currentTerminal.id,
+          discoveredSerial: testResult.serialNumber,
+        });
+        if (r.kind === "mismatch") {
+          toastService.show({
+            title: "Different device detected",
+            message: `This terminal is registered to S/N ${r.storedSerial} but the device at this address reports ${r.discoveredSerial}. Settings were saved, but the serial was NOT changed. If you swapped hardware, add it as a new terminal.`,
+            type: "error",
+            duration: 9000,
+          });
+        }
+      }
 
       setSelectedStation({
         ...selectedStation,

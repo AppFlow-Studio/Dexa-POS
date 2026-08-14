@@ -10,6 +10,10 @@ import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { toastService } from '@/lib/toastService'
 import {
+  normalizeSerial,
+  reconcileTerminalSerial,
+} from '@/services/terminals/terminalIdentity'
+import {
   checkForNativeUpdate,
   type VersionManifest
 } from '@/services/appUpdater'
@@ -829,7 +833,9 @@ const DevicesConnectionsScreen = ({
                 'Could not connect to the Valor terminal. Check the IP, port, and that Valor Connect is enabled on the terminal, then try again.'
             )
           }
-          discoveredSN = preTest.serialNumber
+          // Normalize (trim+upper) so the stored form matches every other
+          // serial write path; keep undefined (not '') when none was found.
+          discoveredSN = normalizeSerial(preTest.serialNumber) || undefined
         } else if (registerForm.connectionType === 'usb') {
           // USB: no TCP pre-test. The terminal enumerates as a Qualcomm CDC
           // device (VID 0x1E0E) and connects via the USB auto-connect
@@ -934,12 +940,12 @@ const DevicesConnectionsScreen = ({
             ipAddress: registerForm.ipAddress,
             port: localPort ?? 8080
           })
-          discoveredSN = preTest.serialNumber
+          discoveredSN = normalizeSerial(preTest.serialNumber) || undefined
         } else if (
           registerForm.connectionType === 'usb' &&
           registerForm.serialNumber
         ) {
-          discoveredSN = registerForm.serialNumber
+          discoveredSN = normalizeSerial(registerForm.serialNumber) || undefined
         }
 
         // If we have a serial number, check if this physical device is already registered.
@@ -1149,8 +1155,9 @@ const DevicesConnectionsScreen = ({
           editForm.connectionType === 'local_socket'
             ? parseInt(editForm.port, 10) || 8080
             : null
-        if (testResult.serialNumber)
-          updatePayload.serial_number = testResult.serialNumber
+        // serial_number is NOT written here — it is the physical-device
+        // identity and is reconciled below via reconcileTerminalSerial so a
+        // swapped device can never silently overwrite the registered serial.
       } else if (currentTerminal.terminal_type === 'valor') {
         updatePayload.connection_type =
           editForm.connectionType === 'usb' ? 'usb' : 'local'
@@ -1168,8 +1175,7 @@ const DevicesConnectionsScreen = ({
         updatePayload.valor_port = port ?? 5000
         updatePayload.valor_cancel_port = parseInt(editForm.cancelPort, 10) || 5001
         updatePayload.valor_epi = editForm.epi.trim() || null
-        if (testResult.serialNumber)
-          updatePayload.serial_number = testResult.serialNumber
+        // serial_number reconciled below (see Castles branch note).
       } else {
         updatePayload.tpn = editForm.tpn.trim()
         updatePayload.register_id = editForm.tpn.trim()
@@ -1182,6 +1188,24 @@ const DevicesConnectionsScreen = ({
         .update(updatePayload)
         .eq('id', currentTerminal.id)
       if (dbErr) throw dbErr
+
+      // Reconcile the discovered serial as identity: fill if unset, no-op if
+      // unchanged, BLOCK (never overwrite) if a different device answered.
+      if (testResult.serialNumber) {
+        const r = await reconcileTerminalSerial({
+          supabase,
+          terminalId: currentTerminal.id,
+          discoveredSerial: testResult.serialNumber,
+        })
+        if (r.kind === 'mismatch') {
+          toastService.show({
+            title: 'Different device detected',
+            message: `This terminal is registered to S/N ${r.storedSerial} but the device at this address reports ${r.discoveredSerial}. Settings were saved, but the serial was NOT changed. If you swapped hardware, add it as a new terminal.`,
+            type: 'error',
+            duration: 9000,
+          })
+        }
+      }
 
       setSelectedStation({
         ...selectedStation,
@@ -3903,6 +3927,54 @@ const DevicesConnectionsScreen = ({
                                     '— not yet discovered —'}
                                 </Text>
                               </View>
+                              {currentTerminal.last_connection_status ===
+                                'IdentityMismatch' && (
+                                <View
+                                  style={{
+                                    marginTop: s(6),
+                                    padding: s(8),
+                                    borderRadius: s(6),
+                                    backgroundColor: '#FEF2F2',
+                                    borderWidth: 1,
+                                    borderColor: '#FCA5A5',
+                                    gap: s(4)
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: '#B91C1C',
+                                      fontSize: s(9),
+                                      fontWeight: '700'
+                                    }}
+                                  >
+                                    ⚠ Identity mismatch — different device
+                                  </Text>
+                                  <Text
+                                    style={{ color: '#B91C1C', fontSize: s(9) }}
+                                  >
+                                    The device answering at this address reports a
+                                    different serial than the one registered. The
+                                    serial was NOT changed. If you swapped
+                                    hardware, register the replacement as a new
+                                    terminal.
+                                  </Text>
+                                  <TouchableOpacity
+                                    onPress={() => setShowRegisterForm(true)}
+                                    style={{ alignSelf: 'flex-start' }}
+                                  >
+                                    <Text
+                                      style={{
+                                        color: '#B91C1C',
+                                        fontSize: s(9),
+                                        fontWeight: '700',
+                                        textDecorationLine: 'underline'
+                                      }}
+                                    >
+                                      Register replacement →
+                                    </Text>
+                                  </TouchableOpacity>
+                                </View>
+                              )}
                               {currentTerminal.terminal_model && (
                                 <View
                                   style={{

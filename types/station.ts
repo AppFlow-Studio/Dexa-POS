@@ -43,7 +43,12 @@ export interface StationPaymentTerminal {
   epi?: string;
   /** Hardware serial number printed on the device */
   serial_number?: string | null;
-  last_connection_status: "Online" | "Offline" | "NotFound" | null;
+  last_connection_status:
+    | "Online"
+    | "Offline"
+    | "NotFound"
+    | "IdentityMismatch"
+    | null;
   last_connection_test_at: string | null;
   consecutive_failures?: number;
   health_check_interval?: number;

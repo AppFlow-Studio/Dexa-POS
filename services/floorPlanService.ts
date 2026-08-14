@@ -1,4 +1,6 @@
 import { DEADLINES } from "@/lib/network/deadlines";
+import type { RpcResult } from "@/lib/network/rpcVersionFallback";
+import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { rpcWithIdempotency } from "@/lib/network/idempotencyKey";
 import {
@@ -37,6 +39,84 @@ export class FloorPlanService {
     });
     // console.log("[FloorPlanService] getLocationFloorPlans", data, error);
     return { data, error };
+  }
+
+  /**
+   * Versioned floor snapshot — geometry + volatile status in ONE round trip.
+   *
+   * Replaces `get_location_floor_plans` + one `get_floor_plan_status` per plan.
+   * Measured on staging (4 plans): 188,486 B across 5 calls -> 147,820 B in 1
+   * cold, and 39,596 B in 1 once the caller holds a matching version token
+   * (-79%). Geometry is omitted entirely when `knownVersion` still matches, so
+   * a floor that hasn't been edited costs only its live table status.
+   *
+   * The geometry rows are a strict SUPERSET of get_location_floor_plans' shape
+   * (they add canvas_width/canvas_height/grid_size/background_color), which
+   * also removes the separate floor_plans patch query in
+   * useFloorPlanStore.loadFloorPlans.
+   *
+   * Falls back to the legacy RPC where get_floor_snapshot_v1 isn't deployed;
+   * the fallback returns a null version and null status so callers transparently
+   * keep their existing status path.
+   */
+  static async getFloorSnapshot(
+    client: SupabaseClient,
+    locationId: string,
+    opts?: { floorPlanId?: string | null; knownVersion?: string | null },
+  ): Promise<{
+    data: {
+      geometry_version: string | null;
+      geometry: FloorPlan[] | null;
+      status: any[] | null;
+      sections: any[] | null;
+    } | null;
+    error: any;
+    usedFallback: boolean;
+  }> {
+    const res = await rpcWithVersionFallback<any>(
+      "get_floor_snapshot_v1",
+      () =>
+        client.rpc("get_floor_snapshot_v1", {
+          p_location_id: locationId,
+          p_floor_plan_id: opts?.floorPlanId ?? null,
+          p_geometry_version: opts?.knownVersion ?? null,
+        }) as unknown as Promise<RpcResult<any>>,
+      () =>
+        client.rpc("get_location_floor_plans", {
+          p_location_id: locationId,
+        }) as unknown as Promise<RpcResult<any>>,
+    );
+
+    if (res.error) {
+      return { data: null, error: res.error, usedFallback: res.usedFallback };
+    }
+
+    if (res.usedFallback) {
+      // Legacy shape is a bare FloorPlan[]; wrap it so callers see one contract.
+      return {
+        data: {
+          geometry_version: null,
+          geometry: (res.data ?? []) as FloorPlan[],
+          status: null,
+          sections: null,
+        },
+        error: null,
+        usedFallback: true,
+      };
+    }
+
+    const env = (res.data ?? {}) as Record<string, any>;
+    return {
+      data: {
+        geometry_version: env.geometry_version ?? null,
+        // Absent (not empty) means "your version still matches, reuse cache".
+        geometry: env.geometry ? (env.geometry as FloorPlan[]) : null,
+        status: env.status ?? null,
+        sections: env.sections ?? null,
+      },
+      error: null,
+      usedFallback: false,
+    };
   }
 
   static async createFloorPlan(

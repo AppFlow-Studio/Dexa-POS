@@ -1,6 +1,7 @@
 "use no memo";
 
 import { runAfterPaint } from "@/lib/afterPaint";
+import { computeChangeBreakdown } from "@/lib/cashChange";
 import { hasOrderBalanceDue } from "@/lib/orderBalance";
 import { startInteraction } from "@/lib/perf";
 import { useUiScale } from "@/lib/uiScale";
@@ -489,6 +490,56 @@ const PaymentSuccessView = () => {
               </>
             );
           })()}
+
+          {/* Cash change due — kept visible on this screen (which stays up until
+              Done/Finalize) so staff can count out change while the drawer is
+              open, instead of losing the figure when the entry screen closed. */}
+          {completedPaymentInfo?.paymentMethod === "Cash" &&
+            (completedPaymentInfo?.changeGiven ?? 0) > 0 && (
+              <View
+                style={{
+                  width: "100%",
+                  backgroundColor: colors.teal + "12",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "40",
+                  borderRadius: s(12),
+                  padding: s(16),
+                  marginBottom: s(18),
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: colors.teal, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
+                  Change Due
+                </Text>
+                <Text style={{ fontSize: s(34), fontWeight: "800", color: colors.teal, marginBottom: completedPaymentInfo?.amountTendered != null ? s(2) : s(8) }}>
+                  ${(completedPaymentInfo?.changeGiven ?? 0).toFixed(2)}
+                </Text>
+                {completedPaymentInfo?.amountTendered != null && (
+                  <Text style={{ color: colors.muted, fontSize: s(12), marginBottom: s(10) }}>
+                    Tendered ${completedPaymentInfo.amountTendered.toFixed(2)}
+                  </Text>
+                )}
+                {(() => {
+                  const breakdown = computeChangeBreakdown(
+                    completedPaymentInfo?.changeGiven ?? 0,
+                  );
+                  if (breakdown.length === 0) return null;
+                  return (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: s(6) }}>
+                      {breakdown.map(({ label, count }) => (
+                        <View
+                          key={label}
+                          style={{ flexDirection: "row", alignItems: "center", gap: s(3), backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.teal + "30", borderRadius: s(6), paddingHorizontal: s(10), paddingVertical: s(4) }}
+                        >
+                          <Text style={{ color: colors.teal, fontWeight: "700", fontSize: s(12) }}>{count}×</Text>
+                          <Text style={{ color: colors.teal, fontWeight: "600", fontSize: s(12) }}>{label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })()}
+              </View>
+            )}
 
           <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: s(18) }} />
 

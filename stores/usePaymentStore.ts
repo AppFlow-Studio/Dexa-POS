@@ -88,6 +88,8 @@ export interface CompletedPaymentInfo {
   totalTips: number; // Total tips (sum of all tips on order)
   paymentMethod: string; // "Card" or "Cash"
   transactionId: string; // Order ID (last 6 chars used for display)
+  amountTendered?: number; // Cash: amount the customer handed over
+  changeGiven?: number; // Cash: change due back to the customer
   // NOTE: deliberately carries no outstanding-balance figure. At the moment
   // this snapshot is taken the outstanding fields have not yet been decremented
   // by the payment that just completed, so any balance captured here is the
@@ -1266,7 +1268,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             {
               amount_charged: paymentAmount,
               payment_id: "",
-              change_given: 0,
+              change_given: transactionDetails?.changeGiven ?? 0,
             } as any,
             dbOrderId,
             staffProfileId,
@@ -1380,6 +1382,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             totalTips: tipAmount || 0,
             paymentMethod: method,
             transactionId: activeOrderId,
+            amountTendered: transactionDetails?.amountTendered,
+            changeGiven: transactionDetails?.changeGiven,
           },
           view: "success",
           activeSplitId: null,
@@ -1472,7 +1476,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             {
               amount_charged: paymentAmount,
               payment_id: "",
-              change_given: 0,
+              change_given: transactionDetails?.changeGiven ?? 0,
             } as any,
             dbOrderId,
             staffProfileId,
@@ -1565,6 +1569,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           totalTips: tipAmount || 0, // exactly this payment's tip
           paymentMethod: method,
           transactionId: activeOrderId,
+          amountTendered: transactionDetails?.amountTendered,
+          changeGiven: transactionDetails?.changeGiven,
         },
         view: "success",
       });

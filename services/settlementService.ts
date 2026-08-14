@@ -7,6 +7,7 @@ import { captureRpcError } from "@/lib/supabase";
 import { addPendingFinalize } from "@/services/pendingFinalize";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getSharedValorService } from "@/services/terminals/valor-service";
+import { reconcileTerminalSerial } from "@/services/terminals/terminalIdentity";
 import { VALOR_DEFAULT_PORT, VALOR_SETTLEMENT_TIMEOUT_MS } from "@/types/valor";
 import type {
     CastlesSettlementHostResult,
@@ -118,88 +119,50 @@ async function verifyOrProvisionTerminal(params: {
     );
   }
 
-  const storedSerial: string | null = terminalRow?.serial_number ?? null;
+  // Reconcile the connected device's serial against the stored identity.
+  // NULL → fill; equal → no-op; a DIFFERENT physical device → hard block
+  // (settlement must never run against a terminal whose batches belong to a
+  // different device). The helper never clears or moves another row's serial —
+  // the moved/replaced-device case is handled by registering a new terminal.
+  const reconciled = await reconcileTerminalSerial({
+    supabase,
+    terminalId,
+    discoveredSerial: infSN,
+    stampStatusOnMismatch: true,
+  });
 
-  if (!storedSerial) {
-    // Check if this physical device is already registered to a different terminal record
-    // (e.g., the same unit was moved from back counter to front counter)
-    const { data: prevOwner } = await supabase
-      .from("payment_terminals")
-      .select("id, terminal_name")
-      .eq("serial_number", infSN)
-      .neq("id", terminalId)
-      .maybeSingle();
+  if (reconciled.kind === "mismatch") {
+    throw new Error(
+      `Security: terminal identity mismatch. ` +
+        `Connected device serial "${reconciled.discoveredSerial}" does not match ` +
+        `the registered serial "${reconciled.storedSerial}". This terminal's batches ` +
+        `belong to the original device. If you replaced the hardware, register the ` +
+        `new device as a NEW terminal in Settings → Devices; do not edit this one.`,
+    );
+  }
 
-    const now = new Date().toISOString();
-
-    if (prevOwner) {
-      // Clear the old registration so the prior station record doesn't get a mismatch error
-      onStatus?.(`Transferring device from "${prevOwner.terminal_name}"...`);
-      const { error: clearError } = await supabase
-        .from("payment_terminals")
-        .update({ serial_number: null, updated_at: now })
-        .eq("id", prevOwner.id);
-
-      if (clearError) {
-        console.warn(
-          `[SettlementService] Could not clear serial from "${prevOwner.terminal_name}":`,
-          clearError.message,
-        );
-      } else {
-        console.log(
-          `[SettlementService] Device ${infSN} transferred from "${prevOwner.terminal_name}"`,
-        );
-      }
-    }
-
+  if (reconciled.kind === "filled") {
     onStatus?.(`Provisioning terminal (serial: ${infSN})...`);
-    const { error: updateError } = await supabase
+  }
+
+  // Keep firmware_version current for diagnostics (fire-and-forget). Firmware
+  // is not an identity signal, so it is synced independently of the serial.
+  const androidVersion = getDataResult.data.infAndroidVersion;
+  if (androidVersion && androidVersion !== terminalRow?.firmware_version) {
+    supabase
       .from("payment_terminals")
       .update({
-        serial_number: infSN,
-        firmware_version:
-          getDataResult.data.infAndroidVersion ?? terminalRow?.firmware_version,
-        updated_at: now,
+        firmware_version: androidVersion,
+        updated_at: new Date().toISOString(),
       })
-      .eq("id", terminalId);
-
-    if (updateError) {
-      // Non-fatal: don't block the first settlement
-      console.warn(
-        "[SettlementService] Could not store serial number:",
-        updateError.message,
-      );
-    }
-  } else {
-    if (infSN !== storedSerial) {
-      throw new Error(
-        `Security: terminal identity mismatch. ` +
-          `Connected device serial: "${infSN}", registered serial: "${storedSerial}". ` +
-          `Aborting settlement. If this terminal was physically replaced, ` +
-          `clear the registered serial number in admin settings.`,
-      );
-    }
-
-    // Keep firmware_version current for diagnostics (fire-and-forget)
-    if (
-      getDataResult.data.infAndroidVersion &&
-      getDataResult.data.infAndroidVersion !== terminalRow?.firmware_version
-    ) {
-      supabase
-        .from("payment_terminals")
-        .update({
-          firmware_version: getDataResult.data.infAndroidVersion,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", terminalId)
-        .then(({ error }) => {
-          if (error)
-            console.warn(
-              "[SettlementService] Firmware version sync failed:",
-              error.message,
-            );
-        });
-    }
+      .eq("id", terminalId)
+      .then(({ error }) => {
+        if (error)
+          console.warn(
+            "[SettlementService] Firmware version sync failed:",
+            error.message,
+          );
+      });
   }
 }
 
