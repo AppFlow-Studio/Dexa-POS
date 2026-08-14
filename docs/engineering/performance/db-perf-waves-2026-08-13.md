@@ -251,6 +251,48 @@ Consequence: **Wave 3 is safe to build from prod introspection** (both menu func
 byte-identical). Wave 2 was not — hence the #S1-0013 near-miss above. Always run this md5
 comparison before trusting a prod-derived definition.
 
+## FINAL MEASURED RESULTS (staging, re-measured 2026-08-13 after everything applied)
+
+Warm runs, repeated 2–3× for stability. First runs were discarded — a cold-cache read made
+KDS v3 look 2.5× faster than it is.
+
+| Workload | Before | After | Delta |
+|---|---|---|---|
+| RLS predicate, isolated (prod, 3,595 rows) | 255.718 ms | 0.173 ms | **1,478×** |
+| RLS predicate, isolated (staging, 6,652 rows) | 1,194.794 ms | 4.497 ms | **266×** |
+| KDS board, busiest location | ~144 ms | ~105 ms | −27% |
+| KDS board, small/empty location | ~29.0 ms | ~29.5 ms | **no change** |
+| POS menu bootstrap | 92.9 ms / 8,893 buf | 82.5 ms / 6,585 buf | −11% time, −26% buffers |
+| POS boot round-trips (`usePosSync`) | 5 | **1** | −80% |
+| Floor load | 188,486 B / 5 calls | 39,596 B / 1 call (warm) | **−79% bytes, −80% calls** |
+| `order_items` index trees | 18 | 14 | −22% write amplification |
+
+### ⚠️ Correction: the KDS win is real but smaller than the ticket predicted
+
+AUD-8 says `get_kds_tickets_v2` "aggregates order items before applying the narrowest
+location/order scope", and I earlier reported that as eliminating **94–99%** of the work. That
+figure was a *logical* row-count analysis of the CTE shapes (5,056 groups built vs 4,434 kept),
+**not measured execution**.
+
+Measured, v2's cost scales with the *location's* data, not the platform's:
+
+| location | v2 buffers | v2 time |
+|---|---|---|
+| busiest | 25,241 | ~144 ms |
+| empty | 2,934 | ~29 ms |
+
+If v2 truly materialised a platform-wide aggregate, the empty location would cost roughly what
+the busy one does. It doesn't — **Postgres already pushes the location filter down through the
+join.** So the scoping CTE is mostly redundant, and v3's actual −27% comes from the *other*
+half of the rewrite: pre-aggregating modifiers and acknowledgements into grouped CTEs instead
+of running ~5 correlated subqueries per order item.
+
+v3 also reads **more** buffers than v2 on the busy location (31,444 vs 25,241) while being
+faster — it touches more pages but does far less per-row work.
+
+Worth keeping in mind for the prod promotion: the win is real and worth shipping, but it is
+−27% on one location, not the order-of-magnitude the ticket implies.
+
 ## Waves
 
 - [x] **Wave 0** — baseline captured (this document)
