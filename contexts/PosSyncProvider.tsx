@@ -526,6 +526,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Watermark of the menu currently applied to the store, scoped to the
+  // location it came from. Drives the version reconcile below.
+  const appliedMenuVersionRef = useRef<{
+    locationId: string | null;
+    version: string | null;
+  } | null>(null);
+
   const setMenuData = useMenuStore((state) => state.setMenuData);
   const setSyncState = useMenuStore((state) => state.setSyncState);
 
@@ -592,20 +599,63 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
   // --- END INVENTORY SYNC ---
 
-  // Update menu store when sync data changes
+  // Update menu store when sync data changes.
+  //
+  // `get_pos_bootstrap_v1` returns an opaque version watermark covering every
+  // menu entity plus the per-location overrides. When it matches what is
+  // already in the store, nothing changed server-side and the whole rebuild is
+  // skipped — no setMenuData over a 2,600-line store, no snapshot rewrite, no
+  // re-render of order entry. This is what makes a cold boot "paint from cache,
+  // then reconcile only if the version differs" rather than always rebuilding.
   useEffect(() => {
     if (posSyncData) {
+      const locationId = selectedStore?.id ?? null;
+      const incomingVersion = posSyncData.version ?? null;
+      const applied = appliedMenuVersionRef.current;
+
+      // Version is only comparable within a location — never let one location's
+      // watermark suppress a rebuild after switching stores.
+      if (
+        incomingVersion &&
+        applied &&
+        applied.locationId === locationId &&
+        applied.version === incomingVersion
+      ) {
+        console.log("[PosSyncProvider] menu version unchanged — skipping rebuild", {
+          version: incomingVersion,
+        });
+
+        // The rebuild is skipped, but a live sync DID land and confirmed the
+        // menu on screen is current. `setMenuData` is normally what clears the
+        // stale-cache flag, so without this a cache-hydrated boot kept showing
+        // "menu may be out of date" forever — and Sync couldn't clear it,
+        // because every retry matched the same version and skipped again.
+        setSyncState({
+          isFromCache: false,
+          isLoading: false,
+          isError: false,
+          error: null,
+          lastSyncedAt: posSyncData.synced_at,
+        });
+        return;
+      }
+
       setMenuData(posSyncData);
 
       // Snapshot the last good sync so a future boot with no/bad network shows
       // this menu instead of an empty grid. Written after setMenuData so a
       // serialization problem can never block the live path.
-      if (selectedStore?.id) {
-        menuOfflineCache.set(selectedStore.id, posSyncData);
+      if (locationId) {
+        menuOfflineCache.set(locationId, posSyncData);
       }
 
       // Re-apply recipes if available (since setMenuData might reset them)
       applyRecipes(posSyncData);
+
+      appliedMenuVersionRef.current = {
+        locationId,
+        version: incomingVersion,
+      };
 
       // Send menu data to debug server in development
       // const DEBUG_MENU_URL = __DEV__
@@ -632,7 +682,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       //     });
       // }
     }
-  }, [posSyncData, setMenuData, selectedStore?.id]);
+  }, [posSyncData, setMenuData, setSyncState, selectedStore?.id]);
 
   // Boot fallback: paint the last known menu while the live sync is still in
   // flight (or after it has failed). Declared AFTER the effect above so that on
@@ -650,9 +700,22 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
     console.log(
       "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
-      { syncedAt: cached.synced_at, menus: cached.menus?.length ?? 0 },
+      {
+        syncedAt: cached.synced_at,
+        menus: cached.menus?.length ?? 0,
+        version: cached.version ?? "(pre-versioning)",
+      },
     );
     setMenuData(cached, { fromCache: true });
+
+    // Record the snapshot's watermark so that when the live sync lands with the
+    // same version we skip the rebuild outright — the cached paint IS the
+    // current menu. Snapshots written before versioning existed have no
+    // version, so they always reconcile.
+    appliedMenuVersionRef.current = {
+      locationId,
+      version: cached.version ?? null,
+    };
   }, [selectedStore?.id, isKDS, setMenuData, posSyncData]);
 
   // Self-healing menu sync.
