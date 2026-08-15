@@ -580,8 +580,10 @@ const DevicesConnectionsScreen = ({
     const fullRecord = terminals.find(t => t.id === currentTerminal.id)
     if (!fullRecord) return
     const hydratedIp = currentTerminal.ip_address ?? fullRecord.ipAddress
+    // Fall back to the full store record's serial — the previous code only read
+    // currentTerminal.serial_number, so it could never actually hydrate it.
     const hydratedSerial =
-      currentTerminal.serial_number ?? null
+      currentTerminal.serial_number ?? fullRecord.serialNumber ?? null
     if (
       hydratedIp === currentTerminal.ip_address &&
       hydratedSerial === currentTerminal.serial_number
@@ -595,6 +597,8 @@ const DevicesConnectionsScreen = ({
         port: currentTerminal.port ?? fullRecord.port,
         connection_type:
           currentTerminal.connection_type ?? fullRecord.connectionType,
+        cancel_port: currentTerminal.cancel_port ?? fullRecord.cancelPort,
+        epi: currentTerminal.epi ?? fullRecord.epi,
         serial_number: hydratedSerial
       }
     })
@@ -736,6 +740,13 @@ const DevicesConnectionsScreen = ({
         is_connected: terminal.isConnected,
         ip_address: terminal.ipAddress,
         port: terminal.port,
+        // Carry the physical identity + transport fields from the store record.
+        // Omitting them made the card show "S/N not yet discovered" after a
+        // switch and left Valor terminals unusable (no epi/cancel port).
+        serial_number: terminal.serialNumber ?? null,
+        connection_type: terminal.connectionType,
+        cancel_port: terminal.cancelPort,
+        epi: terminal.epi,
         last_connection_status: terminal.lastConnectionStatus || null,
         last_connection_test_at: terminal.lastConnectionTest || null
       }
