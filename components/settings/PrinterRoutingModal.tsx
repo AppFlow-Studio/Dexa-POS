@@ -14,7 +14,6 @@ import {
   UtensilsCrossed,
   X,
   AlertTriangle,
-  Info,
   Zap,
 } from "lucide-react-native";
 import { colors } from "@/lib/theme";
@@ -51,39 +50,27 @@ interface PrinterRoutingModalProps {
 // WIZARD STEPS
 // ---------------------------------------------------------------------------
 
-type StepId = "mode" | "orderTypes" | "templates" | "assignments" | "ticketOptions" | "test";
+type StepId = "mode" | "assignments";
 
 const STEP_LABELS: Record<StepId, string> = {
   mode: "Mode",
-  orderTypes: "Order Types",
-  templates: "Templates",
-  assignments: "Assignments",
-  ticketOptions: "Options",
-  test: "Test",
+  assignments: "Items",
 };
 
 const STEP_TITLES: Record<StepId, string> = {
-  mode: "Choose Routing Mode",
-  orderTypes: "Filter by Order Type",
-  templates: "Quick Setup Templates",
-  assignments: "Category & Item Assignments",
-  ticketOptions: "Ticket Options",
-  test: "Test Configuration",
+  mode: "What prints on this printer?",
+  assignments: "Choose categories & items",
 };
 
 const STEP_SUBTITLES: Record<StepId, string> = {
-  mode: "How should this printer decide what to print?",
-  orderTypes: "Optionally restrict which order types route to this printer.",
-  templates: "Apply a preset to auto-select matching categories from your menu.",
-  assignments: "Choose exactly which categories and items print here.",
-  ticketOptions: "Configure print formatting for this printer.",
-  test: "Simulate an order to verify your routing setup.",
+  mode: "Print everything, or pick specific categories and items.",
+  assignments: "Tap a category or item on the left to route it here.",
 };
 
 function getSteps(mode: PrinterRoutingMode): StepId[] {
-  if (mode === "all") return ["mode", "ticketOptions", "test"];
-  if (mode === "unassigned") return ["mode", "orderTypes", "ticketOptions", "test"];
-  return ["mode", "orderTypes", "templates", "assignments", "ticketOptions", "test"];
+  // Everything / Catch-All need no picker — single screen. Custom reveals the picker.
+  if (mode === "custom") return ["mode", "assignments"];
+  return ["mode"];
 }
 
 // ---------------------------------------------------------------------------
@@ -105,58 +92,24 @@ const ROUTING_MODES: {
 }[] = [
   {
     mode: "all",
-    label: "Print Everything",
-    desc: "Receives every kitchen ticket regardless of category or item.",
-    example: "Best for a single kitchen printer or general-purpose station.",
+    label: "Everything",
+    desc: "Prints every item — new menu categories are included automatically.",
+    example: "Best for a single kitchen printer.",
     Icon: Layers,
+  },
+  {
+    mode: "custom",
+    label: "Specific categories & items",
+    desc: "You pick exactly what prints here.",
+    example: "E.g. a grill station that only handles burgers and steaks.",
+    Icon: Settings2,
   },
   {
     mode: "unassigned",
     label: "Catch-All",
-    desc: "Only prints items not claimed by any Custom Rules printer.",
-    example: "Use as a fallback when other stations handle specific categories.",
+    desc: "Only items no other printer already claims.",
+    example: "A fallback when other stations handle specific categories.",
     Icon: SlidersHorizontal,
-  },
-  {
-    mode: "custom",
-    label: "Custom Rules",
-    desc: "You choose exactly which categories and items route here.",
-    example: "Perfect for a grill station that only handles burgers and steaks.",
-    Icon: Settings2,
-  },
-];
-
-interface PresetTemplate {
-  id: string;
-  label: string;
-  description: string;
-  categoryKeywords: string[];
-}
-
-const PRESET_TEMPLATES: PresetTemplate[] = [
-  {
-    id: "bar_drinks",
-    label: "Bar: Drinks & Cocktails",
-    description: "Routes drink-related categories to this printer.",
-    categoryKeywords: ["drink", "bar", "cocktail", "beer", "wine", "beverage", "juice", "coffee", "tea", "soda"],
-  },
-  {
-    id: "kitchen_food",
-    label: "Kitchen: All Food Items",
-    description: "Routes food categories (non-drink) to this printer.",
-    categoryKeywords: ["food", "entree", "appetizer", "main", "burger", "pizza", "pasta", "salad", "soup", "sandwich", "grill", "sides", "dessert"],
-  },
-  {
-    id: "hot_food",
-    label: "Grill Station: Hot Items",
-    description: "Routes grilled and hot food categories.",
-    categoryKeywords: ["grill", "hot", "burger", "steak", "bbq", "wings", "chicken", "ribs"],
-  },
-  {
-    id: "cold_prep",
-    label: "Cold Prep: Salads & Cold Items",
-    description: "Routes salads and cold prep categories.",
-    categoryKeywords: ["salad", "cold", "sushi", "raw", "dessert", "ice cream"],
   },
 ];
 
@@ -175,6 +128,8 @@ export function PrinterRoutingModal({
   const [testOrderType, setTestOrderType] = useState("dine_in");
   const [testResults, setTestResults] = useState<{ role: string; itemNames: string[] }[] | null>(null);
   const [expandedInDualList, setExpandedInDualList] = useState<Set<string>>(new Set());
+  const [showOrderTypes, setShowOrderTypes] = useState(false);
+  const [showTest, setShowTest] = useState(false);
 
   // Store
   const routingConfig: PrinterRoutingConfig =
@@ -276,7 +231,9 @@ export function PrinterRoutingModal({
       setIsSaving(true);
       try {
         await setRoutingMode(printer.id, mode);
-        setWizardStep(0);
+        // Custom reveals the picker immediately (2-tap feel); the single-step
+        // modes (Everything / Catch-All) have no step 2, so stay on the mode screen.
+        setWizardStep(mode === "custom" ? 1 : 0);
       } finally {
         setIsSaving(false);
       }
@@ -349,23 +306,6 @@ export function PrinterRoutingModal({
       setIsSaving(false);
     }
   }, [printer.id, categories, enabledCategoryIds, bulkSetRules]);
-
-  const handleApplyPreset = useCallback(
-    async (preset: PresetTemplate) => {
-      setIsSaving(true);
-      try {
-        await setRoutingMode(printer.id, "custom");
-        const matchedIds = categories
-          .filter((cat) => preset.categoryKeywords.some((kw) => cat.name.toLowerCase().includes(kw)))
-          .map((cat) => cat.id);
-        if (matchedIds.length === 0) return;
-        await bulkSetRules(printer.id, "category", matchedIds.map((id) => ({ ruleValue: id, enabled: true })));
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [printer.id, categories, setRoutingMode, bulkSetRules],
-  );
 
   const handleTestConfiguration = useCallback(() => {
     const results: { role: string; itemNames: string[] }[] = [];
@@ -453,140 +393,6 @@ export function PrinterRoutingModal({
                     <Text style={{ color: colors.teal + 'B3', fontSize: 11, fontStyle: 'italic', marginTop: 4 }}>{example}</Text>
                   </View>
                 </TouchableOpacity>
-              );
-            })}
-          </View>
-        );
-
-      case "orderTypes":
-        return (
-          <View>
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 8,
-              marginBottom: 6,
-              padding: 12,
-              backgroundColor: colors.warning + '12',
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.warning + '40',
-            }}>
-              <AlertTriangle size={13} color={colors.warning} style={{ marginTop: 1 }} />
-              <Text style={{ color: colors.warning, fontSize: 11, flex: 1, lineHeight: 15 }}>
-                At least one order type must be selected. This printer will only receive tickets for the selected types.
-              </Text>
-            </View>
-            {ORDER_TYPES.map(({ value, label, Icon }) => {
-              const isOn = enabledOrderTypes.has(value);
-              return (
-                <View
-                  key={value}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    marginBottom: 6,
-                    borderWidth: 1,
-                    backgroundColor: isOn ? colors.teal + '1A' : colors.card,
-                    borderColor: isOn ? colors.teal + '66' : colors.border,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <Icon size={14} color={isOn ? colors.teal : colors.muted} />
-                    <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>{label}</Text>
-                  </View>
-                  <Switch checked={isOn} onCheckedChange={() => handleOrderTypeToggle(value)} />
-                </View>
-              );
-            })}
-            {enabledOrderTypes.size === 0 && (
-              <View style={{
-                flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8,
-                backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '40',
-                borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
-              }}>
-                <AlertTriangle size={13} color={colors.danger} />
-                <Text style={{ color: colors.danger, fontSize: 11, fontWeight: '600', flex: 1 }}>
-                  At least one order type must be selected
-                </Text>
-              </View>
-            )}
-          </View>
-        );
-
-      case "templates":
-        return (
-          <View>
-            {/* Info + Skip inline */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <View style={{
-                flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-                padding: 10, backgroundColor: colors.card, borderRadius: 8,
-                borderWidth: 1, borderColor: colors.border,
-              }}>
-                <Info size={13} color={colors.muted} style={{ marginTop: 1 }} />
-                <Text style={{ color: colors.label, fontSize: 11, flex: 1, lineHeight: 15 }}>
-                  Templates match menu categories by keyword. Adjust in the next step.
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setWizardStep((s) => s + 1)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 5,
-                  paddingHorizontal: 10, paddingVertical: 7,
-                  borderRadius: 8, borderWidth: 1, borderColor: colors.border,
-                  backgroundColor: 'transparent',
-                }}
-              >
-                <Text style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}>Skip</Text>
-                <ArrowRight size={13} color={colors.label} />
-              </TouchableOpacity>
-            </View>
-            {PRESET_TEMPLATES.map((preset) => {
-              const matchCount = categories.filter((cat) =>
-                preset.categoryKeywords.some((kw) => cat.name.toLowerCase().includes(kw)),
-              ).length;
-              return (
-                <View key={preset.id} style={{
-                  backgroundColor: colors.card,
-                  borderRadius: 8,
-                  marginBottom: 6,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  overflow: 'hidden',
-                }}>
-                  <View style={{ padding: 16 }}>
-                    <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '600', marginBottom: 2 }}>{preset.label}</Text>
-                    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 15 }}>{preset.description}</Text>
-                    {matchCount > 0 ? (
-                      <Text style={{ color: colors.teal, fontSize: 12, marginTop: 8 }}>
-                        Matches {matchCount} categor{matchCount !== 1 ? "ies" : "y"} in your menu
-                      </Text>
-                    ) : (
-                      <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>No matching categories found</Text>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => handleApplyPreset(preset)}
-                    disabled={matchCount === 0}
-                    style={{
-                      paddingVertical: 10,
-                      alignItems: 'center',
-                      borderTopWidth: 1,
-                      borderTopColor: colors.border,
-                      backgroundColor: matchCount > 0 ? colors.teal + '33' : colors.card,
-                      opacity: matchCount > 0 ? 1 : 0.4,
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: matchCount > 0 ? colors.teal : colors.muted }}>
-                      Apply Template
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               );
             })}
           </View>
@@ -907,13 +713,35 @@ export function PrinterRoutingModal({
                 </View>
               )}
             </View>
-          </View>
-        );
-      }
 
-      case "ticketOptions":
-        return (
-          <View>
+            {/* Routing conflicts — same category claimed by another custom printer */}
+            {conflictWarnings.length > 0 && (
+              <View style={{
+                marginTop: 10,
+                padding: 12,
+                backgroundColor: colors.warning + '1A',
+                borderWidth: 1,
+                borderColor: colors.warning + '55',
+                borderRadius: 8,
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}>
+                <AlertTriangle size={13} color={colors.warning} style={{ marginTop: 1 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.warning, fontSize: 11, fontWeight: '600', marginBottom: 3 }}>
+                    Also printing elsewhere
+                  </Text>
+                  {conflictWarnings.map((w, i) => (
+                    <Text key={i} style={{ color: colors.warning, fontSize: 11, lineHeight: 15 }}>
+                      {`"${w.categoryName}" also prints on ${w.printerNames.filter((n) => n !== printer.printerName).join(", ")}`}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Print Modifiers (folded in from the old Options step) */}
             <View style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -921,7 +749,7 @@ export function PrinterRoutingModal({
               paddingVertical: 10,
               paddingHorizontal: 12,
               borderRadius: 8,
-              marginBottom: 6,
+              marginTop: 10,
               borderWidth: 1,
               backgroundColor: routingConfig.printModifiers ? colors.teal + '1A' : colors.card,
               borderColor: routingConfig.printModifiers ? colors.teal + '66' : colors.border,
@@ -937,184 +765,164 @@ export function PrinterRoutingModal({
                 onCheckedChange={(v) => setPrintModifiers(printer.id, v)}
               />
             </View>
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 8,
-              marginBottom: 6,
-              borderWidth: 1,
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              opacity: 0.6,
-            }}>
-              <View style={{ flex: 1, paddingRight: 16 }}>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '600' }}>Auto-Print Kitchen Tickets</Text>
-                <Text style={{ color: colors.label, fontSize: 11, marginTop: 1, lineHeight: 15 }}>
-                  Automatically print when orders are sent to kitchen
-                </Text>
-              </View>
-              <Switch checked={printer.printOrderTickets} onCheckedChange={() => {}} disabled />
-            </View>
 
-            {/* Summary info */}
-            <View style={{
-              backgroundColor: colors.card,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: 12,
-              marginTop: 8,
-            }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 12 }}>
-                Configuration Summary
-              </Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={{ color: colors.label, fontSize: 13 }}>Routing Mode</Text>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500', textTransform: 'capitalize' }}>{routingConfig.routingMode}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={{ color: colors.label, fontSize: 13 }}>Category Rules</Text>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>
-                  {routingConfig.rules.filter((r) => r.rule_type === "category" && r.is_enabled).length}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={{ color: colors.label, fontSize: 13 }}>Item Rules</Text>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>
-                  {routingConfig.rules.filter((r) => r.rule_type === "menu_item" && r.is_enabled).length}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: colors.label, fontSize: 13 }}>Order Type Filter</Text>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>
-                  {enabledOrderTypes.size === 0 ? "All types" : `${enabledOrderTypes.size} selected`}
-                </Text>
-              </View>
-            </View>
-          </View>
-        );
-
-      case "test":
-        return (
-          <View>
-            {/* Conflict warnings */}
-            {conflictWarnings.length > 0 && (
-              <View style={{
-                marginBottom: 6,
-                padding: 12,
-                backgroundColor: colors.warning + '33',
-                borderWidth: 1,
-                borderColor: colors.warning + '66',
-                borderRadius: 8,
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}>
-                <AlertTriangle size={14} color={colors.warning} style={{ marginTop: 1 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.warning, fontSize: 11, fontWeight: '600', marginBottom: 3 }}>Routing Conflicts Detected</Text>
-                  {conflictWarnings.map((w, i) => (
-                    <Text key={i} style={{ color: colors.warning, fontSize: 11, lineHeight: 15 }}>
-                      "{w.categoryName}" is also assigned to: {w.printerNames.filter((n) => n !== printer.printerName).join(", ")}
-                    </Text>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Order type picker */}
-            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
-              Simulate Order Type
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-              {ORDER_TYPES.map(({ value, label, Icon }) => (
-                <TouchableOpacity
-                  key={value}
-                  onPress={() => { setTestOrderType(value); setTestResults(null); }}
-                  style={{
-                    flex: 1,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    paddingVertical: 7,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    backgroundColor: testOrderType === value ? colors.teal + '33' : colors.card,
-                    borderColor: testOrderType === value ? colors.teal : colors.border,
-                  }}
-                >
-                  <Icon size={13} color={testOrderType === value ? colors.teal : colors.muted} />
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: testOrderType === value ? colors.teal : colors.label }}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
+            {/* Order types (optional) — empty = all types (see passesOrderTypeGate) */}
             <TouchableOpacity
-              onPress={handleTestConfiguration}
+              onPress={() => setShowOrderTypes((v) => !v)}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                paddingVertical: 8,
-                backgroundColor: colors.teal,
+                justifyContent: 'space-between',
+                paddingVertical: 10,
+                paddingHorizontal: 12,
                 borderRadius: 8,
-                marginBottom: 6,
+                marginTop: 6,
+                borderWidth: 1,
+                backgroundColor: colors.card,
+                borderColor: colors.border,
               }}
             >
-              <Zap size={14} color="#0C0F1A" />
-              <Text style={{ color: '#0C0F1A', fontWeight: '600', fontSize: 13 }}>Run Simulation</Text>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '600' }}>Order types (optional)</Text>
+                <Text style={{ color: colors.label, fontSize: 11, marginTop: 1, lineHeight: 15 }}>
+                  {enabledOrderTypes.size === 0
+                    ? "Prints for all order types"
+                    : `Only: ${ORDER_TYPES.filter((o) => enabledOrderTypes.has(o.value)).map((o) => o.label).join(", ")}`}
+                </Text>
+              </View>
+              {showOrderTypes
+                ? <ChevronDown size={16} color={colors.muted} />
+                : <ChevronRight size={16} color={colors.muted} />}
             </TouchableOpacity>
-
-            {/* Results */}
-            {testResults !== null && (
-              <View style={{
-                backgroundColor: colors.card,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 12,
-              }}>
-                <Text style={{ color: colors.heading, fontWeight: '600', fontSize: 13, marginBottom: 12 }}>Simulation Results</Text>
-                {testResults.map((r, i) => (
-                  <View key={i}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <Printer size={14} color={colors.warning} />
-                      <Text style={{ color: colors.label, fontSize: 12, fontWeight: '500', flex: 1 }}>{r.role}</Text>
-                    </View>
-                    {r.itemNames.length > 0 ? (
-                      <View style={{ marginLeft: 22, gap: 6, marginBottom: 8 }}>
-                        {r.itemNames.map((name, j) => (
-                          <View key={j} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.muted }} />
-                            <Text style={{ color: colors.label, fontSize: 12 }}>{name}</Text>
-                          </View>
-                        ))}
-                        {r.itemNames.length >= 8 && (
-                          <Text style={{ color: colors.muted, fontSize: 12, marginLeft: 12 }}>…and more</Text>
-                        )}
+            {showOrderTypes && (
+              <View style={{ marginTop: 6, gap: 6 }}>
+                {ORDER_TYPES.map(({ value, label, Icon }) => {
+                  const isOn = enabledOrderTypes.has(value);
+                  return (
+                    <View
+                      key={value}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        backgroundColor: isOn ? colors.teal + '1A' : colors.card,
+                        borderColor: isOn ? colors.teal + '66' : colors.border,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Icon size={14} color={isOn ? colors.teal : colors.muted} />
+                        <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>{label}</Text>
                       </View>
-                    ) : (
-                      <Text style={{ color: colors.warning, fontSize: 12, marginLeft: 22, marginBottom: 8 }}>
-                        No items would print for this order type.
-                      </Text>
-                    )}
-                  </View>
-                ))}
+                      <Switch checked={isOn} onCheckedChange={() => handleOrderTypeToggle(value)} />
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>
         );
+      }
 
       default:
         return null;
     }
+  }
+
+  // Optional "Preview what prints" section — reachable via a button in all modes,
+  // not a required step. Reuses handleTestConfiguration / testOrderType / testResults.
+  function renderTestSection() {
+    return (
+      <View style={{ marginTop: 12 }}>
+        {/* Order type picker */}
+        <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+          Simulate Order Type
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+          {ORDER_TYPES.map(({ value, label, Icon }) => (
+            <TouchableOpacity
+              key={value}
+              onPress={() => { setTestOrderType(value); setTestResults(null); }}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingVertical: 7,
+                borderRadius: 8,
+                borderWidth: 1,
+                backgroundColor: testOrderType === value ? colors.teal + '33' : colors.card,
+                borderColor: testOrderType === value ? colors.teal : colors.border,
+              }}
+            >
+              <Icon size={13} color={testOrderType === value ? colors.teal : colors.muted} />
+              <Text style={{ fontSize: 12, fontWeight: '500', color: testOrderType === value ? colors.teal : colors.label }}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          onPress={handleTestConfiguration}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            paddingVertical: 8,
+            backgroundColor: colors.teal,
+            borderRadius: 8,
+            marginBottom: 6,
+          }}
+        >
+          <Zap size={14} color="#0C0F1A" />
+          <Text style={{ color: '#0C0F1A', fontWeight: '600', fontSize: 13 }}>Run Simulation</Text>
+        </TouchableOpacity>
+
+        {/* Results */}
+        {testResults !== null && (
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 12,
+          }}>
+            <Text style={{ color: colors.heading, fontWeight: '600', fontSize: 13, marginBottom: 12 }}>Simulation Results</Text>
+            {testResults.map((r, i) => (
+              <View key={i}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Printer size={14} color={colors.warning} />
+                  <Text style={{ color: colors.label, fontSize: 12, fontWeight: '500', flex: 1 }}>{r.role}</Text>
+                </View>
+                {r.itemNames.length > 0 ? (
+                  <View style={{ marginLeft: 22, gap: 6, marginBottom: 8 }}>
+                    {r.itemNames.map((name, j) => (
+                      <View key={j} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.muted }} />
+                        <Text style={{ color: colors.label, fontSize: 12 }}>{name}</Text>
+                      </View>
+                    ))}
+                    {r.itemNames.length >= 8 && (
+                      <Text style={{ color: colors.muted, fontSize: 12, marginLeft: 12 }}>…and more</Text>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={{ color: colors.warning, fontSize: 12, marginLeft: 22, marginBottom: 8 }}>
+                    No items would print for this order type.
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1186,7 +994,8 @@ export function PrinterRoutingModal({
           </View>
         </View>
 
-        {/* ── STEP INDICATOR ── */}
+        {/* ── STEP INDICATOR (hidden for single-step Everything / Catch-All) ── */}
+        {steps.length > 1 && (
         <View style={{
           flexDirection: 'row',
           alignItems: 'center',
@@ -1241,6 +1050,7 @@ export function PrinterRoutingModal({
             );
           })}
         </View>
+        )}
 
         {/* ── STEP TITLE ── */}
         <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}>
@@ -1256,6 +1066,32 @@ export function PrinterRoutingModal({
           contentContainerStyle={{ paddingBottom: 24 }}
         >
           {renderStepContent()}
+
+          {/* Optional preview — available in all modes, not a required step */}
+          <TouchableOpacity
+            onPress={() => setShowTest((v) => !v)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              marginTop: 12,
+              paddingVertical: 8,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+            }}
+          >
+            <Zap size={13} color={colors.muted} />
+            <Text style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}>
+              {showTest ? 'Hide preview' : 'Preview what prints'}
+            </Text>
+            {showTest
+              ? <ChevronDown size={14} color={colors.muted} />
+              : <ChevronRight size={14} color={colors.muted} />}
+          </TouchableOpacity>
+          {showTest && renderTestSection()}
         </ScrollView>
 
         {/* ── FOOTER NAV ── */}
@@ -1269,54 +1105,48 @@ export function PrinterRoutingModal({
           borderTopWidth: 1,
           borderTopColor: colors.border,
         }}>
+          {/* Back only exists when there's a second step (Custom mode) */}
+          {steps.length > 1 && (
+            <TouchableOpacity
+              onPress={() => setWizardStep((s) => s - 1)}
+              disabled={wizardStep === 0}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingVertical: 8,
+                borderRadius: 8,
+                borderWidth: 1,
+                backgroundColor: 'transparent',
+                borderColor: colors.border,
+                opacity: wizardStep === 0 ? 0.3 : 1,
+              }}
+            >
+              <Text style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}>Back</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
-            onPress={() => setWizardStep((s) => s - 1)}
-            disabled={wizardStep === 0}
+            onPress={isLastStep ? onClose : () => setWizardStep((s) => s + 1)}
             style={{
-              flex: 1,
+              flex: 2,
+              flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
+              gap: 8,
               paddingVertical: 8,
               borderRadius: 8,
+              backgroundColor: colors.teal + '33',
               borderWidth: 1,
-              backgroundColor: 'transparent',
-              borderColor: colors.border,
-              opacity: wizardStep === 0 ? 0.3 : 1,
+              borderColor: colors.teal + '80',
             }}
           >
-            <Text style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}>Back</Text>
+            {isSaving && <ActivityIndicator size="small" color={colors.teal} />}
+            {isLastStep
+              ? <><Check size={14} color={colors.teal} /><Text style={{ color: colors.teal, fontWeight: '600', fontSize: 13 }}>Done</Text></>
+              : <><Text style={{ color: colors.teal, fontWeight: '600', fontSize: 13 }}>Next</Text><ArrowRight size={14} color={colors.teal} /></>
+            }
           </TouchableOpacity>
-
-          {(() => {
-            const isOrderTypesStep = currentStepId === 'orderTypes';
-            const isBlocked = isOrderTypesStep && enabledOrderTypes.size === 0;
-            const accentColor = isLastStep ? colors.teal : colors.teal;
-            return (
-              <TouchableOpacity
-                onPress={isBlocked ? undefined : isLastStep ? onClose : () => setWizardStep((s) => s + 1)}
-                disabled={isBlocked}
-                style={{
-                  flex: 2,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  paddingVertical: 8,
-                  borderRadius: 8,
-                  backgroundColor: isBlocked ? colors.muted + '15' : accentColor + '33',
-                  borderWidth: 1,
-                  borderColor: isBlocked ? colors.muted + '40' : accentColor + '80',
-                  opacity: isBlocked ? 0.5 : 1,
-                }}
-              >
-                {isSaving && <ActivityIndicator size="small" color={accentColor} />}
-                {isLastStep
-                  ? <><Check size={14} color={colors.teal} /><Text style={{ color: colors.teal, fontWeight: '600', fontSize: 13 }}>Done</Text></>
-                  : <><Text style={{ color: isBlocked ? colors.muted : colors.teal, fontWeight: '600', fontSize: 13 }}>Next</Text><ArrowRight size={14} color={isBlocked ? colors.muted : colors.teal} /></>
-                }
-              </TouchableOpacity>
-            );
-          })()}
         </View>
 
       </View>

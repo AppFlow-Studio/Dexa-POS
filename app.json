@@ -12,7 +12,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.temurappflowstudios.dexapos",
-      "runtimeVersion": "2.3.2"
+      "runtimeVersion": "2.4.0"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +28,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "runtimeVersion": "2.3.2"
+      "runtimeVersion": "2.4.0"
     },
     "web": {
       "bundler": "metro",
