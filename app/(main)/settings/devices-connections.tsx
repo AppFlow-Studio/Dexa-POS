@@ -3134,7 +3134,8 @@ const DevicesConnectionsScreen = ({
                                 {/* Connection-type pill — USB vs TCP/WiFi. Helps staff
                                     tell at a glance whether this terminal needs the
                                     cable plugged or just network. */}
-                                {t.terminalType === 'castles' && (
+                                {(t.terminalType === 'castles' ||
+                                  t.terminalType === 'valor') && (
                                   <View
                                     style={{
                                       paddingHorizontal: s(6),
@@ -3179,7 +3180,8 @@ const DevicesConnectionsScreen = ({
                                   </Text>
                                 )}
                               </View>
-                              {t.terminalType === 'castles' && (
+                              {(t.terminalType === 'castles' ||
+                                t.terminalType === 'valor') && (
                                 <View style={{ marginTop: s(4), gap: s(2) }}>
                                   {(t as any).serialNumber && (
                                     <View
@@ -3235,7 +3237,9 @@ const DevicesConnectionsScreen = ({
                                       selectable
                                     >
                                       {t.connectionType === 'usb'
-                                        ? 'USB · CDC ACM @ 115200'
+                                        ? t.terminalType === 'castles'
+                                          ? 'USB · CDC ACM @ 115200'
+                                          : 'USB (wired)'
                                         : `${t.ipAddress ?? '—'}${t.port ? `:${t.port}` : ''}`}
                                     </Text>
                                   </View>
@@ -3266,6 +3270,36 @@ const DevicesConnectionsScreen = ({
                                       {t.id.slice(0, 8)}
                                     </Text>
                                   </View>
+                                  {t.terminalType === 'valor' &&
+                                    (t as any).epi && (
+                                      <View
+                                        style={{
+                                          flexDirection: 'row',
+                                          alignItems: 'center'
+                                        }}
+                                      >
+                                        <Text
+                                          style={{
+                                            fontSize: s(10),
+                                            color: colors.muted,
+                                            fontWeight: '600',
+                                            width: s(44)
+                                          }}
+                                        >
+                                          EPI:
+                                        </Text>
+                                        <Text
+                                          style={{
+                                            fontSize: s(10),
+                                            color: colors.heading,
+                                            fontFamily: 'monospace'
+                                          }}
+                                          selectable
+                                        >
+                                          {(t as any).epi}
+                                        </Text>
+                                      </View>
+                                    )}
                                 </View>
                               )}
                             </View>
