@@ -2,7 +2,7 @@
   "expo": {
     "name": "Dexa-POS",
     "slug": "dexa-pos",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "orientation": "landscape",
     "icon": "./assets/images/dexalogolight.png",
     "scheme": "dexapos",
