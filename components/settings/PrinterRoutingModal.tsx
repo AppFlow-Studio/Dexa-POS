@@ -483,7 +483,12 @@ export function PrinterRoutingModal({
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 6 }}>
+                <ScrollView
+                  style={{ flex: 1 }}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator
+                  contentContainerStyle={{ padding: 6 }}
+                >
                   {visibleCategories.length === 0 ? (
                     <View style={{ alignItems: 'center', paddingVertical: 32 }}>
                       <Text style={{ color: colors.muted, fontSize: 12 }}>No results</Text>
@@ -618,7 +623,12 @@ export function PrinterRoutingModal({
                   </View>
                 </View>
 
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 6 }}>
+                <ScrollView
+                  style={{ flex: 1 }}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator
+                  contentContainerStyle={{ padding: 6 }}
+                >
                   {totalAssigned === 0 ? (
                     <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                       <ChevronsRight size={16} color={colors.border} />
