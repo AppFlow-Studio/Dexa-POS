@@ -39,6 +39,7 @@ import {
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
 import { getDriver } from "@/services/printing/DriverFactory";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import { getSharedValorService } from "@/services/terminals/valor-service";
 import {
     startCastlesUsbAutoConnect,
     stopCastlesUsbAutoConnect,
@@ -275,12 +276,15 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
     return () => {
       stopTerminalHealthCheck();
-      // Fire-and-forget graceful disconnect of the Castles singleton when
-      // the effect tears down (station switch, unmount). Prevents a stale
-      // socket from lingering against the previous terminal's host:port.
-      getSharedCastlesService()
-        .gracefulDisconnect()
-        .catch(() => {});
+      // Fire-and-forget graceful disconnect of the Castles singleton when the
+      // effect tears down (station switch, unmount). Guarded to an OUTGOING
+      // Castles terminal — issuing a Castles return2Idle write while switching
+      // to a Valor terminal would race it on the shared USB serial port.
+      if (terminal?.terminal_type === "castles") {
+        getSharedCastlesService()
+          .gracefulDisconnect()
+          .catch(() => {});
+      }
     };
   }, [supabase, selectedStation?.payment_terminal?.id]);
 
@@ -290,16 +294,33 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // skipped in KDS mode (no POS hardware there).
   useEffect(() => {
     const terminal = selectedStation?.payment_terminal;
-    const isUsbCastles =
-      terminal?.terminal_type === "castles" &&
-      terminal?.connection_type === "usb";
-    const isUsbValor =
-      terminal?.terminal_type === "valor" &&
-      terminal?.connection_type === "usb";
-    if (!isKDS && isUsbCastles) {
+    const type = terminal?.terminal_type;
+    const isUsb = terminal?.connection_type === "usb";
+
+    // Castles and Valor USB transports share ONE native serial port (both go
+    // through @/modules/castles-usb). Only the ACTIVE processor may hold it —
+    // otherwise a lingering auto-connect/connect ladder on the OTHER service
+    // keeps calling CastlesUsbModule.write on the port the active terminal just
+    // took over ("CastlesUsbModule.write has been rejected" during a Valor
+    // sale). Suspend + stop the auto-connect for every processor that is NOT the
+    // active one so its transport is torn down and reconnects are blocked.
+    if (type !== "castles") {
+      stopCastlesUsbAutoConnect();
+      getSharedCastlesService()
+        .suspend()
+        .catch(() => {});
+    }
+    if (type !== "valor") {
+      stopValorUsbAutoConnect();
+      getSharedValorService()
+        .suspend()
+        .catch(() => {});
+    }
+
+    if (!isKDS && type === "castles" && isUsb) {
       startCastlesUsbAutoConnect();
     }
-    if (!isKDS && isUsbValor) {
+    if (!isKDS && type === "valor" && isUsb) {
       startValorUsbAutoConnect();
     }
     return () => {

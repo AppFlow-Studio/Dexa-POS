@@ -726,7 +726,7 @@ const DevicesConnectionsScreen = ({
     try {
       await supabase
         .from('payment_terminals')
-        .update({ station_id: null })
+        .update({ station_id: null, is_active: false })
         .eq('station_id', selectedStation.id)
         .neq('id', terminal.id)
       await supabase
