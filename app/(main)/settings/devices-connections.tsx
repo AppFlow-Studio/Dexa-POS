@@ -575,7 +575,9 @@ const DevicesConnectionsScreen = ({
   useEffect(() => {
     if (!currentTerminal || !terminals.length || !selectedStation) return
     const needsHydration =
-      !currentTerminal.ip_address || !currentTerminal.serial_number
+      !currentTerminal.ip_address ||
+      !currentTerminal.serial_number ||
+      !currentTerminal.firmware_version
     if (!needsHydration) return
     const fullRecord = terminals.find(t => t.id === currentTerminal.id)
     if (!fullRecord) return
@@ -584,9 +586,12 @@ const DevicesConnectionsScreen = ({
     // currentTerminal.serial_number, so it could never actually hydrate it.
     const hydratedSerial =
       currentTerminal.serial_number ?? fullRecord.serialNumber ?? null
+    const hydratedFirmware =
+      currentTerminal.firmware_version ?? fullRecord.firmwareVersion ?? null
     if (
       hydratedIp === currentTerminal.ip_address &&
-      hydratedSerial === currentTerminal.serial_number
+      hydratedSerial === currentTerminal.serial_number &&
+      hydratedFirmware === currentTerminal.firmware_version
     )
       return
     setSelectedStation({
@@ -599,7 +604,8 @@ const DevicesConnectionsScreen = ({
           currentTerminal.connection_type ?? fullRecord.connectionType,
         cancel_port: currentTerminal.cancel_port ?? fullRecord.cancelPort,
         epi: currentTerminal.epi ?? fullRecord.epi,
-        serial_number: hydratedSerial
+        serial_number: hydratedSerial,
+        firmware_version: hydratedFirmware
       }
     })
   }, [terminals, currentTerminal?.id, currentTerminal?.serial_number])
@@ -744,6 +750,7 @@ const DevicesConnectionsScreen = ({
         // Omitting them made the card show "S/N not yet discovered" after a
         // switch and left Valor terminals unusable (no epi/cancel port).
         serial_number: terminal.serialNumber ?? null,
+        firmware_version: terminal.firmwareVersion ?? null,
         connection_type: terminal.connectionType,
         cancel_port: terminal.cancelPort,
         epi: terminal.epi,
@@ -3938,6 +3945,35 @@ const DevicesConnectionsScreen = ({
                                     '— not yet discovered —'}
                                 </Text>
                               </View>
+                              {currentTerminal.firmware_version && (
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.muted,
+                                      fontSize: s(9),
+                                      fontWeight: '600',
+                                      width: s(36)
+                                    }}
+                                  >
+                                    Ver:
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      color: colors.heading,
+                                      fontSize: s(9),
+                                      fontFamily: 'monospace'
+                                    }}
+                                    selectable
+                                  >
+                                    {currentTerminal.firmware_version}
+                                  </Text>
+                                </View>
+                              )}
                               {currentTerminal.last_connection_status ===
                                 'IdentityMismatch' && (
                                 <View

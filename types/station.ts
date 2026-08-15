@@ -43,6 +43,8 @@ export interface StationPaymentTerminal {
   epi?: string;
   /** Hardware serial number printed on the device */
   serial_number?: string | null;
+  /** Terminal firmware / app version (Castles infAppVersion, Valor APP_VERSION) */
+  firmware_version?: string | null;
   last_connection_status:
     | "Online"
     | "Offline"
