@@ -377,11 +377,32 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const syncFloorPlans = useCallback(
     async (locationId: string) => {
       try {
-        // Load floor plans for location
-        const { data: floorPlans, error: fpError } =
-          await FloorPlanService.getLocationFloorPlans(supabase, locationId);
+        // AUD-2: one snapshot call instead of get_location_floor_plans plus a
+        // get_floor_plan_status per plan (measured 188,486 B / 5 calls ->
+        // 147,820 B / 1 on a 4-plan location).
+        //
+        // Deliberately requests the FULL geometry here (knownVersion: null)
+        // rather than sending a cached token. Boot needs the complete plan list
+        // to pick the default, prefetch every plan and strip orphaned sessions;
+        // a token match would return geometry: null and leave those with
+        // nothing to work from. The token is only worth spending where there is
+        // already a populated cache to fall back on, which is loadFloorPlans.
+        //
+        // The returned version IS recorded, so the next loadFloorPlans can skip
+        // the geometry payload entirely (-79%).
+        const { data: snapshot, error: fpError } =
+          await FloorPlanService.getFloorSnapshot(supabase, locationId, {
+            knownVersion: null,
+          });
 
         if (fpError) throw fpError;
+
+        const floorPlans = snapshot?.geometry ?? [];
+        if (snapshot?.geometry_version !== undefined) {
+          useFloorPlanStore.setState({
+            geometryVersion: snapshot.geometry_version,
+          });
+        }
 
         // Find default or first floor plan
         const defaultPlan =
