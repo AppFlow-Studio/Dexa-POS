@@ -1,7 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { v4 as uuidv4, v5 as uuidv5 } from 'uuid'
 import { DEADLINES } from './deadlines'
+import {
+  abandonMutation,
+  beginMutation,
+  confirmMutation
+} from '@/lib/realtime/mutationOrigin'
 import { isIdempotentEnabled, type IdempotentRpc } from './featureFlags'
+import { isMissingFunctionError } from './rpcVersionFallback'
 import { runWithDeadline } from './runWithDeadline'
 
 /**
@@ -262,6 +268,30 @@ export function withIdempotency<P extends Record<string, any>> (
  * driving fast → degraded → slow transitions and `processQueueNow()` on
  * recovery (via the slow→fast hook in `setupConnectionQuality.ts`).
  */
+/**
+ * AUD-10 — legacy mutation RPC -> the origin-capable version that wraps it.
+ *
+ * Derived from the delegation targets in
+ * 20260816130000_aud10_broadcast_origin_id.sql, not from memory. Every entry is
+ * a THIN WRAPPER: it calls set_broadcast_origin(p_origin_id) and then delegates
+ * 1:1 to the mapped function. All pricing, idempotency and authorization stay
+ * in the delegate, so an upgraded call cannot behave differently — the only
+ * difference on the wire is the extra p_origin_id.
+ */
+const ORIGIN_CAPABLE_RPC: Record<string, string> = {
+  add_order_item_v3: 'add_order_item_v4',
+  add_open_item_v3: 'add_open_item_v4',
+  update_order_item_v3: 'update_order_item_v4',
+  update_order_item_quantity_v3: 'update_order_item_quantity_v4',
+  replace_order_item_modifiers_v2: 'replace_order_item_modifiers_v3',
+  add_order_item_modifier_v2: 'add_order_item_modifier_v3',
+  remove_order_item_modifier_v2: 'remove_order_item_modifier_v3',
+  duplicate_order_item_v2: 'duplicate_order_item_v3',
+  remove_order_item: 'remove_order_item_v2',
+  remove_order_items_batch: 'remove_order_items_batch_v2',
+  clear_order_items: 'clear_order_items_v2'
+}
+
 export async function rpcWithIdempotency<T = unknown> (
   client: SupabaseClient,
   rpc: IdempotentRpc,
@@ -279,8 +309,43 @@ export async function rpcWithIdempotency<T = unknown> (
     rpc, v1Name, v2Name, params, opts?.keyOverride
   )
   const deadlineMs = opts?.deadline ?? DEADLINES.hotMutation
+
+  // AUD-10 — stamp the write with an origin so the station can recognise its
+  // own echo. Wired HERE rather than at each of the eleven cart call sites:
+  // this is the single choke point they all pass through, so one integration
+  // covers them all and none can be forgotten later.
+  //
+  // beginMutation returns null when the feature is off (the default), in which
+  // case nothing below changes — same RPC name, same params, same behaviour.
+  const originId = beginMutation(rpc, params?.p_order_id)
+  const originName = originId ? ORIGIN_CAPABLE_RPC[name] : undefined
+
+  const callName = originName ?? name
+  const callParams = originName
+    ? { ...rpcParams, p_origin_id: originId }
+    : rpcParams
+
   return runWithDeadline<T>(rpc, deadlineMs, async (signal) => {
-    const { data, error } = await client.rpc(name, rpcParams).abortSignal(signal)
+    let { data, error } = await client
+      .rpc(callName, callParams)
+      .abortSignal(signal)
+
+    // The origin-capable version may not be deployed in this environment.
+    // Fall back to the original call and give up on suppressing this echo —
+    // never fail a cart mutation because an optimisation is missing.
+    if (error && originName && isMissingFunctionError(error)) {
+      abandonMutation(originId)
+      const retry = await client.rpc(name, rpcParams).abortSignal(signal)
+      data = retry.data
+      error = retry.error
+    } else if (error) {
+      // A failed write must not suppress anything: if it partially applied
+      // server-side, we need its echo to reconcile us.
+      abandonMutation(originId)
+    } else {
+      confirmMutation(originId)
+    }
+
     return { data: data as T | null, error }
   })
 }
