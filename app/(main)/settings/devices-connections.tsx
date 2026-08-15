@@ -10,9 +10,11 @@ import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { toastService } from '@/lib/toastService'
 import {
+  isSerialMismatch,
   normalizeSerial,
   reconcileTerminalSerial,
 } from '@/services/terminals/terminalIdentity'
+import { findExistingTerminalByIdentity } from '@/services/terminals/terminalRegistration'
 import {
   checkForNativeUpdate,
   type VersionManifest
@@ -779,6 +781,111 @@ const DevicesConnectionsScreen = ({
     }
   }
 
+  // Duplicate-at-creation guard. Given the device identity we just discovered
+  // (serial, and/or Valor EPI), decide whether to INSERT a new row, adopt an
+  // existing one, or abort because the operator declined to reuse a device
+  // that's already registered here. Naming WHERE the device is registered
+  // (which station) is the high-value signal — a silent duplicate on another
+  // station re-attributes its batches.
+  const resolveTerminalRegistrationTarget = async (identity: {
+    serial?: string
+    epi?: string
+  }): Promise<{ adoptId: string } | 'insert' | 'abort'> => {
+    if (!selectedStore || !selectedStation) return 'insert'
+    // No identity at all (e.g. Valor-USB before its first transaction): we
+    // cannot dedup by serial/EPI. Let the INSERT proceed; the DB unique index
+    // still backstops a serial collision once the serial is later filled.
+    if (!identity.serial && !identity.epi) return 'insert'
+
+    let match
+    try {
+      match = await findExistingTerminalByIdentity({
+        supabase,
+        locationId: selectedStore.id,
+        serial: identity.serial,
+        epi: identity.epi
+      })
+    } catch {
+      // Lookup failed (offline / transient). Fall through to INSERT rather than
+      // blocking registration; the unique index remains the hard backstop.
+      return 'insert'
+    }
+    if (!match) return 'insert'
+
+    // Already registered at THIS station → a plain re-register; adopt silently.
+    if (match.stationId === selectedStation.id) return { adoptId: match.id }
+
+    const whereLabel = match.stationName
+      ? `on “${match.stationName}”`
+      : match.stationId
+        ? 'on another station'
+        : '(currently unassigned)'
+    const idLabel = identity.serial
+      ? `S/N ${normalizeSerial(identity.serial)}`
+      : `EPI ${identity.epi}`
+    const confirmed = await new Promise<boolean>(resolve => {
+      Alert.alert(
+        'Device already registered',
+        `This device (${idLabel}) is already registered as “${
+          match!.terminalName ?? 'a terminal'
+        }” ${whereLabel}. Reuse it here instead of creating a duplicate?`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Reuse it here', onPress: () => resolve(true) }
+        ]
+      )
+    })
+    return confirmed ? { adoptId: match.id } : 'abort'
+  }
+
+  // Insert a new terminal, or adopt an existing one when: (a) the duplicate
+  // guard matched and the operator chose to reuse, or (b) the DB unique index
+  // rejects the INSERT (23505) — a row for this device already exists (a race,
+  // or a null-serial row whose serial just got filled). Returns 'aborted' when
+  // the operator declined the duplicate prompt.
+  const registerOrAdoptTerminal = async (cfg: {
+    identity: { serial?: string; epi?: string }
+    insertPayload: Record<string, any>
+    adoptPayload: Record<string, any>
+  }): Promise<'aborted' | string> => {
+    const target = await resolveTerminalRegistrationTarget(cfg.identity)
+    if (target === 'abort') return 'aborted'
+    if (target !== 'insert') {
+      await supabase
+        .from('payment_terminals')
+        .update(cfg.adoptPayload)
+        .eq('id', target.adoptId)
+      return target.adoptId
+    }
+
+    const { data, error } = await supabase
+      .from('payment_terminals')
+      .insert(cfg.insertPayload as any)
+      .select('id')
+      .single()
+    if (!error) return data.id
+    // Not a uniqueness collision → real failure.
+    if ((error as { code?: string }).code !== '23505') throw error
+    // Collision: the device already has a row. Adopt it rather than dead-ending.
+    const match = await findExistingTerminalByIdentity({
+      supabase,
+      locationId: selectedStore!.id,
+      serial: cfg.identity.serial,
+      epi: cfg.identity.epi
+    }).catch(() => null)
+    if (!match) throw error
+    await supabase
+      .from('payment_terminals')
+      .update(cfg.adoptPayload)
+      .eq('id', match.id)
+    toastService.show({
+      title: 'Reused existing terminal',
+      message: 'This device was already registered — its record was updated.',
+      type: 'success'
+    })
+    return match.id
+  }
+
   const handleRegisterTerminal = async () => {
     if (!selectedStore || !selectedStation) return
     setIsRegistering(true)
@@ -870,9 +977,16 @@ const DevicesConnectionsScreen = ({
         // Store the IP in BOTH local_ip_address (surfaced as ip_address by the
         // station RPC, so the sale path works without a server change) AND the
         // valor_* columns (canonical config).
-        const { data: terminalRow, error: termErr } = await supabase
-          .from('payment_terminals')
-          .insert({
+        //
+        // Duplicate guard + insert-or-adopt. Valor dedups by serial (TCP
+        // pre-test) or, when USB gives no serial yet, by EPI. Previously this
+        // path blindly INSERTed and could create a duplicate row per re-register.
+        const valorResult = await registerOrAdoptTerminal({
+          identity: {
+            serial: discoveredSN,
+            epi: registerForm.epi || undefined
+          },
+          insertPayload: {
             location_id: selectedStore.id,
             merchant_id: selectedStore.merchant_id,
             station_id: selectedStation.id,
@@ -892,11 +1006,28 @@ const DevicesConnectionsScreen = ({
             is_connected: false,
             api_environment: 'production',
             serial_number: discoveredSN ?? null
-          } as any)
-          .select('id')
-          .single()
-        if (termErr) throw termErr
-        newTerminalId = terminalRow.id
+          },
+          adoptPayload: {
+            terminal_name: registerForm.name,
+            terminal_model: registerForm.model || null,
+            local_ip_address: localIp,
+            local_port: localPort,
+            valor_ip_address: localIp,
+            valor_port: localPort ?? 5000,
+            valor_cancel_port: cancelPort,
+            valor_epi: registerForm.epi || null,
+            connection_type: connectionType,
+            station_id: selectedStation.id,
+            is_active: true,
+            ...(discoveredSN ? { serial_number: discoveredSN } : {})
+          }
+        })
+        if (valorResult === 'aborted') {
+          // Operator declined to reuse an already-registered device. Abort
+          // quietly; the finally clause clears the registering flag.
+          return
+        }
+        newTerminalId = valorResult
         // Deactivate other terminals at this station — otherwise the station
         // keeps >1 is_active=true row and the station RPC resolves the active
         // terminal ambiguously, flip-flopping the health-check target.
@@ -966,67 +1097,49 @@ const DevicesConnectionsScreen = ({
           discoveredSN = normalizeSerial(registerForm.serialNumber) || undefined
         }
 
-        // If we have a serial number, check if this physical device is already registered.
-        // Ordered .limit(1) instead of .maybeSingle() so we still pick a row to update
-        // when legacy data already contains duplicates — otherwise the duplicate-row
-        // PostgREST error makes us fall through to INSERT and compound the problem.
-        let existingId: string | null = null
-        if (discoveredSN) {
-          const { data: existing } = await supabase
-            .from('payment_terminals')
-            .select('id')
-            .eq('location_id', selectedStore.id)
-            .eq('serial_number', discoveredSN)
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          existingId = existing?.id ?? null
+        // Duplicate guard + insert-or-adopt. If this physical device (by serial)
+        // is already registered at this location — including on another station —
+        // prompt to reuse it rather than silently merging or creating a duplicate.
+        // The DB partial-unique index (location_id, serial_number) is the hard
+        // backstop; a 23505 collision is caught inside the helper.
+        const castlesResult = await registerOrAdoptTerminal({
+          identity: { serial: discoveredSN },
+          insertPayload: {
+            location_id: selectedStore.id,
+            merchant_id: selectedStore.merchant_id,
+            station_id: selectedStation.id,
+            terminal_name: registerForm.name,
+            terminal_type: 'castles',
+            terminal_model: registerForm.model || null,
+            register_id: 'CASTLES',
+            auth_key: 'CASTLES',
+            local_ip_address: localIp,
+            local_port: localPort,
+            connection_type: connectionType,
+            is_active: true,
+            is_connected: false,
+            api_environment: 'production',
+            serial_number: discoveredSN ?? null
+          },
+          adoptPayload: {
+            terminal_name: registerForm.name,
+            terminal_model: registerForm.model || null,
+            local_ip_address: localIp,
+            local_port: localPort,
+            connection_type: connectionType,
+            station_id: selectedStation.id,
+            is_active: true,
+            // Refresh SN if we discovered one (handles the case where an
+            // old row had a stale or null serial_number).
+            ...(discoveredSN ? { serial_number: discoveredSN } : {})
+          }
+        })
+        if (castlesResult === 'aborted') {
+          // Operator declined to reuse an already-registered device. Abort
+          // quietly; the finally clause clears the registering flag.
+          return
         }
-
-        if (existingId) {
-          // Same physical device already in DB — update it rather than creating a duplicate
-          await supabase
-            .from('payment_terminals')
-            .update({
-              terminal_name: registerForm.name,
-              terminal_model: registerForm.model || null,
-              local_ip_address: localIp,
-              local_port: localPort,
-              connection_type: connectionType,
-              station_id: selectedStation.id,
-              is_active: true,
-              // Refresh SN if we discovered one (handles the case where an
-              // old row had a stale or null serial_number).
-              ...(discoveredSN ? { serial_number: discoveredSN } : {})
-            })
-            .eq('id', existingId)
-          newTerminalId = existingId
-        } else {
-          // New device — insert with serial number already populated if we got it
-          const { data: terminalRow, error: termErr } = await supabase
-            .from('payment_terminals')
-            .insert({
-              location_id: selectedStore.id,
-              merchant_id: selectedStore.merchant_id,
-              station_id: selectedStation.id,
-              terminal_name: registerForm.name,
-              terminal_type: 'castles',
-              terminal_model: registerForm.model || null,
-              register_id: 'CASTLES',
-              auth_key: 'CASTLES',
-              local_ip_address: localIp,
-              local_port: localPort,
-              connection_type: connectionType,
-              is_active: true,
-              is_connected: false,
-              api_environment: 'production',
-              serial_number: discoveredSN ?? null
-            })
-            .select('id')
-            .single()
-          if (termErr) throw termErr
-          newTerminalId = terminalRow.id
-        }
+        newTerminalId = castlesResult
 
         // Deactivate other terminals at this station
         await supabase
@@ -3976,7 +4089,11 @@ const DevicesConnectionsScreen = ({
                                   selectable
                                 >
                                   {currentTerminal.serial_number ??
-                                    '— not yet discovered —'}
+                                    (currentTerminal.terminal_type ===
+                                      'valor' &&
+                                    currentTerminal.connection_type === 'usb'
+                                      ? 'pending — verifies after first transaction'
+                                      : '— not yet discovered —')}
                                 </Text>
                               </View>
                               {currentTerminal.firmware_version && (
@@ -4008,8 +4125,9 @@ const DevicesConnectionsScreen = ({
                                   </Text>
                                 </View>
                               )}
-                              {currentTerminal.last_connection_status ===
-                                'IdentityMismatch' && (
+                              {isSerialMismatch(
+                                currentTerminal.last_connection_status
+                              ) && (
                                 <View
                                   style={{
                                     marginTop: s(6),
