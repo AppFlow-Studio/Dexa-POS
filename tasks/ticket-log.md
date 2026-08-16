@@ -2,6 +2,7 @@
 
 | Date | Ticket | Status | Summary | Task File |
 | --- | --- | --- | --- | --- |
+| 2026-08-16 | POS hide portal-disabled menus | Code complete - portal/POS staging QA pending | Order entry now excludes menus whose synchronized portal `is_active` flag is false while preserving the existing local hidden-menu filter. | `tasks/pos-hide-inactive-menus.md` |
 | 2026-08-14 | POS-KDS routing traceability | Code complete - shared migration review/application and physical QA pending | Routed every POS kitchen-send family through the traceable composite RPC, retained station/device and operation keys through replay, and rejected partial or zero-destination sends without changing routing rules. | `tasks/kds-routing-traceability-pos.md` |
 | 2026-08-14 | POS single-location menu framing | Code complete - pending emulator/tablet and staging data QA | Fixed merchant-aware active-location resolution and removed remaining Global menu scope framing for confirmed single-location POS accounts without changing multi-location or 86 behavior. | `tasks/pos-single-location-menu-framing.md` |
 | 2026-08-04 | POS Online Orders local-day boundaries | Code complete - migration and tablet QA pending | Added the location-local date RPC and routed all POS Online Orders date presets through it while retaining active orders. | `tasks/pos-online-orders-local-day-boundaries.md` |
