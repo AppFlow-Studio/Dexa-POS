@@ -21,6 +21,7 @@ import {
   type SettlementOutput,
   type UnsettledStats
 } from '@/services/settlementService'
+import { useAutoSettlementStore } from '@/stores/useAutoSettlementStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore'
 import { useActiveProcessor } from '@/hooks/useActiveProcessor'
@@ -439,6 +440,13 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
             S/N {terminalSerial}
           </Text>
         ) : null}
+        {isCastles && terminal?.id && (terminal.auto_settle ?? false) ? (
+          <AutoSettleStatus
+            terminalId={terminal.id}
+            settleTime={terminal.settle_time ?? null}
+            scale={uiScale}
+          />
+        ) : null}
       </View>
 
       {isSupported ? (
@@ -494,6 +502,138 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
           errored={batchesErrored}
           onPrintBatch={printBatch}
         />
+      ) : null}
+    </View>
+  )
+}
+
+// ── Auto batch-out status (Castles scheduler observability) ─────
+
+function formatSettleTime (t: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(t)
+  if (!m) return t
+  let h = Number(m[1])
+  const min = m[2]
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12
+  if (h === 0) h = 12
+  return `${h}:${min} ${ampm}`
+}
+
+function relativeTime (iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(diff)) return ''
+  const mins = Math.round(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.round(hrs / 24)}d ago`
+}
+
+/**
+ * Read-only surface for the auto-batch scheduler. Shows that it's armed, the next
+ * fire, the last result, and — critically — a manual-review banner when a fire
+ * hit an ambiguous/partial/stuck state (money is never silently stranded).
+ */
+function AutoSettleStatus ({
+  terminalId,
+  settleTime,
+  scale
+}: {
+  terminalId: string
+  settleTime: string | null
+  scale: number
+}) {
+  const s = (n: number) => Math.round(n * scale)
+  const progress = useAutoSettlementStore(st => st.byTerminal[terminalId])
+
+  const last = (() => {
+    switch (progress?.lastResultStatus) {
+      case 'settled':
+        return { text: 'Settled', color: colors.success, Icon: CheckCircle }
+      case 'nothing_to_settle':
+        return { text: 'Nothing to settle', color: colors.muted, Icon: CheckCircle }
+      case 'finalize_pending':
+        return { text: 'Recording result…', color: colors.info, Icon: Clock }
+      case 'needs_manual':
+        return { text: 'Needs review', color: colors.warning, Icon: AlertTriangle }
+      case 'failed':
+        return { text: 'Failed — will retry', color: colors.danger, Icon: XCircle }
+      default:
+        return null
+    }
+  })()
+
+  const nextFire = progress?.nextFireAtMs ? new Date(progress.nextFireAtMs) : null
+
+  return (
+    <View
+      style={{
+        marginTop: s(10),
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        paddingTop: s(10),
+        gap: s(4)
+      }}
+    >
+      <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}>
+        Auto batch-out: ON
+        {settleTime ? ` · daily ${formatSettleTime(settleTime)}` : ''}
+      </Text>
+      {nextFire ? (
+        <Text style={{ fontSize: s(11), color: colors.muted }}>
+          Next:{' '}
+          {nextFire.toLocaleString([], {
+            weekday: 'short',
+            hour: 'numeric',
+            minute: '2-digit'
+          })}
+        </Text>
+      ) : null}
+      {last ? (
+        <View
+          style={{ flexDirection: 'row', alignItems: 'center', gap: s(5) }}
+        >
+          <last.Icon size={s(13)} color={last.color} />
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
+            Last auto: {last.text}
+            {progress?.lastResultAt
+              ? ` · ${relativeTime(progress.lastResultAt)}`
+              : ''}
+          </Text>
+        </View>
+      ) : null}
+      {progress?.phase === 'needs_manual' ? (
+        <View
+          style={{
+            marginTop: s(6),
+            borderRadius: s(10),
+            borderWidth: 1,
+            borderColor: colors.warning + '60',
+            backgroundColor: colors.warning + '15',
+            padding: s(10)
+          }}
+        >
+          <Text
+            style={{ fontSize: s(12), fontWeight: '600', color: colors.warning }}
+          >
+            Auto batch-out needs manual review
+          </Text>
+          <Text
+            style={{
+              marginTop: s(3),
+              fontSize: s(11),
+              color: colors.muted,
+              lineHeight: s(16)
+            }}
+          >
+            {progress.lastResultMessage ??
+              'This terminal could not auto-settle cleanly.'}{' '}
+            Tap “Batch Out Terminal” below to retry, or contact support to
+            reconcile the batch.
+          </Text>
+        </View>
       ) : null}
     </View>
   )

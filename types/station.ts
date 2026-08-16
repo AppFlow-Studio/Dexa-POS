@@ -55,6 +55,14 @@ export interface StationPaymentTerminal {
   consecutive_failures?: number;
   health_check_interval?: number;
   connection_type?: "cloud" | "local" | "local_socket" | "usb";
+  /**
+   * Auto-batch settlement config (Castles). Projected from payment_terminals by
+   * get_location_stations_with_status. Undefined on un-migrated environments —
+   * treat undefined as OFF (the auto-settle scheduler fails safe).
+   */
+  auto_settle?: boolean | null;
+  /** Wall-clock time-of-day ("HH:MM[:SS]") the daily auto-batch fires, in the location timezone. */
+  settle_time?: string | null;
 }
 
 // Station as returned from get_location_stations_with_status RPC

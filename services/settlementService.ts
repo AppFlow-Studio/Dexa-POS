@@ -80,6 +80,62 @@ interface UnsettledSummaryRow {
   stuck_batch_uuid: string | null;
 }
 
+// ── Settlement attempt audit log (best-effort) ───────────────────
+// Writes a per-phase row to settlement_attempts via log_settlement_attempt().
+// Best-effort: a missing RPC (env not migrated) is warned ONCE and swallowed so
+// it never breaks settlement — but we do NOT swallow silently forever, since this
+// is the forensic trail for the feature most likely to strand money.
+
+let _logAttemptRpcMissing = false;
+
+export async function logSettlementAttempt(
+  supabase: SupabaseClient,
+  args: {
+    terminalId: string;
+    phase: "prepare" | "terminal_command" | "finalize";
+    outcome: "started" | "success" | "failed" | "timeout" | "blocked";
+    detail?: string | null;
+    batchUuid?: string | null;
+    initiatedBy?: string | null;
+  },
+): Promise<void> {
+  try {
+    const { error } = await supabase.rpc("log_settlement_attempt", {
+      p_terminal_id: args.terminalId,
+      p_phase: args.phase,
+      p_outcome: args.outcome,
+      p_detail: args.detail ?? null,
+      p_batch_uuid: args.batchUuid ?? null,
+      p_initiated_by: args.initiatedBy ?? null,
+    });
+    if (error) {
+      const missing = /function .*log_settlement_attempt.* does not exist/i.test(
+        error.message ?? "",
+      );
+      if (missing) {
+        if (!_logAttemptRpcMissing) {
+          _logAttemptRpcMissing = true;
+          captureRpcError("log_settlement_attempt", error);
+          console.warn(
+            "[SettlementService] log_settlement_attempt RPC missing — settlement audit trail disabled until deployed to this environment.",
+          );
+        }
+      } else {
+        console.warn(
+          "[SettlementService] log_settlement_attempt failed:",
+          error.message,
+        );
+      }
+    }
+  } catch (e) {
+    // Never let audit logging break settlement.
+    console.warn(
+      "[SettlementService] log_settlement_attempt threw (non-fatal):",
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+}
+
 // ── Security: Terminal Provisioning & Verification ────────────────
 
 async function verifyOrProvisionTerminal(params: {
@@ -416,6 +472,13 @@ async function _runSingleSettlementAttempt(params: {
   } = params;
 
   onStatus?.("Preparing settlement batch...");
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "prepare",
+    outcome: "started",
+    detail: `attempt #${attempt}`,
+    initiatedBy,
+  });
   const { data: prepareData, error: prepareError } = await supabase.rpc(
     "prepare_castles_settlement",
     {
@@ -426,12 +489,27 @@ async function _runSingleSettlementAttempt(params: {
   );
 
   if (prepareError) {
+    await logSettlementAttempt(supabase, {
+      terminalId,
+      phase: "prepare",
+      outcome: "failed",
+      detail: prepareError.message,
+      initiatedBy,
+    });
     throw new Error(`Settlement prepare failed: ${prepareError.message}`);
   }
 
   const batchUuid: string = prepareData.batch_uuid;
   const txnPosTxnId: string = prepareData.castles_request.txnPosTxnId;
   const paymentCount: number = prepareData.payment_count ?? 0;
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "prepare",
+    outcome: "success",
+    detail: `${paymentCount} payment(s)`,
+    batchUuid,
+    initiatedBy,
+  });
 
   const prevCallback = service.getOnStatusNotification();
   service.setOnStatusNotification((n) => {
@@ -439,6 +517,13 @@ async function _runSingleSettlementAttempt(params: {
   });
 
   onStatus?.("Settling batch — this may take a few minutes...");
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "terminal_command",
+    outcome: "started",
+    batchUuid,
+    initiatedBy,
+  });
   let terminalResult: CastlesSettlementResult;
   try {
     terminalResult = await service.processSettlement({
@@ -446,6 +531,25 @@ async function _runSingleSettlementAttempt(params: {
     });
   } finally {
     service.setOnStatusNotification(prevCallback);
+  }
+
+  {
+    const tcError = terminalResult.success ? null : terminalResult.error ?? "";
+    const tcTimedOut = /timeout|timed out|empty response|no response/i.test(
+      tcError ?? "",
+    );
+    await logSettlementAttempt(supabase, {
+      terminalId,
+      phase: "terminal_command",
+      outcome: terminalResult.success
+        ? "success"
+        : tcTimedOut
+          ? "timeout"
+          : "failed",
+      detail: terminalResult.success ? undefined : tcError || undefined,
+      batchUuid,
+      initiatedBy,
+    });
   }
 
   // Always finalize — even on TCP failure — so the batch isn't left stuck as 'pending'
@@ -456,6 +560,13 @@ async function _runSingleSettlementAttempt(params: {
     txnHostMsg: terminalResult.error ?? "Terminal communication failed",
   };
 
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "finalize",
+    outcome: "started",
+    batchUuid,
+    initiatedBy,
+  });
   const { data: finalizeData, error: finalizeError } = await supabase.rpc(
     "finalize_castles_settlement",
     {
@@ -471,6 +582,14 @@ async function _runSingleSettlementAttempt(params: {
       finalizeError,
     );
     captureRpcError("finalize_castles_settlement", finalizeError);
+    await logSettlementAttempt(supabase, {
+      terminalId,
+      phase: "finalize",
+      outcome: "failed",
+      detail: finalizeError.message,
+      batchUuid,
+      initiatedBy,
+    });
 
     // Persist for later retry from the BatchoutPanel. The terminal has
     // already closed its batch — re-talking to it would double-cut, so
@@ -500,6 +619,15 @@ async function _runSingleSettlementAttempt(params: {
         "Settlement completed on terminal but failed to save results. Retry the DB sync from settings.",
     };
   }
+
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "finalize",
+    outcome: "success",
+    detail: `status=${finalizeData.status} return_code=${finalizeData.return_code ?? ""}`,
+    batchUuid,
+    initiatedBy,
+  });
 
   console.log(
     `[SettlementService] attempt #${attempt} → status=${finalizeData.status} return_code=${finalizeData.return_code}`,
