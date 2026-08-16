@@ -12,6 +12,7 @@ import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Search, X } from "lucide-react-native";
 import React, {
     useCallback,
+    useDeferredValue,
     useLayoutEffect,
     useMemo,
     useRef,
@@ -71,6 +72,13 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const inputRef = useRef<any>(null);
   const snapPoints = useMemo(() => ["85%"], []);
   const [searchText, setSearchText] = useState("");
+  // The input binds to `searchText` so every keystroke lands instantly; the
+  // expensive whole-menu filter below reads this DEFERRED copy instead. React
+  // keeps the old value during the urgent keystroke render and re-runs the
+  // filter in a later, interruptible pass — so typing fast never blocks on
+  // rebuilding ~2000 rows. Without this, the JS-thread stall let the controlled
+  // input's value lag the native keystroke buffer, duplicating/merging chars.
+  const deferredSearchText = useDeferredValue(searchText);
   // Track open state so the (potentially huge) menu list only mounts while the
   // sheet is visible. The sheet sits in the always-mounted root POS tree at
   // index={-1}; without this gate it rendered EVERY menu item as a live view
@@ -87,7 +95,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   // entire menu into section data on every menus/searchText change.
   const searchResults = useMemo<SearchSection[]>(() => {
     if (!isOpen) return [];
-    const trimmedSearch = searchText.trim().toLowerCase();
+    const trimmedSearch = deferredSearchText.trim().toLowerCase();
 
     const availableSections: SearchSection[] = [];
     const unavailableSections: SearchSection[] = [];
@@ -167,7 +175,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
     });
 
     return [...availableSections, ...unavailableSections];
-  }, [isOpen, searchText, menus]);
+  }, [isOpen, deferredSearchText, menus]);
 
   // Flatten sections → a single virtualizable row list (header + item rows) so
   // BottomSheetFlatList only mounts the rows currently on screen.
