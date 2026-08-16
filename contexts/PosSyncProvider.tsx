@@ -164,8 +164,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
   // Unattended daily Castles batch-out. Gated to the Castles terminal THIS
   // station owns with server auto_settle on (fail-safe OFF when the field is
-  // absent on un-migrated envs). The client kill switch (feature flag) is a live
-  // per-tick probe inside the scheduler, not this mount gate.
+  // absent on un-migrated envs). Enablement is the server auto_settle column —
+  // there is no separate client flag.
   useAutoSettlementScheduler({
     enabled: Boolean(
       supabase &&

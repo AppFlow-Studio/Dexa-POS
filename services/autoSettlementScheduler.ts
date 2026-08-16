@@ -73,8 +73,6 @@ export interface AutoSettleProbes {
   isTerminalBusy: () => boolean;
   /** A payment is being processed / an order is locked for payment. */
   isSaleActive: () => boolean;
-  /** Client kill switch (feature flag). */
-  killSwitchOn: () => boolean;
 }
 
 export type FireDecision =
@@ -167,8 +165,8 @@ export function decideFire(
     dueMs: null,
   });
 
-  // ── disabled gates ──
-  if (!probes.killSwitchOn()) return skip("kill_switch_off");
+  // ── disabled gates ── (enablement is the server payment_terminals.auto_settle
+  // column, threaded in as cfg.autoSettle — there is no separate client flag.)
   if (cfg.terminalType !== "castles") return skip("not_castles");
   if (!cfg.autoSettle) return skip("auto_settle_off");
   if (!cfg.settleTime) return skip("no_settle_time");
@@ -287,10 +285,7 @@ export async function tickAutoSettlement(deps: TickDeps): Promise<void> {
   const progress = store.getProgress(cfg.terminalId);
   const decision = decideFire(cfg, progress, probes, now);
   const armed =
-    probes.killSwitchOn() &&
-    cfg.terminalType === "castles" &&
-    !!cfg.autoSettle &&
-    !!cfg.settleTime;
+    cfg.terminalType === "castles" && !!cfg.autoSettle && !!cfg.settleTime;
 
   // A concurrent tick already holds the terminal — record honestly, don't double-fire.
   const concurrent = decision.action === "fire" && inFlight.has(cfg.terminalId);

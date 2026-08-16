@@ -242,30 +242,6 @@ export function setPersistMemoEnabled(enabled: boolean): void {
   writeBool(PERSIST_MEMO_KEY, enabled);
 }
 
-// Auto-batch settlement scheduler (Castles). Fleet-wide client kill switch,
-// INDEPENDENT of the per-terminal server `payment_terminals.auto_settle` column.
-// Two layers gate an auto-settle: this flag (emergency stop, sub-minute flip, no
-// DB write) AND the server column (per-terminal enablement). Ships OFF; flip the
-// default once dogfooded on a staging merchant.
-//   EXPO_PUBLIC_AUTO_SETTLE=1|true  → forces ON  (EAS builds where dev-flags is unreachable)
-//   EXPO_PUBLIC_AUTO_SETTLE=0|false → forces OFF
-const AUTO_SETTLE_KEY = "flag.autoSettleScheduler";
-const ENV_AUTO_SETTLE = process.env.EXPO_PUBLIC_AUTO_SETTLE;
-const ENV_AUTO_SETTLE_FORCE_OFF =
-  ENV_AUTO_SETTLE === "0" || ENV_AUTO_SETTLE === "false";
-const ENV_AUTO_SETTLE_FORCE_ON = isTruthyEnv(ENV_AUTO_SETTLE);
-
-export function isAutoSettleEnabled(): boolean {
-  if (ENV_AUTO_SETTLE_FORCE_OFF) return false;
-  if (ENV_AUTO_SETTLE_FORCE_ON) return true;
-  // Default false — this is a staged rollout gate, not a correctness fix.
-  return readBool(AUTO_SETTLE_KEY);
-}
-
-export function setAutoSettleEnabled(enabled: boolean): void {
-  writeBool(AUTO_SETTLE_KEY, enabled);
-}
-
 export function subscribeFlags(listener: () => void): () => void {
   listeners.add(listener);
   if (__DEV__ && listeners.size > 25) {

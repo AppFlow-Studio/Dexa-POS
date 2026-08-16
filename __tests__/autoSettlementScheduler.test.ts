@@ -59,7 +59,6 @@ const permissiveProbes: AutoSettleProbes = {
   isOnline: () => true,
   isTerminalBusy: () => false,
   isSaleActive: () => false,
-  killSwitchOn: () => true,
 };
 
 const prog = (
@@ -195,10 +194,7 @@ describe("decideFire", () => {
     ).toMatchObject({ action: "wait", reason: "offline" });
   });
 
-  it("respects the kill switch, terminal type, and server auto_settle", () => {
-    expect(
-      decideFire(CFG, prog(), { ...permissiveProbes, killSwitchOn: () => false }, now),
-    ).toMatchObject({ action: "skip", reason: "kill_switch_off" });
+  it("respects terminal type and the server auto_settle column (no client flag)", () => {
     expect(
       decideFire({ ...CFG, terminalType: "valor" }, prog(), permissiveProbes, now),
     ).toMatchObject({ action: "skip", reason: "not_castles" });
@@ -395,14 +391,14 @@ describe("tickAutoSettlement", () => {
     expect(getStats).toHaveBeenCalledTimes(1);
   });
 
-  it("does not fire when the pure gate says skip (e.g. kill switch off)", async () => {
+  it("does not fire when the pure gate says skip (e.g. server auto_settle off)", async () => {
     const run = jest.fn();
     const getStats = jest.fn();
-    await tick({ run, getStats, probes: { ...permissiveProbes, killSwitchOn: () => false } });
+    await tick({ run, getStats, cfg: { ...CFG, autoSettle: false } });
     expect(run).not.toHaveBeenCalled();
     expect(getStats).not.toHaveBeenCalled();
     expect(useAutoSettlementStore.getState().getProgress(TERM).lastReason).toBe(
-      "kill_switch_off",
+      "auto_settle_off",
     );
   });
 });

@@ -1,5 +1,4 @@
 import { registerResumeTask } from "@/lib/lifecycle/appLifecycleCoordinator";
-import { isAutoSettleEnabled } from "@/lib/network/featureFlags";
 import {
   tickAutoSettlement,
   type AutoSettleConfig,
@@ -32,9 +31,6 @@ const probes: AutoSettleProbes = {
     const s = usePaymentStore.getState();
     return s.isTransactionProcessing || s.lockedOrderId != null;
   },
-  // Fleet-wide client kill switch, re-read every tick — flipping it OFF stops
-  // firing within one poll interval without a re-render or DB write.
-  killSwitchOn: () => isAutoSettleEnabled(),
 };
 
 /**
