@@ -189,18 +189,19 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
     id: 'customer',
     title: 'Customer Experience',
     items: [
-      {
-        id: 'online-ordering',
-        label: 'Online Ordering',
-        icon: Globe,
-        route: '/settings/online-ordering'
-      },
-      {
-        id: 'delivery',
-        label: 'Delivery Management',
-        icon: Truck,
-        route: '/settings/delivery'
-      },
+      // Below 2 not setup yet
+      // {
+      //   id: 'online-ordering',
+      //   label: 'Online Ordering',
+      //   icon: Globe,
+      //   route: '/settings/online-ordering'
+      // },
+      // {
+      //   id: 'delivery',
+      //   label: 'Delivery Management',
+      //   icon: Truck,
+      //   route: '/settings/delivery'
+      // },
       {
         id: 'waitlist',
         label: 'Waitlist & Reservations',
