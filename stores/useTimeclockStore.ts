@@ -77,10 +77,19 @@ interface TimeclockState {
   // === Session actions ===
   setActiveEmployee: (employeeId: string | null) => void;
   clockIn: (employeeId: string) => { ok: boolean; reason?: string };
+  /**
+   * Clock a staff member in WITHOUT switching the active terminal account.
+   * Used by the quick "Clock In / Out" PIN panel so a non-active employee can
+   * clock in on someone else's session without taking it over.
+   */
+  clockInSession: (
+    employeeId: string,
+    clockInTime?: Date,
+  ) => { ok: boolean; reason?: string };
   signIn: (employeeId: string) => { ok: boolean } | undefined;
   startBreak: () => void;
   endBreak: (employeeId: string) => void;
-  clockOut: (employeeId: string) => void;
+  clockOut: (employeeId: string, opts?: { silent?: boolean }) => void;
   forceClockOutAll: () => void;
   forceClockOutAllExcept: (excludeId: string) => void;
   getSession: (employeeId: string) => ShiftSession | undefined;
@@ -180,6 +189,29 @@ export const useTimeclockStore = create<TimeclockState>()(
         return { ok: true };
       },
 
+      clockInSession: (employeeId: string, clockInTime?: Date) => {
+        const { sessions } = get();
+        if (sessions[employeeId]) {
+          return { ok: false, reason: "already_in_session" };
+        }
+
+        const newSession: ShiftSession = {
+          employeeId,
+          status: "clockedIn",
+          clockInTime: clockInTime ?? new Date(),
+          breakStartTime: null,
+          breakEndTime: null,
+        };
+
+        set((state) => {
+          state.sessions[employeeId] = newSession;
+          // NOTE: deliberately does NOT touch activeEmployeeId — clocking in via
+          // the quick PIN panel must never switch the active terminal account.
+        });
+
+        return { ok: true };
+      },
+
       signIn: (employeeId: string, clockInTime?: Date) => {
         const { sessions } = get();
         if (sessions[employeeId]) {
@@ -244,7 +276,7 @@ export const useTimeclockStore = create<TimeclockState>()(
         });
       },
 
-      clockOut: (employeeId: string) => {
+      clockOut: (employeeId: string, opts?: { silent?: boolean }) => {
         const { sessions, activeEmployeeId } = get();
         const sessionToClose = sessions[employeeId];
         if (!sessionToClose) return;
@@ -351,11 +383,16 @@ export const useTimeclockStore = create<TimeclockState>()(
           empStore.getState().signOut();
         }
 
-        toastService.show({
-          title: "Clocked Out",
-          message: "You have been successfully clocked out.",
-          type: "success",
-        });
+        // The quick "Clock In / Out" panel passes silent:true so it can own a
+        // correctly-named toast (e.g. "{name} clocked out") instead of this
+        // first-person one.
+        if (!opts?.silent) {
+          toastService.show({
+            title: "Clocked Out",
+            message: "You have been successfully clocked out.",
+            type: "success",
+          });
+        }
       },
 
       forceClockOutAll: () => {
