@@ -167,6 +167,10 @@ export function decideFire(
 
   // ── disabled gates ── (enablement is the server payment_terminals.auto_settle
   // column, threaded in as cfg.autoSettle — there is no separate client flag.)
+  // Castles-only by design. Valor settles host-side (terminal auto-batch) and is
+  // reconciled by the Valor webhook (record_valor_batch_webhook) — do NOT add
+  // Valor here: a scheduled POS settle racing the host auto-batch is a double-cut
+  // vector. Valor's on-demand batch-out lives in BatchoutPanel only.
   if (cfg.terminalType !== "castles") return skip("not_castles");
   if (!cfg.autoSettle) return skip("auto_settle_off");
   if (!cfg.settleTime) return skip("no_settle_time");

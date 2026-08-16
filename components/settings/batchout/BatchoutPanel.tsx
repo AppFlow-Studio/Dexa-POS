@@ -882,10 +882,13 @@ function ResultsView ({
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
   const needsReview = result.status === 'needs_review'
+  const nothingToSettle = result.status === 'nothing_to_settle'
   const isValor = result.processor === 'valor'
 
   const overallIcon = result.success ? (
     <CheckCircle color={colors.success} size={s(32)} />
+  ) : nothingToSettle ? (
+    <CheckCircle color={colors.muted} size={s(32)} />
   ) : result.partialSuccess || needsReview ? (
     <AlertTriangle color={colors.warning} size={s(32)} />
   ) : (
@@ -894,6 +897,8 @@ function ResultsView ({
 
   const overallLabel = result.success
     ? 'Batchout Complete'
+    : nothingToSettle
+    ? 'Nothing to Settle'
     : needsReview
     ? 'Batchout Needs Review'
     : result.partialSuccess
@@ -902,6 +907,8 @@ function ResultsView ({
 
   const overallColor = result.success
     ? colors.success
+    : nothingToSettle
+    ? colors.muted
     : result.partialSuccess || needsReview
     ? colors.warning
     : colors.danger
@@ -923,6 +930,18 @@ function ResultsView ({
             }}
           >
             {result.error}
+          </Text>
+        ) : nothingToSettle ? (
+          <Text
+            style={{
+              fontSize: s(13),
+              color: colors.muted,
+              textAlign: 'center',
+              paddingHorizontal: s(16)
+            }}
+          >
+            This terminal has no open batch to close — its payments settle
+            automatically when the processor batches out.
           </Text>
         ) : null}
       </View>

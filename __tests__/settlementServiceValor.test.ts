@@ -112,4 +112,44 @@ describe("runValorSettlement", () => {
     expect(out.error).toMatch(/not deployed/i);
     expect(mockSettle).not.toHaveBeenCalled();
   });
+
+  it("adopt-aware prepare with nothing_to_settle skips the terminal and reads as reassurance (not an error)", async () => {
+    const supabase = makeSupabase({
+      prepare_valor_settlement: { data: { branch: "nothing_to_settle", nothing_to_settle: true, payment_count: 0 } },
+    });
+    const out = await runSettlement({ ...BASE, supabase });
+    expect(out.status).toBe("nothing_to_settle");
+    expect(out.success).toBe(false);
+    expect(out.error).toBeFalsy(); // no error surface -> panel shows reassurance, not "Batchout Failed"
+    expect(mockSettle).not.toHaveBeenCalled();
+    expect(mockAddPending).not.toHaveBeenCalled();
+  });
+
+  it("treats the legacy prepare RAISE as nothing_to_settle (prod still on the old RPC)", async () => {
+    const supabase = makeSupabase({
+      prepare_valor_settlement: { error: { message: "No unsettled captured Valor payments found for terminal term-uuid." } },
+    });
+    const out = await runSettlement({ ...BASE, supabase });
+    expect(out.status).toBe("nothing_to_settle");
+    expect(out.success).toBe(false);
+    expect(out.error).toBeFalsy();
+    expect(mockSettle).not.toHaveBeenCalled();
+  });
+
+  it("routes >1 open Valor batch to a manual reconcile without touching the terminal", async () => {
+    const supabase = makeSupabase({
+      prepare_valor_settlement: {
+        data: {
+          branch: "needs_manual",
+          payment_count: 0,
+          message: "Multiple open Valor batches (2) for this terminal. Reconcile manually.",
+        },
+      },
+    });
+    const out = await runSettlement({ ...BASE, supabase });
+    expect(out.status).toBe("needs_manual");
+    expect(out.requiresSupport).toBe(true);
+    expect(out.error).toMatch(/reconcile manually/i);
+    expect(mockSettle).not.toHaveBeenCalled();
+  });
 });

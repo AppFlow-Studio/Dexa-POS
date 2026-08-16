@@ -385,6 +385,13 @@ async function runValorSettlement(
     p_initiated_by: initiatedBy,
   });
   if (prepErr) {
+    // The legacy (pre-adopt) prepare RAISEs this when there's nothing to close —
+    // the adopt-aware prepare returns a structured nothing_to_settle instead. Treat
+    // both the same so a prod env still on the old RPC reads as reassurance, not an
+    // error.
+    if (/no unsettled captured valor payments/i.test(prepErr.message ?? '')) {
+      return failOutput('', { status: 'nothing_to_settle', error: undefined });
+    }
     // Missing RPC (env not migrated yet) surfaces as a clear message, not a crash.
     const msg = /function .*prepare_valor_settlement.* does not exist/i.test(prepErr.message ?? '')
       ? 'Valor settlement is not deployed to this environment yet.'
@@ -392,6 +399,22 @@ async function runValorSettlement(
     captureRpcError('prepare_valor_settlement', prepErr);
     return failOutput(msg);
   }
+
+  // The adopt-aware prepare branches on data state. Nothing to close (webhook
+  // already settled, terminal auto-batched, or no captures) → skip the terminal
+  // round-trip and surface reassurance, not a failure.
+  if (prep?.branch === 'nothing_to_settle' || prep?.nothing_to_settle === true) {
+    return failOutput('', { status: 'nothing_to_settle', error: undefined });
+  }
+  // >1 open Valor batch: can't know which the terminal will close — route to a
+  // manual reconcile instead of guessing.
+  if (prep?.branch === 'needs_manual') {
+    return failOutput(
+      prep?.message ?? 'Multiple open Valor batches for this terminal. Reconcile manually.',
+      { status: 'needs_manual', requiresSupport: true },
+    );
+  }
+
   const batchUuid: string = prep.batch_uuid;
   const batchId: string = prep.batch_id;
   const paymentCount: number = prep.payment_count ?? 0;
