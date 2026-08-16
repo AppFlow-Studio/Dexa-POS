@@ -7,6 +7,7 @@ owning feature or engineering folder.
 
 | Date | Ticket | Status | Plan |
 | --- | --- | --- | --- |
+| 2026-08-14 | POS-KDS routing traceability | Code complete - shared migration review/application and physical QA pending | `tasks/kds-routing-traceability-pos.md` |
 | 2026-08-14 | POS single-location menu framing | Code complete - emulator/tablet and staging data QA pending | `tasks/pos-single-location-menu-framing.md` |
 | 2026-08-04 | POS Online Orders local-day boundaries | Implemented - migration and tablet QA pending | `docs/features/orders/online-orders-local-day-boundaries-plan.md` |
 | 2026-08-04 | POS-QA OrderOut Ready-path audit and E2E | Plan ready - awaiting approval | `docs/features/orders/orderout-ready-path-audit-e2e-plan.md` |

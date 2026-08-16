@@ -196,6 +196,12 @@ const REMEDIES: Record<string, string> = {
   NOT_FOUND: 'It no longer exists — likely voided on another station. Refresh.',
   KITCHEN_ITEMS_UNRESOLVED:
     'Those items did not reach the kitchen. Re-fire them from the order.',
+  KITCHEN_STATUS_PARTIAL_UPDATE:
+    'Some kitchen rows changed elsewhere. Refresh before retrying.',
+  KITCHEN_TRACE_CONTRACT_MISMATCH:
+    'App/server contract mismatch. Ask support to verify the KDS migration.',
+  KITCHEN_NO_ACTIVE_ROUTE:
+    'No KDS destination accepted these items. Check displays and routing.',
   OWNERSHIP_REJECTED: 'Another station owns this order. Take it over there first.',
   VALIDATION_REJECTED: 'The server rejected this. Edit the item, or remove it.',
   AUTH_EXPIRED: 'Your session expired. Log out and back in.',

@@ -1,4 +1,10 @@
 import { getDeviceId } from "@/lib/deviceId";
+import {
+    type KitchenMutationResult,
+    type KitchenSendItemStatus,
+    type KitchenSendOrderStatus,
+    validateKitchenMutationResult,
+} from "@/lib/kdsSendTraceability";
 import type { OnlineOrderBoardSelection } from "@/lib/onlineOrderBoard";
 import { DEADLINES } from "@/lib/network/deadlines";
 import {
@@ -1998,7 +2004,7 @@ export class OrderService {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
     }
-    return rpcWithIdempotency<any>(
+    const result = await rpcWithIdempotency<KitchenMutationResult>(
       client,
       "bulk_update_order_item_status",
       "bulk_update_order_item_status", // v1 name (no key)
@@ -2010,6 +2016,91 @@ export class OrderService {
       },
       { deadline: DEADLINES.sendToKitchen, keyOverride: opts?.keyOverride },
     );
+
+    if (result.error) return result;
+
+    const countError = validateKitchenMutationResult(
+      result.data,
+      orderItemIds.length,
+      { operation: "status" },
+    );
+    if (countError) {
+      console.error("[KDS routing] Partial kitchen status update", {
+        ...countError.details,
+        status,
+        code: countError.code,
+      });
+      return { data: result.data, error: countError };
+    }
+
+    return result;
+  }
+
+  /**
+   * Atomically transitions a draft order and fires its items while recording
+   * station/device/idempotency context in the shared KDS send-attempt ledger.
+   */
+  static async sendOrderToKitchen(
+    client: SupabaseClient,
+    orderId: string,
+    orderItemIds: string[],
+    orderStatus: KitchenSendOrderStatus,
+    itemStatus: KitchenSendItemStatus,
+    opts: {
+      staffId: string | null;
+      stationId: string | null;
+      deviceId: string | null;
+      idempotencyKey: string;
+      itemsIdempotencyKey: string;
+      replay?: boolean;
+    },
+  ): Promise<{ data: KitchenMutationResult | null; error: any }> {
+    const result = await _runWithDeadline<KitchenMutationResult>(
+      "send_order_to_kitchen_v1",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("send_order_to_kitchen_v1", {
+            p_order_id: orderId,
+            p_order_status: orderStatus,
+            p_order_item_ids: orderItemIds,
+            p_item_status: itemStatus,
+            p_staff_id: opts.staffId,
+            p_idempotency_key: opts.idempotencyKey,
+            p_items_idempotency_key: opts.itemsIdempotencyKey,
+            p_station_id: opts.stationId,
+            p_device_id: opts.deviceId,
+          })
+          .abortSignal(signal);
+        return { data: data as KitchenMutationResult | null, error };
+      },
+    );
+
+    if (result.error) return result;
+
+    const countError = validateKitchenMutationResult(
+      result.data,
+      orderItemIds.length,
+      {
+        operation: "send",
+        orderId,
+        stationId: opts.stationId,
+        deviceId: opts.deviceId,
+        replay: opts.replay ?? false,
+        requireExplicitCounts: true,
+      },
+    );
+    if (countError) {
+      console.error("[KDS routing] Kitchen send was not fully applied", {
+        ...countError.details,
+        code: countError.code,
+        idempotencyKey: opts.idempotencyKey,
+        itemsIdempotencyKey: opts.itemsIdempotencyKey,
+      });
+      return { data: result.data, error: countError };
+    }
+
+    return result;
   }
 
   /**
