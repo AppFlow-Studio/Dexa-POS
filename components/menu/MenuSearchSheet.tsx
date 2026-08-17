@@ -14,6 +14,7 @@ import {
   forwardRef,
   memo,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -41,6 +42,11 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
   const modifierGroups = useMenuStore(s => s.modifierGroups)
   const isMenuAvailableNow = useMenuStore(s => s.isMenuAvailableNow)
   const [searchQuery, setSearchQuery] = useState('')
+  // Input binds to `searchQuery` (instant); the filter below reads this DEFERRED
+  // copy so React runs the whole-list filter in a later, interruptible render
+  // instead of blocking each keystroke. Prevents the controlled input from
+  // lagging the native buffer and duplicating/merging chars on fast typing.
+  const deferredSearchQuery = useDeferredValue(searchQuery)
   // Only compute/render results while the sheet is open. This sheet lives in the
   // always-mounted (main) layout at index={-1}; without this gate it rebuilt the
   // full menu/category/modifier result set (and the grouped sections) on every
@@ -61,7 +67,7 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
 
   const searchResults = useMemo(() => {
     if (!isOpen) return []
-    const query = searchQuery.toLowerCase().trim()
+    const query = deferredSearchQuery.toLowerCase().trim()
 
     switch (activeTab) {
       case 'items':
@@ -110,7 +116,7 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
     }
   }, [
     isOpen,
-    searchQuery,
+    deferredSearchQuery,
     activeTab,
     menuItems,
     storeCategories,
@@ -358,6 +364,12 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
               TAB_LABELS[activeTab]?.toLowerCase() ?? ''
             }...`}
             placeholderTextColor={colors.muted}
+            // Disable Android autocorrect/predictive composing so fast typing
+            // doesn't reorder/merge characters against the controlled value.
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="off"
+            spellCheck={false}
             style={{
               flex: 1,
               color: colors.heading,

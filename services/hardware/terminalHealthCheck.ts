@@ -13,6 +13,7 @@ import {
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getSharedValorService } from "@/services/terminals/valor-service";
+import { reconcileTerminalSerial } from "@/services/terminals/terminalIdentity";
 import { isValorUsbVendorId } from "@/services/terminals/valor-transport-usb";
 import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
 import { listDevices } from "@/modules/castles-usb";
@@ -125,8 +126,11 @@ async function performValorHealthCheck(): Promise<void> {
       terminalId: currentTerminalId!,
     });
     const q = await service.terminalQuery();
-    if (q.success) handleSuccess();
-    else handleFailure(q.error || "Terminal unreachable");
+    if (q.success) {
+      handleSuccess();
+      // Passive identity detection: terminalQuery returns the device serial.
+      if (q.data?.serialNumber) reconcileSerialFromHealthCheck(q.data.serialNumber);
+    } else handleFailure(q.error || "Terminal unreachable");
   } catch (err) {
     handleFailure(err instanceof Error ? err.message : "Terminal unreachable");
   }
@@ -311,6 +315,47 @@ function handleFailure(errorMessage: string): void {
 }
 
 /**
+ * Passive serial-identity reconciliation from a health-check probe.
+ * Routes the serial reported by getData (Castles) / terminalQuery (Valor)
+ * through the identity guard: fills a null serial, no-ops when unchanged, and
+ * BLOCKS + warns when a DIFFERENT device answered on the registered terminal —
+ * so a swapped terminal is caught automatically, without anyone hitting Test.
+ * Fire-and-forget; never affects the liveness result.
+ */
+function reconcileSerialFromHealthCheck(discoveredSerial: string): void {
+  const supabase = currentSupabase;
+  const terminalId = currentTerminalId;
+  if (!supabase || !terminalId) return;
+  reconcileTerminalSerial({ supabase, terminalId, discoveredSerial })
+    .then((r) => {
+      if (r.kind === "mismatch") notifyIdentityMismatch(r.storedSerial, r.discoveredSerial);
+    })
+    .catch((e) =>
+      console.warn("[TerminalHealthCheck] serial reconcile failed:", e),
+    );
+}
+
+function notifyIdentityMismatch(storedSerial: string, discoveredSerial: string): void {
+  const tid = currentTerminalId;
+  if (tid) {
+    deferStoreUpdate(() => {
+      usePaymentTerminalStore.getState().updateTerminalStatus(tid, {
+        lastConnectionStatus: "IdentityMismatch",
+        lastErrorMessage: `Serial mismatch: device ${discoveredSerial} ≠ registered ${storedSerial}`,
+      });
+    });
+  }
+  if (!isRecentlyNavigated(1000)) {
+    useToastStore.getState().show({
+      title: "Terminal identity mismatch",
+      message: `A different device (S/N ${discoveredSerial}) answered on the registered terminal. Register it as a new terminal in Settings → Devices.`,
+      type: "error",
+      duration: 8000,
+    });
+  }
+}
+
+/**
  * Sync the health check result to `selectedStation.payment_terminal` in
  * useStoreSettingsStore so the payment-systems UI reflects live status
  * without requiring a page reload.
@@ -433,6 +478,15 @@ export function startTerminalHealthCheck(
   consecutiveFailures = 0;
   toastShownForCurrentFailureStreak = false;
 
+  // Passive Castles identity detection: reconcile the serial reported by the
+  // service watchdog's 30s getData ping. Only wire it for a Castles terminal so
+  // the callback never reconciles the active terminal against a stale service.
+  getSharedCastlesService().setOnSerialDetected(
+    paymentTerminal.terminal_type === "castles"
+      ? (infSN) => reconcileSerialFromHealthCheck(infSN)
+      : null,
+  );
+
   // Determine interval from terminal config or use default
   const intervalMs =
     (paymentTerminal.health_check_interval ?? 0) * 1000 ||
@@ -489,6 +543,8 @@ export function stopTerminalHealthCheck(): void {
     netInfoUnsubscribe();
     netInfoUnsubscribe = null;
   }
+
+  getSharedCastlesService().setOnSerialDetected(null);
 
   currentSupabase = null;
   currentTerminalId = null;

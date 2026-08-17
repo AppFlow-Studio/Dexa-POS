@@ -24,12 +24,34 @@ export interface OrdersSummary {
   ordersByType: { type: string; count: number; revenue: number }[]
 }
 
+// A single captured payment, surfaced for the card/cash detail dropdowns.
+export interface PaymentLineItem {
+  id: string
+  method: string          // raw payment_method (e.g. 'card', 'card_spinapi', 'cash')
+  isCard: boolean
+  cardBrand: string | null // card_type (Visa, Mastercard, …)
+  last4: string | null     // card_last_four
+  amount: number           // base amount captured (excludes tip)
+  tip: number              // tip_amount
+  total: number            // amount + tip actually collected
+  paidAt: string | null    // captured_at ?? initiated_at (ISO)
+}
+
 export interface PaymentsSummary {
   totalPayments: number
   totalAmount: number
   byMethod: { method: string; count: number; amount: number }[]
   refundCount: number
   refundAmount: number
+  // Captured payments split into card vs cash for the business-day banner + dropdowns
+  cardCount: number
+  cardTotal: number
+  cardTips: number
+  cashCount: number
+  cashTotal: number
+  cashTips: number
+  cardPayments: PaymentLineItem[]
+  cashPayments: PaymentLineItem[]
 }
 
 export interface SessionsSummary {
@@ -192,7 +214,7 @@ export const useAnalyticsStore = create<AnalyticsState & Record<string, any>>((s
       // Fetch payments
       const { data: paymentsRaw, error: paymentsErr } = await supabase
         .from('order_payments')
-        .select('id, amount, tip_amount, total_amount, payment_method, status, is_voided, is_returned')
+        .select('id, amount, tip_amount, total_amount, payment_method, status, is_voided, is_returned, card_last_four, card_type, initiated_at, captured_at')
         .eq('location_id', locationId)
         .gte('initiated_at', startIso)
         .lte('initiated_at', endIso)
@@ -216,12 +238,46 @@ export const useAnalyticsStore = create<AnalyticsState & Record<string, any>>((s
         .map(([method, v]) => ({ method, ...v }))
         .sort((a, b) => b.amount - a.amount)
 
+      // Card/cash split of captured payments → banner totals + detail dropdowns.
+      // Card = any method whose enum name starts with 'card'; cash = 'cash'.
+      const isCardMethod = (m: any) => typeof m === 'string' && m.startsWith('card')
+      const isCashMethod = (m: any) => m === 'cash'
+      const toLineItem = (p: any): PaymentLineItem => {
+        const tip = Number(p.tip_amount || 0)
+        const total = Number(p.total_amount ?? (Number(p.amount || 0) + tip))
+        const amount = p.amount != null ? Number(p.amount) : total - tip
+        return {
+          id: p.id,
+          method: p.payment_method || 'unknown',
+          isCard: isCardMethod(p.payment_method),
+          cardBrand: p.card_type || null,
+          last4: p.card_last_four || null,
+          amount,
+          tip,
+          total,
+          paidAt: p.captured_at || p.initiated_at || null,
+        }
+      }
+      const byTimeDesc = (a: PaymentLineItem, b: PaymentLineItem) =>
+        (b.paidAt || '').localeCompare(a.paidAt || '')
+      const cardPayments = approvedPayments.filter(p => isCardMethod(p.payment_method)).map(toLineItem).sort(byTimeDesc)
+      const cashPayments = approvedPayments.filter(p => isCashMethod(p.payment_method)).map(toLineItem).sort(byTimeDesc)
+      const sumBy = (arr: PaymentLineItem[], key: 'total' | 'tip') => arr.reduce((s, x) => s + x[key], 0)
+
       const paymentsSummary: PaymentsSummary = {
         totalPayments: approvedPayments.length,
         totalAmount: approvedPayments.reduce((s, p) => s + Number(p.total_amount || p.amount || 0), 0),
         byMethod,
         refundCount: refunds.length,
         refundAmount: refunds.reduce((s, p) => s + Number(p.total_amount || p.amount || 0), 0),
+        cardCount: cardPayments.length,
+        cardTotal: sumBy(cardPayments, 'total'),
+        cardTips: sumBy(cardPayments, 'tip'),
+        cashCount: cashPayments.length,
+        cashTotal: sumBy(cashPayments, 'total'),
+        cashTips: sumBy(cashPayments, 'tip'),
+        cardPayments,
+        cashPayments,
       }
 
       // Fetch table sessions

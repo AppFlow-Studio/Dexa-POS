@@ -544,9 +544,15 @@ const PaymentSuccessView = () => {
           <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: s(18) }} />
 
           <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", marginBottom: s(12) }}>
-            <Text style={{ color: colors.muted, fontSize: s(13) }}>Transaction ID</Text>
+            <Text style={{ color: colors.muted, fontSize: s(13) }}>Order Number</Text>
             <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(13) }}>
-              #{activeOrder?.id.slice(-6).toUpperCase()}
+              {activeOrder?.display_number
+                ? activeOrder.display_number.startsWith("#")
+                  ? activeOrder.display_number
+                  : `#${activeOrder.display_number}`
+                : activeOrder?.order_number
+                  ? `#${activeOrder.order_number}`
+                  : `#${activeOrder?.id.slice(-6).toUpperCase()}`}
             </Text>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%" }}>

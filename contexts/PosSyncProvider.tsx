@@ -1,4 +1,5 @@
 import { queryClient } from "@/contexts/TanstackProvider";
+import { useAutoSettlementScheduler } from "@/hooks/pos/useAutoSettlementScheduler";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
@@ -38,7 +39,9 @@ import {
     stopStarPrinterDiscoveryService,
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
 import { getDriver } from "@/services/printing/DriverFactory";
+import { drainPendingFinalizes } from "@/services/pendingFinalize";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import { getSharedValorService } from "@/services/terminals/valor-service";
 import {
     startCastlesUsbAutoConnect,
     stopCastlesUsbAutoConnect,
@@ -159,6 +162,24 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
 
+  // Unattended daily Castles batch-out. Gated to the Castles terminal THIS
+  // station owns with server auto_settle on (fail-safe OFF when the field is
+  // absent on un-migrated envs). Enablement is the server auto_settle column —
+  // there is no separate client flag.
+  useAutoSettlementScheduler({
+    enabled: Boolean(
+      supabase &&
+        selectedStore?.id &&
+        selectedStore?.merchant_id &&
+        selectedStore?.timezone &&
+        selectedStation?.payment_terminal?.id &&
+        selectedStation?.payment_terminal?.terminal_type === "castles" &&
+        (selectedStation?.payment_terminal?.auto_settle ?? false) &&
+        !isKDS,
+    ),
+    supabase,
+  });
+
   // Keep 86/out-of-stock state live with website + other-station changes.
   // pos_sync is staleTime:Infinity, so without this a website 86 never reaches a
   // running POS. Surgical snooze-only reconcile (no full menu rebuild). KDS skips.
@@ -275,12 +296,15 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
     return () => {
       stopTerminalHealthCheck();
-      // Fire-and-forget graceful disconnect of the Castles singleton when
-      // the effect tears down (station switch, unmount). Prevents a stale
-      // socket from lingering against the previous terminal's host:port.
-      getSharedCastlesService()
-        .gracefulDisconnect()
-        .catch(() => {});
+      // Fire-and-forget graceful disconnect of the Castles singleton when the
+      // effect tears down (station switch, unmount). Guarded to an OUTGOING
+      // Castles terminal — issuing a Castles return2Idle write while switching
+      // to a Valor terminal would race it on the shared USB serial port.
+      if (terminal?.terminal_type === "castles") {
+        getSharedCastlesService()
+          .gracefulDisconnect()
+          .catch(() => {});
+      }
     };
   }, [supabase, selectedStation?.payment_terminal?.id]);
 
@@ -290,16 +314,33 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // skipped in KDS mode (no POS hardware there).
   useEffect(() => {
     const terminal = selectedStation?.payment_terminal;
-    const isUsbCastles =
-      terminal?.terminal_type === "castles" &&
-      terminal?.connection_type === "usb";
-    const isUsbValor =
-      terminal?.terminal_type === "valor" &&
-      terminal?.connection_type === "usb";
-    if (!isKDS && isUsbCastles) {
+    const type = terminal?.terminal_type;
+    const isUsb = terminal?.connection_type === "usb";
+
+    // Castles and Valor USB transports share ONE native serial port (both go
+    // through @/modules/castles-usb). Only the ACTIVE processor may hold it —
+    // otherwise a lingering auto-connect/connect ladder on the OTHER service
+    // keeps calling CastlesUsbModule.write on the port the active terminal just
+    // took over ("CastlesUsbModule.write has been rejected" during a Valor
+    // sale). Suspend + stop the auto-connect for every processor that is NOT the
+    // active one so its transport is torn down and reconnects are blocked.
+    if (type !== "castles") {
+      stopCastlesUsbAutoConnect();
+      getSharedCastlesService()
+        .suspend()
+        .catch(() => {});
+    }
+    if (type !== "valor") {
+      stopValorUsbAutoConnect();
+      getSharedValorService()
+        .suspend()
+        .catch(() => {});
+    }
+
+    if (!isKDS && type === "castles" && isUsb) {
       startCastlesUsbAutoConnect();
     }
-    if (!isKDS && isUsbValor) {
+    if (!isKDS && type === "valor" && isUsb) {
       startValorUsbAutoConnect();
     }
     return () => {
@@ -377,11 +418,32 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const syncFloorPlans = useCallback(
     async (locationId: string) => {
       try {
-        // Load floor plans for location
-        const { data: floorPlans, error: fpError } =
-          await FloorPlanService.getLocationFloorPlans(supabase, locationId);
+        // AUD-2: one snapshot call instead of get_location_floor_plans plus a
+        // get_floor_plan_status per plan (measured 188,486 B / 5 calls ->
+        // 147,820 B / 1 on a 4-plan location).
+        //
+        // Deliberately requests the FULL geometry here (knownVersion: null)
+        // rather than sending a cached token. Boot needs the complete plan list
+        // to pick the default, prefetch every plan and strip orphaned sessions;
+        // a token match would return geometry: null and leave those with
+        // nothing to work from. The token is only worth spending where there is
+        // already a populated cache to fall back on, which is loadFloorPlans.
+        //
+        // The returned version IS recorded, so the next loadFloorPlans can skip
+        // the geometry payload entirely (-79%).
+        const { data: snapshot, error: fpError } =
+          await FloorPlanService.getFloorSnapshot(supabase, locationId, {
+            knownVersion: null,
+          });
 
         if (fpError) throw fpError;
+
+        const floorPlans = snapshot?.geometry ?? [];
+        if (snapshot?.geometry_version !== undefined) {
+          useFloorPlanStore.setState({
+            geometryVersion: snapshot.geometry_version,
+          });
+        }
 
         // Find default or first floor plan
         const defaultPlan =
@@ -923,6 +985,20 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
             // Always clear suspended flag — lazy-connect handles the rest.
             service.resume();
           }
+        },
+      }),
+
+      // --- background: replay any journaled finalize --------------------------
+      // Merchant-scoped and finalize-replay ONLY (never re-commands a terminal),
+      // so it runs regardless of auto_settle — a manual settle whose finalize
+      // DB-write failed also gets drained here on the next foreground.
+      registerResumeTask({
+        id: "settlement.pending-finalize-drain",
+        bucket: "background",
+        requiresNetwork: true,
+        shouldRun: () => !isKDS,
+        run: () => {
+          if (supabase) void drainPendingFinalizes(supabase);
         },
       }),
 
