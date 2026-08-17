@@ -1,8 +1,23 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useSession } from "@clerk/clerk-expo";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
 
 import { MenuItemIngredientSync, ModifierIngredientSync } from "@/types/menu";
+
+interface MenuItemRecipeRow {
+  id: string;
+  menu_item_id: string;
+  inventory_item_id: string | null;
+  quantity_used: number | null;
+}
+
+interface ModifierGroupItemRecipeRow {
+  id: string;
+  modifier_group_item_id: string;
+  inventory_item_id: string;
+  quantity_used: number;
+}
 
 /**
  * Types for standalone data (not part of menu hierarchy)
@@ -126,6 +141,30 @@ export interface StandaloneSyncData {
  * @param merchantId - The merchant UUID
  * @param locationId - The location UUID
  */
+export const standaloneSyncQueryKey = (
+  merchantId: string | null,
+  locationId: string | null
+) => ["standalone_sync", merchantId, locationId] as const;
+
+/**
+ * Shared query config so the menu-management route and the post-boot background
+ * warm-up (see PosSyncProvider) hit the exact same cache entry. Without a single
+ * definition the warm-up would populate a different key and the route would
+ * refetch anyway.
+ */
+export const standaloneSyncQueryOptions = (
+  supabase: SupabaseClient,
+  merchantId: string | null,
+  locationId: string | null
+) => ({
+  queryKey: standaloneSyncQueryKey(merchantId, locationId),
+  queryFn: () => fetchStandaloneSync(supabase, merchantId, locationId),
+  // Same offline settings as main sync
+  networkMode: "offlineFirst" as const,
+  staleTime: Infinity,
+  gcTime: 1000 * 60 * 60 * 24, // 24 hours
+});
+
 export const useStandaloneSync = (
   merchantId: string | null,
   locationId: string | null
@@ -134,27 +173,29 @@ export const useStandaloneSync = (
   const { session, isLoaded: isSessionLoaded } = useSession();
 
   return useQuery<StandaloneSyncData>({
-    queryKey: ["standalone_sync", merchantId, locationId],
+    ...standaloneSyncQueryOptions(supabase, merchantId, locationId),
 
-    queryFn: async () => {
-      if (!merchantId || !locationId) {
-        throw new Error("Merchant ID and Location ID required");
-      }
-      console.log("merchantId", merchantId);
-      console.log("locationId", locationId);
-      // Fetch all 4 in parallel.
-      //
-      // PERF (db-perf-waves, 2026-08): queries 5 and 6 — merchant-filtered reads
-      // of `menu_item_recipes` and `modifier_group_item_recipes` — were removed.
-      // Both tables hold 0 rows on prod, so `menu_item_ingredients` and
-      // `modifier_group_item_ingredients` always mapped to []. The keys are
-      // still returned as [] below so `StandaloneSyncData` and every consumer
-      // (PosSyncProvider.applyRecipes, useMenuStore) are unchanged.
+    // Wait for session to be loaded and have a valid token before querying
+    enabled: !!merchantId && !!locationId && isSessionLoaded && !!session,
+  });
+};
+
+export async function fetchStandaloneSync(
+  supabase: SupabaseClient,
+  merchantId: string | null,
+  locationId: string | null
+): Promise<StandaloneSyncData> {
+  if (!merchantId || !locationId) {
+    throw new Error("Merchant ID and Location ID required");
+  }
+  // Fetch all 4 in parallel
       const [
         categoriesResult,
         itemsResult,
         modifiersResult,
         menusResult,
+        menuItemIngredientsResult,
+        modifierIngredientsResult,
       ] = await Promise.all([
         // 1. Categories via RPC
         supabase.rpc("get_categories_for_location", {
@@ -205,12 +246,36 @@ export const useStandaloneSync = (
           .or(`location_id.is.null,location_id.eq.${locationId}`)
           .order("display_order", { ascending: true, nullsFirst: false })
           .order("created_at", { ascending: false }),
+
+        // 5. Menu Item Recipes
+        supabase
+          .from("menu_item_recipes")
+          .select("id, menu_item_id, inventory_item_id, quantity_used")
+          .eq("merchant_id", merchantId),
+
+        // 6. Modifier Group Item Recipes
+        supabase
+          .from("modifier_group_item_recipes")
+          .select("id, modifier_group_item_id, inventory_item_id, quantity_used")
+          .eq("merchant_id", merchantId),
       ]);
       // Log errors but don't fail completely
       if (categoriesResult.error) {
         console.error(
           "Categories standalone fetch error:",
           categoriesResult.error
+        );
+      }
+      if (menuItemIngredientsResult.error) {
+        console.error(
+          "Menu Item Ingredients fetch error:",
+          menuItemIngredientsResult.error
+        );
+      }
+      if (modifierIngredientsResult.error) {
+        console.error(
+          "Modifier Ingredients fetch error:",
+          modifierIngredientsResult.error
         );
       }
       if (itemsResult.error) {
@@ -226,8 +291,10 @@ export const useStandaloneSync = (
         console.error("Menus standalone fetch error:", menusResult.error);
       }
 
-      // Debug: Log result counts
+      // Debug: Log ingredient counts
       console.log("DEBUG: useStandaloneSync raw results:", {
+        menuItemIngredients: menuItemIngredientsResult.data?.length,
+        modifierIngredients: modifierIngredientsResult.data?.length,
         items: itemsResult.data?.length,
       });
 
@@ -269,19 +336,25 @@ export const useStandaloneSync = (
         modifierGroups:
           (modifiersResult.data as unknown as StandaloneModifierGroup[]) || [],
         menus: (menusResult.data || []) as StandaloneMenu[],
-        // Kept on the contract (see PERF note above) — always empty because the
-        // recipe tables they were sourced from are empty.
-        menu_item_ingredients: [],
-        modifier_group_item_ingredients: [],
-      };
-    },
-
-    // Wait for session to be loaded and have a valid token before querying
-    enabled: !!merchantId && !!locationId && isSessionLoaded && !!session,
-
-    // Same offline settings as main sync
-    networkMode: "offlineFirst",
-    staleTime: Infinity,
-    gcTime: 1000 * 60 * 60 * 24, // 24 hours
-  });
-};
+        menu_item_ingredients: (
+          (menuItemIngredientsResult.data as MenuItemRecipeRow[] | null) || []
+        )
+          .filter((row) => !!row.inventory_item_id)
+          .map((row) => ({
+            id: row.id,
+            menu_item_id: row.menu_item_id,
+            inventory_item_id: row.inventory_item_id as string,
+            quantity: row.quantity_used ?? 0,
+          })),
+        modifier_group_item_ingredients: (
+          (modifierIngredientsResult.data as
+            | ModifierGroupItemRecipeRow[]
+            | null) || []
+        ).map((row) => ({
+          id: row.id,
+          modifier_group_item_id: row.modifier_group_item_id,
+          inventory_item_id: row.inventory_item_id,
+          quantity: row.quantity_used ?? 0,
+        })),
+  };
+}

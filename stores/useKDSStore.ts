@@ -112,6 +112,10 @@ interface KDSState {
   fetchKDSDisplay: (stationId: string) => Promise<void>;
   fetchTickets: (locationId: string) => Promise<void>;
   _backgroundFetchTickets: (locationId: string) => Promise<void>;
+  _fetchTicketsForOrder: (
+    locationId: string,
+    orderId: string,
+  ) => Promise<void>;
   advanceTicketStatus: (
     ticketId: string,
     itemIds: string[],
@@ -122,6 +126,11 @@ interface KDSState {
   nowEpochMs: number;
   incrementTimerTick: () => void;
   scheduleRefetch: (locationId: string, immediate?: boolean) => void;
+  _scheduleOrderRefetch: (
+    locationId: string,
+    orderId: string,
+    immediate?: boolean,
+  ) => void;
 
   // New-order callback (for sound notifications)
   _onNewOrderCallback: ((orderSource: string | null) => void) | null;
@@ -163,8 +172,21 @@ interface KDSState {
   _cleanup: () => void;
 }
 
-// Debounce timer for scheduleRefetch
+// Debounce timer for scheduleRefetch (whole-board refresh)
 let _refetchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// ─── Per-order refresh (AUD-8 step 2) ───────────────────────────
+// A broadcast tells us WHICH order changed, so the refresh is scoped to that
+// order instead of rebuilding the location's whole board on every event.
+//
+// The timer is keyed per order, not shared. The single _refetchTimeout above is
+// trailing-only: every event clears and re-arms it, so a sustained stream (above
+// ~3.3 relevant events/sec) can keep pushing the quiet window out and starve the
+// board of authoritative data. Keying per order means a busy order coalesces its
+// own events without ever delaying a different order's refresh.
+const _orderRefetchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Per-order response ordering — a slow response must never overwrite a newer one.
+const _orderFetchSeq = new Map<string, number>();
 
 // Per-order broadcast debounce — absorbs rapid-fire broadcasts from row-level triggers
 // (bulk_update_order_item_status fires one trigger per row, producing N partial-state
@@ -2545,8 +2567,8 @@ export const useKDSStore = create<KDSState>()(
             return;
           }
 
-          // Fast refetch for authoritative ticket data — the post-fetch
-          // merge-diff in _backgroundFetchTickets is what fires the chime now.
+          // Fast refetch for authoritative ticket data, scoped to the order the
+          // broadcast names. The post-fetch merge-diff is what fires the chime.
           const locationId = order.location_id;
           if (locationId) {
             const allProtected =
@@ -2554,7 +2576,7 @@ export const useKDSStore = create<KDSState>()(
               orderTids.size > 0 &&
               Array.from(orderTids).every((tid) => _pendingActions.has(tid));
             if (!allProtected) {
-              get().scheduleRefetch(locationId, true);
+              get()._scheduleOrderRefetch(locationId, order.id, true);
             }
           }
           return;
@@ -2625,9 +2647,9 @@ export const useKDSStore = create<KDSState>()(
           // overlayPendingActions will preserve the recalled ticket's optimistic state
         }
 
-        // Schedule a background refetch for authoritative server state.
-        // Skip when all tickets for this order have pending actions — the broadcast
-        // is our own echo and the optimistic state is already correct.
+        // Schedule a background refetch for authoritative server state, scoped to
+        // this order. Skip when all tickets for this order have pending actions —
+        // the broadcast is our own echo and the optimistic state is already correct.
         const locationId = order.location_id;
         if (locationId) {
           const allProtected =
@@ -2635,7 +2657,7 @@ export const useKDSStore = create<KDSState>()(
             orderTids.size > 0 &&
             Array.from(orderTids).every((tid) => _pendingActions.has(tid));
           if (!allProtected) {
-            get().scheduleRefetch(locationId);
+            get()._scheduleOrderRefetch(locationId, order.id);
           }
         }
 
@@ -2830,6 +2852,277 @@ export const useKDSStore = create<KDSState>()(
           },
           immediate ? 300 : 1500,
         );
+      },
+
+      // Order-scoped sibling of scheduleRefetch. Same debounce windows, but the
+      // timer is keyed by order so one busy ticket cannot delay another order's
+      // refresh (and cannot starve the board the way the single shared timer can).
+      _scheduleOrderRefetch: (
+        locationId: string,
+        orderId: string,
+        immediate?: boolean,
+      ) => {
+        const existing = _orderRefetchTimers.get(orderId);
+        if (existing) clearTimeout(existing);
+        _orderRefetchTimers.set(
+          orderId,
+          setTimeout(
+            () => {
+              _orderRefetchTimers.delete(orderId);
+              get()._fetchTicketsForOrder(locationId, orderId);
+            },
+            immediate ? 300 : 1500,
+          ),
+        );
+      },
+
+      // Authoritative refresh for ONE order, patched into the board in place.
+      //
+      // A broadcast already tells us which order changed, so refetching the whole
+      // location to learn it was rushed is the amplifier behind the RPC's call
+      // volume: N stations x one whole-location aggregate per kitchen event.
+      // This reads only that order's tickets and splices them over the board.
+      //
+      // Deliberately does NOT touch isFetching: this is a background patch, not a
+      // board load, and flipping the flag would flash the board's spinner on every
+      // remote keystroke and race the whole-board fetch's own flag.
+      _fetchTicketsForOrder: async (locationId: string, orderId: string) => {
+        const client = getClient();
+        if (!client) return;
+
+        // This path patches a board; it cannot build one. Before first hydration
+        // there is nothing to splice into, so defer to the full read.
+        if (!get()._hasHydrated) {
+          get().scheduleRefetch(locationId, true);
+          return;
+        }
+
+        // Per-order response ordering. Not the global _fetchSeq — a scoped
+        // response must not be discarded just because the board refreshed, and
+        // must not invalidate a board fetch either.
+        const mySeq = (_orderFetchSeq.get(orderId) ?? 0) + 1;
+        _orderFetchSeq.set(orderId, mySeq);
+
+        const { kdsDisplayId } = get();
+        const params: Record<string, any> = {
+          p_location_id: locationId,
+          p_order_id: orderId,
+        };
+        if (kdsDisplayId) {
+          params.p_kds_display_id = kdsDisplayId;
+        }
+
+        try {
+          let usedFallback = false;
+          const { data, error } = await runWithDeadline<KDSTicket[]>(
+            "get_kds_tickets_for_order",
+            DEADLINES.read,
+            async (signal) => {
+              const res = await rpcWithVersionFallback<KDSTicket[]>(
+                "get_kds_tickets_for_order_v1",
+                () =>
+                  client
+                    .rpc("get_kds_tickets_for_order_v1", params)
+                    .abortSignal(signal) as unknown as Promise<
+                    RpcResult<KDSTicket[]>
+                  >,
+                // There is no legacy order-scoped contract. Rather than invent a
+                // second server shape, signal the caller to use the whole-board
+                // refresh — i.e. exactly today's behavior. The helper memoises the
+                // absence, so an environment without this migration pays one
+                // probe per session, not one per broadcast.
+                async () => ({ data: null, error: null }),
+              );
+              usedFallback = res.usedFallback;
+              return {
+                data: res.data as KDSTicket[] | null,
+                error: res.error as any,
+              };
+            },
+          );
+
+          if (usedFallback) {
+            get().scheduleRefetch(locationId, true);
+            return;
+          }
+
+          // A newer scoped response for this order already landed.
+          if (_orderFetchSeq.get(orderId) !== mySeq) return;
+
+          if (error) {
+            console.error("[KDSStore] _fetchTicketsForOrder error:", error);
+            // Fall back to the board read. A healthy unfiltered KDS does not poll
+            // (app/(main)/kds.tsx arms no timer while realtime is connected), so
+            // dropping this refresh silently would leave the order stale until the
+            // next broadcast for it.
+            get().scheduleRefetch(locationId);
+            return;
+          }
+
+          const raw: KDSTicket[] = Array.isArray(data) ? data : (data ?? []);
+          const normalized = raw.map((t) =>
+            normalizeKdsTicket({
+              ...t,
+              start_time_epoch: safeParseUtcTimestamp(t.start_time),
+              // Same server-authoritative freeze rules as the board fetch; see
+              // _backgroundFetchTickets for why 0 collapses to undefined.
+              ready_time_epoch:
+                t.status === "ready"
+                  ? safeParseUtcTimestamp(t.ready_time) || undefined
+                  : undefined,
+              done_time_epoch:
+                t.status === "done"
+                  ? safeParseUtcTimestamp(t.done_time) ||
+                    safeParseUtcTimestamp(t.ready_time) ||
+                    undefined
+                  : undefined,
+            }),
+          );
+
+          const stabilizedIncoming = stabilizeTicketsByLogicalSignature(
+            normalized,
+            get()._ticketsById,
+          );
+          const processed = overlayPendingActions(stabilizedIncoming);
+          const remapped =
+            getKitchenSentStatus() === "preparing"
+              ? processed.map((t) =>
+                  t.status === "pending"
+                    ? { ...t, status: "cooking" as KDSTicket["status"] }
+                    : t,
+                )
+              : processed;
+          const withAckOverlay = remapped.map((t) => {
+            if (!t.items.some((i) => _acknowledgedNoticeItemIds.has(i.id)))
+              return t;
+            return {
+              ...t,
+              items: t.items.map((i) =>
+                _acknowledgedNoticeItemIds.has(i.id) && !i.acknowledged
+                  ? { ...i, acknowledged: true }
+                  : i,
+              ),
+            };
+          });
+
+          // mergeDoneTickets unions incoming with current and only drops entries
+          // that fall out of the retention window, so passing one order's done
+          // tickets can never evict another order's from the Done tab.
+          const serverDoneTickets = withAckOverlay
+            .filter((ticket) => ticket.status === "done")
+            .map((ticket) => asDoneTicket(ticket));
+          const currentDoneTickets = get().doneTickets;
+          const nextDoneTickets = mergeDoneTickets(
+            serverDoneTickets,
+            currentDoneTickets,
+          );
+          const doneChanged = !doneTicketsShallowEqual(
+            nextDoneTickets,
+            currentDoneTickets,
+          );
+
+          const dedupedIncoming = dedupeTicketsById(
+            withAckOverlay
+              .filter((ticket) => ticket.status !== "done")
+              .filter(ticketShouldRemainVisible),
+          );
+
+          // Preserve protected tickets for THIS order that the server no longer
+          // returns — a display-filtered station marking an item ready sets
+          // kds_item_status='completed', which drops the item from the RPC while
+          // the optimistic/recalled state is still live. Same rule as the board
+          // fetch, scoped so it can't resurrect another order's tickets.
+          const currentTickets = get().tickets;
+          const incomingIds = new Set(dedupedIncoming.map((t) => t.ticket_id));
+          const incomingSignatures = new Set(
+            [...dedupedIncoming, ...serverDoneTickets].map(
+              getTicketLogicalSignature,
+            ),
+          );
+          const protectedMissing = currentTickets.filter(
+            (t) =>
+              t.db_order_id === orderId &&
+              !incomingIds.has(t.ticket_id) &&
+              !incomingSignatures.has(getTicketLogicalSignature(t)) &&
+              (_pendingActions.has(t.ticket_id) ||
+                _recalledTicketIds.has(t.ticket_id) ||
+                (Array.isArray(t.items) && t.items.some((i) => i.recalled))),
+          );
+
+          // The splice. Everything outside this order keeps its identity, so
+          // mergeTickets returns the existing references for those and `changed`
+          // reflects only this order's diff.
+          const others = currentTickets.filter(
+            (t) => t.db_order_id !== orderId,
+          );
+          const nextTickets = sortKdsTicketsStable([
+            ...others,
+            ...dedupedIncoming,
+            ...protectedMissing,
+          ]);
+
+          const { merged, mergedById, changed } = mergeTickets(
+            nextTickets,
+            get()._ticketsById,
+          );
+
+          if (!changed && !doneChanged) return;
+
+          const nextPrioritized = new Set<string>();
+          for (const t of merged) {
+            if (t.prioritized) nextPrioritized.add(t.ticket_id);
+          }
+          for (const id of get().prioritizedTicketIds) {
+            if (mergedById[id]) nextPrioritized.add(id);
+          }
+
+          const reconciled = reconcilePriorityFlags(merged, nextPrioritized);
+          const bucketed = smartBucketTickets(
+            reconciled,
+            get().ticketsByStatus,
+            nextPrioritized,
+            get().newOrderPosition,
+          );
+
+          set({
+            tickets: reconciled,
+            _ticketsById: mergedById,
+            _ticketIdsByOrderId: buildOrderIdIndex(mergedById),
+            prioritizedTicketIds: nextPrioritized,
+            doneTickets: nextDoneTickets,
+            doneCount: nextDoneTickets.length,
+            ...bucketed,
+          });
+
+          // Chime for tickets that appeared for this order — a later course fired,
+          // or this station's first sight of the order. Diff is scoped to the
+          // order, so it cannot ring for unrelated tickets that a concurrent board
+          // fetch happened to add.
+          const cb = get()._onNewOrderCallback;
+          if (cb) {
+            const prevTicketIds = new Set(
+              currentTickets.map((t) => t.ticket_id),
+            );
+            const newTickets = merged.filter(
+              (t) =>
+                t.db_order_id === orderId && !prevTicketIds.has(t.ticket_id),
+            );
+            if (newTickets.length > 0) {
+              console.log("[KDS Sound] order-scoped new tickets", {
+                orderId,
+                count: newTickets.length,
+                ticketIds: newTickets.map((t) => t.ticket_id),
+              });
+              for (const t of newTickets) {
+                cb(t.order_source ?? null);
+              }
+            }
+          }
+        } catch (err) {
+          if (_orderFetchSeq.get(orderId) !== mySeq) return;
+          console.error("[KDSStore] _fetchTicketsForOrder exception:", err);
+          get().scheduleRefetch(locationId);
+        }
       },
 
       // ─── Long-Press Actions ─────────────────────────────────────────
@@ -3920,6 +4213,9 @@ export const useKDSStore = create<KDSState>()(
         }
         _broadcastDebounceTimers.forEach((t) => clearTimeout(t));
         _broadcastDebounceTimers.clear();
+        _orderRefetchTimers.forEach((t) => clearTimeout(t));
+        _orderRefetchTimers.clear();
+        _orderFetchSeq.clear();
         _fetchInFlight = false;
       },
     }),

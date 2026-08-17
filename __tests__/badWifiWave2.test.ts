@@ -4,8 +4,8 @@
  *  B) ModifierScreen's redundant OrderService.updateOpenItem call removed — the
  *     edit is already synced (deadline-wrapped + offline-queued) by
  *     updateItemInActiveOrder (qty/notes) + setItemSeat (seat).
- *  A) The LIVE KDS poll (get_kds_tickets_v2 in useKDSStore fetchTickets +
- *     _backgroundFetchTickets) is now deadline-wrapped.
+ *  A) The LIVE KDS poll (get_kds_tickets_* in useKDSStore fetchTickets +
+ *     _backgroundFetchTickets + _fetchTicketsForOrder) is now deadline-wrapped.
  *  C) The seat_guests legacy PGRST202 fallback is now deadline-wrapped.
  *
  * useOrderStore/useKDSStore are too heavy to load at runtime (mocked/source-
@@ -40,13 +40,19 @@ describe("Wave 2 — A: live KDS poll is deadline-wrapped", () => {
     expect(src).toContain('from "@/lib/network/deadlines"');
   });
 
-  it("wraps BOTH get_kds_tickets_v2 poll sites in runWithDeadline + DEADLINES.read", () => {
-    // both poll sites are deadline-wrapped
-    expect((src.match(/runWithDeadline<KDSTicket\[\]>/g) ?? []).length).toBe(2);
+  it("wraps EVERY KDS ticket fetch site in runWithDeadline + DEADLINES.read", () => {
+    // Three fetch sites: fetchTickets, _backgroundFetchTickets, and the
+    // order-scoped _fetchTicketsForOrder (AUD-8 step 2). Bump this deliberately
+    // when adding another — an unwrapped ticket fetch can hang 30s+ on a bad
+    // link, which is the entire point of this suite.
+    expect((src.match(/runWithDeadline<KDSTicket\[\]>/g) ?? []).length).toBe(3);
     expect((src.match(/"get_kds_tickets",\s*DEADLINES\.read/g) ?? []).length).toBe(2);
-    // both still hit the RPC, with abortSignal threaded for real cancellation
+    expect(
+      (src.match(/"get_kds_tickets_for_order",\s*DEADLINES\.read/g) ?? []).length,
+    ).toBe(1);
+    // all still hit the RPC, with abortSignal threaded for real cancellation
     expect((src.match(/get_kds_tickets_v2/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    expect((src.match(/\.abortSignal\(signal\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((src.match(/\.abortSignal\(signal\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 });
 

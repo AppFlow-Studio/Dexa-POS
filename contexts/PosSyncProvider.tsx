@@ -5,7 +5,7 @@ import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
-import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
+import { standaloneSyncQueryOptions } from "@/hooks/pos/useStandaloneSync";
 import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -16,6 +16,7 @@ import {
     type StorageBucketName,
 } from "@/lib/storage";
 import { initLandiPrinter } from "@/native/LandiPrinter";
+import { applyRecipes } from "@/stores/applyRecipes";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
 import { syncEmployees as syncEmployeesService } from "@/services/employeeSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
@@ -587,6 +588,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Watermark of the menu currently applied to the store, scoped to the
+  // location it came from. Drives the version reconcile below.
+  const appliedMenuVersionRef = useRef<{
+    locationId: string | null;
+    version: string | null;
+  } | null>(null);
+
   const setMenuData = useMenuStore((state) => state.setMenuData);
   const setSyncState = useMenuStore((state) => state.setSyncState);
 
@@ -600,16 +608,38 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     refetch: refetchPosSync,
   } = usePosSync(isKDS ? null : (selectedStore?.id ?? null));
 
-  // Fetch standalone entities (categories, items, modifiers not in menus) (skip for KDS)
-  const { data: standaloneData } = useStandaloneSync(
-    isKDS ? null : (selectedStore?.merchant_id ?? null),
-    isKDS ? null : (selectedStore?.id ?? null),
-  );
+  // Standalone entities (library/inactive categories, items, modifiers, menus)
+  // are not fetched on the critical boot path — six requests that order entry
+  // never reads, since it renders the `menus` tree and the only menus the
+  // standalone payload adds are inactive ones that `isMenuAvailableNow` filters
+  // out anyway. They're consumed by the menu-management route.
+  //
+  // But "not on the boot path" must not mean "only when you open the screen":
+  // TanStack's cache is in-memory, so a route-mount-only fetch made menu
+  // management wait on the network after every app restart. Instead we warm the
+  // cache in the background once the POS is interactive — off the critical
+  // path, but ready by the time anyone taps into Menu.
+  useEffect(() => {
+    if (isKDS) return;
+    const merchantId = selectedStore?.merchant_id;
+    const locationId = selectedStore?.id;
+    if (!supabase || !merchantId || !locationId) return;
+    // Only once the menu itself has landed — never compete with the boot sync.
+    if (!posSyncData) return;
 
-  // Keep a ref to standalone data so the posSyncData effect can re-merge
-  // without adding standaloneData as a dependency (which would cause extra runs)
-  const standaloneDataRef = useRef(standaloneData);
-  standaloneDataRef.current = standaloneData;
+    const handle = InteractionManager.runAfterInteractions(() => {
+      void queryClient
+        .prefetchQuery(
+          standaloneSyncQueryOptions(supabase, merchantId, locationId),
+        )
+        .catch((err) => {
+          // Non-critical: the menu route refetches on mount if this failed.
+          console.warn("[PosSyncProvider] standalone warm-up failed:", err);
+        });
+    });
+
+    return () => handle.cancel();
+  }, [isKDS, supabase, selectedStore?.merchant_id, selectedStore?.id, posSyncData]);
 
   // --- SERVICE CHARGE RULES SYNC --- (skip for KDS)
   useServiceChargeRulesSync({
@@ -629,68 +659,65 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase]);
 
-  // Helper to merge recipes into menu store
-  const applyRecipes = (
-    data:
-      | {
-          menu_item_ingredients?: Array<{
-            menu_item_id: string;
-            inventory_item_id: string;
-            quantity: number;
-          }>;
-          modifier_group_item_ingredients?: Array<{
-            modifier_group_item_id: string;
-            inventory_item_id: string;
-            quantity: number;
-          }>;
-        }
-      | null
-      | undefined,
-  ) => {
-    if (!data) return;
-    if (
-      data.menu_item_ingredients?.length ||
-      data.modifier_group_item_ingredients?.length
-    ) {
-      useMenuStore.getState().mergeRecipeData({
-        menuRecipes: (data.menu_item_ingredients ?? []).map((r) => ({
-          menu_item_id: r.menu_item_id,
-          inventory_item_id: r.inventory_item_id,
-          quantity: r.quantity,
-        })),
-        modifierRecipes: (data.modifier_group_item_ingredients ?? []).map(
-          (r) => ({
-            modifier_group_item_id: r.modifier_group_item_id,
-            inventory_item_id: r.inventory_item_id,
-            quantity: r.quantity,
-          }),
-        ),
-      });
-    }
-  };
-
   // --- END INVENTORY SYNC ---
 
-  // Update menu store when sync data changes
+  // Update menu store when sync data changes.
+  //
+  // `get_pos_bootstrap_v1` returns an opaque version watermark covering every
+  // menu entity plus the per-location overrides. When it matches what is
+  // already in the store, nothing changed server-side and the whole rebuild is
+  // skipped — no setMenuData over a 2,600-line store, no snapshot rewrite, no
+  // re-render of order entry. This is what makes a cold boot "paint from cache,
+  // then reconcile only if the version differs" rather than always rebuilding.
   useEffect(() => {
     if (posSyncData) {
+      const locationId = selectedStore?.id ?? null;
+      const incomingVersion = posSyncData.version ?? null;
+      const applied = appliedMenuVersionRef.current;
+
+      // Version is only comparable within a location — never let one location's
+      // watermark suppress a rebuild after switching stores.
+      if (
+        incomingVersion &&
+        applied &&
+        applied.locationId === locationId &&
+        applied.version === incomingVersion
+      ) {
+        console.log("[PosSyncProvider] menu version unchanged — skipping rebuild", {
+          version: incomingVersion,
+        });
+
+        // The rebuild is skipped, but a live sync DID land and confirmed the
+        // menu on screen is current. `setMenuData` is normally what clears the
+        // stale-cache flag, so without this a cache-hydrated boot kept showing
+        // "menu may be out of date" forever — and Sync couldn't clear it,
+        // because every retry matched the same version and skipped again.
+        setSyncState({
+          isFromCache: false,
+          isLoading: false,
+          isError: false,
+          error: null,
+          lastSyncedAt: posSyncData.synced_at,
+        });
+        return;
+      }
+
       setMenuData(posSyncData);
 
       // Snapshot the last good sync so a future boot with no/bad network shows
       // this menu instead of an empty grid. Written after setMenuData so a
       // serialization problem can never block the live path.
-      if (selectedStore?.id) {
-        menuOfflineCache.set(selectedStore.id, posSyncData);
-      }
-
-      // Re-merge standalone data so orphan items/categories aren't lost
-      // after setMenuData replaces the store with tree-only data
-      if (standaloneDataRef.current) {
-        useMenuStore.getState().mergeStandaloneData(standaloneDataRef.current);
+      if (locationId) {
+        menuOfflineCache.set(locationId, posSyncData);
       }
 
       // Re-apply recipes if available (since setMenuData might reset them)
       applyRecipes(posSyncData);
+
+      appliedMenuVersionRef.current = {
+        locationId,
+        version: incomingVersion,
+      };
 
       // Send menu data to debug server in development
       // const DEBUG_MENU_URL = __DEV__
@@ -717,7 +744,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       //     });
       // }
     }
-  }, [posSyncData, setMenuData, selectedStore?.id]);
+  }, [posSyncData, setMenuData, setSyncState, selectedStore?.id]);
 
   // Boot fallback: paint the last known menu while the live sync is still in
   // flight (or after it has failed). Declared AFTER the effect above so that on
@@ -735,9 +762,22 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
     console.log(
       "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
-      { syncedAt: cached.synced_at, menus: cached.menus?.length ?? 0 },
+      {
+        syncedAt: cached.synced_at,
+        menus: cached.menus?.length ?? 0,
+        version: cached.version ?? "(pre-versioning)",
+      },
     );
     setMenuData(cached, { fromCache: true });
+
+    // Record the snapshot's watermark so that when the live sync lands with the
+    // same version we skip the rebuild outright — the cached paint IS the
+    // current menu. Snapshots written before versioning existed have no
+    // version, so they always reconcile.
+    appliedMenuVersionRef.current = {
+      locationId,
+      version: cached.version ?? null,
+    };
   }, [selectedStore?.id, isKDS, setMenuData, posSyncData]);
 
   // Self-healing menu sync.
@@ -785,24 +825,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     syncFetchStatus,
     refetchPosSync,
   ]);
-
-  // Merge standalone data (categories, items, modifiers, menus including inactive)
-  useEffect(() => {
-    if (standaloneData) {
-      const menuStore = useMenuStore.getState();
-      menuStore.mergeStandaloneData(standaloneData);
-
-      // Re-apply recipes if available (since mergeStandaloneData might overwrite items)
-      applyRecipes(posSyncData);
-
-      console.log("✅ Standalone data merged:", {
-        categories: standaloneData.categories?.length || 0,
-        items: standaloneData.items?.length || 0,
-        modifierGroups: standaloneData.modifierGroups?.length || 0,
-        menus: standaloneData.menus?.length || 0,
-      });
-    }
-  }, [standaloneData, posSyncData]);
 
   // Floor plan sync is now handled in the combined useEffect above
 
