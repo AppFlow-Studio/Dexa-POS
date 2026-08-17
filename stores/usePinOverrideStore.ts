@@ -29,8 +29,15 @@ interface PinOverrideState {
   actionToPerform: OverrideAction;
   /** Epoch ms when the current manager unlock session expires. null = locked. */
   unlockedUntil: number | null;
+  /**
+   * Navigation to run once the PIN is accepted. This is what makes
+   * "always require PIN" (timeout 0) workable: the approved action completes
+   * immediately instead of relying on a lingering temporary-access grant that
+   * the operator would otherwise re-use on the next tap.
+   */
+  pendingGrant: (() => void) | null;
 
-  requestPinOverride: (action: OverrideAction) => void;
+  requestPinOverride: (action: OverrideAction, onGranted?: () => void) => void;
   closePinModal: () => void;
   /** Returns true if a manager unlock session is still active. */
   isUnlocked: () => boolean;
@@ -46,13 +53,18 @@ export const usePinOverrideStore = create<PinOverrideState>((set, get) => ({
   isPinModalOpen: false,
   actionToPerform: null,
   unlockedUntil: null,
+  pendingGrant: null,
 
-  requestPinOverride: (action) => {
-    set({ isPinModalOpen: true, actionToPerform: action });
+  requestPinOverride: (action, onGranted) => {
+    set({
+      isPinModalOpen: true,
+      actionToPerform: action,
+      pendingGrant: onGranted ?? null,
+    });
   },
 
   closePinModal: () => {
-    set({ isPinModalOpen: false, actionToPerform: null });
+    set({ isPinModalOpen: false, actionToPerform: null, pendingGrant: null });
   },
 
   isUnlocked: () => {
@@ -71,9 +83,18 @@ export const usePinOverrideStore = create<PinOverrideState>((set, get) => ({
 
   lockNow: () => {
     set({ unlockedUntil: null });
+    // Drop every menu/category grant this session authorised. Without this the
+    // grants outlive the session that justified them and silently keep locked
+    // resources open. Lazy require avoids a circular store import.
+    const {
+      useMenuStore,
+    } = require("./useMenuStore") as {
+      useMenuStore: typeof import("./useMenuStore").useMenuStore;
+    };
+    useMenuStore.getState().clearTemporaryAccess();
   },
 
   resolvePinRequest: () => {
-    set({ isPinModalOpen: false, actionToPerform: null });
+    set({ isPinModalOpen: false, actionToPerform: null, pendingGrant: null });
   },
 }));

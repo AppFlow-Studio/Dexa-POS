@@ -627,7 +627,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     // Setting: when auto-create is OFF, don't auto-start the next order after
     // payment — leave the screen empty until the operator explicitly starts one.
-    if (!useStoreSettingsStore.getState().autoCreateOrder) {
+    if (!useLocationConfigStore.getState().config.ordering.autoCreateOrder) {
       get().close();
       return;
     }
