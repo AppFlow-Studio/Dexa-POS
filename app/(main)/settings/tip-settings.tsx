@@ -7,28 +7,22 @@
 import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import {
-  fetchTipDistributionRulesOverview,
-  TipDistributionRulesOverview,
-} from '@/services/endOfDayService'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import type { TipsConfig } from '@/types/locationConfig'
+import { useRouter } from 'expo-router'
 import {
   AlertTriangle,
+  ChevronRight,
   Clock,
   DollarSign,
+  HandCoins,
   Percent,
   Plus,
   Settings,
-  Trash2,
-  Users,
   X,
 } from 'lucide-react-native'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import {
-  ActivityIndicator,
   Modal,
   ScrollView,
   Text,
@@ -47,26 +41,11 @@ export default function TipSettingsScreen() {
     [_updateConfig]
   )
 
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const locationId = selectedStore?.id || ''
-  const supabase = useSupabaseClient()
+  const router = useRouter()
 
   // Preset editing
   const [showPresetModal, setShowPresetModal] = useState(false)
   const [newPresetValue, setNewPresetValue] = useState('')
-
-  // Active rules (read-only)
-  const [rulesData, setRulesData] = useState<TipDistributionRulesOverview | null>(null)
-  const [rulesLoading, setRulesLoading] = useState(false)
-
-  useEffect(() => {
-    if (!locationId) return
-    setRulesLoading(true)
-    fetchTipDistributionRulesOverview(supabase, locationId)
-      .then(setRulesData)
-      .catch(() => setRulesData(null))
-      .finally(() => setRulesLoading(false))
-  }, [locationId, supabase])
 
   const presets = tipsConfig.presetPercentages ?? [18, 20, 25]
 
@@ -84,22 +63,6 @@ export default function TipSettingsScreen() {
     const updated = presets.filter(p => p !== pct)
     if (updated.length === 0) return
     updateTips({ presetPercentages: updated })
-  }
-
-  const formatTipSource = (raw: string) => {
-    switch (raw) {
-      case 'charged_tips': return 'Charged Tips'
-      case 'all_tips': return 'All Tips'
-      case 'cash_only': return 'Cash Only'
-      default: return raw.replace(/_/g, ' ')
-    }
-  }
-
-  const formatRuleValue = (rule: TipDistributionRulesOverview['rules'][number]) => {
-    if (rule.tipOutType === 'flat_amount') return `$${rule.tipOutValue.toFixed(2)} flat`
-    if (rule.tipOutType === 'percentage_of_tips') return `${rule.tipOutValue.toFixed(1)}% of tips`
-    if (rule.tipOutType === 'percentage_of_sales') return `${rule.tipOutValue.toFixed(1)}% of sales`
-    return `${rule.tipOutValue} ${rule.tipOutType}`
   }
 
   // ── Render helpers ──────────────────────────────────────────────────────────
@@ -463,9 +426,13 @@ export default function TipSettingsScreen() {
           )}
         </View>
 
-        {/* Section 3: Active Rules (read-only) */}
-        <View
+        {/* Section 3: Pointer to Tip Management (pools, tip-out rules, distribution) */}
+        <TouchableOpacity
+          onPress={() => router.push('/settings/tips-management' as any)}
+          activeOpacity={0.7}
           style={{
+            flexDirection: 'row',
+            alignItems: 'center',
             backgroundColor: colors.panel,
             padding: s(14),
             borderRadius: s(14),
@@ -474,129 +441,29 @@ export default function TipSettingsScreen() {
             marginBottom: s(12),
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(4) }}>
-            <View
-              style={{
-                width: s(32),
-                height: s(32),
-                backgroundColor: colors.teal + '15',
-                borderRadius: s(8),
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: s(10),
-              }}
-            >
-              <Users size={s(16)} color={colors.teal} />
-            </View>
+          <View
+            style={{
+              width: s(32),
+              height: s(32),
+              backgroundColor: colors.teal + '15',
+              borderRadius: s(8),
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: s(10),
+            }}
+          >
+            <HandCoins size={s(16)} color={colors.teal} />
+          </View>
+          <View style={{ flex: 1 }}>
             <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>
-              Active Tip Rules
+              Tip Pools & Tip-Out Rules
+            </Text>
+            <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
+              View pools, tip-out rules, and distribution in Tip Management.
             </Text>
           </View>
-          <Text style={{ fontSize: s(10), color: colors.muted, marginBottom: s(12) }}>
-            Tip pools and tip-out rules are managed from your Dexa dashboard.
-          </Text>
-
-          {rulesLoading ? (
-            <ActivityIndicator size='small' color={colors.teal} style={{ paddingVertical: s(12) }} />
-          ) : !rulesData ? (
-            <Text style={{ fontSize: s(12), color: colors.label, paddingVertical: s(8) }}>
-              Unable to load rules.
-            </Text>
-          ) : rulesData.configs.length === 0 && rulesData.rules.length === 0 ? (
-            <Text style={{ fontSize: s(12), color: colors.label, paddingVertical: s(8) }}>
-              No active tip pools or tip-out rules configured.
-            </Text>
-          ) : (
-            <View style={{ gap: s(10) }}>
-              {rulesData.configs.length > 0 && (
-                <View style={{ gap: s(6) }}>
-                  <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.label }}>
-                    Tip Pools
-                  </Text>
-                  {rulesData.configs.map(config => (
-                    <View
-                      key={config.id}
-                      style={{
-                        borderRadius: s(10),
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.card,
-                        padding: s(10),
-                        gap: s(4),
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
-                          {config.name}
-                        </Text>
-                        <View
-                          style={{
-                            borderRadius: s(20),
-                            paddingHorizontal: s(8),
-                            paddingVertical: s(2),
-                            backgroundColor: colors.teal + '20',
-                          }}
-                        >
-                          <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>
-                            {config.distributionMethod.replace('_', ' ')}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={{ fontSize: s(11), color: colors.label }}>
-                        Source: {formatTipSource(config.tipSource)} · {config.sourcePercentage}%
-                      </Text>
-                      {config.contributingRoleCodes.length > 0 && (
-                        <Text style={{ fontSize: s(11), color: colors.label }}>
-                          Contributing: {config.contributingRoleCodes.join(', ')}
-                        </Text>
-                      )}
-                      {config.description ? (
-                        <Text style={{ fontSize: s(11), color: colors.muted }}>{config.description}</Text>
-                      ) : null}
-                      {config.shares.length > 0 && (
-                        <View style={{ gap: s(2), marginTop: s(2) }}>
-                          {config.shares.map(share => (
-                            <Text key={share.id} style={{ fontSize: s(10), color: colors.label }}>
-                              {share.roleName || share.roleCode}: {share.sharePercentage}%
-                              {share.pointsPerHour ? ` (${share.pointsPerHour} pts/hr)` : ''}
-                            </Text>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {rulesData.rules.length > 0 && (
-                <View style={{ gap: s(6) }}>
-                  <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.label }}>
-                    Tip-Out Rules
-                  </Text>
-                  {rulesData.rules.map(rule => (
-                    <View
-                      key={rule.id}
-                      style={{
-                        borderRadius: s(10),
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.card,
-                        padding: s(10),
-                      }}
-                    >
-                      <Text style={{ fontSize: s(12), color: colors.heading }}>
-                        {rule.fromRoleName || rule.fromRoleCode} {'->'} {rule.toRoleName || rule.toRoleCode}
-                      </Text>
-                      <Text style={{ fontSize: s(10), color: colors.label, marginTop: s(2) }}>
-                        {formatRuleValue(rule)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
-        </View>
+          <ChevronRight size={s(18)} color={colors.muted} />
+        </TouchableOpacity>
       </ScrollView>
     </View>
   )

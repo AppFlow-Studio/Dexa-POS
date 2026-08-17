@@ -25,6 +25,7 @@ import {
   DollarSign,
   FlaskConical,
   Globe,
+  HandCoins,
   LayoutGrid,
   List,
   Monitor,
@@ -170,6 +171,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         label: 'Tip Settings',
         icon: Percent,
         route: '/settings/tip-settings'
+      },
+      {
+        id: 'tips-management',
+        label: 'Tip Management',
+        icon: HandCoins,
+        route: '/settings/tips-management'
       },
       {
         id: 'end-of-day',
