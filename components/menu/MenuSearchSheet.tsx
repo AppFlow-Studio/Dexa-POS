@@ -364,6 +364,12 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
               TAB_LABELS[activeTab]?.toLowerCase() ?? ''
             }...`}
             placeholderTextColor={colors.muted}
+            // Disable Android autocorrect/predictive composing so fast typing
+            // doesn't reorder/merge characters against the controlled value.
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="off"
+            spellCheck={false}
             style={{
               flex: 1,
               color: colors.heading,

@@ -311,6 +311,15 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
               onChangeText={setSearchText}
               placeholder="Search items..."
               placeholderTextColor={colors.muted}
+              // Android autocorrect/predictive text keeps a multi-char "composing"
+              // region; a controlled value fighting that region reorders and
+              // merges characters/words when typing fast. Disabling suggestions
+              // makes each keystroke commit immediately, so it stays in order.
+              // (Matches PreviousOrdersSection's search, which doesn't jumble.)
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              spellCheck={false}
               style={{
                 flex: 1,
                 color: colors.heading,
