@@ -29,10 +29,10 @@ export interface OnlineOrderDateFilter {
 }
 
 /**
- * Whether the selected range reaches the local calendar today. When it does,
- * still-active orders from outside the window stay on the board; a purely
- * historical range (Yesterday, or a custom range that ends in the past) is
- * scoped strictly by placement date so it doesn't show today's live orders.
+ * Whether the selected range reaches today — i.e. a tab that can still receive
+ * brand-new orders. Only those tabs watch realtime to pull a just-arrived order
+ * in through an RPC refresh; historical ranges never expect new arrivals, so
+ * they stay quiet. The board itself is always strictly scoped by the RPC.
  */
 function rangeIncludesToday(filter: OnlineOrderDateFilter): boolean {
   if (filter.preset === "today" || filter.preset === "last_7_days") return true;
@@ -159,23 +159,20 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
     : EMPTY_SELECTIONS;
   const locationLiveOrders =
     currentLocationId === locationId ? liveOrders : EMPTY_ORDERS;
-  const includeActiveOutsideRange = useMemo(
+  // Only tabs whose window reaches today expect brand-new orders to arrive, so
+  // only they watch realtime to pull a fresh order in via an RPC refresh.
+  const tracksLiveArrivals = useMemo(
     () => rangeIncludesToday(filter),
     [filter.preset, filter.endDate],
   );
   const missingActiveOrderKey = useMemo(() => {
     // Historical ranges don't track live orders, so don't force a refresh to
     // pull a newly-active order the board wouldn't show anyway.
-    if (!hasServerSelection || !includeActiveOutsideRange) return "";
+    if (!hasServerSelection || !tracksLiveArrivals) return "";
     return getMissingActiveOnlineOrderIds(selections, locationLiveOrders).join(
       ":",
     );
-  }, [
-    hasServerSelection,
-    includeActiveOutsideRange,
-    selections,
-    locationLiveOrders,
-  ]);
+  }, [hasServerSelection, tracksLiveArrivals, selections, locationLiveOrders]);
 
   // A realtime insert can land after the RPC snapshot. Refresh once while the
   // order is active so its authoritative placed_at remains available after it
@@ -189,16 +186,8 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
     () =>
       assembleOnlineOrderBoard(selections, ordersById, locationLiveOrders, {
         includeLiveCompleted: filter.preset === "today" && !hasServerSelection,
-        includeActiveOutsideRange,
       }),
-    [
-      selections,
-      ordersById,
-      locationLiveOrders,
-      filter.preset,
-      hasServerSelection,
-      includeActiveOutsideRange,
-    ],
+    [selections, ordersById, locationLiveOrders, filter.preset, hasServerSelection],
   );
 
   return { onlineOrders, isLoading, error, refresh };

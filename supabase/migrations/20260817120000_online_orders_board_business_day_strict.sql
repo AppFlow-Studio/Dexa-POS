@@ -1,11 +1,12 @@
--- Scope active online orders to ranges that include today.
+-- Online Orders board scoped to the location BUSINESS DAY, strictly by placed_at.
 --
--- The original board kept every active (pending->ready) order visible on ALL
--- day tabs, so selecting Yesterday or a past custom range still showed today's
--- in-progress orders. Now active orders outside the window are retained ONLY
--- when the selected range includes the location-local today (Today, Last 7, or
--- a custom range ending today or later). Historical ranges are scoped strictly
--- by placed_at. Completed orders were already date-scoped either way.
+-- Supersedes the calendar-day contract. "Today" is the current business day,
+-- honoring locations.business_day_start_hour (an order placed before the
+-- rollover hour belongs to the previous business day). Every preset is scoped
+-- strictly by online_orders.placed_at within its business-day window — active
+-- orders are NOT carried outside the window anymore, so each tab shows only the
+-- orders placed in that business day / range. All presets use business-day
+-- bounds so adjacent tabs never gap or overlap.
 
 CREATE OR REPLACE FUNCTION public.get_online_orders_board_v1(
   p_location_id uuid,
@@ -29,15 +30,17 @@ SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_timezone text;
-  v_today date;
+  v_start_hour integer;
+  v_business_today date;
   v_start_date date;
   v_end_date date;
   v_start_ts timestamptz;
   v_end_ts timestamptz;
-  v_include_active boolean;
 BEGIN
-  SELECT COALESCE(NULLIF(l.timezone, ''), 'UTC')
-    INTO v_timezone
+  SELECT
+      COALESCE(NULLIF(l.timezone, ''), 'UTC'),
+      COALESCE(l.business_day_start_hour, 0)
+    INTO v_timezone, v_start_hour
     FROM public.locations l
    WHERE l.id = p_location_id;
 
@@ -52,18 +55,23 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  v_today := (now() AT TIME ZONE v_timezone)::date;
+  -- Current business-day date: before the rollover hour we're still on the
+  -- previous business day (matches get_business_day_bounds).
+  v_business_today := (now() AT TIME ZONE v_timezone)::date;
+  IF (now() AT TIME ZONE v_timezone)::time < make_time(v_start_hour, 0, 0) THEN
+    v_business_today := v_business_today - 1;
+  END IF;
 
   CASE p_preset
     WHEN 'today' THEN
-      v_start_date := v_today;
-      v_end_date := v_today;
+      v_start_date := v_business_today;
+      v_end_date := v_business_today;
     WHEN 'yesterday' THEN
-      v_start_date := v_today - 1;
-      v_end_date := v_today - 1;
+      v_start_date := v_business_today - 1;
+      v_end_date := v_business_today - 1;
     WHEN 'last_7_days' THEN
-      v_start_date := v_today - 6;
-      v_end_date := v_today;
+      v_start_date := v_business_today - 6;
+      v_end_date := v_business_today;
     WHEN 'custom' THEN
       IF p_start_date IS NULL OR p_end_date IS NULL THEN
         RAISE EXCEPTION 'Custom date range requires start and end dates'
@@ -77,15 +85,13 @@ BEGIN
       v_end_date := p_end_date;
   END CASE;
 
-  -- Only surface still-active orders from outside the window when the selected
-  -- range reaches today. Historical ranges (Yesterday, a past custom range) are
-  -- scoped strictly by placed_at so they don't show today's live orders.
-  v_include_active := (v_end_date >= v_today);
+  -- Business-day windows begin at the rollover hour, not local midnight, and
+  -- convert each boundary independently so DST-length days stay correct.
+  v_start_ts := (v_start_date::timestamp + make_interval(hours => v_start_hour))
+                AT TIME ZONE v_timezone;
+  v_end_ts := ((v_end_date + 1)::timestamp + make_interval(hours => v_start_hour))
+              AT TIME ZONE v_timezone;
 
-  -- Converting each local midnight independently keeps the half-open window
-  -- correct across 23-hour and 25-hour DST days.
-  v_start_ts := v_start_date::timestamp AT TIME ZONE v_timezone;
-  v_end_ts := (v_end_date + 1)::timestamp AT TIME ZONE v_timezone;
   RETURN QUERY
   WITH online_order_rows AS (
     -- The FK is not unique in the schema. Select one authoritative placement
@@ -104,11 +110,9 @@ BEGIN
   SELECT
     online_order_rows.order_id,
     online_order_rows.placed_at,
-    COALESCE(
-      online_order_rows.placed_at >= v_start_ts
-        AND online_order_rows.placed_at < v_end_ts,
-      false
-    ) AS is_in_range,
+    -- Strict scope: only in-window rows are returned, so this is always true.
+    -- Kept in the contract so the client's is_in_range handling is unchanged.
+    true AS is_in_range,
     COALESCE((
       SELECT SUM(GREATEST(oi.quantity, 0))::integer
       FROM public.order_items oi
@@ -141,25 +145,11 @@ BEGIN
       'ready',
       'completed'
     )
-    AND (
-      (
-        online_order_rows.placed_at >= v_start_ts
-        AND online_order_rows.placed_at < v_end_ts
-      )
-      OR (
-        v_include_active
-        AND o.status::text IN (
-          'pending',
-          'accepted',
-          'sent_to_kitchen',
-          'preparing',
-          'ready'
-        )
-      )
-    )
+    AND online_order_rows.placed_at >= v_start_ts
+    AND online_order_rows.placed_at < v_end_ts
   ORDER BY online_order_rows.placed_at DESC NULLS LAST, online_order_rows.order_id DESC;
 END;
 $function$;
 
 COMMENT ON FUNCTION public.get_online_orders_board_v1(uuid, text, date, date, integer)
-IS 'Location-local online order headers. Active orders outside the window are retained only when the selected range includes today.';
+IS 'Business-day scoped online order headers (honors business_day_start_hour). Strictly scoped by placed_at; no active-order carryover outside the window.';
