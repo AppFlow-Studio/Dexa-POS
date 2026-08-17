@@ -1,41 +1,36 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+  assembleOnlineOrderBoard,
+  getMissingActiveOnlineOrderIds,
+  reconcileOnlineOrderSnapshot,
+  type OnlineOrderBoardSelection,
+} from "@/lib/onlineOrderBoard";
 import type { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { useOnlineOrders } from "@/stores/selectors/orderSelectors";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
-    normalizeFetchedOrder,
-    transformBroadcastToOrder,
-    type FetchedOrderData,
+  normalizeFetchedOrder,
+  transformBroadcastToOrder,
+  type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type DatePreset = "today" | "yesterday" | "last_7_days" | "custom";
 
+const EMPTY_ORDERS: OrderProfile[] = [];
+const EMPTY_SELECTIONS: OnlineOrderBoardSelection[] = [];
+
 export interface OnlineOrderDateFilter {
   preset: DatePreset;
-  startDate: string | null; // ISO date string (YYYY-MM-DD)
-  endDate: string | null; // ISO date string (YYYY-MM-DD)
-}
-
-/** Terminal online-order statuses we never show on the Kanban. */
-const EXCLUDED_STATUSES = new Set([
-  "declined",
-  "cancelled",
-  "void",
-  "voided",
-  "refunded",
-]);
-
-function isVisible(o: OrderProfile): boolean {
-  return !EXCLUDED_STATUSES.has(o.order_status ?? "");
+  startDate: string | null;
+  endDate: string | null;
 }
 
 /**
- * Fetches online orders for a given date window by joining the
- * `online_orders` table — the authoritative source for online-order
- * identification — to `orders`. Does NOT rely on `orders.order_source`
- * which may carry arbitrary platform-specific values.
+ * Loads every Online Orders preset through the same server-authoritative
+ * location-local date contract, then reconciles those rows with realtime state.
  */
 export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
   onlineOrders: OrderProfile[];
@@ -44,153 +39,138 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
   refresh: () => void;
 } {
   const supabase = useSupabaseClient();
-  const locationId = useStoreSettingsStore.getState().selectedStore?.id ?? null;
-
-  // Proven selector — already excludes terminal statuses + non-online orders.
-  // Stable reference via useStableOrderList inside.
+  const locationId = useStoreSettingsStore((s) => s.selectedStore?.id ?? null);
   const liveOrders = useOnlineOrders();
-
-  const [historicalOrders, setHistoricalOrders] = useState<OrderProfile[]>([]);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const currentLocationId = useOrderStore((s) => s.currentLocationId);
+  const filterKey = `${locationId ?? ""}:${filter.preset}:${filter.startDate ?? ""}:${filter.endDate ?? ""}`;
+  const [selectionState, setSelectionState] = useState<{
+    key: string;
+    rows: OnlineOrderBoardSelection[];
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const fetchIdRef = useRef(0);
 
-  // Only spend a network round-trip when the user picks a non-Today window.
-  // Today's live orders are already in the Zustand store via useOrdersQuery.
-  const needsHistoricalFetch = filter.preset !== "today";
+  const refresh = useCallback(() => {
+    setRefreshVersion((version) => version + 1);
+  }, []);
 
-  const fetchHistorical = useCallback(async () => {
-    if (!needsHistoricalFetch) {
-      setHistoricalOrders([]);
+  useEffect(() => {
+    if (!locationId) {
+      setSelectionState(null);
+      setIsLoading(false);
       return;
     }
-    if (!supabase || !locationId) return;
 
+    let cancelled = false;
     const fetchId = ++fetchIdRef.current;
     setIsLoading(true);
     setError(null);
 
-    try {
-      const bounds = await OrderService.getBusinessDayBounds(
-        supabase,
-        locationId,
-        filter.startDate,
-        filter.endDate,
-      );
+    (async () => {
+      try {
+        const boardResult = await OrderService.getOnlineOrdersBoard(
+          supabase,
+          locationId,
+          {
+            preset: filter.preset,
+            startDate: filter.startDate,
+            endDate: filter.endDate,
+          },
+        );
 
-      if (!bounds || fetchId !== fetchIdRef.current) return;
+        if (cancelled || fetchId !== fetchIdRef.current) return;
+        if (boardResult.error) {
+          setError(boardResult.error.message ?? "Failed to load online orders");
+          return;
+        }
 
-      // Query online_orders and join to orders via FK — catches ALL online
-      // orders regardless of what value is in orders.order_source.
-      let query = supabase
-        .from("online_orders")
-        .select(
-          `order_id,
-           orders!inner(
-             *,
-             order_items(*, order_item_modifiers(*)),
-             order_payments(*),
-             order_discounts(*),
-             stations(station_name),
-             created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)
-           )`,
-        )
-        .eq("location_id", locationId)
-        .limit(200);
-
-      // Note: date-range filtering + ordering done client-side below.
-      // PostgREST dot-notation is not reliable on embedded resources.
-
-      const { data, error: fetchError } = await query;
-
-      if (fetchId !== fetchIdRef.current) return;
-
-      if (fetchError) {
-        setError(fetchError.message);
-        return;
-      }
-
-      const orders = ((data ?? []) as unknown[])
-        .map((row: any) => {
-          // Unwrap: query from online_orders returns { order_id, orders: {...} }
+        const nextSelections = boardResult.data ?? [];
+        const fetchedOrders = nextSelections.flatMap((row) => {
+          if (!row.orderData) return [];
           const normalized = normalizeFetchedOrder(
-            row.orders as FetchedOrderData,
+            row.orderData as FetchedOrderData,
           );
-          return transformBroadcastToOrder(normalized);
-        })
-        .filter(isVisible)
-        // Client-side date window (dot-notation not reliable in PostgREST)
-        .filter((o) => {
-          if (!bounds) return true;
-          const t = o.opened_at ? new Date(o.opened_at).getTime() : 0;
-          if (bounds.start_ts && t < new Date(bounds.start_ts).getTime())
-            return false;
-          if (bounds.end_ts && t >= new Date(bounds.end_ts).getTime())
-            return false;
-          return true;
-        }); // same gate as useOnlineOrders
+          const order = transformBroadcastToOrder(
+            normalized,
+            normalized.station_name,
+          );
+          order._broadcastItemCount = row.itemCount;
+          return [order];
+        });
 
-      setHistoricalOrders(orders);
-    } catch (e: any) {
-      if (fetchId === fetchIdRef.current) {
-        setError(e?.message ?? "Failed to fetch online orders");
+        useOrderStore.setState((state) => {
+          const nextOrdersById = { ...state.ordersById };
+          for (const order of fetchedOrders) {
+            const key = order.db_order_id ?? order.id;
+            nextOrdersById[key] = reconcileOnlineOrderSnapshot(
+              nextOrdersById[key],
+              order,
+            );
+          }
+          return { ordersById: nextOrdersById };
+        });
+        setSelectionState({ key: filterKey, rows: nextSelections });
+      } catch (caught: any) {
+        if (!cancelled && fetchId === fetchIdRef.current) {
+          setError(caught?.message ?? "Failed to load online orders");
+        }
+      } finally {
+        if (!cancelled && fetchId === fetchIdRef.current) {
+          setIsLoading(false);
+        }
       }
-    } finally {
-      if (fetchId === fetchIdRef.current) {
-        setIsLoading(false);
-      }
-    }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
-    needsHistoricalFetch,
     supabase,
     locationId,
+    filter.preset,
     filter.startDate,
     filter.endDate,
+    filterKey,
+    refreshVersion,
   ]);
 
+  const hasServerSelection = selectionState?.key === filterKey;
+  const selections = hasServerSelection
+    ? selectionState.rows
+    : EMPTY_SELECTIONS;
+  const locationLiveOrders =
+    currentLocationId === locationId ? liveOrders : EMPTY_ORDERS;
+  const missingActiveOrderKey = useMemo(() => {
+    if (!hasServerSelection) return "";
+    return getMissingActiveOnlineOrderIds(selections, locationLiveOrders).join(
+      ":",
+    );
+  }, [hasServerSelection, selections, locationLiveOrders]);
+
+  // A realtime insert can land after the RPC snapshot. Refresh once while the
+  // order is active so its authoritative placed_at remains available after it
+  // transitions to completed.
   useEffect(() => {
-    fetchHistorical();
-  }, [fetchHistorical]);
+    if (!missingActiveOrderKey) return;
+    setRefreshVersion((version) => version + 1);
+  }, [missingActiveOrderKey]);
 
-  // When viewing today, live orders ARE the full result.
-  const merged = useMemo(() => {
-    if (!needsHistoricalFetch) return liveOrders;
-    return mergeOrders(liveOrders, historicalOrders);
-  }, [needsHistoricalFetch, liveOrders, historicalOrders]);
-
-  return { onlineOrders: merged, isLoading, error, refresh: fetchHistorical };
-}
-
-/**
- * Merge live (realtime) orders with historical (server-fetched) orders.
- * Live orders take precedence; historical fill in orders not already present.
- */
-function mergeOrders(
-  live: OrderProfile[],
-  historical: OrderProfile[],
-): OrderProfile[] {
-  const seen = new Set<string>();
-  const result: OrderProfile[] = [];
-
-  for (const o of live) {
-    const key = o.db_order_id ?? o.id;
-    seen.add(key);
-    result.push(o);
-  }
-
-  for (const o of historical) {
-    const key = o.db_order_id ?? o.id;
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(o);
-    }
-  }
-
-  result.sort(
-    (a, b) =>
-      new Date(b.opened_at ?? 0).getTime() -
-      new Date(a.opened_at ?? 0).getTime(),
+  const onlineOrders = useMemo(
+    () =>
+      assembleOnlineOrderBoard(selections, ordersById, locationLiveOrders, {
+        includeLiveCompleted: filter.preset === "today" && !hasServerSelection,
+      }),
+    [
+      selections,
+      ordersById,
+      locationLiveOrders,
+      filter.preset,
+      hasServerSelection,
+    ],
   );
 
-  return result;
+  return { onlineOrders, isLoading, error, refresh };
 }

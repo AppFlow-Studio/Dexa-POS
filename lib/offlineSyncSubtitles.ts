@@ -152,7 +152,10 @@ export function isRetryable (op: OfflineOperation): boolean {
     code === 'SCHEMA_VERSION_MISMATCH' ||
     // Retrying re-runs the same unresolvable item lookup. The operator must
     // re-fire the items from the order instead.
-    code === 'KITCHEN_ITEMS_UNRESOLVED'
+    code === 'KITCHEN_ITEMS_UNRESOLVED' ||
+    code === 'KITCHEN_STATUS_PARTIAL_UPDATE' ||
+    code === 'KITCHEN_TRACE_CONTRACT_MISMATCH' ||
+    code === 'KITCHEN_NO_ACTIVE_ROUTE'
   ) {
     return false
   }
@@ -246,6 +249,12 @@ export function describeCause (op: OfflineOperation): string {
       return 'No longer exists'
     case 'KITCHEN_ITEMS_UNRESOLVED':
       return 'Some items never reached the kitchen'
+    case 'KITCHEN_STATUS_PARTIAL_UPDATE':
+      return 'Some kitchen rows were not updated'
+    case 'KITCHEN_TRACE_CONTRACT_MISMATCH':
+      return 'KDS database migration is missing'
+    case 'KITCHEN_NO_ACTIVE_ROUTE':
+      return 'No active KDS route accepted the items'
     case 'CONFLICT':
       return 'Changed on another station'
     case 'FOREIGN_KEY_VIOLATION':

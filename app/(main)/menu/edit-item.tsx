@@ -1,5 +1,6 @@
 import { GlobalItemScreen } from '@/components/menu/GlobalItemScreen'
 import ItemForm from '@/components/menu/ItemForm'
+import { MenuScopeLoadingScreen } from '@/components/menu/MenuScopeLoadingScreen'
 import { useToast } from '@/contexts/ToastContext'
 import { useIsSingleLocation } from '@/hooks/pos/useIsSingleLocation'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
@@ -22,7 +23,8 @@ const EditMenuItemScreen: React.FC = () => {
   const { getToken } = useAuth()
   const { show } = useToast()
   const router = useRouter()
-  const { isSingleLocation } = useIsSingleLocation()
+  const { isSingleLocation, isLoading: isSingleLocationLoading } =
+    useIsSingleLocation()
   const [isSaving, setIsSaving] = useState(false)
 
   const itemToEdit = menuItems.find(item => item.id === itemId)
@@ -49,6 +51,9 @@ const EditMenuItemScreen: React.FC = () => {
   // Single-location merchants edit the global core directly (their menu IS the
   // global menu). Multi-location merchants keep the read-only wall for global
   // items — they adjust price/availability via per-location overrides instead.
+  if (isGlobalItem && isSingleLocationLoading) {
+    return <MenuScopeLoadingScreen />
+  }
   if (isGlobalItem && !isSingleLocation) {
     return <GlobalItemScreen type='Item' />
   }
