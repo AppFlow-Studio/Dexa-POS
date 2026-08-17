@@ -192,7 +192,10 @@ describe("POS kitchen-send wiring", () => {
     const end = generatedTypes.indexOf("set_item_course:", start);
     const signature = generatedTypes.slice(start, end);
 
-    expect(signature).toContain("p_station_id?: string;");
-    expect(signature).toContain("p_device_id?: string;");
+    // Assert the params exist, not their trailing punctuation — the Supabase
+    // type generator dropped the trailing ";" on Args lines in newer CLI
+    // versions, and the repo's regenerated types follow that format.
+    expect(signature).toContain("p_station_id?: string");
+    expect(signature).toContain("p_device_id?: string");
   });
 });
