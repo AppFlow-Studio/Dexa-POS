@@ -82,15 +82,24 @@ export function reconcileOnlineOrderSnapshot(
 
 /**
  * Reconcile the server-selected rows with the latest realtime order objects.
- * Completed rows are retained only when the RPC marked them in-range; active
- * rows remain visible regardless of their placement date.
+ * Completed rows are retained only when the RPC marked them in-range. Active
+ * rows outside the window are retained only when `includeActiveOutsideRange`
+ * is set — the caller passes this when the selected range reaches today, so
+ * historical tabs (Yesterday, a past custom range) stay scoped by placed_at
+ * instead of showing today's live orders.
  */
 export function assembleOnlineOrderBoard(
   selections: OnlineOrderBoardSelection[],
   ordersById: Record<string, OrderProfile>,
   liveOrders: OrderProfile[],
-  options: { includeLiveCompleted?: boolean } = {},
+  options: {
+    includeLiveCompleted?: boolean;
+    includeActiveOutsideRange?: boolean;
+  } = {},
 ): OrderProfile[] {
+  // Default true preserves the original "active always visible" behavior for
+  // callers that don't scope by day (e.g. the Today live view).
+  const includeActiveOutsideRange = options.includeActiveOutsideRange ?? true;
   const selectionById = new Map(
     selections.map((selection) => [selection.orderId, selection]),
   );
@@ -101,15 +110,22 @@ export function assembleOnlineOrderBoard(
     if (!order || !BOARD_ONLINE_ORDER_STATUSES.has(order.order_status ?? "")) {
       continue;
     }
-    if (selection.isInRange || isActiveOnlineOrderStatus(order.order_status)) {
+    if (
+      selection.isInRange ||
+      (includeActiveOutsideRange &&
+        isActiveOnlineOrderStatus(order.order_status))
+    ) {
       byId.set(selection.orderId, order);
     }
   }
 
-  // Realtime may deliver a newly-active order before the RPC refresh returns.
+  // Realtime may deliver a newly-active order before the RPC refresh returns —
+  // but only surface it when the window reaches today, so a live order (placed
+  // now) never leaks onto a historical tab.
   for (const order of liveOrders) {
     const isLiveFallback =
-      isActiveOnlineOrderStatus(order.order_status) ||
+      (includeActiveOutsideRange &&
+        isActiveOnlineOrderStatus(order.order_status)) ||
       (options.includeLiveCompleted && order.order_status === "completed");
     if (!isLiveFallback) continue;
     byId.set(order.db_order_id ?? order.id, order);

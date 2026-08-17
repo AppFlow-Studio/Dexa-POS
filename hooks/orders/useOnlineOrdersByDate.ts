@@ -29,6 +29,22 @@ export interface OnlineOrderDateFilter {
 }
 
 /**
+ * Whether the selected range reaches the local calendar today. When it does,
+ * still-active orders from outside the window stay on the board; a purely
+ * historical range (Yesterday, or a custom range that ends in the past) is
+ * scoped strictly by placement date so it doesn't show today's live orders.
+ */
+function rangeIncludesToday(filter: OnlineOrderDateFilter): boolean {
+  if (filter.preset === "today" || filter.preset === "last_7_days") return true;
+  if (filter.preset === "yesterday") return false;
+  // custom
+  if (!filter.endDate) return false;
+  const now = new Date();
+  const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return filter.endDate >= localToday;
+}
+
+/**
  * Loads every Online Orders preset through the same server-authoritative
  * location-local date contract, then reconciles those rows with realtime state.
  */
@@ -143,12 +159,23 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
     : EMPTY_SELECTIONS;
   const locationLiveOrders =
     currentLocationId === locationId ? liveOrders : EMPTY_ORDERS;
+  const includeActiveOutsideRange = useMemo(
+    () => rangeIncludesToday(filter),
+    [filter.preset, filter.endDate],
+  );
   const missingActiveOrderKey = useMemo(() => {
-    if (!hasServerSelection) return "";
+    // Historical ranges don't track live orders, so don't force a refresh to
+    // pull a newly-active order the board wouldn't show anyway.
+    if (!hasServerSelection || !includeActiveOutsideRange) return "";
     return getMissingActiveOnlineOrderIds(selections, locationLiveOrders).join(
       ":",
     );
-  }, [hasServerSelection, selections, locationLiveOrders]);
+  }, [
+    hasServerSelection,
+    includeActiveOutsideRange,
+    selections,
+    locationLiveOrders,
+  ]);
 
   // A realtime insert can land after the RPC snapshot. Refresh once while the
   // order is active so its authoritative placed_at remains available after it
@@ -162,6 +189,7 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
     () =>
       assembleOnlineOrderBoard(selections, ordersById, locationLiveOrders, {
         includeLiveCompleted: filter.preset === "today" && !hasServerSelection,
+        includeActiveOutsideRange,
       }),
     [
       selections,
@@ -169,6 +197,7 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
       locationLiveOrders,
       filter.preset,
       hasServerSelection,
+      includeActiveOutsideRange,
     ],
   );
 

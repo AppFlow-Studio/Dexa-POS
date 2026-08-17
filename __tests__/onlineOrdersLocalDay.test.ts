@@ -97,6 +97,50 @@ describe("Online Orders location-local day contract", () => {
     expect(result.map((item) => item.id)).toEqual(["done-in", "active"]);
   });
 
+  it("drops out-of-range active orders on a historical range", () => {
+    const outActive = order("out-active", "preparing", "2026-07-25T23:58:00Z");
+    const inDone = order("done-in", "completed", "2026-07-26T00:10:00Z");
+    const inActive = order("in-active", "ready", "2026-07-26T09:00:00Z");
+    const ordersById = {
+      "out-active": outActive,
+      "done-in": inDone,
+      "in-active": inActive,
+    };
+
+    const result = assembleOnlineOrderBoard(
+      [
+        selection("out-active", outActive.opened_at, false),
+        selection("done-in", inDone.opened_at, true),
+        selection("in-active", inActive.opened_at, true),
+      ],
+      ordersById,
+      [outActive], // a live active order must not leak onto a historical tab
+      { includeActiveOutsideRange: false },
+    );
+
+    // Out-of-range active dropped; in-range rows (active or completed) kept,
+    // newest placed_at first.
+    expect(result.map((item) => item.id)).toEqual(["in-active", "done-in"]);
+  });
+
+  it("gates active-order inclusion on the range reaching today (RPC)", () => {
+    const boundedMigration = readFileSync(
+      join(
+        process.cwd(),
+        "supabase",
+        "migrations",
+        "20260817120000_online_orders_board_active_scope_today.sql",
+      ),
+      "utf8",
+    );
+    expect(boundedMigration).toContain(
+      "v_include_active := (v_end_date >= v_today)",
+    );
+    // The active-status OR branch is guarded by the flag.
+    expect(boundedMigration).toContain("v_include_active");
+    expect(boundedMigration).toContain("AND o.status::text IN (");
+  });
+
   it("adds a realtime active order once while the RPC refresh is in flight", () => {
     const active = order("active", "ready", "2026-07-26T00:10:00Z");
     const result = assembleOnlineOrderBoard(
