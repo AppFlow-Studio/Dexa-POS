@@ -30,6 +30,11 @@ import {
   TodaySessionRow,
   TodayTipSummary,
 } from '@/services/endOfDayService'
+import {
+  EmployeeDailyTipRow,
+  fetchDailyTips,
+} from '@/services/tipDistributionService'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { DateTime } from 'luxon'
 import {
@@ -261,12 +266,45 @@ const Metric: React.FC<{ label: string; value: string; sub?: string; icon?: Reac
   </View>
 )
 
+const EmployeeTipRow: React.FC<{ row: EmployeeDailyTipRow; name: string; s: (n: number) => number }> = ({ row, name, s }) => {
+  const cash = row.cashTipsDeclared ?? row.cashPaymentTips
+  const facts: { label: string; value: string }[] = [
+    { label: 'Charged', value: money(row.chargedTips) },
+    { label: 'Cash', value: money(cash) },
+  ]
+  if (row.tipPoolReceived) facts.push({ label: 'Pool +', value: money(row.tipPoolReceived) })
+  if (row.tipPoolContributed) facts.push({ label: 'Pool −', value: money(row.tipPoolContributed) })
+  if (row.tipOutReceived) facts.push({ label: 'Tip-out +', value: money(row.tipOutReceived) })
+  if (row.tipOutGiven) facts.push({ label: 'Tip-out −', value: money(row.tipOutGiven) })
+  return (
+    <View style={{ borderRadius: s(10), borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: s(12), gap: s(6) }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: s(8) }}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+          <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }} numberOfLines={1}>{name}</Text>
+          {row.isVerified ? <Pill text="Verified" tone="success" s={s} /> : null}
+        </View>
+        <Text style={{ fontSize: s(14), fontWeight: '800', color: colors.teal }}>{money(row.totalTips)}</Text>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: s(10) }}>
+        <Text style={{ fontSize: s(10), color: colors.muted }}>{row.hoursWorked.toFixed(2)} hrs</Text>
+        {facts.map((f) => (
+          <Text key={f.label} style={{ fontSize: s(10), color: colors.label }}>
+            {f.label} <Text style={{ fontWeight: '600', color: colors.heading }}>{f.value}</Text>
+          </Text>
+        ))}
+      </View>
+    </View>
+  )
+}
+
 const DistributionTab: React.FC<{
   summary: TodayTipSummary | null
   sessions: TodaySessionRow[]
+  dailyTips: EmployeeDailyTipRow[]
+  nameFor: (profileId: string) => string
   tz: string
   s: (n: number) => number
-}> = ({ summary, sessions, tz, s }) => (
+}> = ({ summary, sessions, dailyTips, nameFor, tz, s }) => (
   <>
     {/* Unsettled tip summary */}
     <SectionCard s={s}>
@@ -332,6 +370,23 @@ const DistributionTab: React.FC<{
         </View>
       )}
     </SectionCard>
+
+    {/* Per-employee daily tips */}
+    <SectionCard s={s}>
+      <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading, marginBottom: s(2) }}>Per-Employee Tips</Text>
+      <Text style={{ fontSize: s(10), color: colors.muted, marginBottom: s(12) }}>
+        Server-computed for the current business day. Hours exclude breaks and sum multiple clock-ins.
+      </Text>
+      {dailyTips.length === 0 ? (
+        <EmptyState text="No per-employee tips yet for this business day. They populate once distribution is rebuilt from End of Day." s={s} />
+      ) : (
+        <View style={{ gap: s(8) }}>
+          {dailyTips.map((row) => (
+            <EmployeeTipRow key={row.id} row={row} name={nameFor(row.staffProfileId)} s={s} />
+          ))}
+        </View>
+      )}
+    </SectionCard>
   </>
 )
 
@@ -365,20 +420,34 @@ export default function TipsManagementScreen() {
   const [overview, setOverview] = useState<TipDistributionRulesOverview | null>(null)
   const [summary, setSummary] = useState<TodayTipSummary | null>(null)
   const [sessions, setSessions] = useState<TodaySessionRow[]>([])
+  const [dailyTips, setDailyTips] = useState<EmployeeDailyTipRow[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  // Resolve staff_profile_id → display name from the local employee roster,
+  // falling back to a short id for staff not currently synced on this device.
+  const employees = useEmployeeStore((st) => st.employees)
+  const nameFor = useCallback(
+    (profileId: string) => {
+      const match = employees.find((e) => e.profileId === profileId)
+      return match?.fullName || match?.displayName || `Staff ${profileId.slice(0, 6)}`
+    },
+    [employees]
+  )
 
   const load = useCallback(async () => {
     if (!locationId) return
     setError(null)
     try {
-      const [ov, sum, sess] = await Promise.all([
+      const [ov, sum, sess, tips] = await Promise.all([
         fetchTipDistributionRulesOverview(supabase, locationId),
         fetchUnsettledTipSummary(supabase, locationId).catch(() => null),
         fetchTodaySessions(supabase, locationId, businessDay).catch(() => [] as TodaySessionRow[]),
+        fetchDailyTips(supabase, locationId, businessDay).catch(() => [] as EmployeeDailyTipRow[]),
       ])
       setOverview(ov)
       setSummary(sum)
       setSessions(sess)
+      setDailyTips(tips)
       if (!ov) setError('Unable to load tip pools and rules.')
     } catch (e: any) {
       setError(e?.message || 'Failed to load tip management data.')
@@ -492,7 +561,9 @@ export default function TipsManagementScreen() {
               </SectionCard>
             )}
 
-            {tab === 'distribution' && <DistributionTab summary={summary} sessions={sessions} tz={tz} s={s} />}
+            {tab === 'distribution' && (
+              <DistributionTab summary={summary} sessions={sessions} dailyTips={dailyTips} nameFor={nameFor} tz={tz} s={s} />
+            )}
           </>
         )}
       </ScrollView>
