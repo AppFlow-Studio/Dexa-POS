@@ -38,7 +38,9 @@ function fakeQuery() {
   return builder;
 }
 
-function filters(patch: Partial<HistoryOrderFilters> = {}): HistoryOrderFilters {
+function filters(
+  patch: Partial<HistoryOrderFilters> = {},
+): HistoryOrderFilters {
   return { ...DEFAULT_HISTORY_FILTERS, ...patch };
 }
 
@@ -46,13 +48,19 @@ describe("historyFilterKey", () => {
   it("ignores the provider unless the Online tab is active", () => {
     // Provider is only meaningful on Online, so a stale provider behind another
     // tab must not create a distinct result set (and a wasted refetch).
-    const a = historyFilterKey(filters({ channel: "dine_in", provider: "doordash" }));
-    const b = historyFilterKey(filters({ channel: "dine_in", provider: "all" }));
+    const a = historyFilterKey(
+      filters({ channel: "dine_in", provider: "doordash" }),
+    );
+    const b = historyFilterKey(
+      filters({ channel: "dine_in", provider: "all" }),
+    );
     expect(a).toBe(b);
   });
 
   it("distinguishes provider on the Online tab", () => {
-    const a = historyFilterKey(filters({ channel: "online", provider: "doordash" }));
+    const a = historyFilterKey(
+      filters({ channel: "online", provider: "doordash" }),
+    );
     const b = historyFilterKey(filters({ channel: "online", provider: "all" }));
     expect(a).not.toBe(b);
   });
@@ -73,7 +81,9 @@ describe("historyFilterKey", () => {
 describe("isDefaultHistoryFilters", () => {
   it("is true for the default set and false once anything narrows it", () => {
     expect(isDefaultHistoryFilters(filters())).toBe(true);
-    expect(isDefaultHistoryFilters(filters({ status: "refunded" }))).toBe(false);
+    expect(isDefaultHistoryFilters(filters({ status: "refunded" }))).toBe(
+      false,
+    );
     expect(isDefaultHistoryFilters(filters({ channel: "online" }))).toBe(false);
     expect(isDefaultHistoryFilters(filters({ search: "abc" }))).toBe(false);
   });
@@ -135,26 +145,74 @@ describe("buildHistoryOrderQuery — channel", () => {
 });
 
 describe("buildHistoryOrderQuery — provider", () => {
-  it("matches a marketplace across every casing the backend writes", () => {
+  it.each([
+    ["ubereats", "ubereats", "uber eats"],
+    ["doordash", "doordash", "door dash"],
+    ["grubhub", "grubhub", "grub hub"],
+  ])(
+    "matches %s with case-insensitive aliases from the shared resolver",
+    (provider, compactAlias, spacedAlias) => {
+      const q = fakeQuery();
+      buildHistoryOrderQuery(q, filters({ channel: "online", provider }));
+
+      const providerClause = q
+        .__find("or")
+        .map((call: any) => call.args[0])
+        .find((clause: string) => clause.includes("delivery_platform.ilike"));
+      expect(providerClause).toContain(
+        `delivery_platform.ilike.\"${compactAlias}\"`,
+      );
+      expect(providerClause).toContain(
+        `delivery_platform.ilike.\"${spacedAlias}\"`,
+      );
+      expect(
+        q
+          .__find("in")
+          .some((call: any) => call.args[0] === "delivery_platform"),
+      ).toBe(false);
+    },
+  );
+
+  it("treats House as explicit first-party aliases", () => {
     const q = fakeQuery();
     buildHistoryOrderQuery(
       q,
-      filters({ channel: "online", provider: "doordash" }),
+      filters({ channel: "online", provider: "house" }),
     );
-    const call = q
-      .__find("in")
-      .find((c: any) => c.args[0] === "delivery_platform");
-    expect(call.args[1]).toEqual(
-      expect.arrayContaining(["doordash", "DOORDASH", "DOOR_DASH"]),
-    );
+    const providerClause = q
+      .__find("or")
+      .map((call: any) => call.args[0])
+      .find((clause: string) => clause.includes('ilike."website"'));
+    expect(providerClause).toContain('delivery_platform.ilike."website"');
+    expect(providerClause).toContain('delivery_platform.ilike."kiosk"');
+    expect(providerClause).not.toContain("delivery_platform.is.null");
   });
 
-  it("treats House as null-or-not-a-marketplace so NULL rows are included", () => {
+  it("treats only unknown nonempty integrations as Other", () => {
     const q = fakeQuery();
-    buildHistoryOrderQuery(q, filters({ channel: "online", provider: "house" }));
-    const orCall = q.__find("or")[0];
-    // `not.in` alone would drop NULLs, which is precisely what House is.
-    expect(orCall.args[0]).toContain("delivery_platform.is.null");
+    buildHistoryOrderQuery(
+      q,
+      filters({ channel: "online", provider: "other" }),
+    );
+
+    expect(q.__find("not")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          args: ["delivery_platform", "is", null],
+        }),
+        expect.objectContaining({
+          args: ["delivery_platform", "ilike", "ubereats"],
+        }),
+        expect.objectContaining({
+          args: ["delivery_platform", "ilike", "website"],
+        }),
+      ]),
+    );
+    expect(q.__find("neq")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ args: ["delivery_platform", ""] }),
+      ]),
+    );
   });
 
   it("ignores the provider when the tab is not Online", () => {
@@ -164,8 +222,43 @@ describe("buildHistoryOrderQuery — provider", () => {
       filters({ channel: "all", provider: "doordash" }),
     );
     expect(
-      q.__find("in").filter((c: any) => c.args[0] === "delivery_platform"),
+      q
+        .__find("or")
+        .filter((call: any) =>
+          call.args[0].includes("delivery_platform.ilike"),
+        ),
     ).toHaveLength(0);
+  });
+
+  it("composes a provider with status and search filters", () => {
+    const q = fakeQuery();
+    buildHistoryOrderQuery(
+      q,
+      filters({
+        channel: "online",
+        provider: "ubereats",
+        status: "paid",
+        search: "S2-104",
+      }),
+    );
+
+    expect(
+      q
+        .__find("or")
+        .some((call: any) => call.args[0].includes('ilike."ubereats"')),
+    ).toBe(true);
+    expect(q.__find("eq")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ args: ["payment_status", "paid"] }),
+      ]),
+    );
+    expect(
+      q
+        .__find("or")
+        .some((call: any) =>
+          call.args[0].includes("display_number.ilike.%S2-104%"),
+        ),
+    ).toBe(true);
   });
 });
 
@@ -175,9 +268,9 @@ describe("buildHistoryOrderQuery — status", () => {
       const q = fakeQuery();
       buildHistoryOrderQuery(q, filters({ status }));
       const neq = q.__find("neq");
-      expect(neq.some((c: any) => c.args[0] === "status" && c.args[1] === "void")).toBe(
-        true,
-      );
+      expect(
+        neq.some((c: any) => c.args[0] === "status" && c.args[1] === "void"),
+      ).toBe(true);
     }
   });
 

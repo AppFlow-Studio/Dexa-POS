@@ -1,4 +1,10 @@
 import { ONLINE_ORDER_SOURCES } from "@/lib/orderSource";
+import {
+  FIRST_PARTY_ONLINE_ORDER_PROVIDERS,
+  MARKETPLACE_ONLINE_ORDER_PROVIDERS,
+  getOnlineOrderProviderQueryAliases,
+  type QueryAliasProvider,
+} from "@/lib/orderPlatformResolver";
 
 /**
  * Server-side filter/sort contract for the Previous Orders list.
@@ -16,14 +22,12 @@ import { ONLINE_ORDER_SOURCES } from "@/lib/orderSource";
  * "N of M" a merchant reads can never disagree with the rows underneath it.
  */
 
-export type HistoryChannel = "all" | "online" | "dine_in" | "takeout" | "delivery";
+export type HistoryChannel =
+  "all" | "online" | "dine_in" | "takeout" | "delivery";
 export type HistoryStatus = "all" | "paid" | "unpaid" | "refunded" | "voided";
 export type HistoryProvider = "all" | string;
 export type HistorySort =
-  | "date_desc"
-  | "date_asc"
-  | "amount_desc"
-  | "amount_asc";
+  "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
 
 export interface HistoryOrderFilters {
   channel: HistoryChannel;
@@ -72,27 +76,33 @@ const DINE_IN_TYPES = ["dine_in", "qr_dine_in"];
 const TAKEOUT_TYPES = ["takeout"];
 const DELIVERY_TYPES = ["delivery"];
 
-/**
- * Marketplace tokens as they appear in `orders.delivery_platform`, grouped by
- * the provider key the UI uses. Casing varies by ingestion path
- * ('DOORDASH', 'doordash', 'DOOR_DASH'), so each key lists every spelling
- * rather than relying on a single form.
- */
-const PROVIDER_PLATFORM_TOKENS: Record<string, string[]> = {
-  doordash: ["doordash", "DOORDASH", "DoorDash", "DOOR_DASH", "door_dash"],
-  ubereats: [
-    "ubereats",
-    "UBEREATS",
-    "UberEats",
-    "UBER_EATS",
-    "uber_eats",
-    "Uber Eats",
-  ],
-  grubhub: ["grubhub", "GRUBHUB", "Grubhub", "GRUB_HUB", "grub_hub"],
-};
+/** Quote a literal used inside a raw PostgREST `or=(...)` expression. */
+function quotePostgrestValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
 
-/** Every marketplace token, used to express "not a marketplace" for House. */
-const ALL_MARKETPLACE_TOKENS = Object.values(PROVIDER_PLATFORM_TOKENS).flat();
+function platformIlikeClauses(
+  providers: readonly QueryAliasProvider[],
+): string[] {
+  return providers.flatMap((provider) =>
+    getOnlineOrderProviderQueryAliases(provider).map(
+      (alias) => `delivery_platform.ilike.${quotePostgrestValue(alias)}`,
+    ),
+  );
+}
+
+function excludePlatformAliases<T extends any>(
+  query: T,
+  providers: readonly QueryAliasProvider[],
+): T {
+  let q: any = query;
+  for (const provider of providers) {
+    for (const alias of getOnlineOrderProviderQueryAliases(provider)) {
+      q = q.not("delivery_platform", "ilike", alias);
+    }
+  }
+  return q;
+}
 
 /** PostgREST `in.(…)` needs quoting for values that may contain spaces. */
 function inList(values: string[]): string {
@@ -161,10 +171,14 @@ export function buildHistoryOrderQuery<T extends any>(
       q = q.in("order_source", [...ONLINE_ORDER_SOURCES]);
       break;
     case "dine_in":
-      q = q.in("order_type", DINE_IN_TYPES).not("order_source", "in", onlineList);
+      q = q
+        .in("order_type", DINE_IN_TYPES)
+        .not("order_source", "in", onlineList);
       break;
     case "takeout":
-      q = q.in("order_type", TAKEOUT_TYPES).not("order_source", "in", onlineList);
+      q = q
+        .in("order_type", TAKEOUT_TYPES)
+        .not("order_source", "in", onlineList);
       break;
     case "delivery":
       q = q
@@ -178,17 +192,21 @@ export function buildHistoryOrderQuery<T extends any>(
 
   // ── Provider (Online tab only) ───────────────────────────
   if (filters.channel === "online" && filters.provider !== "all") {
-    const tokens = PROVIDER_PLATFORM_TOKENS[filters.provider];
-    if (tokens) {
-      q = q.in("delivery_platform", tokens);
+    const marketplaceProvider = MARKETPLACE_ONLINE_ORDER_PROVIDERS.find(
+      (provider) => provider === filters.provider,
+    );
+    if (marketplaceProvider) {
+      q = q.or(platformIlikeClauses([marketplaceProvider]).join(","));
     } else if (filters.provider === "house") {
-      // House = an online order with no marketplace on it. `or` is required
-      // because a NULL delivery_platform does not satisfy `not.in`.
       q = q.or(
-        `delivery_platform.is.null,delivery_platform.not.in.${inList(
-          ALL_MARKETPLACE_TOKENS,
-        )}`,
+        platformIlikeClauses(FIRST_PARTY_ONLINE_ORDER_PROVIDERS).join(","),
       );
+    } else if (filters.provider === "other") {
+      q = q.not("delivery_platform", "is", null).neq("delivery_platform", "");
+      q = excludePlatformAliases(q, [
+        ...MARKETPLACE_ONLINE_ORDER_PROVIDERS,
+        ...FIRST_PARTY_ONLINE_ORDER_PROVIDERS,
+      ]);
     }
   }
 
@@ -241,7 +259,9 @@ export function buildHistoryOrderQuery<T extends any>(
   // keyset cursor skip or repeat rows.
   switch (filters.sort) {
     case "date_asc":
-      q = q.order("created_at", { ascending: true }).order("id", { ascending: true });
+      q = q
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
       break;
     case "amount_desc":
       q = q
@@ -268,10 +288,7 @@ export function buildHistoryOrderQuery<T extends any>(
  * Total page count for a result size. Always at least 1 so the pager reads
  * "Page 1 of 1" on an empty result rather than "Page 1 of 0".
  */
-export function historyPageCount(
-  totalCount: number,
-  pageSize: number,
-): number {
+export function historyPageCount(totalCount: number, pageSize: number): number {
   if (pageSize <= 0) return 1;
   return Math.max(1, Math.ceil(totalCount / pageSize));
 }

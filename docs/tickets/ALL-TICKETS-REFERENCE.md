@@ -7,6 +7,7 @@ in the owning feature, engineering, quality, or handoff folder.
 
 | Date | Ticket | Status | Plan |
 | --- | --- | --- | --- |
+| 2026-08-18 | POS Orders provider chips use shared resolver | Code complete - tablet QA pending | `docs/features/orders/provider-chip-platform-resolver-regression.md` |
 | 2026-08-16 | POS hide portal-disabled menus | Code complete - portal/POS staging QA pending | `docs/engineering/performance/pos-hide-inactive-menus.md` |
 | 2026-08-14 | POS-KDS routing traceability | Code complete - shared migration review/application and physical QA pending | `docs/engineering/performance/kds-routing-traceability-pos.md` |
 | 2026-08-14 | POS single-location menu framing | Code complete - emulator/tablet and staging data QA pending | `docs/engineering/performance/pos-single-location-menu-framing.md` |
