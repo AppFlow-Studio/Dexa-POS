@@ -4,6 +4,7 @@
 // overwritten by a different device's serial.
 
 import {
+  isPlausibleSerial,
   normalizeSerial,
   reconcileTerminalSerial,
   TERMINAL_IDENTITY_MISMATCH_STATUS,
@@ -57,7 +58,36 @@ describe("normalizeSerial", () => {
   });
 });
 
+describe("isPlausibleSerial", () => {
+  it("accepts real-shaped serials (alnum, optional dashes, len >= 3)", () => {
+    expect(isPlausibleSerial("NCC804380219")).toBe(true); // real Valor serial
+    expect(isPlausibleSerial("SN1")).toBe(true); // min length
+    expect(isPlausibleSerial("MOCK-VALOR-SN-0001")).toBe(true);
+  });
+  it("rejects corrupt / partial-frame reads", () => {
+    expect(isPlausibleSerial("")).toBe(false);
+    expect(isPlausibleSerial("A")).toBe(false);
+    expect(isPlausibleSerial("AB")).toBe(false); // too short
+    expect(isPlausibleSerial("SN 1")).toBe(false); // whitespace
+    expect(isPlausibleSerial("SN@1")).toBe(false); // symbol
+    expect(isPlausibleSerial("-SN1")).toBe(false); // leading dash
+  });
+});
+
 describe("reconcileTerminalSerial", () => {
+  it("skips (no DB write) when the discovered serial is implausible/corrupt", async () => {
+    // A garbled frame must NOT fill an identity nor stamp a mismatch, even
+    // against a terminal that already has a stored serial.
+    const { supabase, updates } = makeSupabaseMock({ row: { serial_number: "OLD-SN" } });
+    const r = await reconcileTerminalSerial({
+      supabase,
+      terminalId: "term-1",
+      discoveredSerial: "A",
+    });
+    expect(r).toEqual({ kind: "skipped", reason: "implausible-serial" });
+    expect(updates).toHaveLength(0);
+  });
+
   it("fills the serial when the stored value is null", async () => {
     const { supabase, updates } = makeSupabaseMock({ row: { serial_number: null } });
     const r = await reconcileTerminalSerial({

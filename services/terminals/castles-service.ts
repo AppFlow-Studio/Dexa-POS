@@ -200,6 +200,10 @@ export class CastlesService {
   // ── Watchdog state ──
   private _watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private _watchdogConsecutiveFailures = 0;
+  /** Optional observer notified with the terminal's serial (infSN) whenever the
+   *  watchdog's getData ping succeeds — lets callers passively detect a swapped
+   *  device without opening a probe socket. */
+  private _onSerialDetected: ((infSN: string) => void) | null = null;
 
   // ── Suspend state ──
   private _suspended = false;
@@ -1617,12 +1621,26 @@ export class CastlesService {
       try {
         await this._mutex.runExclusive(async () => {
           if (!this.transport?.isOpen) return;
-          await this._sendAndReceive<Record<string, unknown>>(
+          const res = await this._sendAndReceive<Record<string, unknown>>(
             { txnPosTxnId: "000000", txnType: "getData" },
             5_000,
           );
           this._watchdogConsecutiveFailures = 0;
           useTerminalConnectionStore.getState().setQuality("ok");
+
+          // Passive identity detection: surface the reported serial so a
+          // swapped device is caught here (every 30s on the open socket)
+          // without anyone hitting Test. Fire-and-forget; never affects the
+          // liveness result.
+          const infSN =
+            typeof res?.infSN === "string" ? (res.infSN as string) : undefined;
+          if (infSN && this._onSerialDetected) {
+            try {
+              this._onSerialDetected(infSN);
+            } catch {
+              /* observer errors must not break the watchdog */
+            }
+          }
         });
       } catch {
         this._watchdogConsecutiveFailures++;
@@ -1666,6 +1684,13 @@ export class CastlesService {
       this._watchdogConsecutiveFailures = 0;
       console.log("[CastlesService] Watchdog stopped");
     }
+  }
+
+  /** Register (or clear with null) an observer invoked with the terminal's
+   *  serial each time the watchdog getData ping succeeds. Used for passive
+   *  serial-identity reconciliation. */
+  setOnSerialDetected(cb: ((infSN: string) => void) | null): void {
+    this._onSerialDetected = cb;
   }
 
   // ============================================================

@@ -15,6 +15,7 @@
  */
 
 import { debounce } from "lodash";
+import { Platform } from "react-native";
 import { createMMKV } from "react-native-mmkv";
 import type { PersistStorage, StorageValue } from "zustand/middleware";
 import { StateStorage } from "zustand/middleware";
@@ -52,7 +53,16 @@ export const storage = createMMKV({
  */
 export const secureStorage = createMMKV({
   id: "dexa-pos-secure",
-  encryptionKey: "dexa-pos-secure-key-v1", // In production, derive from device-specific key
+  // MMKV's web backend (the CFD WebView bundle, web/cfd-entry.tsx) throws
+  // `'encryptionKey' is not supported on Web!` at module-eval and takes the
+  // whole CFD display down. Native keeps AES-256; web — the CFD display, which
+  // stores no PINs / sensitive data — falls back to the plain localStorage
+  // shim. This makes the module web-safe regardless of any transitive-import
+  // leak into the web bundle (belt-and-suspenders with the lazy-require guards
+  // in lib/uiScale.ts and contexts/CFDDisplayDataContext.base.ts).
+  ...(Platform.OS === "web"
+    ? {}
+    : { encryptionKey: "dexa-pos-secure-key-v1" }), // In production, derive from device-specific key
 });
 
 /**

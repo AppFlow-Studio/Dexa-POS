@@ -3,6 +3,7 @@ import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { isSerialMismatch } from '@/services/terminals/terminalIdentity'
 import { Station, StationViewScope } from '@/types/station'
 import { useAuth } from '@clerk/clerk-expo'
 import { useQuery } from '@tanstack/react-query'
@@ -698,32 +699,68 @@ const StationsScreen = () => {
           </View>
         </View>
 
-        {terminal.last_connection_status && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(10) }}>
-            <Text style={{ fontSize: s(11), color: colors.label }}>Status: </Text>
+        {isSerialMismatch(terminal.last_connection_status) ? (
+          // Identity mismatch is a security signal, not a routine status — the
+          // device answering at this address reports a different serial than the
+          // one registered. Surface it prominently (parity with the Devices card)
+          // rather than as plain gray text.
+          <View
+            style={{
+              marginBottom: s(10),
+              padding: s(8),
+              borderRadius: s(6),
+              backgroundColor: colors.danger + '15',
+              borderWidth: 1,
+              borderColor: colors.danger + '55',
+              gap: s(2)
+            }}
+          >
             <Text
-              style={{
-                fontSize: s(11),
-                fontWeight: '600',
-                color:
-                  terminal.last_connection_status === 'Online'
-                    ? colors.teal
-                    : terminal.last_connection_status === 'Offline'
-                    ? colors.danger
-                    : colors.label
-              }}
+              style={{ fontSize: s(11), fontWeight: '700', color: colors.danger }}
             >
-              {terminal.last_connection_status}
+              ⚠ Identity mismatch — different device
+            </Text>
+            <Text style={{ fontSize: s(10), color: colors.danger }}>
+              This address reports a different serial than the registered one.
+              If you swapped hardware, register the replacement as a new terminal.
             </Text>
             {terminal.last_connection_test_at && (
-              <Text style={{ fontSize: s(10), color: colors.muted, marginLeft: s(8) }}>
-                •{' '}
+              <Text style={{ fontSize: s(9), color: colors.muted }}>
+                Detected{' '}
                 {formatDistanceToNow(new Date(terminal.last_connection_test_at), {
                   addSuffix: true
                 })}
               </Text>
             )}
           </View>
+        ) : (
+          terminal.last_connection_status && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(10) }}>
+              <Text style={{ fontSize: s(11), color: colors.label }}>Status: </Text>
+              <Text
+                style={{
+                  fontSize: s(11),
+                  fontWeight: '600',
+                  color:
+                    terminal.last_connection_status === 'Online'
+                      ? colors.teal
+                      : terminal.last_connection_status === 'Offline'
+                      ? colors.danger
+                      : colors.label
+                }}
+              >
+                {terminal.last_connection_status}
+              </Text>
+              {terminal.last_connection_test_at && (
+                <Text style={{ fontSize: s(10), color: colors.muted, marginLeft: s(8) }}>
+                  •{' '}
+                  {formatDistanceToNow(new Date(terminal.last_connection_test_at), {
+                    addSuffix: true
+                  })}
+                </Text>
+              )}
+            </View>
+          )
         )}
 
         <View

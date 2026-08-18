@@ -16,6 +16,8 @@ import type {
   UseOrdersRealtimeOptions
 } from '@/types/real-time'
 import * as Sentry from '@sentry/react-native'
+import { isEchoSuppressionEnabled } from '@/lib/network/killSwitch'
+import { isConfirmedLocalEcho } from '@/lib/realtime/mutationOrigin'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 import { useRealtimeChannel } from './useRealtimechannel'
@@ -399,6 +401,49 @@ export function useOrdersRealtime ({
         const broadcastPayload = payload as OrderBroadcastPayload
         const broadcastOrder = broadcastPayload.data?.order
         tagReceivedBroadcastVersion(broadcastOrder?._broadcast_version)
+
+        // AUD-10 — drop the confirmed echo of a write this station just made.
+        // Default OFF; see lib/network/killSwitch.ts for why.
+        //
+        // Suppression requires ALL of:
+        //   1. the flag is on,
+        //   2. origin_id matches a mutation WE started AND the RPC confirmed,
+        //   3. the event carries none of the never-suppress signals below.
+        //
+        // The never-suppress list is the safety story. Money and cross-station
+        // convergence must never depend on this optimisation being correct:
+        //   - DELETE           — losing a deletion leaves a ghost order.
+        //   - any payment data — cross-station payments must always apply, even
+        //                        when we happen to be the origin.
+        //   - void / refund    — money-affecting, always applied.
+        //   - terminal status  — server-authored completion must always land.
+        // Anything not positively identified as our own confirmed item echo is
+        // applied, so an unknown, expired or unconfirmed id costs one redundant
+        // update rather than a missed event.
+        if (isEchoSuppressionEnabled() && event !== 'DELETE') {
+          const status = String(broadcastOrder?.status ?? '').toLowerCase()
+          const moneyOrTerminal =
+            (broadcastOrder?.order_payments?.length ?? 0) > 0 ||
+            (broadcastOrder?.reversals?.length ?? 0) > 0 ||
+            (broadcastOrder?.order_refund_items?.length ?? 0) > 0 ||
+            status === 'void' ||
+            status === 'refunded' ||
+            status === 'cancelled' ||
+            status === 'completed'
+
+          if (
+            !moneyOrTerminal &&
+            isConfirmedLocalEcho((broadcastOrder as { origin_id?: string })?.origin_id)
+          ) {
+            if (__DEV__) {
+              console.log('[AUD-10] suppressed own confirmed echo', {
+                orderId: broadcastOrder?.id,
+                operation: broadcastPayload.operation
+              })
+            }
+            return
+          }
+        }
         const orderId = broadcastOrder?.id
         const orderSource = broadcastOrder?.order_source?.toLowerCase()
 

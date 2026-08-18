@@ -1,5 +1,11 @@
 import DraggableMenuItem from '@/components/menu/DraggableMenuItem'
 import MenuHeader from '@/components/menu/MenuHeader'
+import {
+  ITEM_CARD_HEIGHT,
+  ITEM_CARD_WIDTH,
+  MenuItemGridCard,
+  getPlaceholderIconForItem
+} from '@/components/menu/MenuItemGridCard'
 import PriceEditBottomSheet, {
   PriceEditBottomSheetRef
 } from '@/components/menu/PriceEditBottomSheet'
@@ -80,6 +86,23 @@ import { useMenuLayout } from './_layout'
 const TAB_PANEL_ACTIVE = { flex: 1 } as const
 const TAB_PANEL_HIDDEN = { display: 'none' as const }
 
+// Item-card geometry. Cards are a fixed size, so a letter-group's height is
+// exactly computable — which lets FlashList size cells properly instead of
+// guessing. A single flat `estimatedItemSize` was badly wrong here: a group is
+// one letter, so "C" with 20 items and "X" with 1 differ by ~1000px, and the
+// bad estimate is what produced blank gaps and a jumping scrollbar.
+const ITEM_CARD_GAP = 6
+const ITEM_GROUP_HEADER_HEIGHT = 26
+const DEFAULT_ITEMS_PER_ROW = 4
+
+// Hoisted so FlashList doesn't see a new component identity every render.
+const CategoryRowSeparator = () => <View style={{ height: 8 }} />
+
+/** One virtualized row of the Items tab: a letter header, or a row of cards. */
+type ItemListRow =
+  | { type: 'header'; key: string; letter: string }
+  | { type: 'cards'; key: string; items: MenuItemType[] }
+
 // Get image source for preview
 const getImageSource = (image: string | undefined) => {
   if (image && image.length > 200) {
@@ -94,12 +117,6 @@ const getImageSource = (image: string | undefined) => {
   return undefined
 }
 
-const getPlaceholderIconForItem = (item: MenuItemType) => {
-  const iconKey =
-    (item.placeholderIcon as MenuItemPlaceholderIconKey | undefined) ??
-    extractMenuItemPlaceholderIconKey(item.cardBgColor)
-  return getMenuItemPlaceholderIcon(iconKey)
-}
 // Menu Management Types
 // Using Menu interface from types.ts
 // Note: The store Menu interface has categories as string[] (category names)
@@ -940,7 +957,8 @@ const MenuPage: React.FC = () => {
   useEffect(() => {
     setMountedTabs(prev => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }))
   }, [activeTab])
-  const { isSingleLocation } = useIsSingleLocation()
+  const { isSingleLocation, isLoading: isSingleLocationLoading } =
+    useIsSingleLocation()
   const { onlineMenuId } = useOnlineMenu(selectedStore?.id)
 
   // Release decoded base64 item-image bitmaps when leaving the menu management
@@ -1124,20 +1142,65 @@ const MenuPage: React.FC = () => {
     return [...items].sort((a, b) => a.name.localeCompare(b.name))
   }, [menuItems, searchQuery])
 
-  // Group items alphabetically ONCE, as list rows for virtualization. Each row
-  // is a letter-group; a FlashList then only mounts/decodes the visible groups
-  // instead of all 62 image cards at once (the old ScrollView rendered every
-  // card up front, which is what made the Items tab slow to load).
-  const groupedItems = useMemo(() => {
+  // Measured width of the Items list, used to work out how many fixed-width
+  // cards fit per row.
+  const [itemsListWidth, setItemsListWidth] = useState(0)
+
+  const itemsPerRow = useMemo(() => {
+    if (!itemsListWidth) return DEFAULT_ITEMS_PER_ROW
+    return Math.max(
+      1,
+      Math.floor(
+        (itemsListWidth + ITEM_CARD_GAP) / (ITEM_CARD_WIDTH + ITEM_CARD_GAP)
+      )
+    )
+  }, [itemsListWidth])
+
+  // Flatten to FIXED-HEIGHT rows: one letter header, then rows of N cards.
+  //
+  // The previous shape was one cell per letter, which meant a letter with 20
+  // items mounted 20 image cards in a single frame — FlashList cannot
+  // virtualize inside a cell, so that cost was unavoidable and it is what made
+  // scrolling stutter. One row per cell caps the per-frame work at `itemsPerRow`
+  // cards and makes every cell height exactly predictable.
+  const itemRows = useMemo(() => {
     const groups: Record<string, MenuItemType[]> = {}
     for (const item of filteredItems) {
       const letter = (item.name[0] || '#').toUpperCase()
       ;(groups[letter] ??= []).push(item)
     }
-    return Object.entries(groups)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([letter, items]) => ({ letter, items }))
-  }, [filteredItems])
+
+    const rows: ItemListRow[] = []
+    for (const [letter, items] of Object.entries(groups).sort(([a], [b]) =>
+      a.localeCompare(b)
+    )) {
+      rows.push({ type: 'header', key: `h:${letter}`, letter })
+      for (let i = 0; i < items.length; i += itemsPerRow) {
+        rows.push({
+          type: 'cards',
+          key: `r:${letter}:${i}`,
+          items: items.slice(i, i + itemsPerRow)
+        })
+      }
+    }
+    return rows
+  }, [filteredItems, itemsPerRow])
+
+  // Exact per-cell heights — no guessing, so no blank gaps and no jumping
+  // scrollbar.
+  const overrideItemRowLayout = useCallback(
+    (layout: { size?: number }, row: ItemListRow) => {
+      layout.size =
+        row.type === 'header'
+          ? ITEM_GROUP_HEADER_HEIGHT
+          : ITEM_CARD_HEIGHT + ITEM_CARD_GAP
+    },
+    []
+  )
+
+  // Lets FlashList keep separate recycle pools per row shape, so a header cell
+  // is never recycled into a card row (which would force a full re-layout).
+  const getItemRowType = useCallback((row: ItemListRow) => row.type, [])
 
   const handleAddMenu = useCallback(() => {
     router.push('/menu/add-menu')
@@ -1733,8 +1796,9 @@ const MenuPage: React.FC = () => {
         )}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingBottom: 8 }}
-        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        ItemSeparatorComponent={CategoryRowSeparator}
         estimatedItemSize={64}
+        drawDistance={2500}
         renderItem={({ item: categoryName }) => {
           const categoryItems = Array.isArray(
             getItemsInCategory(categoryName.name)
@@ -2082,184 +2146,66 @@ const MenuPage: React.FC = () => {
     </View>
   )
 
-  // Single item card — extracted so the virtualized Items list can render one
-  // card per cell (and so image cells recycle via MenuManagementImage).
-  const renderItemCard = (item: MenuItemType) => {
-    const editable = isEntityEditable(item.location_id, item.name)
-    const availEditable = canEditAvailabilityAndPrice(item.location_id)
-    const isAvailable = item.availability !== false
-    const snoozeLabel = formatSnoozeCountdown(item.snoozedUntil)
-    const PlaceholderIcon = getPlaceholderIconForItem(item)
-    return (
-      <View
-        key={item.id}
-        style={{
-          position: 'relative',
-          width: 152,
-          minHeight: 186,
-          borderRadius: 10,
-          backgroundColor: colors.panel,
-          borderWidth: 1,
-          borderColor: colors.teal + '35',
-          overflow: 'hidden'
-        }}
-      >
-        {snoozeLabel && (
-          <View
-            style={{
-              position: 'absolute',
-              top: 6,
-              left: 6,
-              zIndex: 20,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 3,
-              paddingHorizontal: 6,
-              paddingVertical: 3,
-              borderRadius: 6,
-              backgroundColor: colors.danger
-            }}
-          >
-            <Ban size={10} color={colors.onSolid} />
-            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.onSolid }}>
-              {snoozeLabel === '86' ? '86' : `86 · ${snoozeLabel}`}
-            </Text>
-          </View>
-        )}
-        {/* Image */}
-        <View style={{ height: 104, width: '100%' }}>
-          {item.image ? (
-            <MenuManagementImage
-              image={item.image}
-              recyclingKey={item.id}
-              style={{ width: '100%', height: '100%' }}
-            />
-          ) : (
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: `${colors.teal}08`,
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <PlaceholderIcon
-                color={`${colors.label}60`}
-                size={18}
-                strokeWidth={2}
-              />
-            </View>
-          )}
-        </View>
-        {/* Content */}
-        <View
-          style={{ paddingHorizontal: 8, paddingTop: 7, paddingBottom: 42, gap: 3 }}
-        >
+  const renderItemRow = useCallback(
+    ({ item: row }: { item: ItemListRow }) => {
+      if (row.type === 'header') {
+        return (
           <Text
             style={{
               fontSize: 12,
-              fontWeight: '600',
-              color: colors.heading,
-              lineHeight: 15,
-              flexShrink: 1
+              fontWeight: '700',
+              color: colors.muted,
+              letterSpacing: 1,
+              textTransform: 'uppercase',
+              paddingHorizontal: 4,
+              lineHeight: ITEM_GROUP_HEADER_HEIGHT
             }}
-            numberOfLines={2}
           >
-            {item.name}
+            {row.letter}
           </Text>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}>
-            ${item.price.toFixed(2)}
-          </Text>
-        </View>
-        {/* Action overlay */}
+        )
+      }
+      return (
         <View
           style={{
-            position: 'absolute',
-            bottom: 7,
-            right: 7,
             flexDirection: 'row',
-            gap: 4,
-            zIndex: 20
+            gap: ITEM_CARD_GAP,
+            paddingBottom: ITEM_CARD_GAP
           }}
         >
-          <TouchableOpacity
-            onPress={() => handleSnooze(item)}
-            disabled={!selectedStore?.id}
-            style={{
-              padding: 6,
-              backgroundColor: colors.danger + '18',
-              borderRadius: 6,
-              borderWidth: 1,
-              borderColor: colors.danger + '35',
-              opacity: selectedStore?.id ? 1 : 0.4
-            }}
-          >
-            <Ban size={16} color={colors.danger} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => handleToggleAvailability(item.id)}
-            disabled={!availEditable}
-            style={{
-              padding: 6,
-              backgroundColor: colors.teal + '18',
-              borderRadius: 6,
-              borderWidth: 1,
-              borderColor: colors.teal + '35',
-              opacity: availEditable ? 1 : 0.4
-            }}
-          >
-            {isAvailable ? (
-              <Eye size={16} color={colors.success} />
-            ) : (
-              <EyeOff size={16} color={colors.danger} />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => handleEditItem(item)}
-            disabled={!editable}
-            style={{
-              padding: 6,
-              backgroundColor: colors.teal + '18',
-              borderRadius: 6,
-              borderWidth: 1,
-              borderColor: colors.teal + '35',
-              opacity: editable ? 1 : 0.4
-            }}
-          >
-            <Pencil size={16} color={editable ? colors.teal : colors.muted} />
-          </TouchableOpacity>
+          {row.items.map(item => (
+            <MenuItemGridCard
+              key={item.id}
+              item={item}
+              editable={isEntityEditable(item.location_id, item.name)}
+              availEditable={canEditAvailabilityAndPrice(item.location_id)}
+              canSnooze={!!selectedStore?.id}
+              onSnooze={handleSnooze}
+              onToggleAvailability={handleToggleAvailability}
+              onEdit={handleEditItem}
+            />
+          ))}
         </View>
-      </View>
-    )
-  }
-
-  const renderItemGroup = ({
-    item: group
-  }: {
-    item: { letter: string; items: MenuItemType[] }
-  }) => (
-    <View>
-      <Text
-        style={{
-          fontSize: 12,
-          fontWeight: '700',
-          color: colors.muted,
-          letterSpacing: 1,
-          textTransform: 'uppercase',
-          marginBottom: 8,
-          paddingHorizontal: 4
-        }}
-      >
-        {group.letter}
-      </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {group.items.map(renderItemCard)}
-      </View>
-    </View>
+      )
+    },
+    [
+      isEntityEditable,
+      canEditAvailabilityAndPrice,
+      selectedStore?.id,
+      handleSnooze,
+      handleToggleAvailability,
+      handleEditItem
+    ]
   )
 
   const renderItemsContent = () => (
-    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
+    <View
+      style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}
+      onLayout={event => {
+        const width = event.nativeEvent.layout.width - 28 // minus padding
+        if (width > 0 && width !== itemsListWidth) setItemsListWidth(width)
+      }}
+    >
       <MenuHeader
         title={`Menu Items (${filteredItems.length})`}
         onAddPress={handleAddItem}
@@ -2270,12 +2216,18 @@ const MenuPage: React.FC = () => {
       />
 
       <FlashList
-        data={groupedItems}
-        keyExtractor={g => g.letter}
-        renderItem={renderItemGroup}
+        data={itemRows}
+        keyExtractor={row => row.key}
+        renderItem={renderItemRow}
+        getItemType={getItemRowType}
         showsVerticalScrollIndicator={false}
-        estimatedItemSize={300}
-        ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+        estimatedItemSize={ITEM_CARD_HEIGHT + ITEM_CARD_GAP}
+        overrideItemLayout={overrideItemRowLayout}
+        // FlashList only renders ~250px past the viewport by default. At 192px
+        // per row that is barely one row of buffer, so any real scroll velocity
+        // outran it and you hit blank space until the cells caught up. ~5
+        // screens of run-up costs a little more memory and removes the gap.
+        drawDistance={2500}
         contentContainerStyle={{ paddingBottom: 24 }}
         ListEmptyComponent={
           <View
@@ -2416,7 +2368,7 @@ const MenuPage: React.FC = () => {
                         {modifierGroup.location_name || 'Local'}
                       </Text>
                     </View>
-                  ) : (
+                  ) : !isSingleLocation && !isSingleLocationLoading ? (
                     <View
                       style={{
                         backgroundColor: colors.teal + '20',
@@ -2437,7 +2389,7 @@ const MenuPage: React.FC = () => {
                         Global
                       </Text>
                     </View>
-                  )}
+                  ) : null}
 
                   <View
                     style={{

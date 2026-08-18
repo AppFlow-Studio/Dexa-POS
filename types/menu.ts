@@ -242,6 +242,12 @@ export interface ActiveModifierSnoozeSync {
 export interface PosSyncData {
   synced_at: string;
   location_id: string;
+  /**
+   * Opaque version watermark from `get_pos_bootstrap_v1`. Only ever compared
+   * for equality — the server is free to change how it's computed. Absent on
+   * payloads restored from a snapshot written before versioning existed.
+   */
+  version?: string;
   menus: MenuWithCategories[];
   menu_item_ingredients: MenuItemIngredientSync[];
   modifier_group_item_ingredients: ModifierIngredientSync[];

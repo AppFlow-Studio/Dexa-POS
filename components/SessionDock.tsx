@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
+import ClockInOutModal from "./timeclock/ClockInOutModal";
 import CashTipDeclarationModal from "./timeclock/CashTipDeclarationModal";
 import PinInputModal from "./timeclock/PinInputModal";
 import {
@@ -107,6 +108,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const openProfile = useProfileOverlayStore((state) => state.openProfile);
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
+  const [isClockInOutOpen, setClockInOutOpen] = useState(false);
   const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
   const [isBreakPinModalOpen, setBreakPinModalOpen] = useState(false);
   const [isLogoutPinModalOpen, setLogoutPinModalOpen] = useState(false);
@@ -547,6 +549,38 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 }}
               />
 
+              {/* Clock In / Out — PIN-driven, does NOT switch the active account */}
+              <DropdownMenuItem
+                onPress={() => setClockInOutOpen(true)}
+                className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
+              >
+                <View
+                  className="w-8 h-8 rounded-lg items-center justify-center"
+                  style={{ backgroundColor: `${colors.teal}20` }}
+                >
+                  <Clock size={s(16)} color={colors.teal} />
+                </View>
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: s(14),
+                    fontWeight: "500",
+                    flex: 1,
+                  }}
+                >
+                  Clock In / Out
+                </Text>
+              </DropdownMenuItem>
+
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: colors.border,
+                  marginHorizontal: 16,
+                  marginVertical: 4,
+                }}
+              />
+
               <DropdownMenuItem
                 onPress={handleStartBreak}
                 disabled={!isClockedIn || isOnBreak}
@@ -611,6 +645,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         <SwitchAccountModal
           isOpen={isPinModalOpen}
           onClose={() => setPinModalOpen(false)}
+        />
+        <ClockInOutModal
+          isOpen={isClockInOutOpen}
+          onClose={() => setClockInOutOpen(false)}
         />
         <BreakEndedModal
           isOpen={isBreakEndedModalOpen}

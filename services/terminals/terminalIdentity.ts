@@ -33,7 +33,7 @@ export const TERMINAL_IDENTITY_MISMATCH_STATUS = "IdentityMismatch";
 
 export type ReconcileResult =
   | { kind: "noop" } // stored === discovered
-  | { kind: "skipped"; reason: "sentinel-id" | "empty-serial" } // atom / nothing to write
+  | { kind: "skipped"; reason: "sentinel-id" | "empty-serial" | "implausible-serial" } // atom / nothing to write / corrupt read
   | { kind: "filled"; serial: string } // NULL/blank stored → value written
   | { kind: "mismatch"; storedSerial: string; discoveredSerial: string };
 
@@ -45,6 +45,21 @@ export type ReconcileResult =
  */
 export function normalizeSerial(raw: string | null | undefined): string {
   return (raw ?? "").trim().toUpperCase();
+}
+
+/**
+ * Sanity gate for a normalized (trim+uppercased) device serial. A real serial
+ * (Castles infSN, Valor SERIAL_NO — e.g. "NCC804380219") is a short alnum
+ * string, optionally dash-separated. This rejects values that can only be a
+ * corrupt/partial frame read (empty, single/double char, or containing
+ * characters no terminal serial uses) so a garbled response can never FILL an
+ * identity nor trip a false IdentityMismatch stamp. Deliberately conservative:
+ * it catches obvious garbage, not a clean-but-truncated read (that risk is
+ * mitigated by only reconciling from response types known to carry a full
+ * serial — see terminalIdentity call sites).
+ */
+export function isPlausibleSerial(normalized: string): boolean {
+  return /^[A-Z0-9][A-Z0-9-]{2,}$/.test(normalized);
 }
 
 /** UI predicate: is this connection status the identity-mismatch sentinel? */
@@ -82,6 +97,11 @@ export async function reconcileTerminalSerial(params: {
 
   const discovered = normalizeSerial(discoveredSerial);
   if (!discovered) return { kind: "skipped", reason: "empty-serial" };
+  // Guard against a corrupt/partial frame: a garbled serial must never fill an
+  // identity or stamp a mismatch. Bail before touching the DB.
+  if (!isPlausibleSerial(discovered)) {
+    return { kind: "skipped", reason: "implausible-serial" };
+  }
 
   // Single source of truth: re-fetch the stored serial (store copy may be stale).
   const { data, error } = await supabase

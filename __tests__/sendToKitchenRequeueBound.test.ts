@@ -106,8 +106,8 @@ describe('send_to_kitchen failure classification', () => {
   })
 
   it('classifies RPC errors instead of returning a bare false', () => {
-    expect(handler).toMatch(/classifyError\(transition\.error/)
-    expect(handler).toMatch(/classifyError\(itemError/)
+    expect(handler).toMatch(/classifyError\(sendResult\.error/)
+    expect(handler).toMatch(/isTerminalKitchenMutationError\(sendResult\.error/)
     expect(handler).toMatch(/classifyError\(err/)
   })
 

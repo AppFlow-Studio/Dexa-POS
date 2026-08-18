@@ -1,180 +1,181 @@
 /**
  * Side effect: SEND_TO_KITCHEN
  *
- * After the store optimistically transitions the session to "ordered",
- * this effect syncs item statuses to the backend via bulk update.
- * Falls back to queueFailedOperation on failure.
+ * After the store optimistically transitions the session to "ordered", this
+ * effect performs the traceable composite kitchen send. Failures retain the
+ * original station/device/idempotency context in the offline queue.
  */
 
+import { getDeviceId } from "@/lib/deviceId";
+import {
+  buildKitchenSendQueueParams,
+  createKitchenSendContext,
+  isTerminalKitchenMutationError,
+  type KitchenSendContext,
+} from "@/lib/kdsSendTraceability";
 import {
   getKitchenSentStatus,
-  getOrderSentStatus
-} from '@/lib/kitchenStatusUtils'
-import { toBulkUpdateStatusKey } from '@/lib/network/idempotencyKey'
-import type { SideEffectContext } from '@/lib/sessionSideEffects'
-import { queueFailedOperation } from '@/services/offlineSyncInit'
-import { OrderService } from '@/services/orderService'
+  getOrderSentStatus,
+} from "@/lib/kitchenStatusUtils";
+import type { SideEffectContext } from "@/lib/sessionSideEffects";
+import { toastService } from "@/lib/toastService";
+import { queueFailedOperation } from "@/services/offlineSyncInit";
+import { OrderService } from "@/services/orderService";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
   getOrderStoreSupabaseClient,
-  useOrderStore
-} from '@/stores/useOrderStore'
+  useOrderStore,
+} from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 
-export async function sendToKitchenEffect (
-  ctx: SideEffectContext
+function createCurrentContext(): KitchenSendContext {
+  return createKitchenSendContext({
+    stationId:
+      useStoreSettingsStore.getState().selectedStation?.id ?? null,
+    deviceId: getDeviceId(),
+    staffId:
+      useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null,
+  });
+}
+
+async function queueKitchenSend(
+  localOrderId: string,
+  localItemIds: string[],
+  context: KitchenSendContext,
+  offlineBatch = false,
+  resolvedItemIds?: string[],
 ): Promise<void> {
-  if (ctx.action.type !== 'SEND_TO_KITCHEN') return
+  await queueFailedOperation(
+    "send_to_kitchen",
+    buildKitchenSendQueueParams(
+      localOrderId,
+      localItemIds,
+      context,
+      {
+        orderStatus: getOrderSentStatus(),
+        itemStatus: getKitchenSentStatus(),
+      },
+      {
+        ...(offlineBatch ? { offline_batch: true } : {}),
+        ...(resolvedItemIds
+          ? { resolvedItemIds, unresolvedLocalItemIds: [] }
+          : {}),
+      },
+    ),
+    localOrderId,
+    undefined,
+    undefined,
+    { idempotencyKey: context.sendIdempotencyKey },
+  );
+}
 
-  const { itemIds, orderId } = ctx.action
-  let { dbItemIds, dbOrderId } = ctx.action
-  const supabase = getOrderStoreSupabaseClient()
+export async function sendToKitchenEffect(
+  ctx: SideEffectContext,
+): Promise<void> {
+  if (ctx.action.type !== "SEND_TO_KITCHEN") return;
+
+  const { itemIds, orderId } = ctx.action;
+  let { dbItemIds, dbOrderId } = ctx.action;
+  const supabase = getOrderStoreSupabaseClient();
 
   if (!supabase) {
-    // No supabase — queue for retry with offline_batch flag
     if (itemIds.length > 0) {
-      await queueFailedOperation(
-        'send_to_kitchen',
-        { localOrderId: orderId, localItemIds: itemIds, offline_batch: true },
-        orderId
-      )
+      await queueKitchenSend(
+        orderId,
+        itemIds,
+        createCurrentContext(),
+        true,
+      );
     }
-    return
+    return;
   }
 
-  // Wait for any in-flight item syncs AND quantity updates to complete
-  // before broadcasting to the kitchen (same logic as sendNewItemsToKitchen).
-  // This covers Scenarios B, C, D — all pending promises resolve here.
-  //
-  // Wave 2.2: capped at 800ms (was 2000ms). Items already added > ~500ms ago
-  // are normally synced by now; anything still pending after 800ms is handled
-  // by `addItemToBackend`'s retroactive path (Scenario E) — it will send the
-  // straggler to the kitchen as soon as its db_order_item_id lands. Tightening
-  // the cap shortens the perceived kitchen-broadcast latency without risking
-  // dropped items.
-  await useOrderStore.getState().waitForPendingSyncs(orderId, { maxMs: 800 })
+  // Item creation and quantity writes must settle before the routing trigger
+  // sees the fired rows. Late IDs are captured from the fresh order below.
+  await useOrderStore.getState().waitForPendingSyncs(orderId, { maxMs: 800 });
 
-  // Re-read fresh state after the wait
-  const freshOrder = useOrderStore.getState().ordersById[orderId]
-  if (freshOrder) {
-    dbOrderId = freshOrder.db_order_id ?? dbOrderId
-  }
+  const freshOrder = useOrderStore.getState().ordersById[orderId];
+  if (freshOrder) dbOrderId = freshOrder.db_order_id ?? dbOrderId;
 
   if (!dbOrderId) {
-    // Still no backend order after waiting — queue for retry
     if (itemIds.length > 0) {
-      await queueFailedOperation(
-        'send_to_kitchen',
-        { localOrderId: orderId, localItemIds: itemIds, offline_batch: true },
-        orderId
-      )
+      await queueKitchenSend(
+        orderId,
+        itemIds,
+        createCurrentContext(),
+        true,
+      );
     }
-    return
+    return;
   }
 
-  // Rebuild dbItemIds from the FRESH order: send every item in this batch that
-  // has resolved a db_order_item_id by now — regardless of whether it had one at
-  // press time. The previous logic excluded items that only got their db id during
-  // the wait, trusting addItemToBackend's retroactive path (Scenario E) to send
-  // them. But on slow WiFi the retroactive path's "last sibling" gate can race
-  // with the marking step and silently skip such items, which is exactly the
-  // "sent 4, only 2 reached the kitchen" symptom. We now send them here too.
-  //
-  // Items still missing a db_order_item_id after the wait are the only ones left
-  // to the retroactive path. A possible double-send (effect + retroactive) is
-  // harmless: setting an item to the same kitchen status twice is idempotent.
-  const sentLocalIds = new Set(itemIds)
+  const sentLocalIds = new Set(itemIds);
   const freshSentItems = (freshOrder?.items ?? []).filter(
-    i => sentLocalIds.has(i.id) && !!i.db_order_item_id
-  )
-  dbItemIds = freshSentItems.map(i => i.db_order_item_id!).filter(Boolean)
+    (item) => sentLocalIds.has(item.id) && !!item.db_order_item_id,
+  );
+  dbItemIds = freshSentItems
+    .map((item) => item.db_order_item_id!)
+    .filter(Boolean);
 
-  // Straggler safety net: any batch item that STILL has no db_order_item_id after
-  // the wait is left to addItemToBackend's retroactive path. That path can race
-  // and miss, so we also queue these locally — the offline queue replays the send
-  // once the id lands, guaranteeing delivery. (Idempotent if retroactive also fires.)
   const stragglerIds = (freshOrder?.items ?? [])
-    .filter(i => sentLocalIds.has(i.id) && !i.db_order_item_id)
-    .map(i => i.id)
+    .filter((item) => sentLocalIds.has(item.id) && !item.db_order_item_id)
+    .map((item) => item.id);
   if (stragglerIds.length > 0) {
-    await queueFailedOperation(
-      'send_to_kitchen',
-      { localOrderId: orderId, localItemIds: stragglerIds, offline_batch: true },
-      orderId
-    )
+    await queueKitchenSend(
+      orderId,
+      stragglerIds,
+      createCurrentContext(),
+      true,
+    );
   }
 
-  if (dbItemIds.length === 0) {
-    // No items have a backend id yet — the queued stragglers (above) and the
-    // retroactive path will send them once their db_order_item_id lands.
-    return
-  }
+  if (dbItemIds.length === 0) return;
 
+  const resolvedLocalItemIds = freshSentItems.map((item) => item.id);
+  const sendContext = createCurrentContext();
   try {
-    // Always transition backend order status first.
-    // Local order state can already be optimistic/non-draft while backend is still draft.
-    const { error: statusError } = await OrderService.updateOrderStatus(
+    const result = await OrderService.sendOrderToKitchen(
       supabase,
       dbOrderId,
-      getOrderSentStatus()
-    )
-    if (
-      statusError &&
-      statusError.code !== 'P0001' &&
-      !statusError.message?.includes('already in')
-    ) {
-      console.error(
-        '[sendToKitchenEffect] Failed to update order status:',
-        statusError
-      )
-      await queueFailedOperation(
-        'send_to_kitchen',
-        { localOrderId: orderId, localItemIds: itemIds },
-        orderId
-      )
-      return
-    }
-
-    const { data: backendOrder, error: verifyError } = await supabase
-      .from('orders')
-      .select('status')
-      .eq('id', dbOrderId)
-      .single()
-
-    if (verifyError || backendOrder?.status === 'draft') {
-      console.warn(
-        '[sendToKitchenEffect] Order still draft after status update, deferring item sync',
-        {
-          dbOrderId,
-          verifyError,
-          backendStatus: backendOrder?.status
-        }
-      )
-      await queueFailedOperation(
-        'send_to_kitchen',
-        { localOrderId: orderId, localItemIds: itemIds },
-        orderId
-      )
-      return
-    }
-
-    const targetStatus = getKitchenSentStatus()
-    const result = await OrderService.bulkUpdateOrderItemStatus(
-      supabase,
       dbItemIds,
-      targetStatus,
-      { keyOverride: toBulkUpdateStatusKey(dbItemIds, targetStatus) }
-    )
-    if (result?.error) {
-      await queueFailedOperation(
-        'send_to_kitchen',
-        { localOrderId: orderId, localItemIds: itemIds },
-        orderId
-      )
+      getOrderSentStatus(),
+      getKitchenSentStatus(),
+      {
+        staffId: sendContext.staffId,
+        stationId: sendContext.stationId,
+        deviceId: sendContext.deviceId,
+        idempotencyKey: sendContext.sendIdempotencyKey,
+        itemsIdempotencyKey: sendContext.itemsIdempotencyKey,
+      },
+    );
+
+    if (!result.error) return;
+
+    if (isTerminalKitchenMutationError(result.error)) {
+      toastService.show({
+        title: "Kitchen send incomplete",
+        message: result.error.hint,
+        type: "warning",
+        duration: 7000,
+      });
+      return;
     }
-  } catch {
-    await queueFailedOperation(
-      'send_to_kitchen',
-      { localOrderId: orderId, localItemIds: itemIds },
-      orderId
-    )
+
+    await queueKitchenSend(
+      orderId,
+      resolvedLocalItemIds,
+      sendContext,
+      false,
+      dbItemIds,
+    );
+  } catch (error) {
+    console.error("[sendToKitchenEffect] Kitchen send failed:", error);
+    await queueKitchenSend(
+      orderId,
+      resolvedLocalItemIds,
+      sendContext,
+      false,
+      dbItemIds,
+    );
   }
 }

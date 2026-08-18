@@ -61,6 +61,7 @@ import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
 import MenuStaleBanner from "./MenuStaleBanner";
 import MenuUnavailableState from "./MenuUnavailableState";
+import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
 import MenuItem from "./MenuItem";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
 import OpenItemAdder from "./OpenItemAdder";
@@ -511,7 +512,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   >(() => {});
 
   const visibleMenus = useMemo(
-    () => menus.filter((menu) => !hiddenMenuIds.includes(menu.id)),
+    () => filterPosOrderEntryMenus(menus, hiddenMenuIds),
     [menus, hiddenMenuIds],
   );
 
