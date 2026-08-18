@@ -20,15 +20,19 @@
  * successful sync, so this keeps a multi-MB payload out of MMKV. A missing file
  * degrades to a card with no photo, which the next successful sync repairs.
  *
- * Keyed per location. Swept by `clearCacheData()` in lib/storage.
+ * Keyed per location and station channel. Swept by `clearCacheData()` in
+ * lib/storage.
  */
 
+import type { MenuSyncChannel } from "@/lib/menu/menuChannel";
 import { syncStorage } from "@/lib/storage";
 import { menuImagePath } from "@/services/menuImageCache";
 import type { PosSyncData } from "@/types/menu";
 
 const PREFIX = "menu_offline:";
-const KEY = (locationId: string) => `${PREFIX}${locationId}`;
+const LEGACY_KEY = (locationId: string) => `${PREFIX}${locationId}`;
+const KEY = (locationId: string, channel: MenuSyncChannel) =>
+  `${PREFIX}${channel}:${locationId}`;
 
 /**
  * Menus change slowly (a price edit, an 86, a seasonal item), so a week-old
@@ -74,9 +78,23 @@ function stripInlineImages(data: PosSyncData): PosSyncData {
 }
 
 export const menuOfflineCache = {
-  get(locationId: string): PosSyncData | null {
+  get(
+    locationId: string,
+    channel: MenuSyncChannel = "pos",
+  ): PosSyncData | null {
     try {
-      const raw = syncStorage.getString(KEY(locationId));
+      let raw = syncStorage.getString(KEY(locationId, channel));
+
+      // Existing installations used a location-only key. It always contained
+      // the register/POS menu, so migrate it only into the POS partition.
+      if (!raw && channel === "pos") {
+        raw = syncStorage.getString(LEGACY_KEY(locationId));
+        if (raw) {
+          syncStorage.set(KEY(locationId, channel), raw);
+          syncStorage.remove(LEGACY_KEY(locationId));
+        }
+      }
+
       if (!raw) return null;
       const parsed = JSON.parse(raw) as CachedPayload;
       if (!parsed?.data || !Array.isArray(parsed.data.menus)) return null;
@@ -94,7 +112,11 @@ export const menuOfflineCache = {
     }
   },
 
-  set(locationId: string, data: PosSyncData): void {
+  set(
+    locationId: string,
+    data: PosSyncData,
+    channel: MenuSyncChannel = "pos",
+  ): void {
     try {
       // An empty menu is never worth persisting: it would overwrite a good
       // snapshot with the very blank state this cache exists to prevent.
@@ -103,7 +125,7 @@ export const menuOfflineCache = {
         data: stripInlineImages(data),
         cachedAt: Date.now(),
       };
-      syncStorage.set(KEY(locationId), JSON.stringify(payload));
+      syncStorage.set(KEY(locationId, channel), JSON.stringify(payload));
     } catch (err) {
       console.error("[menuOfflineCache.set]", err);
     }
@@ -111,7 +133,9 @@ export const menuOfflineCache = {
 
   clearLocation(locationId: string): void {
     try {
-      syncStorage.remove(KEY(locationId));
+      syncStorage.remove(LEGACY_KEY(locationId));
+      syncStorage.remove(KEY(locationId, "pos"));
+      syncStorage.remove(KEY(locationId, "kiosk"));
     } catch (err) {
       console.error("[menuOfflineCache.clearLocation]", err);
     }

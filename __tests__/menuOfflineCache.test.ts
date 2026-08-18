@@ -101,7 +101,7 @@ describe("menuOfflineCache", () => {
     expect(items[1].menu_item.image).toBe("https://cdn.example.com/fries.jpg");
 
     // The blob must not reach MMKV — that's the whole point of the swap.
-    expect(mockMemory.get(`menu_offline:${LOCATION}`)).not.toContain(BASE64);
+    expect(mockMemory.get(`menu_offline:pos:${LOCATION}`)).not.toContain(BASE64);
   });
 
   it("does not mutate the live payload handed to setMenuData", () => {
@@ -135,6 +135,34 @@ describe("menuOfflineCache", () => {
     expect(menuOfflineCache.get("other-loc")).toBeNull();
   });
 
+  it("keeps POS and kiosk snapshots isolated at the same location", () => {
+    menuOfflineCache.set(LOCATION, buildSync(), "pos");
+    menuOfflineCache.set(
+      LOCATION,
+      buildSync({
+        menus: [{ id: "menu-kiosk", name: "Kiosk", categories: [] }] as any,
+      }),
+      "kiosk",
+    );
+
+    expect(menuOfflineCache.get(LOCATION, "pos")?.menus[0]?.id).toBe("menu-1");
+    expect(menuOfflineCache.get(LOCATION, "kiosk")?.menus[0]?.id).toBe(
+      "menu-kiosk",
+    );
+  });
+
+  it("migrates a legacy location-only snapshot into the POS partition only", () => {
+    mockMemory.set(
+      `menu_offline:${LOCATION}`,
+      JSON.stringify({ data: buildSync(), cachedAt: Date.now() }),
+    );
+
+    expect(menuOfflineCache.get(LOCATION, "kiosk")).toBeNull();
+    expect(menuOfflineCache.get(LOCATION, "pos")?.menus[0]?.id).toBe("menu-1");
+    expect(mockMemory.has(`menu_offline:${LOCATION}`)).toBe(false);
+    expect(mockMemory.has(`menu_offline:pos:${LOCATION}`)).toBe(true);
+  });
+
   it("expires and evicts a snapshot older than the TTL", () => {
     const nowSpy = jest.spyOn(Date, "now");
     nowSpy.mockReturnValue(0);
@@ -147,13 +175,13 @@ describe("menuOfflineCache", () => {
     // 8 days — dropped, and the key is evicted rather than re-read each boot.
     nowSpy.mockReturnValue(8 * 24 * 60 * 60 * 1000);
     expect(menuOfflineCache.get(LOCATION)).toBeNull();
-    expect(mockMemory.has(`menu_offline:${LOCATION}`)).toBe(false);
+    expect(mockMemory.has(`menu_offline:pos:${LOCATION}`)).toBe(false);
 
     nowSpy.mockRestore();
   });
 
   it("survives corrupt stored JSON instead of throwing at boot", () => {
-    mockMemory.set(`menu_offline:${LOCATION}`, "{not json");
+    mockMemory.set(`menu_offline:pos:${LOCATION}`, "{not json");
     const errSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     expect(menuOfflineCache.get(LOCATION)).toBeNull();
     errSpy.mockRestore();

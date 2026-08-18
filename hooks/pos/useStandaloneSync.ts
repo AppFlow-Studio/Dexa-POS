@@ -1,4 +1,7 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import type { MenuSyncChannel } from "@/lib/menu/menuChannel";
+import type { RpcResult } from "@/lib/network/rpcVersionFallback";
+import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
 import { useSession } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 
@@ -102,6 +105,7 @@ export interface StandaloneMenu {
   location_id: string | null;
   display_order: number | null;
   created_at: string;
+  available_channels?: string[];
   // Categories linked to this menu
   menu_categories?: {
     category_id: string;
@@ -128,13 +132,14 @@ export interface StandaloneSyncData {
  */
 export const useStandaloneSync = (
   merchantId: string | null,
-  locationId: string | null
+  locationId: string | null,
+  channel: MenuSyncChannel = "pos",
 ) => {
   const supabase = useSupabaseClient();
   const { session, isLoaded: isSessionLoaded } = useSession();
 
   return useQuery<StandaloneSyncData>({
-    queryKey: ["standalone_sync", merchantId, locationId],
+    queryKey: ["standalone_sync", merchantId, locationId, channel],
 
     queryFn: async () => {
       if (!merchantId || !locationId) {
@@ -192,19 +197,33 @@ export const useStandaloneSync = (
           .order("display_order", { ascending: true, nullsFirst: false })
           .order("created_at", { ascending: false }),
 
-        // 4. Menus via direct query (like website - NO is_active filter)
-        supabase
-          .from("menus")
-          .select(
-            `
-              id, name, description, is_active, location_id, display_order, created_at,
-              menu_categories(category_id, display_order, is_active)
-            `
-          )
-          .eq("merchant_id", merchantId)
-          .or(`location_id.is.null,location_id.eq.${locationId}`)
-          .order("display_order", { ascending: true, nullsFirst: false })
-          .order("created_at", { ascending: false }),
+        // 4. Menu library, including inactive menus, filtered for this station
+        // channel. Without this filter, the standalone merge can reintroduce a
+        // menu that the primary POS bootstrap correctly excluded.
+        rpcWithVersionFallback<StandaloneMenu[]>(
+          "get_menu_library_channel_v1",
+          () =>
+            supabase.rpc("get_menu_library_channel_v1", {
+              p_merchant_id: merchantId,
+              p_location_id: locationId,
+              p_channel: channel,
+            }) as unknown as Promise<RpcResult<StandaloneMenu[]>>,
+          () =>
+            supabase
+              .from("menus")
+              .select(
+                `
+                  id, name, description, is_active, location_id, display_order, created_at,
+                  menu_categories(category_id, display_order, is_active)
+                `,
+              )
+              .eq("merchant_id", merchantId)
+              .or(`location_id.is.null,location_id.eq.${locationId}`)
+              .order("display_order", { ascending: true, nullsFirst: false })
+              .order("created_at", {
+                ascending: false,
+              }) as unknown as Promise<RpcResult<StandaloneMenu[]>>,
+        ),
       ]);
       // Log errors but don't fail completely
       if (categoriesResult.error) {

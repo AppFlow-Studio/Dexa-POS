@@ -5,6 +5,7 @@ in the owning feature, engineering, quality, or handoff folder.
 
 | Date | Ticket | Status | Summary | Task File |
 | --- | --- | --- | --- | --- |
+| 2026-08-17 | POS Menu Rail channel visibility | POS/backend code complete - pending migration, website UI, and tablet QA | Added inherited POS/online/kiosk visibility and channel-aware sync/cache isolation so Saucy's online-only `Whole Menu` stays off POS without disabling OrderOut. | `docs/features/menu-management/pos-menu-channel-visibility.md` |
 | 2026-06-20 | Timeclock Daily Shift Report - calendar date off-by-one | Code implemented - pending manual QA | Reworked Daily Shift Report date selection around local date keys and merchant-local day fetch bounds so selected calendar days no longer shift to the previous day. | `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md` |
 | 2026-06-20 | End of Day - Review staff unresolved deep link | Code implemented - pending manual QA | Routed EOD unresolved staff review actions to Timeclock with focus params so blocker rows can be highlighted and surfaced directly. | `docs/handoffs/pos-ticket-senior-summary-2026-06-27.md` |
 | 2026-06-20 | POS printed receipt - remove unused dual-pricing alt line | Code complete - pending physical verification | Collapsed printed receipt totals to the actual charged pricing mode so the alternate `If paid by ...` style total is no longer rendered on finalized receipts. | `docs/features/payments-terminals/receipt-print-remove-alt-total-line.md` |

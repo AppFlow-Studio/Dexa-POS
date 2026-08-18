@@ -280,6 +280,8 @@ export interface CustomPricing {
   recipe?: RecipeItem[];
 }
 
+export type MenuAvailabilityChannel = "pos" | "online" | "kiosk";
+
 export interface Menu {
   id: string;
   name: string;
@@ -292,6 +294,7 @@ export interface Menu {
   updatedAt: string;
   // Location ownership - null = global (merchant-wide), UUID = local to that location
   location_id?: string | null;
+  availableChannels?: MenuAvailabilityChannel[];
 }
 
 export interface Category {

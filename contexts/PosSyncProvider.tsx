@@ -8,6 +8,7 @@ import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
 import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { resolveMenuSyncChannel } from "@/lib/menu/menuChannel";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import {
     getBucketKeyCount,
@@ -106,6 +107,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     (state) => state.selectedStation,
   );
   const isKDS = selectedStation?.station_type === "kds";
+  const menuSyncChannel = resolveMenuSyncChannel(selectedStation?.station_type);
   const hasCheckedStorageSizeRef = useRef(false);
   const lastStoreSettingsRefreshRef = useRef<number>(0);
   const lastEmployeeSyncRefreshRef = useRef<number>(0);
@@ -526,7 +528,29 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setMenuData = useMenuStore((state) => state.setMenuData);
+  const clearMenuData = useMenuStore((state) => state.clearMenuData);
   const setSyncState = useMenuStore((state) => state.setSyncState);
+  const previousMenuScopeRef = useRef<string | null>(null);
+
+  // A station can switch between register and self-service at one location.
+  // Clear the derived tree before the new channel query/cache hydrates so the
+  // previous surface is never visible during the transition.
+  useEffect(() => {
+    const locationId = selectedStore?.id;
+    if (!locationId || isKDS) {
+      previousMenuScopeRef.current = null;
+      return;
+    }
+
+    const nextScope = `${locationId}:${menuSyncChannel}`;
+    if (
+      previousMenuScopeRef.current &&
+      previousMenuScopeRef.current !== nextScope
+    ) {
+      clearMenuData();
+    }
+    previousMenuScopeRef.current = nextScope;
+  }, [selectedStore?.id, isKDS, menuSyncChannel, clearMenuData]);
 
   // Fetch menu data from API when store is selected (skip for KDS)
   const {
@@ -536,12 +560,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     error: syncError,
     fetchStatus: syncFetchStatus,
     refetch: refetchPosSync,
-  } = usePosSync(isKDS ? null : (selectedStore?.id ?? null));
+  } = usePosSync(
+    isKDS ? null : (selectedStore?.id ?? null),
+    menuSyncChannel,
+  );
 
   // Fetch standalone entities (categories, items, modifiers not in menus) (skip for KDS)
   const { data: standaloneData } = useStandaloneSync(
     isKDS ? null : (selectedStore?.merchant_id ?? null),
     isKDS ? null : (selectedStore?.id ?? null),
+    menuSyncChannel,
   );
 
   // Keep a ref to standalone data so the posSyncData effect can re-merge
@@ -618,7 +646,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       // this menu instead of an empty grid. Written after setMenuData so a
       // serialization problem can never block the live path.
       if (selectedStore?.id) {
-        menuOfflineCache.set(selectedStore.id, posSyncData);
+        menuOfflineCache.set(
+          selectedStore.id,
+          posSyncData,
+          menuSyncChannel,
+        );
       }
 
       // Re-merge standalone data so orphan items/categories aren't lost
@@ -655,7 +687,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       //     });
       // }
     }
-  }, [posSyncData, setMenuData, selectedStore?.id]);
+  }, [posSyncData, setMenuData, selectedStore?.id, menuSyncChannel]);
 
   // Boot fallback: paint the last known menu while the live sync is still in
   // flight (or after it has failed). Declared AFTER the effect above so that on
@@ -668,15 +700,25 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     if (!locationId) return;
     if (useMenuStore.getState().menus.length > 0) return;
 
-    const cached = menuOfflineCache.get(locationId);
+    const cached = menuOfflineCache.get(locationId, menuSyncChannel);
     if (!cached) return;
 
     console.log(
       "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
-      { syncedAt: cached.synced_at, menus: cached.menus?.length ?? 0 },
+      {
+        channel: menuSyncChannel,
+        syncedAt: cached.synced_at,
+        menus: cached.menus?.length ?? 0,
+      },
     );
     setMenuData(cached, { fromCache: true });
-  }, [selectedStore?.id, isKDS, setMenuData, posSyncData]);
+  }, [
+    selectedStore?.id,
+    isKDS,
+    menuSyncChannel,
+    setMenuData,
+    posSyncData,
+  ]);
 
   // Self-healing menu sync.
   //

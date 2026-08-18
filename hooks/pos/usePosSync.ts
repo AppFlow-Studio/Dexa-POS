@@ -1,7 +1,10 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import type { MenuSyncChannel } from "@/lib/menu/menuChannel";
 import { DEADLINES } from "@/lib/network/deadlines";
-import type { RpcResult } from "@/lib/network/rpcVersionFallback";
-import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
+import {
+  type RpcResult,
+  rpcWithVersionFallback,
+} from "@/lib/network/rpcVersionFallback";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -17,14 +20,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
  * This fetches the full menu hierarchy for a given location.
  *
  * @param locationId - The UUID of the location to sync data for
+ * @param channel - The station surface whose menus should be returned
  * @returns TanStack Query result with PosSyncData
  */
-export const usePosSync = (locationId: string | null) => {
+export const usePosSync = (
+  locationId: string | null,
+  channel: MenuSyncChannel = "pos",
+) => {
   const supabase = useSupabaseClient();
 
   return useQuery<PosSyncData>({
     // Unique key for this location's full data
-    queryKey: ["pos_sync", locationId],
+    queryKey: ["pos_sync", locationId, channel],
 
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
@@ -68,29 +75,28 @@ export const usePosSync = (locationId: string | null) => {
       const [syncResult, taxRatesResult, snoozesResult] = await withDeadline(
         async (signal) => {
           const boot = await rpcWithVersionFallback<any>(
-            "get_pos_bootstrap_v1",
+            "get_pos_bootstrap_channel_v1",
             () =>
               supabase
-                .rpc("get_pos_bootstrap_v1", {
+                .rpc("get_pos_bootstrap_channel_v1", {
                   p_location_id: locationId,
-                  // Always request the full body for now. The versioned
-                  // short-circuit needs the MMKV render-ready snapshot from the
-                  // audit's Phase 2 to be useful; sending a token without a
-                  // cache to satisfy it would just risk an empty menu.
-                  p_known_version: null,
+                  p_channel: channel,
                 })
                 .abortSignal(signal) as unknown as Promise<RpcResult<any>>,
-            () => Promise.resolve({ data: null, error: null }),
+            () =>
+              rpcWithVersionFallback<any>(
+                "get_pos_bootstrap_v1",
+                () =>
+                  supabase
+                    .rpc("get_pos_bootstrap_v1", {
+                      p_location_id: locationId,
+                    })
+                    .abortSignal(signal) as unknown as Promise<RpcResult<any>>,
+                () => Promise.resolve({ data: null, error: null }),
+              ),
           );
 
-          if (!boot.usedFallback) {
-            if (boot.error) {
-              return [
-                { data: null, error: boot.error },
-                { data: null, error: null },
-                { data: null, error: null },
-              ] as const;
-            }
+          if (!boot.error && boot.data) {
             const env = (boot.data ?? {}) as Record<string, any>;
             // Reshape into the legacy triple so everything downstream is
             // untouched — one contract, two sources.
@@ -101,11 +107,33 @@ export const usePosSync = (locationId: string | null) => {
             ] as const;
           }
 
+          // A real bootstrap failure must surface. Only an environment where
+          // both bootstrap contracts are absent may continue to the legacy
+          // full-sync path.
+          if (boot.error) {
+            return [
+              { data: null, error: boot.error },
+              { data: null, error: null },
+              { data: null, error: null },
+            ] as const;
+          }
+
           // Legacy: three round-trips.
           return await Promise.all([
-            supabase
-              .rpc("get_pos_full_sync", { p_location_id: locationId })
-              .abortSignal(signal),
+            rpcWithVersionFallback<any>(
+              "get_pos_full_sync_channel_v1",
+              () =>
+                supabase
+                  .rpc("get_pos_full_sync_channel_v1", {
+                    p_location_id: locationId,
+                    p_channel: channel,
+                  })
+                  .abortSignal(signal) as unknown as Promise<RpcResult<any>>,
+              () =>
+                supabase
+                  .rpc("get_pos_full_sync", { p_location_id: locationId })
+                  .abortSignal(signal) as unknown as Promise<RpcResult<any>>,
+            ),
             supabase
               .from("tax_rates")
               .select("id, location_id, name, percentage, tax_category, is_active, created_at, updated_at")

@@ -28,7 +28,7 @@ jest.mock("@/lib/storage", () => ({
     set: (k: string, v: string) => {
       mockMem.set(k, v);
     },
-    delete: (k: string) => {
+    remove: (k: string) => {
       mockMem.delete(k);
     },
     getAllKeys: () => Array.from(mockMem.keys()),
@@ -49,7 +49,9 @@ describe("AUD-1 — cached menu paints before any network response", () => {
     // The boot-fallback effect must be gated on an EMPTY store, not on a
     // network error — that gate is what makes it fire during the cold-start
     // window while pos_sync is still in flight.
-    expect(PROVIDER).toMatch(/menuOfflineCache\.get\(locationId\)/);
+    expect(PROVIDER).toMatch(
+      /menuOfflineCache\.get\(locationId,\s*menuSyncChannel\)/,
+    );
     expect(PROVIDER).toMatch(
       /useMenuStore\.getState\(\)\.menus\.length > 0\)\s*return/,
     );
@@ -70,8 +72,8 @@ describe("AUD-1 — cached menu paints before any network response", () => {
   it("KDS stations skip the menu snapshot entirely", () => {
     // KDS has no order-entry grid; hydrating a menu there is pure waste.
     const block = PROVIDER.slice(
-      PROVIDER.indexOf("menuOfflineCache.get(locationId)") - 600,
-      PROVIDER.indexOf("menuOfflineCache.get(locationId)"),
+      PROVIDER.indexOf("menuOfflineCache.get(locationId, menuSyncChannel)") - 600,
+      PROVIDER.indexOf("menuOfflineCache.get(locationId, menuSyncChannel)"),
     );
     expect(block).toMatch(/if \(isKDS\) return/);
   });

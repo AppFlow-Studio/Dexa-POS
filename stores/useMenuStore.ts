@@ -413,6 +413,9 @@ const transformMenuItemsFromSync = (
         description: menu.description || undefined,
         isActive: menu.is_active,
         displayOrder: menu.display_order ?? undefined,
+        availableChannels: menu.available_channels as
+          | Menu["availableChannels"]
+          | undefined,
         categories: categories.sort((a, b) => {
           // Website Logic: Missing order goes to the BOTTOM
           const aOrder = a.displayOrder ?? a.order ?? 999999
@@ -2483,7 +2486,10 @@ export const useMenuStore = create<MenuState>((set, get) => {
               schedules: [],
               createdAt: menu.created_at ?? new Date().toISOString(),
               updatedAt: menu.created_at ?? new Date().toISOString(),
-              location_id: menu.location_id ?? null
+              location_id: menu.location_id ?? null,
+              availableChannels: menu.available_channels as
+                | Menu["availableChannels"]
+                | undefined
             }
 
             newMenus.push(mappedMenu)
