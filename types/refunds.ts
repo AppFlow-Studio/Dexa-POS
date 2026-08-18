@@ -69,6 +69,8 @@ export interface ReversalRecord {
   terminal_response?: Record<string, unknown> | null;
   emv_data?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
+  receipt_token?: string | null;
+  refund_number?: string | null;
 }
 
 export interface OrderRefundItemRecord {

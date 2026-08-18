@@ -3640,7 +3640,6 @@ async function executeQueuedOperation(
         const {
           dbOrderId,
           orderId,
-          totalAmount,
           reason,
           perPaymentDetails,
           selectedItems,
@@ -3666,28 +3665,60 @@ async function executeQueuedOperation(
             refundType === "full"
               ? ("refund" as const)
               : ("partial_refund" as const);
+          const completedReversalIds: string[] = [];
 
-          for (const detail of perPaymentDetails || []) {
+          for (const [detailIndex, detail] of (
+            perPaymentDetails || []
+          ).entries()) {
             if (!detail.dbPaymentId) continue;
+            const refundKeySeed = `${op.id}:cash-refund:${detail.dbPaymentId}:${detailIndex}`;
+            const createKey = toIdempotencyKey(`${refundKeySeed}:create`);
+            const statusKey = toIdempotencyKey(`${refundKeySeed}:status`);
+            const paymentKey = toIdempotencyKey(`${refundKeySeed}:payment`);
+            const itemsKey = toIdempotencyKey(`${refundKeySeed}:items`);
 
             // 1. Create reversal record
             const { data: reversal, error: reversalError } =
-              await OrderService.createReversal(_supabaseClient, {
-                original_payment_id: detail.dbPaymentId,
-                original_psp_reference: null,
-                reversal_reference_id: null,
-                reversal_type: selectedItems ? "item_return" : reversalType,
-                amount: detail.totalRefund,
-                reason_code: reason,
-                reason_description: reason,
-                initiated_by: initiatedBy,
-                approved_by: null,
-              });
+              await OrderService.createReversal(
+                _supabaseClient,
+                {
+                  original_payment_id: detail.dbPaymentId,
+                  original_psp_reference: null,
+                  reversal_reference_id: `REV_OFFLINE_${op.id.slice(-12)}_${detailIndex}`,
+                  reversal_type: selectedItems ? "item_return" : reversalType,
+                  amount: detail.totalRefund,
+                  reason_code: reason,
+                  reason_description: reason,
+                  initiated_by: initiatedBy,
+                  approved_by: null,
+                },
+                { keyOverride: createKey },
+              );
 
             if (reversalError || !reversal) {
               console.error(
                 "[OfflineSync:process_cash_refund] createReversal failed:",
                 reversalError,
+              );
+              return false;
+            }
+
+            const { error: reversalStatusError } =
+              await OrderService.updateReversalStatus(
+                _supabaseClient,
+                reversal.id,
+                "completed",
+                null,
+                null,
+                null,
+                "APPROVED",
+                null,
+                { keyOverride: statusKey },
+              );
+            if (reversalStatusError) {
+              console.error(
+                "[OfflineSync:process_cash_refund] updateReversalStatus failed:",
+                reversalStatusError,
               );
               return false;
             }
@@ -3699,6 +3730,12 @@ async function executeQueuedOperation(
                 detail.dbPaymentId,
                 detail.totalRefund,
                 selectedItems ? "item_return" : reversalType,
+                {
+                  reason,
+                  initiatedBy,
+                },
+                undefined,
+                { keyOverride: paymentKey },
               );
 
             if (paymentError) {
@@ -3706,6 +3743,7 @@ async function executeQueuedOperation(
                 "[OfflineSync:process_cash_refund] applyRefundToPayment failed:",
                 paymentError,
               );
+              return false;
             }
 
             // 3. Record refund items if item-level refund
@@ -3732,9 +3770,13 @@ async function executeQueuedOperation(
                   _supabaseClient,
                   reversal.id,
                   refundItems,
+                  false,
+                  { keyOverride: itemsKey },
                 );
               }
             }
+
+            completedReversalIds.push(reversal.id);
           }
 
           // 4. Update order payment status
@@ -3742,6 +3784,11 @@ async function executeQueuedOperation(
             await OrderService.updateOrderPaymentStatusAfterRefund(
               _supabaseClient,
               resolvedRefundOrderId,
+              {
+                keyOverride: toIdempotencyKey(
+                  `${op.id}:cash-refund:order-status`,
+                ),
+              },
             );
 
           if (statusError) {
@@ -3761,6 +3808,30 @@ async function executeQueuedOperation(
               "[OfflineSync:process_cash_refund] Background sync failed:",
               syncErr,
             );
+          }
+
+          const location = useStoreSettingsStore.getState().selectedStore;
+          if (location && completedReversalIds.length > 0) {
+            try {
+              const [{ RefundReceiptService }, { PrinterService }] =
+                await Promise.all([
+                  import("@/services/refundReceiptService"),
+                  import("@/services/printing/PrinterService"),
+                ]);
+              for (const reversalId of completedReversalIds) {
+                const receipt = await RefundReceiptService.load(
+                  _supabaseClient,
+                  reversalId,
+                  location,
+                );
+                await PrinterService.printRefundReceipt(receipt);
+              }
+            } catch (printError) {
+              console.warn(
+                "[OfflineSync:process_cash_refund] Refund receipt print failed:",
+                printError,
+              );
+            }
           }
 
           console.log(`[OfflineSync:process_cash_refund] SUCCESS`);

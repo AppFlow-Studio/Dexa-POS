@@ -68,6 +68,10 @@ import {
   buildVoidOrderDocument,
   VoidOrderReceiptData
 } from './templates/VoidOrderDocumentTemplate'
+import {
+  buildRefundReceiptDocument,
+  RefundReceiptData
+} from './templates/RefundReceiptDocumentTemplate'
 import { safeTimeString } from './utils/sanitizeText'
 import { sweepOrphanTempImages } from './utils/tempImageCleanup'
 
@@ -638,6 +642,49 @@ export const PrinterService = {
   },
 
   /**
+   * Print an authoritative customer-facing refund receipt. This is separate
+   * from printRefundTicket, which routes an operational notice to the kitchen.
+   */
+  async printRefundReceipt (data: RefundReceiptData): Promise<boolean> {
+    const printer = getReceiptPrinter(data.locationId)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer for refund receipt')
+      return false
+    }
+
+    const templateStore = useReceiptTemplateStore.getState()
+    const template = templateStore.getRefundTemplate(data.locationId)
+    const { printMerchantCopy, printCustomerCopy } =
+      useLocationConfigStore.getState().config.printing
+    const copies: ('Merchant Copy' | 'Customer Copy')[] = []
+    if (printMerchantCopy) copies.push('Merchant Copy')
+    if (printCustomerCopy) copies.push('Customer Copy')
+    if (copies.length === 0) copies.push('Customer Copy')
+
+    for (const copyLabel of copies) {
+      const doc = buildRefundReceiptDocument(
+        {
+          ...data,
+          copyLabel,
+          logoBase64: templateStore.cachedLogoBase64
+        },
+        template
+      )
+      const job = createDocumentJob(
+        printer.id,
+        doc,
+        'refund_receipt',
+        'high',
+        data.orderId
+      )
+      usePrintQueueStore.getState().enqueue(job)
+    }
+
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
    * Print a Time Sheet receipt on the receipt printer.
    */
   async printTimeSheet (
@@ -1124,7 +1171,7 @@ async function processJob (job: PrintJob): Promise<ProcessJobResult> {
 
     // If receipt job failed due to unreachable printer, try to find an alternate connected printer
     if (
-      job.jobType === 'receipt' &&
+      (job.jobType === 'receipt' || job.jobType === 'refund_receipt') &&
       /unreachable|device not found|connect|ETIMEDOUT|EHOSTUNREACH/i.test(
         errorMsg
       )
@@ -1162,6 +1209,8 @@ async function processJob (job: PrintJob): Promise<ProcessJobResult> {
         const jobLabel =
           job.jobType === 'receipt'
             ? 'Receipt'
+            : job.jobType === 'refund_receipt'
+            ? 'Refund receipt'
             : job.jobType === 'kitchen_ticket'
             ? 'Kitchen ticket'
             : job.jobType === 'void_ticket'

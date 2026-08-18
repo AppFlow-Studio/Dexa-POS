@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { getIsOnline } from "@/services/offlineSyncService";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { RefundReceiptService } from "@/services/refundReceiptService";
 import { RefundService } from "@/services/refundService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
@@ -89,6 +90,34 @@ export const toRefundReasonType = (reason: string): RefundReasonType => {
       return "other";
   }
 };
+
+async function queueRefundReceipts(
+  client: NonNullable<ReturnType<typeof useSupabaseClient>>,
+  reversalIds: string[],
+): Promise<string | undefined> {
+  const location = useStoreSettingsStore.getState().selectedStore;
+  if (!location || reversalIds.length === 0) return undefined;
+
+  const failures: string[] = [];
+  for (const reversalId of [...new Set(reversalIds)]) {
+    try {
+      const data = await RefundReceiptService.load(
+        client,
+        reversalId,
+        location,
+      );
+      const queued = await PrinterService.printRefundReceipt(data);
+      if (!queued) failures.push(reversalId);
+    } catch (error) {
+      console.warn("[Refund] Receipt auto-print failed:", error);
+      failures.push(reversalId);
+    }
+  }
+
+  return failures.length > 0
+    ? "Refund completed, but the refund receipt was not printed. Use Previous Orders > Refunds to reprint it."
+    : undefined;
+}
 
 // ── Optimistic patch builder ───────────────────────────────────────────────
 
@@ -331,6 +360,12 @@ export function useRefundMutation() {
         // Apply optimistic patch immediately
         buildAndApplyRefundPatch(input);
 
+        const receiptWarning = await queueRefundReceipts(
+          supabase,
+          result.data.reversals?.map((entry) => entry.reversalId) ??
+            (result.data.reversalId ? [result.data.reversalId] : []),
+        );
+
         // Print refund ticket to kitchen for items that reached kitchen
         const printingConfig =
           useLocationConfigStore.getState().config?.printing;
@@ -381,7 +416,9 @@ export function useRefundMutation() {
           // Partial-refund message lives on result.data.error (result is already
           // narrowed to kind:"success" here); surfacing it drives the
           // "Refund Processed (with warnings)" toast for a partial item refund.
-          warning: result.data?.error || undefined,
+          warning: [result.data?.error, receiptWarning]
+            .filter(Boolean)
+            .join("; ") || undefined,
           isOffline: !ordersRealtime.isConnected,
         };
       }
@@ -393,6 +430,7 @@ export function useRefundMutation() {
 
       const errors: string[] = [];
       const warnings: string[] = [];
+      const reversalIds: string[] = [];
 
       for (let i = 0; i < input.perPaymentDetails.length; i++) {
         const detail = input.perPaymentDetails[i];
@@ -437,8 +475,19 @@ export function useRefundMutation() {
         } else if (result.data?.error) {
           warnings.push(result.data.error);
         }
+        if (result.kind === "success" && result.data.reversalId) {
+          reversalIds.push(result.data.reversalId);
+        }
       }
 
+      const receiptWarning = await queueRefundReceipts(
+        supabase,
+        reversalIds,
+      );
+      if (receiptWarning) warnings.push(receiptWarning);
+
+      // A split refund may have one approved payment followed by a failure.
+      // Print every authoritative success before surfacing the batch error.
       if (errors.length > 0) {
         throw new Error(errors.join(" "));
       }

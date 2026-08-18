@@ -19,6 +19,7 @@ interface ReceiptTemplateStoreState {
 
   fetchTemplates: (locationId: string) => Promise<void>;
   getReceiptTemplate: (locationId: string) => ReceiptTemplateConfig;
+  getRefundTemplate: (locationId: string) => ReceiptTemplateConfig;
   getKitchenTemplate: (locationId: string) => ReceiptTemplateConfig;
   getNoSaleTemplate: (locationId: string) => ReceiptTemplateConfig;
   getVoidOrderTemplate: (locationId: string) => ReceiptTemplateConfig;
@@ -90,6 +91,15 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
           showBarcode: false,
           showQrCode: false,
         };
+      },
+
+      getRefundTemplate: (locationId: string) => {
+        const match = get().templates.find(
+          (t) => t.locationId === locationId && t.templateType === "refund",
+        );
+        return (
+          match ?? { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "refund" }
+        );
       },
 
       getKitchenTemplate: (locationId: string) => {

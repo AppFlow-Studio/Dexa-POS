@@ -109,6 +109,7 @@ export type PrintJobType =
   | "kitchen_ticket"
   | "void_ticket"
   | "refund_ticket"
+  | "refund_receipt"
   | "test_page"
   | "cash_drawer";
 

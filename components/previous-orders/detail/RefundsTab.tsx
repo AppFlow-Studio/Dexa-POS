@@ -1,7 +1,19 @@
 import { colors } from '@/lib/theme'
+import { toastService } from '@/lib/toastService'
 import { PreviousOrder } from '@/lib/types'
-import React, { useMemo } from 'react'
-import { ScrollView, Text, View } from 'react-native'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { PrinterService } from '@/services/printing/PrinterService'
+import { RefundReceiptService } from '@/services/refundReceiptService'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { Printer } from 'lucide-react-native'
+import React, { useMemo, useState } from 'react'
+import {
+  ActivityIndicator,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 
 interface RefundsTabProps {
   order: PreviousOrder
@@ -41,6 +53,11 @@ const statusStyles: Record<string, { color: string; backgroundColor: string }> =
   }
 
 const RefundsTab: React.FC<RefundsTabProps> = ({ order }) => {
+  const supabase = useSupabaseClient()
+  const location = useStoreSettingsStore(state => state.selectedStore)
+  const [printingReversalId, setPrintingReversalId] = useState<string | null>(
+    null
+  )
   const reversals = order.reversals || []
   const refundItems = order.order_refund_items || []
 
@@ -52,6 +69,37 @@ const RefundsTab: React.FC<RefundsTabProps> = ({ order }) => {
   }, [order])
 
   const hasNoRefunds = reversals.length === 0 && refundItems.length === 0
+
+  const handleReprint = async (reversalId: string) => {
+    if (!location || printingReversalId) return
+    setPrintingReversalId(reversalId)
+    try {
+      const receipt = await RefundReceiptService.load(
+        supabase,
+        reversalId,
+        location,
+        { isReprint: true }
+      )
+      const queued = await PrinterService.printRefundReceipt(receipt)
+      toastService.show({
+        title: queued ? 'Refund Receipt Queued' : 'Receipt Printer Missing',
+        message: queued
+          ? 'The refund receipt was added to the print queue.'
+          : 'Configure a receipt printer and try again.',
+        type: queued ? 'success' : 'error'
+      })
+    } catch (error) {
+      toastService.show({
+        title: 'Refund Receipt Failed',
+        message:
+          (error as { message?: string })?.message ??
+          'Could not load the refund receipt.',
+        type: 'error'
+      })
+    } finally {
+      setPrintingReversalId(null)
+    }
+  }
 
   if (hasNoRefunds) {
     return (
@@ -231,6 +279,45 @@ const RefundsTab: React.FC<RefundsTabProps> = ({ order }) => {
                     </Text>
                   </View>
                 </View>
+
+                {reversal.status === 'completed' &&
+                  reversal.reversal_type !== 'void' && (
+                    <TouchableOpacity
+                      onPress={() => handleReprint(reversal.id)}
+                      disabled={printingReversalId !== null}
+                      style={{
+                        marginTop: 12,
+                        minHeight: 40,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: colors.teal,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexDirection: 'row',
+                        gap: 8,
+                        opacity:
+                          printingReversalId &&
+                          printingReversalId !== reversal.id
+                            ? 0.45
+                            : 1
+                      }}
+                    >
+                      {printingReversalId === reversal.id ? (
+                        <ActivityIndicator size='small' color={colors.teal} />
+                      ) : (
+                        <Printer size={17} color={colors.teal} />
+                      )}
+                      <Text
+                        style={{
+                          color: colors.teal,
+                          fontSize: 13,
+                          fontWeight: '700'
+                        }}
+                      >
+                        Reprint Refund Receipt
+                      </Text>
+                    </TouchableOpacity>
+                  )}
               </View>
             )
           })}
