@@ -188,7 +188,11 @@ const ModifierOption = memo(
           // rather than flex-basing off the parent row width.
           flex: 1,
           marginHorizontal: 4,
-          marginBottom: 8,
+          // Split evenly (was marginBottom: 8) so the row spacing sits half
+          // above / half below the card. Row height is unchanged (52 + 8),
+          // but the grid now reads vertically centred inside the group's
+          // error frame instead of hugging its top edge.
+          marginVertical: 4,
           minHeight: 52,
         },
         isNo
@@ -335,7 +339,7 @@ const SessionCategoryTab = memo(
  * empty space — harmless until the error state drew a border around it, and
  * wasteful either way. FlashList 1.x doesn't forward onContentSizeChange to
  * its ScrollView, so the size is derived from the cell's own fixed metrics
- * instead (see ModifierOption): minHeight 52 + marginBottom 8. The only cell
+ * instead (see ModifierOption): minHeight 52 + marginVertical 4. The only cell
  * that outgrows that is a name wrapping to two lines *with* a price row
  * (8 + 32 + 20 + 8 = 68, +8 margin), and whether a group has priced options is
  * known from the data. Past `maxHeight` the list scrolls internally, as before.
@@ -2169,7 +2173,6 @@ const ModifierScreenContent = () => {
                     activeOptionsGridHeight >= optionsGridHeight
                   }
                   nestedScrollEnabled
-                  contentContainerStyle={{ paddingBottom: s(2) }}
                 />
               </View>
             </SessionActiveGroupSection>
