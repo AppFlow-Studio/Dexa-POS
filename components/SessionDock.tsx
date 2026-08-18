@@ -602,7 +602,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   className="text-sm font-medium flex-1"
                   style={{ color: colors.danger }}
                 >
-                  Sign out
+                  Clock out
                 </Text>
               </DropdownMenuItem>
             </View>
@@ -629,7 +629,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         />
         <PinInputModal
           isOpen={isLogoutPinModalOpen}
-          title="Sign Out"
+          title="Clock Out"
           subtitle="Enter your PIN to clock out"
           onConfirm={handleLogoutPinConfirm}
           onCancel={handleLogoutPinCancel}
