@@ -29,6 +29,14 @@ export interface ModifierSelection {
 interface ModifierSelectionState {
   selections: ModifierSelection
   selectionCounts: Record<string, number>
+  /**
+   * Required groups the user tried to save without satisfying. Drives the
+   * inline red border/label on the offending group (tab + active-group header)
+   * instead of a toast. Keyed by categoryId; a group is flagged only after a
+   * failed Done press, cleared the moment that group gets a selection, and
+   * wiped wholesale by init() so reopening an item never shows stale red.
+   */
+  errorCategoryIds: Record<string, true>
 
   init: (selections: ModifierSelection) => void
   toggle: (
@@ -41,7 +49,23 @@ interface ModifierSelectionState {
     optionId: string,
     category: ModifierCategory
   ) => void
+  setErrorCategories: (categoryIds: string[]) => void
+  clearErrorCategories: () => void
 }
+
+/** Drop `categoryId` from the error map, returning the same object identity
+ *  when it wasn't flagged (so unrelated taps don't re-render the tabs). */
+const withoutError = (
+  errors: Record<string, true>,
+  categoryId: string
+): Record<string, true> => {
+  if (!errors[categoryId]) return errors
+  const next = { ...errors }
+  delete next[categoryId]
+  return next
+}
+
+const EMPTY_ERRORS: Record<string, true> = {}
 
 const computeSelectionCounts = (
   selections: ModifierSelection
@@ -62,15 +86,18 @@ export const useModifierSelectionStore = create<ModifierSelectionState>(
   (set, get) => ({
     selections: {},
     selectionCounts: {},
+    errorCategoryIds: EMPTY_ERRORS,
 
     init: selections =>
       set({
         selections,
-        selectionCounts: computeSelectionCounts(selections)
+        selectionCounts: computeSelectionCounts(selections),
+        // A new session must never inherit the previous item's red groups.
+        errorCategoryIds: EMPTY_ERRORS
       }),
 
     toggle: (categoryId, optionId, category) => {
-      const { selections, selectionCounts } = get()
+      const { selections, selectionCounts, errorCategoryIds } = get()
       const catSelections = selections[categoryId] ?? {}
       const currentCount = selectionCounts[categoryId] ?? 0
       const currentVal = catSelections[optionId]
@@ -103,12 +130,16 @@ export const useModifierSelectionStore = create<ModifierSelectionState>(
 
       set({
         selections: { ...selections, [categoryId]: nextCat },
-        selectionCounts: { ...selectionCounts, [categoryId]: nextCount }
+        selectionCounts: { ...selectionCounts, [categoryId]: nextCount },
+        errorCategoryIds:
+          nextCount > 0
+            ? withoutError(errorCategoryIds, categoryId)
+            : errorCategoryIds
       })
     },
 
     toggleNo: (categoryId, optionId, category) => {
-      const { selections, selectionCounts } = get()
+      const { selections, selectionCounts, errorCategoryIds } = get()
       const catSelections = selections[categoryId] ?? {}
       const currentCount = selectionCounts[categoryId] ?? 0
       const currentVal = catSelections[optionId]
@@ -141,8 +172,23 @@ export const useModifierSelectionStore = create<ModifierSelectionState>(
 
       set({
         selections: { ...selections, [categoryId]: nextCat },
-        selectionCounts: { ...selectionCounts, [categoryId]: nextCount }
+        selectionCounts: { ...selectionCounts, [categoryId]: nextCount },
+        errorCategoryIds:
+          nextCount > 0
+            ? withoutError(errorCategoryIds, categoryId)
+            : errorCategoryIds
       })
+    },
+
+    setErrorCategories: categoryIds => {
+      const next: Record<string, true> = {}
+      for (const id of categoryIds) next[id] = true
+      set({ errorCategoryIds: next })
+    },
+
+    clearErrorCategories: () => {
+      if (get().errorCategoryIds === EMPTY_ERRORS) return
+      set({ errorCategoryIds: EMPTY_ERRORS })
     }
   })
 )
