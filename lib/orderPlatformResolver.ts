@@ -9,10 +9,7 @@ export type OnlineOrderProvider =
   | "kiosk";
 
 export type OrderPlatformBadgeKind =
-  | "marketplace"
-  | "first_party"
-  | "generic_online"
-  | "none";
+  "marketplace" | "first_party" | "generic_online" | "none";
 
 export interface ResolveOrderPlatformInput {
   deliveryPlatform?: unknown;
@@ -55,6 +52,79 @@ function compactPlatformToken(raw: string): string {
   return raw.toLowerCase().replace(/[\s_-]+/g, "");
 }
 
+export const MARKETPLACE_ONLINE_ORDER_PROVIDERS = [
+  "ubereats",
+  "doordash",
+  "grubhub",
+] as const;
+
+export const FIRST_PARTY_ONLINE_ORDER_PROVIDERS = [
+  "website",
+  "app",
+  "kiosk",
+] as const;
+
+export type QueryAliasProvider = Exclude<OnlineOrderProvider, "other">;
+
+/**
+ * This is the single alias vocabulary for display resolution and server-side
+ * Previous Orders predicates. Query aliases are generated with every supported
+ * separator and matched case-insensitively by PostgREST.
+ */
+const PROVIDER_WORD_GROUPS: Record<
+  QueryAliasProvider,
+  readonly (readonly string[])[]
+> = {
+  ubereats: [["uber", "eats"]],
+  doordash: [["door", "dash"]],
+  grubhub: [["grub", "hub"]],
+  website: [["website"], ["web"]],
+  app: [["app"], ["mobile", "app"]],
+  kiosk: [["kiosk"]],
+  orderout: [["order", "out"]],
+};
+
+const QUERY_ALIAS_SEPARATORS = ["", " ", "_", "-"] as const;
+
+function expandProviderAliases(
+  groups: readonly (readonly string[])[],
+): readonly string[] {
+  const aliases = new Set<string>();
+  for (const words of groups) {
+    for (const separator of QUERY_ALIAS_SEPARATORS) {
+      aliases.add(words.join(separator));
+    }
+  }
+  return [...aliases];
+}
+
+const PROVIDER_QUERY_ALIASES = {} as Record<
+  QueryAliasProvider,
+  readonly string[]
+>;
+const PROVIDER_BY_COMPACT_TOKEN = new Map<string, QueryAliasProvider>();
+
+for (const provider of Object.keys(
+  PROVIDER_WORD_GROUPS,
+) as QueryAliasProvider[]) {
+  const aliases = expandProviderAliases(PROVIDER_WORD_GROUPS[provider]);
+  PROVIDER_QUERY_ALIASES[provider] = aliases;
+  for (const alias of aliases) {
+    PROVIDER_BY_COMPACT_TOKEN.set(compactPlatformToken(alias), provider);
+  }
+}
+
+// Legacy abbreviations remain accepted by display resolution. They are not
+// emitted as query aliases because persisted rows use full provider names.
+PROVIDER_BY_COMPACT_TOKEN.set("grub", "grubhub");
+PROVIDER_BY_COMPACT_TOKEN.set("ubereat", "ubereats");
+
+export function getOnlineOrderProviderQueryAliases(
+  provider: QueryAliasProvider,
+): readonly string[] {
+  return PROVIDER_QUERY_ALIASES[provider];
+}
+
 export function normalizeOnlineOrderProvider(
   raw: unknown,
 ): OnlineOrderProvider | null {
@@ -64,13 +134,8 @@ export function normalizeOnlineOrderProvider(
   const key = compactPlatformToken(value);
   if (!key || key === "pos" || key === "instore") return null;
 
-  if (key === "grubhub" || key === "grub") return "grubhub";
-  if (key === "ubereats" || key === "ubereat") return "ubereats";
-  if (key === "doordash") return "doordash";
-  if (key === "website" || key === "web") return "website";
-  if (key === "app" || key === "mobileapp") return "app";
-  if (key === "orderout") return "orderout";
-  if (key === "kiosk") return "kiosk";
+  const knownProvider = PROVIDER_BY_COMPACT_TOKEN.get(key);
+  if (knownProvider) return knownProvider;
   if (
     key === "other" ||
     key === "online" ||
@@ -105,12 +170,15 @@ function resolveProvider(
 export function resolveOrderPlatformLogo(
   input: ResolveOrderPlatformInput,
 ): ResolvedOrderPlatform {
-  const orderedSources: Array<{
+  const orderedSources: {
     value: unknown;
     source: NonNullable<ResolvedOrderPlatform["source"]>;
-  }> = [
+  }[] = [
     { value: input.deliveryPlatform, source: "delivery_platform" },
-    { value: input.metadataDeliveryCompany, source: "metadata_delivery_company" },
+    {
+      value: input.metadataDeliveryCompany,
+      source: "metadata_delivery_company",
+    },
     {
       value: input.onlineOrderDeliveryCompany,
       source: "online_order_delivery_company",
@@ -134,7 +202,12 @@ export function resolveOrderPlatformLogo(
 
   const sourceKey = compactPlatformToken(orderSource);
   if (sourceKey === "pos" || sourceKey === "instore") {
-    return { provider: null, kind: "none", label: null, source: "order_source" };
+    return {
+      provider: null,
+      kind: "none",
+      label: null,
+      source: "order_source",
+    };
   }
 
   if (sourceKey === "online") {
