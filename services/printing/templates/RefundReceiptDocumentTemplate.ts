@@ -121,7 +121,7 @@ export function buildRefundReceiptDocument(
     type: "text_line",
     content: sanitizeForPrint(data.storeName),
     align: "center",
-    format: BOLD,
+    format: LARGE,
   });
   // Address: one centered bold line per component so a long address does not
   // center-clip on the Star raster path. Falls back to the joined string.
@@ -269,7 +269,6 @@ export function buildRefundReceiptDocument(
       nodes.push({ type: "text_line", content: truncate(batchInvoice, WIDTH) });
     }
   }
-  labelLine(nodes, "Transaction ID", data.transactionId ?? data.refundNumber);
   amountRow(nodes, "Refund Amount", money(data.totalRefunded));
 
   // ── Merchant-only audit block ─────────────────────────────────────────

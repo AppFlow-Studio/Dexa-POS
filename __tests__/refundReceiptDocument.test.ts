@@ -83,7 +83,7 @@ describe("buildRefundReceiptDocument", () => {
     expect(text).toContain("Approval Code: 089123");
     expect(text).toContain("Refund RRN: 623000499605");
     expect(text).toContain("Batch: 072   Invoice: 1909");
-    expect(text).toContain("Transaction ID: RS1-000195");
+    expect(text).not.toContain("Transaction ID");
     expect(text).toContain("Refund Amount $19.05");
 
     // Footer + barcode
@@ -128,7 +128,7 @@ describe("buildRefundReceiptDocument", () => {
     );
 
     expect(text).toContain("REFUNDED TO: CASH");
-    expect(text).toContain("Transaction ID: RS1-000195");
+    expect(text).not.toContain("Transaction ID");
     expect(text).toContain("Refund Amount $19.05");
     expect(text).not.toContain("Approval Code");
     expect(text).not.toContain("Refund RRN");
