@@ -42,16 +42,18 @@ function formatLocalTime(value: string, timeZone: string): string | null {
   });
 }
 
-function locationAddress(location: SelectedLocation): string {
+function locationAddressLines(location: SelectedLocation): string[] {
   return [
     location.address_line1,
     location.address_line2,
     [location.city, location.state, location.postal_code]
       .filter(Boolean)
       .join(" "),
-  ]
-    .filter(Boolean)
-    .join(", ");
+  ].filter((part): part is string => Boolean(part));
+}
+
+function locationAddress(location: SelectedLocation): string {
+  return locationAddressLines(location).join(", ");
 }
 
 export const RefundReceiptService = {
@@ -210,6 +212,7 @@ export const RefundReceiptService = {
       reversalId: reversal.id,
       storeName: location.name,
       storeAddress: locationAddress(location),
+      storeAddressLines: locationAddressLines(location),
       storePhone: location.phone ?? undefined,
       refundNumber,
       orderNumber: order.display_number || order.order_number,

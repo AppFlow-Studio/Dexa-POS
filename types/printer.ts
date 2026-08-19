@@ -214,6 +214,10 @@ export interface ReceiptTemplateData {
   // Store info
   storeName: string;
   storeAddress: string;
+  // Address split into its component lines (address_line1, address_line2,
+  // "city, state zip"). Rendered one centered line each so a long address does
+  // not clip on the Star raster path. `storeAddress` remains as a fallback.
+  storeAddressLines?: string[];
   storePhone: string | null;
 
   // Order info

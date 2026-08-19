@@ -14,6 +14,7 @@ export interface RefundReceiptData {
   reversalId: string;
   storeName: string;
   storeAddress?: string;
+  storeAddressLines?: string[];
   storePhone?: string;
   logoBase64?: string | null;
   refundNumber: string;
@@ -122,11 +123,21 @@ export function buildRefundReceiptDocument(
     align: "center",
     format: BOLD,
   });
-  if (data.storeAddress) {
+  // Address: one centered bold line per component so a long address does not
+  // center-clip on the Star raster path. Falls back to the joined string.
+  const addressLines =
+    data.storeAddressLines && data.storeAddressLines.length > 0
+      ? data.storeAddressLines
+      : data.storeAddress
+        ? [data.storeAddress]
+        : [];
+  for (const line of addressLines) {
+    if (!line) continue;
     nodes.push({
       type: "text_line",
-      content: sanitizeForPrint(data.storeAddress),
+      content: sanitizeForPrint(line),
       align: "center",
+      format: BOLD,
     });
   }
   if (data.storePhone) {

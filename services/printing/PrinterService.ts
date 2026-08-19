@@ -1663,7 +1663,7 @@ export function buildReceiptTemplateData (
     location.address_line1,
     location.address_line2,
     `${location.city}, ${location.state} ${location.postal_code}`
-  ].filter(Boolean)
+  ].filter((part): part is string => Boolean(part))
 
   // ── Match pricing to payment method (optional) ────────────────────────
   // Finalized printed receipts should reconcile to the pricing the guest
@@ -2053,6 +2053,7 @@ export function buildReceiptTemplateData (
   return {
     storeName: location.name,
     storeAddress: addressParts.join(', '),
+    storeAddressLines: addressParts,
     storePhone: location.phone,
     orderNumber:
       order.display_number || order.order_number || `#${order.id.slice(-4)}`,
