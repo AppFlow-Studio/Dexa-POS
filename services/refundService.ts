@@ -17,6 +17,7 @@ import {
     isTerminalTransportDead,
 } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { dollarsToValorCents } from "@/services/terminals/valor-framing";
 import { getSharedValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
@@ -1505,7 +1506,13 @@ export class RefundService {
         };
       }
 
-      const result = await valor.processRefund({ amount, referenceId });
+      // `amount` is DOLLARS here; the Valor service expects integer CENTS
+      // (centsToValorAmount). Convert like the sale path so a $4.08 refund
+      // sends 408, not 4 ($0.04).
+      const result = await valor.processRefund({
+        amount: dollarsToValorCents(amount),
+        referenceId,
+      });
       return {
         success: result.success,
         terminalResponse: result.terminalResponse,

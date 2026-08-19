@@ -8,6 +8,7 @@ import {
   centsToValorAmount,
   valorAmountToCents,
   dollarsToCentsString,
+  dollarsToValorCents,
 } from "@/services/terminals/valor-framing";
 import { VALOR_STX, VALOR_ETX } from "@/types/valor";
 
@@ -128,5 +129,15 @@ describe("amount helpers", () => {
     expect(dollarsToCentsString(15)).toBe("1500");
     expect(dollarsToCentsString(15.0)).toBe("1500");
     expect(dollarsToCentsString(0.1 + 0.2)).toBe("30"); // no float drift
+  });
+
+  it("converts dollars to integer cents (refund amount must not collapse)", () => {
+    // Regression: a $4.08 refund must send 408, not 4 ($0.04) on the Valor
+    // device. The refund path passes dollars; the service expects cents.
+    expect(dollarsToValorCents(4.08)).toBe(408);
+    expect(centsToValorAmount(dollarsToValorCents(4.08))).toBe("408");
+    expect(dollarsToValorCents(15)).toBe(1500);
+    expect(dollarsToValorCents(0.04)).toBe(4);
+    expect(dollarsToValorCents(0.1 + 0.2)).toBe(30); // no float drift
   });
 });
