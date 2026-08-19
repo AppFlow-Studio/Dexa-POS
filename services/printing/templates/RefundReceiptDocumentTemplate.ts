@@ -168,6 +168,7 @@ export function buildRefundReceiptDocument(
       format: BOLD,
     });
   }
+  nodes.push({ type: "empty_line" });
   nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
 
   // ── Meta ──────────────────────────────────────────────────────────────
@@ -196,6 +197,7 @@ export function buildRefundReceiptDocument(
   }
 
   // ── Refunded items (dynamic across flows) ─────────────────────────────
+  nodes.push({ type: "empty_line" });
   nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
   nodes.push({ type: "text_line", content: "REFUNDED ITEMS", format: BOLD });
   if (data.items.length > 0) {
@@ -217,6 +219,7 @@ export function buildRefundReceiptDocument(
   }
 
   // ── Totals ────────────────────────────────────────────────────────────
+  nodes.push({ type: "empty_line" });
   nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
   if (data.subtotal != null) {
     amountRow(nodes, "Subtotal", money(data.subtotal));
@@ -227,6 +230,7 @@ export function buildRefundReceiptDocument(
   amountRow(nodes, "REFUND TOTAL", money(data.totalRefunded), BOLD);
 
   // ── Refunded to (dynamic by tender) ───────────────────────────────────
+  nodes.push({ type: "empty_line" });
   nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
   const cardLabel = [
     data.cardBrand,
@@ -263,6 +267,7 @@ export function buildRefundReceiptDocument(
     labelLine(nodes, "Terminal", data.terminalId);
     labelLine(nodes, "Original RRN", data.originalRrn);
     labelLine(nodes, "Reason", data.reason);
+    nodes.push({ type: "empty_line" });
     nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
     amountRow(nodes, "Original Payment", money(data.originalPaymentAmount));
     amountRow(nodes, "Refunded To Date", money(data.refundedToDate));
@@ -274,7 +279,8 @@ export function buildRefundReceiptDocument(
     );
   }
 
-  // ── Footer ────────────────────────────────────────────────────────────
+  // ── Footer (fixed refund messaging; never the sale receipt footer_text) ──
+  nodes.push({ type: "empty_line" });
   nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
   nodes.push({
     type: "text_line",
@@ -294,13 +300,7 @@ export function buildRefundReceiptDocument(
       align: "center",
     });
   }
-  if (config?.footerText) {
-    nodes.push({
-      type: "text_line",
-      content: sanitizeForPrint(config.footerText),
-      align: "center",
-    });
-  }
+  nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
 
   if (merchantCopy) {
     nodes.push({ type: "empty_line" });
