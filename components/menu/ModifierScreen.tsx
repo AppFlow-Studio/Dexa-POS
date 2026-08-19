@@ -86,32 +86,50 @@ const CategoryTab = memo(
     category,
     isActive,
     hasSelection,
+    hasError,
     onPress,
+    onLayout,
   }: {
     category: ModifierCategory;
     isActive: boolean;
     hasSelection: boolean;
+    hasError: boolean;
     onPress: (categoryId: string) => void;
+    onLayout?: (categoryId: string, x: number) => void;
   }) => (
     <TouchableOpacity
       onPressIn={() => onPress(category.id)}
+      onLayout={(e) => onLayout?.(category.id, e.nativeEvent.layout.x)}
       className="flex-row items-center gap-x-1 px-3 py-1.5 rounded-full border"
       style={
-        isActive
-          ? { backgroundColor: colors.teal, borderColor: colors.teal }
-          : hasSelection
-            ? { backgroundColor: colors.teal + "22", borderColor: colors.teal }
-            : { backgroundColor: "transparent", borderColor: colors.border }
+        // Error wins over every other state: an unsatisfied required group has
+        // to read as red even while it's the active tab.
+        hasError
+          ? {
+              backgroundColor: colors.danger + "20",
+              borderColor: colors.danger,
+              borderWidth: 2,
+            }
+          : isActive
+            ? { backgroundColor: colors.teal, borderColor: colors.teal }
+            : hasSelection
+              ? {
+                  backgroundColor: colors.teal + "22",
+                  borderColor: colors.teal,
+                }
+              : { backgroundColor: "transparent", borderColor: colors.border }
       }
     >
       <Text
         className="text-xs font-semibold"
         style={{
-          color: isActive
-            ? colors.onSolid
-            : hasSelection
-              ? colors.teal
-              : colors.label,
+          color: hasError
+            ? colors.danger
+            : isActive
+              ? colors.onSolid
+              : hasSelection
+                ? colors.teal
+                : colors.label,
         }}
       >
         {category.name}
@@ -170,7 +188,11 @@ const ModifierOption = memo(
           // rather than flex-basing off the parent row width.
           flex: 1,
           marginHorizontal: 4,
-          marginBottom: 8,
+          // Split evenly (was marginBottom: 8) so the row spacing sits half
+          // above / half below the card. Row height is unchanged (52 + 8),
+          // but the grid now reads vertically centred inside the group's
+          // error frame instead of hugging its top edge.
+          marginVertical: 4,
           minHeight: 52,
         },
         isNo
@@ -283,21 +305,137 @@ const SessionCategoryTab = memo(
     category,
     isActive,
     onPress,
+    onLayout,
   }: {
     category: ModifierCategory;
     isActive: boolean;
     onPress: (categoryId: string) => void;
+    onLayout?: (categoryId: string, x: number) => void;
   }) => {
     const hasSelection = useModifierSelectionStore(
       (s) => (s.selectionCounts[category.id] ?? 0) > 0,
+    );
+    const hasError = useModifierSelectionStore(
+      (s) => s.errorCategoryIds[category.id] === true,
     );
     return (
       <CategoryTab
         category={category}
         isActive={isActive}
         hasSelection={hasSelection}
+        hasError={hasError}
         onPress={onPress}
+        onLayout={onLayout}
       />
+    );
+  },
+);
+
+/**
+ * Height the options grid needs for `options`, capped at `maxHeight`.
+ *
+ * FlashList needs a BOUNDED height to virtualize, but pinning it to the whole
+ * available height left a group of three options sitting in a ~320pt box of
+ * empty space — harmless until the error state drew a border around it, and
+ * wasteful either way. FlashList 1.x doesn't forward onContentSizeChange to
+ * its ScrollView, so the size is derived from the cell's own fixed metrics
+ * instead (see ModifierOption): minHeight 52 + marginVertical 4. The only cell
+ * that outgrows that is a name wrapping to two lines *with* a price row
+ * (8 + 32 + 20 + 8 = 68, +8 margin), and whether a group has priced options is
+ * known from the data. Past `maxHeight` the list scrolls internally, as before.
+ */
+const ROW_HEIGHT_FLAT = 60;
+const ROW_HEIGHT_PRICED = 76;
+
+const getOptionsGridHeight = (
+  options: ModifierCategory["options"],
+  maxHeight: number,
+) => {
+  const rows = Math.max(1, Math.ceil(options.length / OPTION_COLUMNS));
+  const rowHeight = options.some((o) => (o.price ?? 0) > 0)
+    ? ROW_HEIGHT_PRICED
+    : ROW_HEIGHT_FLAT;
+  return Math.min(maxHeight, rows * rowHeight);
+};
+
+/**
+ * Sub-header + framed container for the active modifier group.
+ *
+ * Subscribes to ITS OWN error flag in the selection store so flagging (failed
+ * Done press) and clearing (first valid tap) re-render only this block — not
+ * the whole screen. When flagged, the group name and its "Required" tag turn
+ * the design-system error red and the options block gets a red border, so the
+ * error sits on the offending group rather than in a corner toast.
+ */
+const SessionActiveGroupSection = memo(
+  ({
+    category,
+    children,
+  }: {
+    category: ModifierCategory;
+    children: React.ReactNode;
+  }) => {
+    const hasError = useModifierSelectionStore(
+      (s) => s.errorCategoryIds[category.id] === true,
+    );
+    return (
+      <View className="px-4 pt-3 pb-2">
+        {/* Sub-header row */}
+        <View className="flex-row items-center justify-between mb-3">
+          <Text
+            className="text-sm font-bold"
+            style={{ color: hasError ? colors.danger : colors.heading }}
+          >
+            {category.name}
+          </Text>
+          <View className="flex-row items-center gap-1.5">
+            <Text
+              className="text-xs font-semibold"
+              style={{
+                color: hasError
+                  ? colors.danger
+                  : category.type === "required"
+                    ? colors.warning
+                    : colors.label,
+              }}
+            >
+              {category.type === "required" ? "Required" : "Optional"}
+            </Text>
+            <Text className="text-xs" style={{ color: colors.muted }}>
+              ·
+            </Text>
+            <Text className="text-xs" style={{ color: colors.label }}>
+              {category.selectionType === "single"
+                ? "Single Select"
+                : category.maxSelections
+                  ? `Up to ${category.maxSelections}`
+                  : "Multi Select"}
+            </Text>
+          </View>
+        </View>
+
+        {hasError ? (
+          <Text
+            className="text-xs font-medium mb-2"
+            style={{ color: colors.danger }}
+          >
+            Select an option to continue
+          </Text>
+        ) : null}
+
+        {/* Border is always laid out (transparent when clean) so gaining or
+            losing the error frame doesn't nudge the grid. */}
+        <View
+          style={{
+            borderWidth: 2,
+            borderColor: hasError ? colors.danger : "transparent",
+            borderRadius: 12,
+            padding: 4,
+          }}
+        >
+          {children}
+        </View>
+      </View>
     );
   },
 );
@@ -770,6 +908,13 @@ const ModifierScreenContent = () => {
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // Horizontal group-tab strip + the y offset of the group section inside the
+  // page ScrollView. Both are needed to scroll a flagged required group into
+  // view after a failed Done press (the group can be off-screen in either
+  // axis, and an error the server can't see is no better than a toast).
+  const tabStripScrollRef = useRef<ScrollView | null>(null);
+  const tabXByCategoryRef = useRef<Map<string, number>>(new Map());
+  const groupSectionYRef = useRef(0);
   // Tracks whether the user has touched the modifier-screen qty stepper this
   // session. When false, external cart-side qty changes (e.g. swipe-right
   // increments on the cart row while modifier is open) sync into state.quantity
@@ -1152,6 +1297,29 @@ const ModifierScreenContent = () => {
     dispatch({ type: "SET_ACTIVE_CATEGORY", payload: categoryId });
   }, []);
 
+  const handleTabLayout = useCallback((categoryId: string, x: number) => {
+    tabXByCategoryRef.current.set(categoryId, x);
+  }, []);
+
+  /** Bring a flagged required group into view: activate its tab, scroll the
+   *  page down to the group section and the tab strip across to the tab. */
+  const revealCategory = useCallback((categoryId: string) => {
+    dispatch({ type: "SET_ACTIVE_CATEGORY", payload: categoryId });
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(0, groupSectionYRef.current - 8),
+        animated: true,
+      });
+      const tabX = tabXByCategoryRef.current.get(categoryId);
+      if (tabX !== undefined) {
+        tabStripScrollRef.current?.scrollTo({
+          x: Math.max(0, tabX - 16),
+          animated: true,
+        });
+      }
+    });
+  }, []);
+
   const handleNotesChange = useCallback((text: string) => {
     dispatch({ type: "SET_NOTES", payload: text });
   }, []);
@@ -1236,19 +1404,21 @@ const ModifierScreenContent = () => {
     // Validate required selections BEFORE closing — a failed validation must
     // keep the modal open so the user can fix it.
     if (modifiersItem?.modifiers && modifiersItem.modifiers.length > 0) {
-      const hasRequiredSelections = modifiersItem.modifiers.every(
-        (category) => {
-          if (category.type === "required")
-            return (sessionSelectionCounts[category.id] ?? 0) > 0;
-          return true;
-        },
-      );
-      if (!hasRequiredSelections) {
-        showToast({
-          title: "Missing Selections",
-          message: "Please select all required options before proceeding.",
-          type: "error",
-        });
+      const unsatisfiedRequired = modifiersItem.modifiers
+        .filter(
+          (category) =>
+            category.type === "required" &&
+            (sessionSelectionCounts[category.id] ?? 0) === 0,
+        )
+        .map((category) => category.id);
+      if (unsatisfiedRequired.length > 0) {
+        // Inline error on the offending groups — no toast. The red sits on the
+        // group tabs and on the active group's header/options frame, so the
+        // user sees WHICH group is unsatisfied right where they're looking.
+        useModifierSelectionStore
+          .getState()
+          .setErrorCategories(unsatisfiedRequired);
+        revealCategory(unsatisfiedRequired[0]);
         return;
       }
     }
@@ -1543,6 +1713,10 @@ const ModifierScreenContent = () => {
       currentItem: item,
       close: closeModal,
     } = latestStateRef.current;
+    // Drop any required-group error styling as the screen closes. init() on
+    // the next open also wipes it, but clearing here means no red flashes
+    // during the close animation or on a same-item reopen.
+    useModifierSelectionStore.getState().clearErrorCategories();
     closeModal();
     if (
       currentMode !== "edit" &&
@@ -1571,6 +1745,13 @@ const ModifierScreenContent = () => {
     : null;
 
   const optionsForCategory = currentCategory?.options ?? EMPTY_OPTIONS;
+
+  // Grid box sized to the rows actually present, capped by the space left on
+  // this viewport. `optionsGridHeight` remains the ceiling.
+  const activeOptionsGridHeight = getOptionsGridHeight(
+    optionsForCategory,
+    optionsGridHeight,
+  );
 
   // NOTE: the progressive option-reveal staircase (visibleOptionCount growing
   // 8 → 20 → 32 → … via InteractionManager + a 24ms timer) lived here and has
@@ -1924,8 +2105,13 @@ const ModifierScreenContent = () => {
         )}
 
         {/* ── Category Pill Tabs ──────────────────────────────────────────── */}
-        <View>
+        <View
+          onLayout={(e) => {
+            groupSectionYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
           <ScrollView
+            ref={tabStripScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{
@@ -1942,6 +2128,7 @@ const ModifierScreenContent = () => {
                   category={category}
                   isActive={state.activeCategory === category.id}
                   onPress={handleCategoryTabPress}
+                  onLayout={handleTabLayout}
                 />
               ))}
             {!isReadOnly && (
@@ -1967,62 +2154,28 @@ const ModifierScreenContent = () => {
 
           {/* ── Active Category Options ──────────────────────────────── */}
           {currentCategory && (
-            <View className="px-4 pt-3 pb-2">
-              {/* Sub-header row */}
-              <View className="flex-row items-center justify-between mb-3">
-                <Text
-                  className="text-sm font-bold"
-                  style={{ color: colors.heading }}
-                >
-                  {currentCategory.name}
-                </Text>
-                <View className="flex-row items-center gap-1.5">
-                  <Text
-                    className="text-xs font-semibold"
-                    style={{
-                      color:
-                        currentCategory.type === "required"
-                          ? colors.warning
-                          : colors.label,
-                    }}
-                  >
-                    {currentCategory.type === "required"
-                      ? "Required"
-                      : "Optional"}
-                  </Text>
-                  <Text className="text-xs" style={{ color: colors.muted }}>
-                    ·
-                  </Text>
-                  <Text className="text-xs" style={{ color: colors.label }}>
-                    {currentCategory.selectionType === "single"
-                      ? "Single Select"
-                      : currentCategory.maxSelections
-                        ? `Up to ${currentCategory.maxSelections}`
-                        : "Multi Select"}
-                  </Text>
-                </View>
-              </View>
-
+            <SessionActiveGroupSection category={currentCategory}>
               {/* Options grid — FlashList recycles cells, so switching items
                   reuses the realized option views instead of mounting a new
                   set. No extraData: each cell subscribes to its own
                   selection in useModifierSelectionStore, so taps never
-                  re-run the list. */}
-              <View style={{ height: optionsGridHeight }}>
+                  re-run the list. Height hugs the row count (see
+                  getOptionsGridHeight) so the error border doesn't frame
+                  empty space. */}
+              <View style={{ height: activeOptionsGridHeight }}>
                 <FlashList
                   data={optionsForCategory}
                   numColumns={OPTION_COLUMNS}
                   renderItem={renderOption}
                   keyExtractor={optionKeyExtractor}
-                  estimatedItemSize={60}
+                  estimatedItemSize={ROW_HEIGHT_FLAT}
                   showsVerticalScrollIndicator={
-                    optionsForCategory.length > OPTION_COLUMNS * 2
+                    activeOptionsGridHeight >= optionsGridHeight
                   }
                   nestedScrollEnabled
-                  contentContainerStyle={{ paddingBottom: s(2) }}
                 />
               </View>
-            </View>
+            </SessionActiveGroupSection>
           )}
         </View>
 

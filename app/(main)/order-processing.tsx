@@ -36,6 +36,7 @@ import { PrinterService } from "@/services/printing/PrinterService";
 import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -342,7 +343,7 @@ const OrderProcessing = () => {
     }
 
     if (
-      useStoreSettingsStore.getState().autoCreateOrder &&
+      useLocationConfigStore.getState().config.ordering.autoCreateOrder &&
       currentActiveOrder &&
       isReusableEmptyDraftOrder(currentActiveOrder)
     ) {
@@ -373,7 +374,7 @@ const OrderProcessing = () => {
     // none is active. The screen shows an empty state until the operator
     // explicitly starts an order. We've already resumed any in-progress order
     // above; from here we'd only be fabricating a fresh draft, so bail.
-    if (!useStoreSettingsStore.getState().autoCreateOrder) {
+    if (!useLocationConfigStore.getState().config.ordering.autoCreateOrder) {
       return;
     }
 

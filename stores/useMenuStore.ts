@@ -243,6 +243,11 @@ interface MenuState {
   addTemporaryMenuAccess: (menuName: string) => void
   addTemporaryCategoryAccess: (categoryName: string) => void
   clearTemporaryAccess: () => void // Call this on logout
+  /** Drop specific grants once whatever justified them no longer holds. */
+  revokeTemporaryAccess: (
+    menuNames: string[],
+    categoryNames: string[]
+  ) => void
 
   // Merge standalone entities (categories, items, modifiers, menus)
   mergeStandaloneData: (data: {
@@ -2156,6 +2161,17 @@ export const useMenuStore = create<MenuState>((set, get) => {
       set({ temporaryActiveMenus: [], temporaryActiveCategories: [] })
     },
 
+    revokeTemporaryAccess: (menuNames, categoryNames) => {
+      set(state => ({
+        temporaryActiveMenus: state.temporaryActiveMenus.filter(
+          name => !menuNames.includes(name)
+        ),
+        temporaryActiveCategories: state.temporaryActiveCategories.filter(
+          name => !categoryNames.includes(name)
+        )
+      }))
+    },
+
     // Merge standalone entities (categories, items, modifiers not in any menu)
     mergeStandaloneData: data => {
       set(state => {
@@ -2468,7 +2484,19 @@ export const useMenuStore = create<MenuState>((set, get) => {
                   return {
                     ...category,
                     isActive: mc.is_active,
-                    order: mc.display_order ?? category.order
+                    order: mc.display_order ?? category.order,
+                    // Global category records are stored flat with
+                    // `items: undefined` (see the categoryMap build in
+                    // transformSyncData), so spreading one here produced a menu
+                    // category with no items at all and an empty item grid.
+                    // Re-attach the items that belong to this category.
+                    items:
+                      category.items ??
+                      newMenuItems.filter(
+                        item =>
+                          Array.isArray(item.category) &&
+                          item.category.includes(category.name)
+                      )
                   }
                 }
               )

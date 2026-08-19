@@ -1,6 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
   Check,
@@ -128,12 +129,17 @@ const OrderLineSettingsScreen = () => {
   const s = (n: number) => Math.round(n * uiScale)
   const orderLineSettings = useSettingsStore(s => s.orderLineSettings)
   const setOrderLineSettings = useSettingsStore(s => s.setOrderLineSettings)
-  const managerOverrideTimeoutMinutes = useStoreSettingsStore(
-    s => s.managerOverrideTimeoutMinutes
+  // Both of these live in locations.pos_config so they survive an app update
+  // and reach every station on sync — not device-local storage.
+  const managerOverrideTimeoutMinutes = useLocationConfigStore(
+    s => s.config.security.managerOverrideTimeoutMinutes
   )
+  const autoCreateOrder = useLocationConfigStore(
+    s => s.config.ordering.autoCreateOrder
+  )
+  const updateConfig = useLocationConfigStore(s => s.updateConfig)
   const orderCompletionMode = useStoreSettingsStore(s => s.orderCompletionMode)
   const requirePinPerOrder = useStoreSettingsStore(s => s.requirePinPerOrder)
-  const autoCreateOrder = useStoreSettingsStore(s => s.autoCreateOrder)
   const updateField = useStoreSettingsStore(s => s.updateField)
 
   const [expandedSections, setExpandedSections] = useState({
@@ -533,7 +539,9 @@ const OrderLineSettingsScreen = () => {
                   <TouchableOpacity
                     key={option.value}
                     onPress={() =>
-                      updateField('managerOverrideTimeoutMinutes', option.value)
+                      updateConfig('security', {
+                        managerOverrideTimeoutMinutes: option.value
+                      })
                     }
                     style={{
                       flexDirection: 'row',
@@ -806,7 +814,7 @@ const OrderLineSettingsScreen = () => {
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() =>
-                  updateField('autoCreateOrder', !autoCreateOrder)
+                  updateConfig('ordering', { autoCreateOrder: !autoCreateOrder })
                 }
                 style={{
                   flexDirection: 'row',
@@ -847,7 +855,7 @@ const OrderLineSettingsScreen = () => {
                 <Switch
                   value={autoCreateOrder}
                   onValueChange={value =>
-                    updateField('autoCreateOrder', value)
+                    updateConfig('ordering', { autoCreateOrder: value })
                   }
                   trackColor={{ false: colors.border, true: colors.teal }}
                   thumbColor={colors.onSolid}

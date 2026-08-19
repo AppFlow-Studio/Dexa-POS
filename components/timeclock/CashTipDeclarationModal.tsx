@@ -171,11 +171,6 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
     setRawInput((prev) => (prev.length <= 1 ? "0" : prev.slice(0, -1)));
   }, []);
 
-  const handleDeclareZero = useCallback(() => {
-    setRawInput("0");
-    setStep("confirm");
-  }, []);
-
   const handleNext = useCallback(() => {
     if (declaredAmount > 1000) {
       Alert.alert(
@@ -420,45 +415,25 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
         You can't change this after clock-out without manager help.
       </Text>
 
-      {/* Buttons */}
-      <View style={{ flexDirection: "row", gap: s(10) }}>
-        <TouchableOpacity
-          onPress={handleDeclareZero}
-          style={{
-            flex: 1,
-            paddingVertical: s(13),
-            borderRadius: s(10),
-            borderWidth: 1.5,
-            borderColor: colors.danger + "50",
-            backgroundColor: colors.danger + "10",
-            alignItems: "center",
-          }}
+      {/* Single control. $0.00 is a valid declaration (the RPC only rejects
+          negatives), so Confirm is live on the default value — no separate
+          "Declare $0" button, which was a second route to the identical
+          outcome (rawInput "0" → confirm step → onComplete(0)). */}
+      <TouchableOpacity
+        onPress={handleNext}
+        style={{
+          paddingVertical: s(13),
+          borderRadius: s(10),
+          backgroundColor: colors.teal,
+          alignItems: "center",
+        }}
+      >
+        <Text
+          style={{ fontSize: s(13), fontWeight: "700", color: colors.onSolid }}
         >
-          <Text
-            style={{ fontSize: s(13), fontWeight: "700", color: colors.danger }}
-          >
-            Declare $0
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleNext}
-          disabled={declaredAmount <= 0}
-          style={{
-            flex: 1,
-            paddingVertical: s(13),
-            borderRadius: s(10),
-            backgroundColor:
-              declaredAmount > 0 ? colors.teal : colors.teal + "40",
-            alignItems: "center",
-          }}
-        >
-          <Text
-            style={{ fontSize: s(13), fontWeight: "700", color: colors.onSolid }}
-          >
-            Confirm ${rawInput}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          Confirm ${rawInput}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 
