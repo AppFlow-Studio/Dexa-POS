@@ -282,57 +282,18 @@ const mapExternalExpenseFromDb = (po: any): ExternalExpense => {
   };
 };
 
-const getNextPurchaseOrderNumber = async (
-  supabase: SupabaseClient,
-  merchantId: string,
-  locationId: string,
-) => {
-  // Count only POs (not expenses) for this merchant+location
-  const { count, error } = await supabase
-    .from("purchase_orders")
-    .select("id", { count: "exact", head: true })
-    .eq("merchant_id", merchantId)
-    .eq("location_id", locationId)
-    .or("is_adhoc_expense.is.null,is_adhoc_expense.eq.false");
-
-  if (error) {
-    throw error;
-  }
-
-  const nextSeq = (count ?? 0) + 1;
-  // Pad to at least 4 digits; auto-extends to 5, 6, etc. as the counter grows
-  const padded = String(nextSeq).padStart(
-    Math.max(4, String(nextSeq).length),
-    "0",
-  );
-  return `PO-${padded}`;
-};
-
-const getNextExpenseNumber = async (
-  supabase: SupabaseClient,
-  merchantId: string,
-  locationId: string,
-) => {
-  // Count only expenses for this merchant+location
-  const { count, error } = await supabase
-    .from("purchase_orders")
-    .select("id", { count: "exact", head: true })
-    .eq("merchant_id", merchantId)
-    .eq("location_id", locationId)
-    .eq("is_adhoc_expense", true);
-
-  if (error) {
-    throw error;
-  }
-
-  const nextSeq = (count ?? 0) + 1;
-  // Pad to at least 4 digits; auto-extends to 5, 6, etc. as the counter grows
-  const padded = String(nextSeq).padStart(
-    Math.max(4, String(nextSeq).length),
-    "0",
-  );
-  return `EXP-${padded}`;
-};
+// PO and expense numbers are assigned by the database, not here.
+//
+// This used to be two client-side generators that read COUNT(*) and wrote
+// COUNT+1. Two stations creating a PO at the same moment both read N and
+// both wrote N+1, and a deleted PO made the count reuse a number that was
+// already taken. Both are now handled by the BEFORE INSERT trigger in
+// utils/supabase/migrations/purchase_orders_po_number_integrity.sql, which
+// allocates MAX+1 under a per-scope advisory lock. Omit po_number on
+// insert and read the assigned value back from the returning row.
+//
+// Scope is unchanged: numbering runs per (merchant, location), PO- for
+// purchase orders and EXP- for ad-hoc expenses.
 
 // --- STORE INTERFACE ---
 interface InventoryState {
@@ -902,14 +863,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const { merchantId, locationId } = getCurrentStoreContext();
     const { userId } = getActiveEmployeeContext();
     const now = new Date().toISOString();
-    const poNumber = await getNextPurchaseOrderNumber(
-      supabase,
-      merchantId,
-      locationId,
-    );
     const totalAmount = calculatePurchaseOrderTotal(poData.items);
     const createdByUserId = poData.createdByEmployeeId ?? userId ?? null;
 
+    // po_number is omitted on purpose — the database assigns it.
     const { data: purchaseOrderRow, error: purchaseOrderError } = await supabase
       .from("purchase_orders")
       .insert({
@@ -917,12 +874,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         location_id: locationId,
         vendor_id: poData.vendorId,
         status: purchaseOrderStatusToDb(poData.status),
-        po_number: poNumber,
         created_by: createdByUserId,
         ordered_at: poData.status === "Pending Delivery" ? now : null,
         total_amount: totalAmount,
       })
-      .select("id")
+      .select("id, po_number")
       .single();
 
     if (purchaseOrderError) {
@@ -1237,20 +1193,15 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     if (!supabase) return;
 
     const { merchantId, locationId } = getCurrentStoreContext();
-    const expenseNumber = await getNextExpenseNumber(
-      supabase,
-      merchantId,
-      locationId,
-    );
     const purchasedAt = expense.purchasedAt || new Date().toISOString();
 
+    // po_number is omitted on purpose — the database assigns the EXP-####.
     const { data: expenseRow, error: expenseError } = await supabase
       .from("purchase_orders")
       .insert({
         merchant_id: merchantId,
         location_id: locationId,
         created_by: expense.purchasedByEmployeeId || null,
-        po_number: expenseNumber,
         status: purchaseOrderStatusToDb("Paid"),
         is_adhoc_expense: true,
         total_amount: expense.totalAmount,
@@ -1261,7 +1212,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         expense_vendor_name: expense.storeName ?? null,
         expense_notes: buildExpenseNotes(expense),
       })
-      .select("id")
+      .select("id, po_number")
       .single();
 
     if (expenseError) {
