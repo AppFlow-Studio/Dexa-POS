@@ -52,9 +52,20 @@ shared migration in this ticket creates the reversal linkage that work needs.
 - [x] Shared migration implemented.
 - [x] Physical refund receipt implemented.
 - [x] Auto-print and reprint implemented.
-- [x] Targeted automated verification complete: 27 tests passed.
-- [ ] Migration applied to staging.
+- [x] Hybrid customer-facing layout applied (2026-08-19): `REFUND RECEIPT`
+      title, Date/time, Receipt # / Original Receipt #, Cashier + POS, positive
+      line amounts, Subtotal/Tax, thank-you + "3-5 business days" footer, and a
+      barcode — while retaining processor proof (Refund RRN, Batch, Invoice) and
+      moving deep audit (Terminal, Original RRN, Reason, balances, signature) to
+      the merchant copy. A single document adapts across full / per-item /
+      custom-amount refunds and card vs cash tender.
+- [x] Targeted automated verification complete: 30 tests passed (3 suites).
+- [x] Migration applied to staging (2026-08-19): identity trigger/function, XOR
+      constraint, FK, both unique indexes present; all 74 completed refunds have
+      `refund_number` + `receipt_token` (backfill 0 missing); 12 refund
+      templates seeded. Canonical `.sql` mirrored into the dexapos-website repo.
 - [ ] Physical printer QA complete.
+- [ ] Migration applied to prod (user-run).
 
 ## Verification
 

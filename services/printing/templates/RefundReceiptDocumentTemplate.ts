@@ -20,13 +20,20 @@ export interface RefundReceiptData {
   orderNumber: string;
   orderDate: string;
   refundDate: string;
+  refundTime?: string | null;
+  cashierName?: string | null;
+  posCode?: string | null;
   items: RefundReceiptLineItem[];
   customAmountLabel?: string;
+  subtotal?: number | null;
+  tax?: number | null;
   totalRefunded: number;
   paymentMethod: string;
   cardBrand?: string | null;
   cardLast4?: string | null;
   approvalStatus?: string | null;
+  approvalCode?: string | null;
+  transactionId?: string | null;
   refundRrn?: string | null;
   batchNumber?: string | null;
   invoiceNumber?: string | null;
@@ -49,16 +56,15 @@ function money(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-function negativeMoney(value: number): string {
-  return `-${money(value)}`;
-}
-
 function truncate(value: string, max: number): string {
   const clean = sanitizeForPrint(value);
-  return clean.length <= max ? clean : clean.slice(0, Math.max(1, max - 3)) + "...";
+  return clean.length <= max
+    ? clean
+    : clean.slice(0, Math.max(1, max - 3)) + "...";
 }
 
-function row(
+/** Right-aligned two-column row (label left, value flush right). Omits empty. */
+function amountRow(
   nodes: PrintNode[],
   label: string,
   value: string | null | undefined,
@@ -74,9 +80,29 @@ function row(
   });
 }
 
+/** Left-aligned "Label: value" line. Omits when the value is missing. */
+function labelLine(
+  nodes: PrintNode[],
+  label: string,
+  value: string | null | undefined,
+  format?: { bold?: boolean },
+): void {
+  if (!value) return;
+  nodes.push({
+    type: "text_line",
+    content: truncate(`${label}: ${value}`, WIDTH),
+    format,
+  });
+}
+
 /**
  * Renders only precomputed refund values. All allocation and balance arithmetic
  * belongs in RefundReceiptService so print drivers cannot disagree.
+ *
+ * A single document adapts to all three refund flows:
+ *   - full / per-item  -> `items` populated, printed as positive line amounts.
+ *   - custom amount     -> `items` empty, printed as one `customAmountLabel` line.
+ * and to the tender: card shows approval/RRN/batch proof, cash suppresses them.
  */
 export function buildRefundReceiptDocument(
   data: RefundReceiptData,
@@ -84,7 +110,9 @@ export function buildRefundReceiptDocument(
 ): PrintDocument {
   const nodes: PrintNode[] = [];
   const merchantCopy = data.copyLabel === "Merchant Copy";
+  const isCash = data.paymentMethod.toLowerCase() === "cash";
 
+  // ── Store header ──────────────────────────────────────────────────────
   if (config?.showLogo !== false && data.logoBase64) {
     nodes.push({ type: "image", base64Png: data.logoBase64 });
   }
@@ -116,10 +144,11 @@ export function buildRefundReceiptDocument(
     });
   }
 
+  // ── Title ─────────────────────────────────────────────────────────────
   nodes.push({ type: "empty_line" });
   nodes.push({
     type: "text_line",
-    content: "*** REFUND ***",
+    content: "*** REFUND RECEIPT ***",
     align: "center",
     format: LARGE,
   });
@@ -131,75 +160,144 @@ export function buildRefundReceiptDocument(
       format: BOLD,
     });
   }
-  nodes.push({
-    type: "text_line",
-    content: data.copyLabel ?? "Customer Copy",
-    align: "center",
-    format: BOLD,
-  });
-  nodes.push({ type: "divider", style: "double", lineWidth: WIDTH });
-
-  row(nodes, "Refund #", data.refundNumber, BOLD);
-  row(nodes, "Original Order", data.orderNumber);
-  row(nodes, "Order Date", data.orderDate);
-  row(nodes, "Refund Date", data.refundDate);
-
+  if (merchantCopy) {
+    nodes.push({
+      type: "text_line",
+      content: "Merchant Copy",
+      align: "center",
+      format: BOLD,
+    });
+  }
   nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
+
+  // ── Meta ──────────────────────────────────────────────────────────────
+  if (data.refundTime) {
+    nodes.push({
+      type: "two_column",
+      left: sanitizeForPrint(`Date: ${data.refundDate}`),
+      right: truncate(data.refundTime, 12),
+      lineWidth: WIDTH,
+    });
+  } else {
+    labelLine(nodes, "Date", data.refundDate);
+  }
+  labelLine(nodes, "Receipt #", data.refundNumber, BOLD);
+  labelLine(nodes, "Original Receipt #", data.orderNumber);
+  if (data.cashierName && data.posCode) {
+    nodes.push({
+      type: "two_column",
+      left: truncate(`Cashier: ${data.cashierName}`, WIDTH - 10),
+      right: truncate(`POS: ${data.posCode}`, 10),
+      lineWidth: WIDTH,
+    });
+  } else {
+    labelLine(nodes, "Cashier", data.cashierName);
+    labelLine(nodes, "POS", data.posCode);
+  }
+
+  // ── Refunded items (dynamic across flows) ─────────────────────────────
+  nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
+  nodes.push({ type: "text_line", content: "REFUNDED ITEMS", format: BOLD });
   if (data.items.length > 0) {
     for (const item of data.items) {
       nodes.push({
         type: "two_column",
-        left: truncate(`${item.quantity}x ${item.name}`, 28),
-        right: negativeMoney(item.amount),
+        left: truncate(`${item.quantity} ${item.name}`, 30),
+        right: money(item.amount),
         lineWidth: WIDTH,
       });
     }
   } else {
     nodes.push({
       type: "two_column",
-      left: data.customAmountLabel ?? "Custom refund",
-      right: negativeMoney(data.totalRefunded),
+      left: sanitizeForPrint(data.customAmountLabel ?? "Refund"),
+      right: money(data.totalRefunded),
       lineWidth: WIDTH,
     });
   }
 
-  nodes.push({ type: "divider", style: "double", lineWidth: WIDTH });
-  nodes.push({
-    type: "two_column",
-    left: "TOTAL REFUNDED",
-    right: negativeMoney(data.totalRefunded),
-    lineWidth: WIDTH,
-    format: BOLD,
-  });
-
+  // ── Totals ────────────────────────────────────────────────────────────
   nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
-  row(nodes, "Method", data.paymentMethod, BOLD);
-  const cardLabel = [data.cardBrand, data.cardLast4 ? `*${data.cardLast4}` : null]
+  if (data.subtotal != null) {
+    amountRow(nodes, "Subtotal", money(data.subtotal));
+  }
+  if (data.tax != null) {
+    amountRow(nodes, "Tax", money(data.tax));
+  }
+  amountRow(nodes, "REFUND TOTAL", money(data.totalRefunded), BOLD);
+
+  // ── Refunded to (dynamic by tender) ───────────────────────────────────
+  nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
+  const cardLabel = [
+    data.cardBrand,
+    data.cardLast4 ? `****${data.cardLast4}` : null,
+  ]
     .filter(Boolean)
     .join(" ");
-  row(nodes, "Card", cardLabel || null);
-  row(nodes, "Status", data.approvalStatus);
-  row(nodes, "Refund RRN", data.refundRrn);
-  row(nodes, "Batch", data.batchNumber);
-  row(nodes, "Invoice", data.invoiceNumber);
-  row(nodes, "Terminal", data.terminalId);
-  row(nodes, "Original RRN", data.originalRrn);
+  nodes.push({
+    type: "text_line",
+    content: sanitizeForPrint(
+      `REFUNDED TO: ${isCash ? "CASH" : cardLabel || data.paymentMethod}`,
+    ),
+    format: BOLD,
+  });
+  if (!isCash) {
+    labelLine(nodes, "Approval Code", data.approvalCode);
+    labelLine(nodes, "Refund RRN", data.refundRrn);
+    const batchInvoice = [
+      data.batchNumber ? `Batch: ${data.batchNumber}` : null,
+      data.invoiceNumber ? `Invoice: ${data.invoiceNumber}` : null,
+    ]
+      .filter(Boolean)
+      .join("   ");
+    if (batchInvoice) {
+      nodes.push({ type: "text_line", content: truncate(batchInvoice, WIDTH) });
+    }
+  }
+  labelLine(nodes, "Transaction ID", data.transactionId ?? data.refundNumber);
+  amountRow(nodes, "Refund Amount", money(data.totalRefunded));
 
-  if (data.reason) {
+  // ── Merchant-only audit block ─────────────────────────────────────────
+  if (merchantCopy) {
+    labelLine(nodes, "Status", data.approvalStatus);
+    labelLine(nodes, "Terminal", data.terminalId);
+    labelLine(nodes, "Original RRN", data.originalRrn);
+    labelLine(nodes, "Reason", data.reason);
     nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
-    row(nodes, "Reason", data.reason);
+    amountRow(nodes, "Original Payment", money(data.originalPaymentAmount));
+    amountRow(nodes, "Refunded To Date", money(data.refundedToDate));
+    amountRow(
+      nodes,
+      "Remaining Refundable",
+      money(data.remainingRefundable),
+      BOLD,
+    );
   }
 
+  // ── Footer ────────────────────────────────────────────────────────────
   nodes.push({ type: "divider", style: "solid", lineWidth: WIDTH });
-  row(nodes, "Original Payment", money(data.originalPaymentAmount));
-  row(nodes, "Refunded To Date", money(data.refundedToDate));
-  row(nodes, "Remaining Refundable", money(data.remainingRefundable), BOLD);
-
-  nodes.push({ type: "empty_line" });
-  if (data.paymentMethod.toLowerCase() !== "cash") {
+  nodes.push({
+    type: "text_line",
+    content: "THANK YOU!",
+    align: "center",
+    format: BOLD,
+  });
+  if (!isCash) {
     nodes.push({
       type: "text_line",
-      content: "Credit timing depends on your card issuer.",
+      content: "Refunds may take 3-5 business days",
+      align: "center",
+    });
+    nodes.push({
+      type: "text_line",
+      content: "to appear on your statement.",
+      align: "center",
+    });
+  }
+  if (config?.footerText) {
+    nodes.push({
+      type: "text_line",
+      content: sanitizeForPrint(config.footerText),
       align: "center",
     });
   }
@@ -208,18 +306,16 @@ export function buildRefundReceiptDocument(
     nodes.push({ type: "empty_line" });
     nodes.push({ type: "text_line", content: "Customer Signature:" });
     nodes.push({ type: "text_line", content: "____________________________" });
-  } else if (config?.showQrCode !== false && data.hostedReceiptUrl) {
-    nodes.push({ type: "qr_code", data: data.hostedReceiptUrl, size: 6 });
   }
 
-  if (config?.footerText) {
-    nodes.push({ type: "empty_line" });
-    nodes.push({
-      type: "text_line",
-      content: sanitizeForPrint(config.footerText),
-      align: "center",
-    });
-  }
+  // ── Barcode ───────────────────────────────────────────────────────────
+  nodes.push({ type: "empty_line" });
+  nodes.push({ type: "barcode", data: data.refundNumber });
+  nodes.push({
+    type: "text_line",
+    content: sanitizeForPrint(data.refundNumber),
+    align: "center",
+  });
 
   nodes.push({ type: "feed", lines: 4 });
   nodes.push({ type: "cut" });
