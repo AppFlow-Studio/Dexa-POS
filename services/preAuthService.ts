@@ -6,6 +6,12 @@
 // ============================================================
 
 import { SupabaseClient } from "@supabase/supabase-js";
+import { getDeviceId } from "@/lib/deviceId";
+import {
+  buildKitchenSendQueueParams,
+  createKitchenSendContext,
+  isTerminalKitchenMutationError,
+} from "@/lib/kdsSendTraceability";
 import { toastService } from "@/lib/toastService";
 import type { OrderProfilePayment } from "@/lib/types";
 import type { CastlesService } from "@/services/terminals/castles-service";
@@ -14,6 +20,9 @@ import type { ValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { generateRefId } from "@/types/dejavoo-spin-api";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { queueFailedOperation } from "@/services/offlineSyncInit";
 
 /**
  * Mint a Valor REQ_TXN_ID from the per-terminal counter (echoed back as
@@ -273,42 +282,79 @@ export async function openTab(
       // Backend sync: order status + item statuses
       if (order.db_order_id) {
         const { OrderService } = require("@/services/orderService");
-        OrderService.updateOrderStatus(
-          supabase,
-          order.db_order_id,
-          orderStatus,
-        )
-          .then(({ error }: { error: any }) => {
-            if (
-              error &&
-              error.code !== "P0001" &&
-              !error.message?.includes("already in")
-            ) {
-              console.error("[PreAuthService] Status sync failed:", error);
-            }
-            // Then update item statuses
-            const dbItemIds = order.items
-              .map((i) => i.db_order_item_id)
-              .filter((id): id is string => !!id);
-            if (dbItemIds.length > 0) {
-              // Wave 3.0d-4: per-intent idempotency key so retries dedupe.
-              const { toBulkUpdateStatusKey } = require("@/lib/network/idempotencyKey");
-              OrderService.bulkUpdateOrderItemStatus(
+        const sendItems = order.items.filter((item) => item.db_order_item_id);
+        const dbItemIds = sendItems.map((item) => item.db_order_item_id!);
+        const localItemIds = sendItems.map((item) => item.id);
+        const sendContext = createKitchenSendContext({
+          stationId:
+            useStoreSettingsStore.getState().selectedStation?.id ?? null,
+          deviceId: getDeviceId(),
+          staffId:
+            useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null,
+        });
+
+        if (dbItemIds.length > 0) {
+          void (async () => {
+            try {
+              const result = await OrderService.sendOrderToKitchen(
                 supabase,
+                order.db_order_id!,
                 dbItemIds,
+                orderStatus,
                 kitchenStatus,
-                { keyOverride: toBulkUpdateStatusKey(dbItemIds, kitchenStatus) },
-              ).catch((err: Error) =>
-                console.error(
-                  "[PreAuthService] Item status sync failed:",
-                  err,
+                {
+                  staffId: sendContext.staffId,
+                  stationId: sendContext.stationId,
+                  deviceId: sendContext.deviceId,
+                  idempotencyKey: sendContext.sendIdempotencyKey,
+                  itemsIdempotencyKey: sendContext.itemsIdempotencyKey,
+                },
+              );
+              if (!result.error) return;
+
+              if (isTerminalKitchenMutationError(result.error)) {
+                toastService.show({
+                  title: "Kitchen send incomplete",
+                  message: result.error.hint,
+                  type: "warning",
+                  duration: 7000,
+                });
+                return;
+              }
+
+              await queueFailedOperation(
+                "send_to_kitchen",
+                buildKitchenSendQueueParams(
+                  orderId,
+                  localItemIds,
+                  sendContext,
+                  { orderStatus, itemStatus: kitchenStatus },
+                  { resolvedItemIds: dbItemIds, unresolvedLocalItemIds: [] },
                 ),
+                orderId,
+                undefined,
+                undefined,
+                { idempotencyKey: sendContext.sendIdempotencyKey },
+              );
+            } catch (error) {
+              console.error("[PreAuthService] Send to kitchen failed:", error);
+              await queueFailedOperation(
+                "send_to_kitchen",
+                buildKitchenSendQueueParams(
+                  orderId,
+                  localItemIds,
+                  sendContext,
+                  { orderStatus, itemStatus: kitchenStatus },
+                  { resolvedItemIds: dbItemIds, unresolvedLocalItemIds: [] },
+                ),
+                orderId,
+                undefined,
+                undefined,
+                { idempotencyKey: sendContext.sendIdempotencyKey },
               );
             }
-          })
-          .catch((err: Error) =>
-            console.error("[PreAuthService] Send to kitchen failed:", err),
-          );
+          })();
+        }
       }
     }
 

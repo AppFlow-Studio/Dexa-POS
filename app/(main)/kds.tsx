@@ -9,7 +9,6 @@ import {
     type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { FlashList } from "@shopify/flash-list";
 import { getDeviceId } from "@/lib/deviceId";
 import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
@@ -52,6 +51,7 @@ import {
     GestureResponderEvent,
     Pressable,
     Animated as RNAnimated,
+    ScrollView,
     Text,
     TouchableOpacity,
     View,
@@ -562,65 +562,6 @@ const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
     );
   },
 );
-
-// ─── Ticket Column (virtualized) ──────────────────────────────────
-// One independently-scrolling FlashList per visual column. Columns are kept as
-// separate lists rather than a single `numColumns` grid on purpose: tickets have
-// variable height, and a row-major grid would align them into rows and reorder
-// the queue. Assignment into columns stays upstream in `columnizedTickets` so
-// each list receives a stable, already-ordered array.
-interface KDSTicketColumnProps {
-  tickets: KDSTicket[];
-  isDoneTab: boolean;
-  renderCard: (ticket: KDSTicket) => React.ReactElement;
-  onEmptySpacePress: () => void;
-  uiScale: number;
-}
-
-// Ballpark seed for virtualization only; FlashList self-corrects after the first
-// layout pass. Done cards are compact (no item rows), active cards carry a
-// header plus item/modifier rows.
-const ESTIMATED_TICKET_HEIGHT = 260;
-const ESTIMATED_DONE_TICKET_HEIGHT = 120;
-
-const KDSTicketColumn = React.memo<KDSTicketColumnProps>(
-  ({ tickets, isDoneTab, renderCard, onEmptySpacePress, uiScale }) => {
-    const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, []);
-
-    const renderItem = useCallback(
-      ({ item }: { item: KDSTicket }) => renderCard(item),
-      [renderCard],
-    );
-
-    return (
-      <View style={{ flex: 1, paddingHorizontal: Math.round(2 * uiScale) }}>
-        <FlashList
-          data={tickets}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          estimatedItemSize={
-            isDoneTab ? ESTIMATED_DONE_TICKET_HEIGHT : ESTIMATED_TICKET_HEIGHT
-          }
-          drawDistance={500}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={true}
-          contentContainerStyle={{ paddingBottom: Math.round(20 * uiScale) }}
-          // Tapping past the last card in a column clears single-select focus,
-          // preserving the behavior the old full-grid Pressable provided. Card
-          // Pressables capture their own taps, so this only fires on empty space.
-          ListFooterComponent={
-            <Pressable
-              style={{ height: Math.round(80 * uiScale) }}
-              onPress={onEmptySpacePress}
-            />
-          }
-        />
-      </View>
-    );
-  },
-);
-
-KDSTicketColumn.displayName = "KDSTicketColumn";
 
 // ─── Ticket Card ──────────────────────────────────────────────────
 interface KDSTicketCardProps {
@@ -3960,21 +3901,37 @@ const KitchenDisplayScreen = () => {
           </Text>
         </View>
       ) : (
-        <View
+        <ScrollView
           key={`kds-${activeStatus}-${columnCount}`}
-          style={{ flex: 1, flexDirection: "row", padding: s(4) }}
+          contentContainerStyle={{
+            padding: s(4),
+            paddingBottom: s(20),
+            flexGrow: 1,
+          }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
         >
-          {columnizedTickets.map((colTickets, col) => (
-            <KDSTicketColumn
-              key={`col-${activeStatus}-${col}`}
-              tickets={colTickets}
-              isDoneTab={isDoneTab}
-              renderCard={isDoneTab ? renderDoneTicketCard : renderTicketCard}
-              onEmptySpacePress={handleClearFocus}
-              uiScale={uiScale}
-            />
-          ))}
-        </View>
+          {/* Tapping empty space clears the single-select focus. Card Pressables
+              capture their own taps, so this only fires for the surrounding area. */}
+          <Pressable style={{ flex: 1 }} onPress={handleClearFocus}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+              {columnizedTickets.map((colTickets, col) => (
+                <View
+                  key={`col-${activeStatus}-${col}`}
+                  style={{ flex: 1, paddingHorizontal: s(2) }}
+                >
+                  {colTickets.map((ticket) => (
+                    <View key={ticket.ticket_id}>
+                      {isDoneTab
+                        ? renderDoneTicketCard(ticket)
+                        : renderTicketCard(ticket)}
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
+          </Pressable>
+        </ScrollView>
       )}
 
       {/* ─── Action Menu Overlay ─── */}

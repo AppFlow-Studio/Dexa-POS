@@ -79,12 +79,12 @@ describe("getProviderKey", () => {
     ).toBe("grubhub");
   });
 
-  it("maps first-party online channels to House", () => {
+  it("requires an explicit first-party platform before showing House", () => {
     expect(
       getProviderKey(
         order({ _isOnlineOrder: true, order_source: "online_store" }),
       ),
-    ).toBe("house");
+    ).toBeNull();
     expect(
       getProviderKey(
         order({ _isOnlineOrder: true, delivery_platform: "website" }),
@@ -98,6 +98,27 @@ describe("getProviderKey", () => {
         order({ _isOnlineOrder: true, delivery_platform: "postmates" }),
       ),
     ).toBe("other");
+  });
+
+  it("does not invent a provider chip for a missing integration value", () => {
+    expect(
+      getProviderKey(
+        order({
+          _isOnlineOrder: true,
+          order_source: "orderout",
+          delivery_platform: null,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      getProviderKey(
+        order({
+          _isOnlineOrder: true,
+          order_source: "orderout",
+          delivery_platform: "",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("returns null for in-store orders", () => {
@@ -172,22 +193,28 @@ describe("matchesSearch", () => {
 });
 
 describe("compareOrders", () => {
-  const early = order({ opened_at: "2026-07-28T10:00:00.000Z", total_amount: 5 });
-  const late = order({ opened_at: "2026-07-28T18:00:00.000Z", total_amount: 50 });
+  const early = order({
+    opened_at: "2026-07-28T10:00:00.000Z",
+    total_amount: 5,
+  });
+  const late = order({
+    opened_at: "2026-07-28T18:00:00.000Z",
+    total_amount: 50,
+  });
 
   it("defaults to newest first", () => {
-    expect([early, late].sort((a, b) => compareOrders(a, b, "date_desc"))[0]).toBe(
-      late,
-    );
+    expect(
+      [early, late].sort((a, b) => compareOrders(a, b, "date_desc"))[0],
+    ).toBe(late);
   });
 
   it("sorts by amount in both directions", () => {
-    expect([early, late].sort((a, b) => compareOrders(a, b, "amount_desc"))[0]).toBe(
-      late,
-    );
-    expect([late, early].sort((a, b) => compareOrders(a, b, "amount_asc"))[0]).toBe(
-      early,
-    );
+    expect(
+      [early, late].sort((a, b) => compareOrders(a, b, "amount_desc"))[0],
+    ).toBe(late);
+    expect(
+      [late, early].sort((a, b) => compareOrders(a, b, "amount_asc"))[0],
+    ).toBe(early);
   });
 });
 
@@ -250,15 +277,25 @@ describe("window-wide counts from summaries", () => {
 
   it("buckets providers across the window", () => {
     expect(countProvidersFromSummaries(window, "all")).toEqual({
-      house: 9,
       doordash: 4,
     });
   });
 
   it("builds the chip roster from the window", () => {
-    expect(buildProviderRosterFromSummaries(window)).toEqual([
-      "doordash",
-      "house",
-    ]);
+    expect(buildProviderRosterFromSummaries(window)).toEqual(["doordash"]);
+  });
+
+  it("counts unknown providers as Other but omits missing providers", () => {
+    const rows = [
+      summary({
+        order_source: "orderout",
+        delivery_platform: "mystery_market",
+      }),
+      summary({ order_source: "orderout", delivery_platform: null }),
+      summary({ order_source: "orderout", delivery_platform: "" }),
+    ];
+
+    expect(countProvidersFromSummaries(rows, "all")).toEqual({ other: 1 });
+    expect(buildProviderRosterFromSummaries(rows)).toEqual(["other"]);
   });
 });

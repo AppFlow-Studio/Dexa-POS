@@ -1,5 +1,11 @@
 import { getDeviceId } from "@/lib/deviceId";
 import {
+    buildKitchenSendQueueParams,
+    createKitchenSendContext,
+    isTerminalKitchenMutationError,
+    type KitchenSendContext,
+} from "@/lib/kdsSendTraceability";
+import {
     getKitchenSentStatus,
     getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
@@ -184,6 +190,18 @@ import {
 } from "@/types/conflict-resolution";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
+
+/**
+ * Return the staff profile id to attribute as the order creator — but only when
+ * the station is NOT a self-service kiosk. Kiosk orders must not be attributed
+ * to the employee who happened to enter the PIN to start the kiosk session,
+ * otherwise KDS tickets show "Server: [employee name]" instead of "Self Service".
+ */
+function getKioskSafeCreatorStaffId(): string | null {
+  const station = useOrderStore.getState().currentStation;
+  if (station?.station_type === "self_service") return null;
+  return useEmployeeStore.getState().getEffectiveCreatorStaffId() || null;
+}
 
 const resolveTableNameForOrder = (
   tableIdOrName?: string | null,
@@ -638,6 +656,51 @@ export const setOrderStoreSupabaseClient = (client: SupabaseClient | null) => {
 
 export const getOrderStoreSupabaseClient = () => _supabaseClient;
 
+function createCurrentKitchenSendContext(): KitchenSendContext {
+  return createKitchenSendContext({
+    stationId:
+      useStoreSettingsStore.getState().selectedStation?.id ?? null,
+    deviceId: getDeviceId(),
+    staffId: getKioskSafeCreatorStaffId(),
+  });
+}
+
+async function queueKitchenSend(
+  localOrderId: string,
+  localItemIds: string[],
+  context: KitchenSendContext,
+  extras: {
+    offline_batch?: boolean;
+    requeueGeneration?: number;
+    resolvedItemIds?: string[];
+    unresolvedLocalItemIds?: string[];
+  } = {},
+): Promise<string> {
+  return queueFailedOperation(
+    "send_to_kitchen",
+    buildKitchenSendQueueParams(
+      localOrderId,
+      localItemIds,
+      context,
+      {
+        orderStatus: getOrderSentStatus(),
+        itemStatus: getKitchenSentStatus(),
+      },
+      extras,
+    ),
+    localOrderId,
+    undefined,
+    undefined,
+    { idempotencyKey: context.sendIdempotencyKey },
+  );
+}
+
+type KitchenSendCommitResult =
+  | { status: "sent"; error?: never }
+  | { status: "queued"; error?: unknown }
+  | { status: "rejected"; error: unknown }
+  | { status: "skipped"; error?: never };
+
 /**
  * Hardened backend "send to kitchen" for a batch, shared by sendNewItemsToKitchen
  * / sendNewItemsToKitchenForOrder / fireActiveOrderToKitchen.
@@ -656,15 +719,14 @@ export const getOrderStoreSupabaseClient = () => _supabaseClient;
  * PRECONDITION: the caller has already awaited waitForPendingSyncs and re-read
  * `freshOrder` from the store.
  *
- * Idempotent: bulkUpdateOrderItemStatus uses a deterministic keyOverride and
- * setting an item to the same kitchen status twice is a no-op, so overlap with
- * the retroactive path and/or the offline queue is harmless.
+ * Idempotent: each logical send owns stable composite/item keys. If the first
+ * attempt is queued, replay reuses those keys instead of creating a new send.
  */
 async function _commitKitchenSendForBatch(
   freshOrder: OrderProfile,
   localOrderId: string,
   sentLocalIds: Set<string>,
-): Promise<void> {
+): Promise<KitchenSendCommitResult> {
   const supabase = getOrderStoreSupabaseClient();
   const isOnlineNow = getIsOnline();
 
@@ -683,10 +745,11 @@ async function _commitKitchenSendForBatch(
     .filter((i) => sentLocalIds.has(i.id) && !i.db_order_item_id)
     .map((i) => i.id);
   if (stragglerIds.length > 0) {
-    await queueFailedOperation(
-      "send_to_kitchen",
-      { localOrderId, localItemIds: stragglerIds, offline_batch: true },
+    await queueKitchenSend(
       localOrderId,
+      stragglerIds,
+      createCurrentKitchenSendContext(),
+      { offline_batch: true },
     );
   }
 
@@ -694,54 +757,66 @@ async function _commitKitchenSendForBatch(
   if (!isOnlineNow || !supabase || !freshOrder.db_order_id) {
     const localItemIds = freshSentItems.map((i) => i.id);
     if (localItemIds.length > 0) {
-      queueFailedOperation(
-        "send_to_kitchen",
-        { localOrderId, localItemIds },
+      await queueKitchenSend(
         localOrderId,
+        localItemIds,
+        createCurrentKitchenSendContext(),
       );
     }
-    return;
+    return { status: "queued" };
   }
 
-  if (dbItemIds.length === 0) return; // only stragglers; the queue handles them
+  if (dbItemIds.length === 0) {
+    return stragglerIds.length > 0
+      ? { status: "queued" }
+      : { status: "skipped" };
+  }
 
   const localItemIds = freshSentItems.map((i) => i.id);
+  const sendContext = createCurrentKitchenSendContext();
   try {
-    // The order may still be draft on the backend while local state is optimistic.
-    const transition = await OrderService.ensureOrderOutOfDraft(
+    const result = await OrderService.sendOrderToKitchen(
       supabase,
       freshOrder.db_order_id,
-      getOrderSentStatus(),
-    );
-    if (!transition.ok) {
-      queueFailedOperation(
-        "send_to_kitchen",
-        { localOrderId, localItemIds },
-        localOrderId,
-      );
-      return;
-    }
-    const kitchenSent = getKitchenSentStatus();
-    const result = await OrderService.bulkUpdateOrderItemStatus(
-      supabase,
       dbItemIds,
-      kitchenSent,
-      { keyOverride: toBulkUpdateStatusKey(dbItemIds, kitchenSent) },
+      getOrderSentStatus(),
+      getKitchenSentStatus(),
+      {
+        staffId: sendContext.staffId,
+        stationId: sendContext.stationId,
+        deviceId: sendContext.deviceId,
+        idempotencyKey: sendContext.sendIdempotencyKey,
+        itemsIdempotencyKey: sendContext.itemsIdempotencyKey,
+      },
     );
     if (result?.error) {
-      queueFailedOperation(
-        "send_to_kitchen",
-        { localOrderId, localItemIds },
+      if (isTerminalKitchenMutationError(result.error)) {
+        toastService.show({
+          title: "Kitchen send incomplete",
+          message: result.error.hint,
+          type: "warning",
+          duration: 7000,
+        });
+        return { status: "rejected", error: result.error };
+      }
+
+      await queueKitchenSend(
         localOrderId,
+        localItemIds,
+        sendContext,
+        { resolvedItemIds: dbItemIds, unresolvedLocalItemIds: [] },
       );
+      return { status: "queued", error: result.error };
     }
+    useSyncStatusStore.getState().clearAllForOrder(localItemIds);
+    return { status: "sent" };
   } catch (err) {
     console.error("[_commitKitchenSendForBatch] send failed:", err);
-    queueFailedOperation(
-      "send_to_kitchen",
-      { localOrderId, localItemIds },
-      localOrderId,
-    );
+    await queueKitchenSend(localOrderId, localItemIds, sendContext, {
+      resolvedItemIds: dbItemIds,
+      unresolvedLocalItemIds: [],
+    });
+    return { status: "queued", error: err };
   }
 }
 
@@ -1186,7 +1261,11 @@ const ensureOrderCreated = async (
   // above already short-circuit orders that exist). Dine-in orders are created
   // via seat_guests (guarded separately at the seating path), but if one ever
   // reaches here pre-seating it should be gated too.
+  // Self-service kiosk orders are exempt — no staff is ringing the order.
+  const currentStation = useOrderStore.getState().currentStation;
+  const isKiosk = currentStation?.station_type === "self_service";
   if (
+    !isKiosk &&
     useStoreSettingsStore.getState().requirePinPerOrder &&
     useEmployeeStore.getState().orderAttributionOrderId !== order.id
   ) {
@@ -1239,8 +1318,7 @@ const ensureOrderCreated = async (
       p_customer_phone: order.customer_phone || null,
       p_special_instructions: null,
       p_device_id: getDeviceId(),
-      p_created_by_staff_id:
-        useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
+      p_created_by_staff_id: getKioskSafeCreatorStaffId(),
       p_station_id:
         useStoreSettingsStore.getState().selectedStation?.id || null,
     };
@@ -1379,8 +1457,7 @@ const ensureOrderCreated = async (
         p_customer_phone: order.customer_phone || null,
         p_special_instructions: null,
         p_device_id: getDeviceId(),
-        p_created_by_staff_id:
-          useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
+        p_created_by_staff_id: getKioskSafeCreatorStaffId(),
         p_station_id:
           useStoreSettingsStore.getState().selectedStation?.id || null,
       };
@@ -1511,6 +1588,22 @@ const ensureOrderCreated = async (
             } catch (e) {
               console.warn(
                 "[ensureOrderCreated] Failed to sync pre-set customer_id:",
+                e,
+              );
+            }
+          }
+
+          // Self-service (kiosk) — set order_source on the backend row so KDS
+          // tickets and order-source filtering reflect the correct origin.
+          if (order.order_source === "kiosk" && supabase) {
+            try {
+              await supabase
+                .from("orders")
+                .update({ order_source: "kiosk" })
+                .eq("id", backendId);
+            } catch (e) {
+              console.warn(
+                "[ensureOrderCreated] Failed to sync kiosk order_source:",
                 e,
               );
             }
@@ -2136,54 +2229,47 @@ const addItemToBackend = async (
           }
 
           // Collect ALL fired items for this order (not just this one)
-          const allDbItemIds = (postSyncOrder?.items ?? [])
-            .filter(
-              (i) =>
-                i.kitchen_status === kitchenSentStatus && i.db_order_item_id,
-            )
-            .map((i) => i.db_order_item_id!);
+          const firedSyncedItems = (postSyncOrder?.items ?? []).filter(
+            (i) =>
+              i.kitchen_status === kitchenSentStatus && i.db_order_item_id,
+          );
+          const allDbItemIds = firedSyncedItems.map(
+            (i) => i.db_order_item_id!,
+          );
+          const allLocalItemIds = firedSyncedItems.map((i) => i.id);
+          const retryLocalItemIds =
+            allLocalItemIds.length > 0 ? allLocalItemIds : [item.id];
           if (__DEV__)
             console.log(
               `[addItemToBackend] Last item synced, batch-sending ${allDbItemIds.length} items to kitchen`,
             );
+          const retroSendContext = createCurrentKitchenSendContext();
           try {
-            // Update order status first (draft → sent_to_kitchen) before setting
-            // item statuses — the DB constraint rejects sent_to_kitchen_at on draft orders.
-            // Perf A1: verify-SELECT lives inside ensureOrderOutOfDraft, error path only.
-            if (dbOrderId) {
-              const transition = await OrderService.ensureOrderOutOfDraft(
-                supabase,
-                dbOrderId,
-                getOrderSentStatus(),
+            // The composite RPC transitions a draft order and fires its items
+            // under the same attempt/idempotency record.
+            if (!dbOrderId) {
+              await queueKitchenSend(
+                resolveOrderKey(),
+                retryLocalItemIds,
+                retroSendContext,
               );
-              if (!transition.ok) {
-                console.warn(
-                  "[addItemToBackend] Order status transition failed before retroactive kitchen send; deferring",
-                  { dbOrderId, error: transition.error },
-                );
-                queueFailedOperation(
-                  "send_to_kitchen",
-                  { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
-                  resolveOrderKey(),
-                );
-                return true;
-              }
+              return true;
             }
-            const ksResp = await OrderService.bulkUpdateOrderItemStatus(
+            const ksResp = await OrderService.sendOrderToKitchen(
               supabase,
+              dbOrderId!,
               allDbItemIds,
+              getOrderSentStatus(),
               kitchenSentStatus,
               {
-                keyOverride: toBulkUpdateStatusKey(
-                  allDbItemIds,
-                  kitchenSentStatus,
-                ),
+                staffId: retroSendContext.staffId,
+                stationId: retroSendContext.stationId,
+                deviceId: retroSendContext.deviceId,
+                idempotencyKey: retroSendContext.sendIdempotencyKey,
+                itemsIdempotencyKey: retroSendContext.itemsIdempotencyKey,
               },
             );
-            if (
-              ksResp?.error?.code === "DEADLINE_EXCEEDED" ||
-              (ksResp?.error && !ksResp.data)
-            ) {
+            if (ksResp?.error) {
               if (__DEV__)
                 console.log(
                   "[QTY-DIAG-MOD] KITCHEN-BULK-STATUS RESPONSE-ERROR-QUEUE (open-item)",
@@ -2192,21 +2278,31 @@ const addItemToBackend = async (
                     errCode: (ksResp.error as any)?.code,
                   },
                 );
-              queueFailedOperation(
-                "send_to_kitchen",
-                { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
-                resolveOrderKey(),
-              );
+              if (!isTerminalKitchenMutationError(ksResp.error)) {
+                await queueKitchenSend(
+                  resolveOrderKey(),
+                  retryLocalItemIds,
+                  retroSendContext,
+                  {
+                    resolvedItemIds: allDbItemIds,
+                    unresolvedLocalItemIds: [],
+                  },
+                );
+              }
             }
           } catch (err) {
             console.warn(
               "[addItemToBackend] Retroactive kitchen send failed, queuing send_to_kitchen:",
               err,
             );
-            queueFailedOperation(
-              "send_to_kitchen",
-              { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+            await queueKitchenSend(
               resolveOrderKey(),
+              retryLocalItemIds,
+              retroSendContext,
+              {
+                resolvedItemIds: allDbItemIds,
+                unresolvedLocalItemIds: [],
+              },
             );
           }
         }
@@ -2656,56 +2752,47 @@ const addItemToBackend = async (
         }
 
         // Collect ALL fired items for this order (not just this one)
-        const allDbItemIds2 = (postSyncOrder?.items ?? [])
-          .filter(
-            (i) =>
-              i.kitchen_status === kitchenSentStatus2 && i.db_order_item_id,
-          )
-          .map((i) => i.db_order_item_id!);
+        const firedSyncedItems2 = (postSyncOrder?.items ?? []).filter(
+          (i) =>
+            i.kitchen_status === kitchenSentStatus2 && i.db_order_item_id,
+        );
+        const allDbItemIds2 = firedSyncedItems2.map(
+          (i) => i.db_order_item_id!,
+        );
+        const allLocalItemIds2 = firedSyncedItems2.map((i) => i.id);
+        const retryLocalItemIds2 =
+          allLocalItemIds2.length > 0 ? allLocalItemIds2 : [item.id];
         if (__DEV__)
           console.log(
             `[addItemToBackend] Last item synced, batch-sending ${allDbItemIds2.length} items to kitchen`,
           );
+        const retroSendContext2 = createCurrentKitchenSendContext();
         try {
-          // Must update order status BEFORE bulk-updating item statuses.
-          // The order was created as 'draft' in the backend; bulkUpdateOrderItemStatus
-          // sets sent_to_kitchen_at on the order which is rejected if still draft
-          // (valid_status_transitions constraint). Update order status first (idempotent).
-          // Perf A1: verify-SELECT lives inside ensureOrderOutOfDraft, error path only.
-          if (dbOrderId) {
-            const transition = await OrderService.ensureOrderOutOfDraft(
-              supabase,
-              dbOrderId,
-              getOrderSentStatus(),
+          // The composite RPC transitions a draft order and fires its items
+          // under the same attempt/idempotency record.
+          if (!dbOrderId) {
+            await queueKitchenSend(
+              resolveOrderKey(),
+              retryLocalItemIds2,
+              retroSendContext2,
             );
-            if (!transition.ok) {
-              console.warn(
-                "[addItemToBackend] Order status transition failed before retroactive kitchen send; deferring",
-                { dbOrderId, error: transition.error },
-              );
-              queueFailedOperation(
-                "send_to_kitchen",
-                { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
-                resolveOrderKey(),
-              );
-              return true;
-            }
+            return true;
           }
-          const ksResp2 = await OrderService.bulkUpdateOrderItemStatus(
+          const ksResp2 = await OrderService.sendOrderToKitchen(
             supabase,
+            dbOrderId,
             allDbItemIds2,
+            getOrderSentStatus(),
             kitchenSentStatus2,
             {
-              keyOverride: toBulkUpdateStatusKey(
-                allDbItemIds2,
-                kitchenSentStatus2,
-              ),
+              staffId: retroSendContext2.staffId,
+              stationId: retroSendContext2.stationId,
+              deviceId: retroSendContext2.deviceId,
+              idempotencyKey: retroSendContext2.sendIdempotencyKey,
+              itemsIdempotencyKey: retroSendContext2.itemsIdempotencyKey,
             },
           );
-          if (
-            ksResp2?.error?.code === "DEADLINE_EXCEEDED" ||
-            (ksResp2?.error && !ksResp2.data)
-          ) {
+          if (ksResp2?.error) {
             if (__DEV__)
               console.log(
                 "[QTY-DIAG-MOD] KITCHEN-BULK-STATUS RESPONSE-ERROR-QUEUE (regular)",
@@ -2714,21 +2801,31 @@ const addItemToBackend = async (
                   errCode: (ksResp2.error as any)?.code,
                 },
               );
-            queueFailedOperation(
-              "send_to_kitchen",
-              { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
-              resolveOrderKey(),
-            );
+            if (!isTerminalKitchenMutationError(ksResp2.error)) {
+              await queueKitchenSend(
+                resolveOrderKey(),
+                retryLocalItemIds2,
+                retroSendContext2,
+                {
+                  resolvedItemIds: allDbItemIds2,
+                  unresolvedLocalItemIds: [],
+                },
+              );
+            }
           }
         } catch (err) {
           console.warn(
             "[addItemToBackend] Retroactive kitchen send failed, queuing send_to_kitchen:",
             err,
           );
-          queueFailedOperation(
-            "send_to_kitchen",
-            { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+          await queueKitchenSend(
             resolveOrderKey(),
+            retryLocalItemIds2,
+            retroSendContext2,
+            {
+              resolvedItemIds: allDbItemIds2,
+              unresolvedLocalItemIds: [],
+            },
           );
         }
       }
@@ -3555,34 +3652,18 @@ const syncPaymentToBackend = async (
       // Send items to kitchen if payment marked them as "sent"
       const postPaymentOrder = useOrderStore.getState().ordersById[order.id];
       if (postPaymentOrder) {
-        const kitchenSentDbIds = postPaymentOrder.items
-          .filter((i) => i.kitchen_status === "sent" && i.db_order_item_id)
-          .map((i) => i.db_order_item_id!);
+        const kitchenSentLocalIds = new Set(
+          postPaymentOrder.items
+            .filter((i) => i.kitchen_status === "sent")
+            .map((i) => i.id),
+        );
 
-        if (kitchenSentDbIds.length > 0) {
-          const supabase = getOrderStoreSupabaseClient();
-          if (supabase) {
-            OrderService.bulkUpdateOrderItemStatus(
-              supabase,
-              kitchenSentDbIds,
-              "sent",
-              {
-                keyOverride: toBulkUpdateStatusKey(kitchenSentDbIds, "sent"),
-              },
-            )
-              .then(() => {
-                if (__DEV__)
-                  console.log(
-                    `[syncPaymentToBackend] Sent ${kitchenSentDbIds.length} items to kitchen`,
-                  );
-              })
-              .catch((err) =>
-                console.error(
-                  "[syncPaymentToBackend] Failed to send items to kitchen:",
-                  err,
-                ),
-              );
-          }
+        if (kitchenSentLocalIds.size > 0) {
+          void _commitKitchenSendForBatch(
+            postPaymentOrder,
+            order.id,
+            kitchenSentLocalIds,
+          );
         }
       }
 
@@ -8087,6 +8168,16 @@ export const useOrderStore = create<OrderState>()(
             // Phase 1 Foundation: Get station context for new orders
             const { currentStationId, currentStation } = get();
 
+            // Self-service (kiosk) — no employee is ringing the order, so
+            // server_name is "Self Service" and there's no staff attribution.
+            const isKiosk = currentStation?.station_type === "self_service";
+            const serverName = isKiosk
+              ? "Self Service"
+              : activeEmployee?.fullName || "Unknown";
+            const staffProfileId = isKiosk
+              ? null
+              : activeEmployee?.profileId || null;
+
             // Generate local order numbers (station-aware if station is set)
             const selectedStore =
               useStoreSettingsStore.getState().selectedStore;
@@ -8123,7 +8214,8 @@ export const useOrderStore = create<OrderState>()(
               payments: [],
               opened_at: new Date().toISOString(),
               guest_count: details?.guestCount || 1,
-              server_name: activeEmployee?.fullName || "Unknown",
+              server_name: serverName,
+              order_source: isKiosk ? "kiosk" : undefined,
 
               // Local order numbers (station-aware)
               display_number: localNumbers?.displayNumber,
@@ -8147,7 +8239,7 @@ export const useOrderStore = create<OrderState>()(
               _sourceStationName: currentStation?.station_name || null,
 
               // Staff attribution
-              created_by_staff_profile_id: activeEmployee?.profileId || null,
+              created_by_staff_profile_id: staffProfileId,
             };
             set((state) => {
               state.ordersById[newOrder.id] = newOrder;
@@ -8239,10 +8331,14 @@ export const useOrderStore = create<OrderState>()(
             // attribution since cleared) accept items without a second PIN, while
             // still gating brand-new QSR orders. Covers every add surface since
             // they all funnel through here.
+            // Self-service kiosk orders are exempt — no staff is ringing.
+            const currentStation = get().currentStation;
+            const isKiosk = currentStation?.station_type === "self_service";
             const orderNotYetCreated =
               !activeOrder.db_order_id &&
               !getOrderCreationOperationId(activeOrder.id);
             if (
+              !isKiosk &&
               orderNotYetCreated &&
               useStoreSettingsStore.getState().requirePinPerOrder &&
               useEmployeeStore.getState().orderAttributionOrderId !==
@@ -13861,19 +13957,26 @@ export const useOrderStore = create<OrderState>()(
               await get().waitForPendingSyncs(firedOrderId);
               const sendOrder = get().ordersById[firedOrderId];
               if (sendOrder) {
-                await _commitKitchenSendForBatch(
+                const sendResult = await _commitKitchenSendForBatch(
                   sendOrder,
                   firedOrderId,
                   firedItemIds,
                 );
+                if (sendResult.status === "sent") {
+                  toastService.show({
+                    title: "Order Sent",
+                    message: "The order was confirmed by the kitchen service.",
+                    type: "success",
+                  });
+                } else if (sendResult.status === "queued") {
+                  toastService.show({
+                    title: "Kitchen send queued",
+                    message: "The order will retry when the connection recovers.",
+                    type: "warning",
+                  });
+                }
               }
             })();
-
-            toastService.show({
-              title: "Order Sent",
-              message: "The order has been successfully sent to the kitchen.",
-              type: "success",
-            });
           },
 
           transferOrderToTable: (orderId, newTableId) => {
@@ -13987,14 +14090,8 @@ export const useOrderStore = create<OrderState>()(
 
             // No need to manually update `orders` array - the subscription will handle it.
 
-            // Show toast immediately — local state is already updated, UI is responsive.
-            toastService.show({
-              title: "Items Sent",
-              message: `${newItems.length} new item${
-                newItems.length > 1 ? "s" : ""
-              } sent to the kitchen.`,
-              type: "success",
-            });
+            // Keep the local acknowledgement fast, but do not claim backend
+            // success until requested_count matches updated_count.
             perfSend.endAfterPaint();
 
             // Auto-print kitchen tickets (centralized — fires for all send-to-kitchen paths)
@@ -14026,11 +14123,26 @@ export const useOrderStore = create<OrderState>()(
             // the wait when the retroactive "last sibling" gate raced (the
             // "sent N, only M reached the kitchen" bug).
             const sentLocalIds = new Set(newItems.map((item) => item.id));
-            await _commitKitchenSendForBatch(
+            const sendResult = await _commitKitchenSendForBatch(
               freshOrder,
               activeOrderId,
               sentLocalIds,
             );
+            if (sendResult.status === "sent") {
+              toastService.show({
+                title: "Items Sent",
+                message: `${newItems.length} new item${
+                  newItems.length > 1 ? "s" : ""
+                } confirmed by the kitchen service.`,
+                type: "success",
+              });
+            } else if (sendResult.status === "queued") {
+              toastService.show({
+                title: "Kitchen send queued",
+                message: "Items will retry when the connection recovers.",
+                type: "warning",
+              });
+            }
           },
 
           sendNewItemsToKitchenForOrder: async (orderId: string) => {
@@ -17862,6 +17974,16 @@ export const useOrderStore = create<OrderState>()(
                       });
                       return deduped;
                     })(),
+                    // Keep the "backend has N items" hint truthful. It is
+                    // otherwise written ONLY by the broadcast path (upsertOrder),
+                    // so a count from a header-only broadcast would outlive an
+                    // authoritative fetch that legitimately returned zero items —
+                    // and PrinterService's header-only-shell guard would then
+                    // block that order's receipt forever. This fetch IS the
+                    // better source: mirror it.
+                    _broadcastItemCount: transformedItems.filter(
+                      (item) => !item.is_voided,
+                    ).length,
                     payments: [...mergedPayments, ...localPendingPayments],
                     // Reversals and refund items from backend
                     reversals: reversalsData,

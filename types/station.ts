@@ -43,18 +43,39 @@ export interface StationPaymentTerminal {
   epi?: string;
   /** Hardware serial number printed on the device */
   serial_number?: string | null;
-  last_connection_status: "Online" | "Offline" | "NotFound" | null;
+  /** Terminal firmware / app version (Castles infAppVersion, Valor APP_VERSION) */
+  firmware_version?: string | null;
+  last_connection_status:
+    | "Online"
+    | "Offline"
+    | "NotFound"
+    | "IdentityMismatch"
+    | null;
   last_connection_test_at: string | null;
   consecutive_failures?: number;
   health_check_interval?: number;
   connection_type?: "cloud" | "local" | "local_socket" | "usb";
+  /**
+   * Auto-batch settlement config (Castles). Projected from payment_terminals by
+   * get_location_stations_with_status. Undefined on un-migrated environments —
+   * treat undefined as OFF (the auto-settle scheduler fails safe).
+   */
+  auto_settle?: boolean | null;
+  /** Wall-clock time-of-day ("HH:MM[:SS]") the daily auto-batch fires, in the location timezone. */
+  settle_time?: string | null;
 }
 
 // Station as returned from get_location_stations_with_status RPC
 export interface Station {
   id: string;
   station_name: string;
-  station_type: "register" | "terminal" | "kiosk" | "mobile" | "kds";
+  station_type:
+    | "register"
+    | "terminal"
+    | "self_service"
+    | "kiosk"
+    | "mobile"
+    | "kds";
   station_number: number;
   is_active: boolean;
   is_available: boolean;
@@ -91,6 +112,10 @@ export interface Station {
 
   // Payment terminal linked to this station (non-sensitive metadata only)
   payment_terminal?: StationPaymentTerminal | null;
+
+  // Kiosk profile linked to this (self_service) station. Drives the kiosk
+  // appearance/behavior config — see hooks/kiosk/useKioskProfile.ts.
+  kiosk_profile_id?: string | null;
 }
 
 export interface StationCurrentSession {
@@ -119,6 +144,8 @@ export interface SelectedStation {
   current_receipt_printer_id?: string | null;
   // Payment terminal linked to this station (safe to persist - non-sensitive metadata only)
   payment_terminal?: StationPaymentTerminal | null;
+  // Kiosk profile linked to this (self_service) station — drives kiosk config.
+  kiosk_profile_id?: string | null;
 }
 
 // Response from pos_staff_login RPC

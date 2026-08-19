@@ -20,6 +20,8 @@ import {
 } from '@/types/valor';
 import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore';
 import { withDeadline, DeadlineExceededError } from '@/lib/network/withDeadline';
+import { reconcileTerminalSerial } from '@/services/terminals/terminalIdentity';
+import { toastService } from '@/lib/toastService';
 
 // Hard ceiling for an interactive "Test Connection" so the spinner can never
 // spin forever. A healthy terminal responds in <2s; a wedged one will never
@@ -82,6 +84,7 @@ export function usePaymentTerminal() {
         lastConnectionTest: t.last_connection_test_at,
         lastConnectionStatus: t.last_connection_status,
         serialNumber: t.serial_number,
+        firmwareVersion: t.firmware_version,
       }));
 
       setTerminals(mappedTerminals);
@@ -190,15 +193,26 @@ export function usePaymentTerminal() {
             console.warn('[usePaymentTerminal] Castles DB health update failed:', dbErr);
           }
 
-          // Write serial number if the terminal reported one
+          // Reconcile the reported serial against the row's stored identity.
+          // Never blindly overwrite: a different serial means a different
+          // physical device — block + warn instead of re-attributing batches.
           if (result.data?.infSN) {
-            supabase
-              .from('payment_terminals')
-              .update({ serial_number: result.data.infSN })
-              .eq('id', targetId)
-              .then(({ error }) => {
-                if (error) console.warn('[usePaymentTerminal] Serial number update failed:', error);
-              });
+            reconcileTerminalSerial({ supabase, terminalId: targetId, discoveredSerial: result.data.infSN })
+              .then((r) => {
+                if (r.kind === 'mismatch') {
+                  updateTerminalStatus(targetId, {
+                    lastConnectionStatus: 'IdentityMismatch',
+                    lastErrorMessage: `Serial mismatch: device ${r.discoveredSerial} ≠ registered ${r.storedSerial}`,
+                  });
+                  toastService.show({
+                    type: 'error',
+                    title: 'Terminal identity mismatch',
+                    message: `This device (S/N ${r.discoveredSerial}) is not the registered terminal (S/N ${r.storedSerial}). Register it as a new terminal in Settings → Devices.`,
+                    duration: 8000,
+                  });
+                }
+              })
+              .catch((e) => console.warn('[usePaymentTerminal] serial reconcile failed:', e));
           }
 
           return true;
@@ -290,13 +304,22 @@ export function usePaymentTerminal() {
         }
 
         if (qResult.success && qResult.data?.serialNumber) {
-          supabase
-            .from('payment_terminals')
-            .update({ serial_number: qResult.data.serialNumber })
-            .eq('id', targetId)
-            .then(({ error }) => {
-              if (error) console.warn('[usePaymentTerminal] Valor serial update failed:', error);
-            });
+          reconcileTerminalSerial({ supabase, terminalId: targetId, discoveredSerial: qResult.data.serialNumber })
+            .then((r) => {
+              if (r.kind === 'mismatch') {
+                updateTerminalStatus(targetId, {
+                  lastConnectionStatus: 'IdentityMismatch',
+                  lastErrorMessage: `Serial mismatch: device ${r.discoveredSerial} ≠ registered ${r.storedSerial}`,
+                });
+                toastService.show({
+                  type: 'error',
+                  title: 'Terminal identity mismatch',
+                  message: `This device (S/N ${r.discoveredSerial}) is not the registered terminal (S/N ${r.storedSerial}). Register it as a new terminal in Settings → Devices.`,
+                  duration: 8000,
+                });
+              }
+            })
+            .catch((e) => console.warn('[usePaymentTerminal] Valor serial reconcile failed:', e));
         }
 
         if (!qResult.success) setError(qResult.error || 'Terminal did not respond to query');

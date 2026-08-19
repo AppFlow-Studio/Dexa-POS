@@ -1,13 +1,9 @@
 import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
 } from "@/components/ui/popover";
 import type { OnlineOrderDateFilter } from "@/hooks/orders/useOnlineOrdersByDate";
-import {
-    getCurrentBusinessDay,
-    type BusinessDayConfig,
-} from "@/lib/businessDay";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -26,19 +22,13 @@ interface DatePill {
   getValue: () => { startDate: string | null; endDate: string | null };
 }
 
-function resolveConfig(): BusinessDayConfig {
+function resolveTimezone(): string {
   const store = useStoreSettingsStore.getState().selectedStore;
-  return {
-    timezone: store?.timezone || "UTC",
-    rolloverHour: store?.business_day_start_hour ?? 0,
-  };
+  return store?.timezone || "UTC";
 }
 
-function offsetBusinessDay(daysAgo: number, config: BusinessDayConfig): string {
-  const today = getCurrentBusinessDay(config);
-  if (daysAgo === 0) return today;
-  const dt = DateTime.fromISO(today, { zone: config.timezone });
-  return dt.minus({ days: daysAgo }).toISODate()!;
+function offsetLocalDay(daysAgo: number, timezone: string): string {
+  return DateTime.now().setZone(timezone).minus({ days: daysAgo }).toISODate()!;
 }
 
 const DATE_PILLS: DatePill[] = [
@@ -51,8 +41,7 @@ const DATE_PILLS: DatePill[] = [
     label: "Yesterday",
     preset: "yesterday",
     getValue: () => {
-      const config = resolveConfig();
-      const yesterday = offsetBusinessDay(1, config);
+      const yesterday = offsetLocalDay(1, resolveTimezone());
       return { startDate: yesterday, endDate: yesterday };
     },
   },
@@ -60,9 +49,9 @@ const DATE_PILLS: DatePill[] = [
     label: "Last 7",
     preset: "last_7_days",
     getValue: () => {
-      const config = resolveConfig();
-      const end = offsetBusinessDay(0, config);
-      const start = offsetBusinessDay(6, config);
+      const timezone = resolveTimezone();
+      const end = offsetLocalDay(0, timezone);
+      const start = offsetLocalDay(6, timezone);
       return { startDate: start, endDate: end };
     },
   },

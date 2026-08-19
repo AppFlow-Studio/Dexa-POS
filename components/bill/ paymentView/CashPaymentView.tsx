@@ -1,4 +1,5 @@
 import { useCFD } from "@/contexts/CFDProvider";
+import { computeChangeBreakdown } from "@/lib/cashChange";
 import { round2 } from "@/lib/order-calculator";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
@@ -118,6 +119,10 @@ const CashPaymentView = () => {
         tipAmount,
         transactionDetails: {
           amountTendered: amountTenderedNum,
+          // Persist the change the cashier actually owes back so it lands on the
+          // optimistic payment record immediately — no backend sync round-trip.
+          // Powers the moment-of-sale receipt, success screen, and order history.
+          changeGiven: Math.max(0, changeDue),
           isCashPriced: true,
         },
       });
@@ -185,25 +190,9 @@ const CashPaymentView = () => {
   const presetsRow2 = eligiblePresets.slice(2);
 
   // Change calculator rows: bills to break down the change
-  const changeBreakdown = (() => {
-    if (!isSufficient || displayChangeDue <= 0) return null;
-    const bills = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
-    const result: { label: string; count: number }[] = [];
-    let remaining = Math.round(displayChangeDue * 100);
-    for (const bill of bills) {
-      const billCents = Math.round(bill * 100);
-      const count = Math.floor(remaining / billCents);
-      if (count > 0) {
-        result.push({
-          label:
-            bill >= 1 ? `$${bill.toFixed(0)}` : `${Math.round(bill * 100)}¢`,
-          count,
-        });
-        remaining -= count * billCents;
-      }
-    }
-    return result;
-  })();
+  const changeBreakdown = computeChangeBreakdown(
+    isSufficient ? displayChangeDue : 0,
+  );
 
   const labelStyle = getLabelStyle(s);
   const inputStyle = getInputStyle(s);

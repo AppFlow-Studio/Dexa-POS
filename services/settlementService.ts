@@ -7,6 +7,7 @@ import { captureRpcError } from "@/lib/supabase";
 import { addPendingFinalize } from "@/services/pendingFinalize";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getSharedValorService } from "@/services/terminals/valor-service";
+import { reconcileTerminalSerial } from "@/services/terminals/terminalIdentity";
 import { VALOR_DEFAULT_PORT, VALOR_SETTLEMENT_TIMEOUT_MS } from "@/types/valor";
 import type {
     CastlesSettlementHostResult,
@@ -79,6 +80,62 @@ interface UnsettledSummaryRow {
   stuck_batch_uuid: string | null;
 }
 
+// ── Settlement attempt audit log (best-effort) ───────────────────
+// Writes a per-phase row to settlement_attempts via log_settlement_attempt().
+// Best-effort: a missing RPC (env not migrated) is warned ONCE and swallowed so
+// it never breaks settlement — but we do NOT swallow silently forever, since this
+// is the forensic trail for the feature most likely to strand money.
+
+let _logAttemptRpcMissing = false;
+
+export async function logSettlementAttempt(
+  supabase: SupabaseClient,
+  args: {
+    terminalId: string;
+    phase: "prepare" | "terminal_command" | "finalize";
+    outcome: "started" | "success" | "failed" | "timeout" | "blocked";
+    detail?: string | null;
+    batchUuid?: string | null;
+    initiatedBy?: string | null;
+  },
+): Promise<void> {
+  try {
+    const { error } = await supabase.rpc("log_settlement_attempt", {
+      p_terminal_id: args.terminalId,
+      p_phase: args.phase,
+      p_outcome: args.outcome,
+      p_detail: args.detail ?? null,
+      p_batch_uuid: args.batchUuid ?? null,
+      p_initiated_by: args.initiatedBy ?? null,
+    });
+    if (error) {
+      const missing = /function .*log_settlement_attempt.* does not exist/i.test(
+        error.message ?? "",
+      );
+      if (missing) {
+        if (!_logAttemptRpcMissing) {
+          _logAttemptRpcMissing = true;
+          captureRpcError("log_settlement_attempt", error);
+          console.warn(
+            "[SettlementService] log_settlement_attempt RPC missing — settlement audit trail disabled until deployed to this environment.",
+          );
+        }
+      } else {
+        console.warn(
+          "[SettlementService] log_settlement_attempt failed:",
+          error.message,
+        );
+      }
+    }
+  } catch (e) {
+    // Never let audit logging break settlement.
+    console.warn(
+      "[SettlementService] log_settlement_attempt threw (non-fatal):",
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+}
+
 // ── Security: Terminal Provisioning & Verification ────────────────
 
 async function verifyOrProvisionTerminal(params: {
@@ -118,88 +175,50 @@ async function verifyOrProvisionTerminal(params: {
     );
   }
 
-  const storedSerial: string | null = terminalRow?.serial_number ?? null;
+  // Reconcile the connected device's serial against the stored identity.
+  // NULL → fill; equal → no-op; a DIFFERENT physical device → hard block
+  // (settlement must never run against a terminal whose batches belong to a
+  // different device). The helper never clears or moves another row's serial —
+  // the moved/replaced-device case is handled by registering a new terminal.
+  const reconciled = await reconcileTerminalSerial({
+    supabase,
+    terminalId,
+    discoveredSerial: infSN,
+    stampStatusOnMismatch: true,
+  });
 
-  if (!storedSerial) {
-    // Check if this physical device is already registered to a different terminal record
-    // (e.g., the same unit was moved from back counter to front counter)
-    const { data: prevOwner } = await supabase
-      .from("payment_terminals")
-      .select("id, terminal_name")
-      .eq("serial_number", infSN)
-      .neq("id", terminalId)
-      .maybeSingle();
+  if (reconciled.kind === "mismatch") {
+    throw new Error(
+      `Security: terminal identity mismatch. ` +
+        `Connected device serial "${reconciled.discoveredSerial}" does not match ` +
+        `the registered serial "${reconciled.storedSerial}". This terminal's batches ` +
+        `belong to the original device. If you replaced the hardware, register the ` +
+        `new device as a NEW terminal in Settings → Devices; do not edit this one.`,
+    );
+  }
 
-    const now = new Date().toISOString();
-
-    if (prevOwner) {
-      // Clear the old registration so the prior station record doesn't get a mismatch error
-      onStatus?.(`Transferring device from "${prevOwner.terminal_name}"...`);
-      const { error: clearError } = await supabase
-        .from("payment_terminals")
-        .update({ serial_number: null, updated_at: now })
-        .eq("id", prevOwner.id);
-
-      if (clearError) {
-        console.warn(
-          `[SettlementService] Could not clear serial from "${prevOwner.terminal_name}":`,
-          clearError.message,
-        );
-      } else {
-        console.log(
-          `[SettlementService] Device ${infSN} transferred from "${prevOwner.terminal_name}"`,
-        );
-      }
-    }
-
+  if (reconciled.kind === "filled") {
     onStatus?.(`Provisioning terminal (serial: ${infSN})...`);
-    const { error: updateError } = await supabase
+  }
+
+  // Keep firmware_version current for diagnostics (fire-and-forget). Firmware
+  // is not an identity signal, so it is synced independently of the serial.
+  const androidVersion = getDataResult.data.infAndroidVersion;
+  if (androidVersion && androidVersion !== terminalRow?.firmware_version) {
+    supabase
       .from("payment_terminals")
       .update({
-        serial_number: infSN,
-        firmware_version:
-          getDataResult.data.infAndroidVersion ?? terminalRow?.firmware_version,
-        updated_at: now,
+        firmware_version: androidVersion,
+        updated_at: new Date().toISOString(),
       })
-      .eq("id", terminalId);
-
-    if (updateError) {
-      // Non-fatal: don't block the first settlement
-      console.warn(
-        "[SettlementService] Could not store serial number:",
-        updateError.message,
-      );
-    }
-  } else {
-    if (infSN !== storedSerial) {
-      throw new Error(
-        `Security: terminal identity mismatch. ` +
-          `Connected device serial: "${infSN}", registered serial: "${storedSerial}". ` +
-          `Aborting settlement. If this terminal was physically replaced, ` +
-          `clear the registered serial number in admin settings.`,
-      );
-    }
-
-    // Keep firmware_version current for diagnostics (fire-and-forget)
-    if (
-      getDataResult.data.infAndroidVersion &&
-      getDataResult.data.infAndroidVersion !== terminalRow?.firmware_version
-    ) {
-      supabase
-        .from("payment_terminals")
-        .update({
-          firmware_version: getDataResult.data.infAndroidVersion,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", terminalId)
-        .then(({ error }) => {
-          if (error)
-            console.warn(
-              "[SettlementService] Firmware version sync failed:",
-              error.message,
-            );
-        });
-    }
+      .eq("id", terminalId)
+      .then(({ error }) => {
+        if (error)
+          console.warn(
+            "[SettlementService] Firmware version sync failed:",
+            error.message,
+          );
+      });
   }
 }
 
@@ -366,6 +385,13 @@ async function runValorSettlement(
     p_initiated_by: initiatedBy,
   });
   if (prepErr) {
+    // The legacy (pre-adopt) prepare RAISEs this when there's nothing to close —
+    // the adopt-aware prepare returns a structured nothing_to_settle instead. Treat
+    // both the same so a prod env still on the old RPC reads as reassurance, not an
+    // error.
+    if (/no unsettled captured valor payments/i.test(prepErr.message ?? '')) {
+      return failOutput('', { status: 'nothing_to_settle', error: undefined });
+    }
     // Missing RPC (env not migrated yet) surfaces as a clear message, not a crash.
     const msg = /function .*prepare_valor_settlement.* does not exist/i.test(prepErr.message ?? '')
       ? 'Valor settlement is not deployed to this environment yet.'
@@ -373,6 +399,22 @@ async function runValorSettlement(
     captureRpcError('prepare_valor_settlement', prepErr);
     return failOutput(msg);
   }
+
+  // The adopt-aware prepare branches on data state. Nothing to close (webhook
+  // already settled, terminal auto-batched, or no captures) → skip the terminal
+  // round-trip and surface reassurance, not a failure.
+  if (prep?.branch === 'nothing_to_settle' || prep?.nothing_to_settle === true) {
+    return failOutput('', { status: 'nothing_to_settle', error: undefined });
+  }
+  // >1 open Valor batch: can't know which the terminal will close — route to a
+  // manual reconcile instead of guessing.
+  if (prep?.branch === 'needs_manual') {
+    return failOutput(
+      prep?.message ?? 'Multiple open Valor batches for this terminal. Reconcile manually.',
+      { status: 'needs_manual', requiresSupport: true },
+    );
+  }
+
   const batchUuid: string = prep.batch_uuid;
   const batchId: string = prep.batch_id;
   const paymentCount: number = prep.payment_count ?? 0;
@@ -453,6 +495,13 @@ async function _runSingleSettlementAttempt(params: {
   } = params;
 
   onStatus?.("Preparing settlement batch...");
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "prepare",
+    outcome: "started",
+    detail: `attempt #${attempt}`,
+    initiatedBy,
+  });
   const { data: prepareData, error: prepareError } = await supabase.rpc(
     "prepare_castles_settlement",
     {
@@ -463,12 +512,27 @@ async function _runSingleSettlementAttempt(params: {
   );
 
   if (prepareError) {
+    await logSettlementAttempt(supabase, {
+      terminalId,
+      phase: "prepare",
+      outcome: "failed",
+      detail: prepareError.message,
+      initiatedBy,
+    });
     throw new Error(`Settlement prepare failed: ${prepareError.message}`);
   }
 
   const batchUuid: string = prepareData.batch_uuid;
   const txnPosTxnId: string = prepareData.castles_request.txnPosTxnId;
   const paymentCount: number = prepareData.payment_count ?? 0;
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "prepare",
+    outcome: "success",
+    detail: `${paymentCount} payment(s)`,
+    batchUuid,
+    initiatedBy,
+  });
 
   const prevCallback = service.getOnStatusNotification();
   service.setOnStatusNotification((n) => {
@@ -476,6 +540,13 @@ async function _runSingleSettlementAttempt(params: {
   });
 
   onStatus?.("Settling batch — this may take a few minutes...");
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "terminal_command",
+    outcome: "started",
+    batchUuid,
+    initiatedBy,
+  });
   let terminalResult: CastlesSettlementResult;
   try {
     terminalResult = await service.processSettlement({
@@ -483,6 +554,25 @@ async function _runSingleSettlementAttempt(params: {
     });
   } finally {
     service.setOnStatusNotification(prevCallback);
+  }
+
+  {
+    const tcError = terminalResult.success ? null : terminalResult.error ?? "";
+    const tcTimedOut = /timeout|timed out|empty response|no response/i.test(
+      tcError ?? "",
+    );
+    await logSettlementAttempt(supabase, {
+      terminalId,
+      phase: "terminal_command",
+      outcome: terminalResult.success
+        ? "success"
+        : tcTimedOut
+          ? "timeout"
+          : "failed",
+      detail: terminalResult.success ? undefined : tcError || undefined,
+      batchUuid,
+      initiatedBy,
+    });
   }
 
   // Always finalize — even on TCP failure — so the batch isn't left stuck as 'pending'
@@ -493,6 +583,13 @@ async function _runSingleSettlementAttempt(params: {
     txnHostMsg: terminalResult.error ?? "Terminal communication failed",
   };
 
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "finalize",
+    outcome: "started",
+    batchUuid,
+    initiatedBy,
+  });
   const { data: finalizeData, error: finalizeError } = await supabase.rpc(
     "finalize_castles_settlement",
     {
@@ -508,6 +605,14 @@ async function _runSingleSettlementAttempt(params: {
       finalizeError,
     );
     captureRpcError("finalize_castles_settlement", finalizeError);
+    await logSettlementAttempt(supabase, {
+      terminalId,
+      phase: "finalize",
+      outcome: "failed",
+      detail: finalizeError.message,
+      batchUuid,
+      initiatedBy,
+    });
 
     // Persist for later retry from the BatchoutPanel. The terminal has
     // already closed its batch — re-talking to it would double-cut, so
@@ -537,6 +642,15 @@ async function _runSingleSettlementAttempt(params: {
         "Settlement completed on terminal but failed to save results. Retry the DB sync from settings.",
     };
   }
+
+  await logSettlementAttempt(supabase, {
+    terminalId,
+    phase: "finalize",
+    outcome: "success",
+    detail: `status=${finalizeData.status} return_code=${finalizeData.return_code ?? ""}`,
+    batchUuid,
+    initiatedBy,
+  });
 
   console.log(
     `[SettlementService] attempt #${attempt} → status=${finalizeData.status} return_code=${finalizeData.return_code}`,

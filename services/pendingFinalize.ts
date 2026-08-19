@@ -159,6 +159,29 @@ export interface RetryFinalizeOutput {
   error?: string;
 }
 
+/**
+ * Replay every journaled finalize once. finalize-replay ONLY — never re-commands
+ * the terminal — and `retryPendingFinalize` self-clears on success / "already
+ * settled", so this is safe to run repeatedly and idempotently (e.g. from the
+ * auto-settle scheduler tick and a background resume task). Errors are swallowed;
+ * unresolved entries stay journaled for the next drain.
+ */
+export async function drainPendingFinalizes(
+  supabase: SupabaseClient,
+): Promise<{ attempted: number; resolved: number }> {
+  const entries = await listPendingFinalizes(supabase);
+  let resolved = 0;
+  for (const entry of entries) {
+    try {
+      const r = await retryPendingFinalize(supabase, entry);
+      if (r.success) resolved++;
+    } catch {
+      /* leave journaled for next drain */
+    }
+  }
+  return { attempted: entries.length, resolved };
+}
+
 export async function retryPendingFinalize(
   supabase: SupabaseClient,
   entry: PendingFinalizeEntry,

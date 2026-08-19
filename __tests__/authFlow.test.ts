@@ -52,8 +52,9 @@ describe("authFlow", () => {
     });
   });
 
-  it("routes KDS and POS stations to their correct landing screens", () => {
+  it("routes KDS, kiosk, and POS stations to their correct landing screens", () => {
     expect(resolvePostLoginRoute("kds")).toBe("kds");
+    expect(resolvePostLoginRoute("self_service")).toBe("kiosk");
     expect(resolvePostLoginRoute("pos")).toBe("home");
     expect(resolvePostLoginRoute(undefined)).toBe("home");
   });

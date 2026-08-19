@@ -7,6 +7,7 @@ import {
   Award,
   BarChart3,
   ChefHat,
+  Clock,
   Cpu,
   History,
   LayoutGrid,
@@ -22,6 +23,7 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useUiScale } from "@/lib/uiScale";
 import PinDisplay from "./auth/PinDisplay";
 import PinNumpad from "./auth/PinNumpad";
+import ClockInOutModal from "./timeclock/ClockInOutModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
 interface MenuCardProps {
@@ -177,6 +179,9 @@ const MainMenu: React.FC = () => {
   const [currentPin, setCurrentPin] = useState("");
   const [targetRoute, setTargetRoute] = useState<string | null>(null);
   const [pinError, setPinError] = useState("");
+  // PIN-driven clock in/out (same modal the Session Dock uses). Opens a modal
+  // instead of navigating, so this tile carries no route.
+  const [isClockInOutOpen, setClockInOutOpen] = useState(false);
 
   // Previous Orders is allowed offline: it falls back to the last
   // successfully-fetched snapshot (previousOrdersOfflineCache) instead of going
@@ -308,6 +313,20 @@ const MainMenu: React.FC = () => {
       route: "/kds",
     },
     // {
+    //   id: "kiosk",
+    //   icon: <Cpu color={colors.teal} size={20} />,
+    //   title: "Kiosk",
+    //   subtitle: "Self Order",
+    //   route: "/kiosk",
+    // },
+    {
+      id: "clock-in-out",
+      icon: <Clock color={colors.teal} size={20} />,
+      title: "Clock In / Out",
+      subtitle: "Start or End Shift",
+      route: "",
+    },
+    // {
     //   id: 'scheduling',
     //   icon: <CalendarClock color={colors.teal} size={20} />,
     //   title: 'Scheduling',
@@ -347,13 +366,13 @@ const MainMenu: React.FC = () => {
       route: "/settings",
       isLocked: true,
     },
-    {
-      id: "loyalty",
-      icon: <Award color={colors.teal} size={20} />,
-      title: "Loyalty",
-      subtitle: "Rewards & Members",
-      route: "/loyalty",
-    },
+    // {
+    //   id: "loyalty",
+    //   icon: <Award color={colors.teal} size={20} />,
+    //   title: "Loyalty",
+    //   subtitle: "Rewards & Members",
+    //   route: "/loyalty",
+    // },
     // {
     //   id: 'castlestest',
     //   icon: <Cpu color={colors.teal} size={20} />,
@@ -388,8 +407,12 @@ const MainMenu: React.FC = () => {
       {items.map((item) => (
         <View key={item.id} style={{ width: cardSize, height: cardSize }}>
           {(() => {
+            // Clock in/out is a local, always-available action — never gate it
+            // behind the offline check the route tiles use.
             const isDisabled =
-              !rawIsOnline && !offlineAllowedRoutes.has(item.route);
+              item.id !== "clock-in-out" &&
+              !rawIsOnline &&
+              !offlineAllowedRoutes.has(item.route);
 
             return (
               <MenuCard
@@ -400,7 +423,9 @@ const MainMenu: React.FC = () => {
                 onPress={() => {
                   if (isDisabled) return;
 
-                  if (item.isLocked) {
+                  if (item.id === "clock-in-out") {
+                    setClockInOutOpen(true);
+                  } else if (item.isLocked) {
                     handleLockedAccess(item.route);
                   } else {
                     router.replace(item.route as any);
@@ -582,6 +607,13 @@ const MainMenu: React.FC = () => {
           </View>
         </DialogContent>
       </Dialog>
+
+      {/* PIN-driven clock in/out — same flow as the Session Dock; does not
+          switch the active account. */}
+      <ClockInOutModal
+        isOpen={isClockInOutOpen}
+        onClose={() => setClockInOutOpen(false)}
+      />
     </View>
   );
 };

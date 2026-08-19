@@ -191,21 +191,67 @@ export async function setRoleShare(
 // DAILY TIPS QUERY
 // ============================================================================
 
+/** One staff member's tips for a single business day (from employee_daily_tips). */
+export interface EmployeeDailyTipRow {
+  id: string;
+  staffProfileId: string;
+  shiftDate: string;
+  hoursWorked: number;
+  /** System-captured cash tips (from cash payments). */
+  cashPaymentTips: number;
+  /** Cash tips the employee/manager declared at clock-out (nullable = undeclared). */
+  cashTipsDeclared: number | null;
+  chargedTips: number;
+  chargedTipsProcessorFee: number;
+  tipOutGiven: number;
+  tipOutReceived: number;
+  tipPoolContributed: number;
+  tipPoolReceived: number;
+  totalTips: number;
+  isVerified: boolean;
+}
+
+/**
+ * Per-employee tip rows for a business day. Populated server-side by
+ * rebuild_employee_daily_tips — an empty result means it hasn't been rebuilt
+ * for that day yet, NOT necessarily that there were no tips.
+ *
+ * NOTE: the column is `shift_date` (there is no `business_date` column). The
+ * hours/tip figures are server-computed (breaks excluded, multiple clock-ins
+ * summed) — do not recompute them client-side.
+ */
 export async function fetchDailyTips(
   supabase: SupabaseClient,
   locationId: string,
-  date: string
-): Promise<any[]> {
+  shiftDate: string
+): Promise<EmployeeDailyTipRow[]> {
   const { data, error } = await supabase
     .from("employee_daily_tips")
-    .select("*")
+    .select(
+      "id, staff_profile_id, shift_date, hours_worked, cash_payment_tips, cash_tips_declared, charged_tips, charged_tips_processor_fee, tip_out_given, tip_out_received, tip_pool_contributed, tip_pool_received, total_tips, is_verified"
+    )
     .eq("location_id", locationId)
-    .eq("business_date", date);
+    .eq("shift_date", shiftDate);
 
   if (error) {
-    console.error("[TipDist] Failed to fetch daily tips:", error);
+    console.error("[TipDist] Failed to fetch daily tips:", error.message);
     return [];
   }
 
-  return data || [];
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    staffProfileId: r.staff_profile_id,
+    shiftDate: r.shift_date,
+    hoursWorked: Number(r.hours_worked || 0),
+    cashPaymentTips: Number(r.cash_payment_tips || 0),
+    cashTipsDeclared: r.cash_tips_declared == null ? null : Number(r.cash_tips_declared),
+    chargedTips: Number(r.charged_tips || 0),
+    chargedTipsProcessorFee: Number(r.charged_tips_processor_fee || 0),
+    tipOutGiven: Number(r.tip_out_given || 0),
+    tipOutReceived: Number(r.tip_out_received || 0),
+    tipPoolContributed: Number(r.tip_pool_contributed || 0),
+    tipPoolReceived: Number(r.tip_pool_received || 0),
+    totalTips: Number(r.total_tips || 0),
+    isVerified: !!r.is_verified,
+  }));
 }

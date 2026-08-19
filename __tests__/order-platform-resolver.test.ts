@@ -1,14 +1,48 @@
 import {
+  getOnlineOrderProviderQueryAliases,
   normalizeOnlineOrderProvider,
   resolveOrderPlatformLogo,
 } from "@/lib/orderPlatformResolver";
 
 describe("order platform resolver", () => {
   it("normalizes marketplace casing and separators", () => {
-    expect(normalizeOnlineOrderProvider("GrubHub")).toBe("grubhub");
-    expect(normalizeOnlineOrderProvider("UBEREATS")).toBe("ubereats");
-    expect(normalizeOnlineOrderProvider("uber_eats")).toBe("ubereats");
-    expect(normalizeOnlineOrderProvider("Door Dash")).toBe("doordash");
+    const cases = [
+      ["Ubereats", "ubereats"],
+      ["Uber Eats", "ubereats"],
+      ["uber_eats", "ubereats"],
+      ["UBEREATS", "ubereats"],
+      ["Doordash", "doordash"],
+      ["DoorDash", "doordash"],
+      ["Door Dash", "doordash"],
+      ["Grubhub", "grubhub"],
+      ["GRUB_HUB", "grubhub"],
+    ] as const;
+
+    for (const [raw, provider] of cases) {
+      expect(normalizeOnlineOrderProvider(raw)).toBe(provider);
+    }
+  });
+
+  it("derives query aliases from the same resolver vocabulary", () => {
+    const cases = [
+      ["ubereats", ["ubereats", "uber eats", "uber_eats"]],
+      ["doordash", ["doordash", "door dash", "door_dash"]],
+      ["grubhub", ["grubhub", "grub hub", "grub_hub"]],
+    ] as const;
+
+    for (const [provider, expectedAliases] of cases) {
+      const aliases = getOnlineOrderProviderQueryAliases(provider);
+      expect(aliases).toEqual(expect.arrayContaining(expectedAliases));
+      for (const alias of aliases) {
+        expect(normalizeOnlineOrderProvider(alias)).toBe(provider);
+      }
+    }
+  });
+
+  it("keeps missing values unresolved and buckets unknown values as other", () => {
+    expect(normalizeOnlineOrderProvider(null)).toBeNull();
+    expect(normalizeOnlineOrderProvider("")).toBeNull();
+    expect(normalizeOnlineOrderProvider("mystery_market")).toBe("other");
   });
 
   it("prefers delivery_platform before metadata and online order fields", () => {

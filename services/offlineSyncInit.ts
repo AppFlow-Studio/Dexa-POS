@@ -13,6 +13,12 @@
 import { queryClient } from "@/contexts/TanstackProvider";
 import { getDeviceId } from "@/lib/deviceId";
 import {
+    buildKitchenSendQueueParams,
+    createKitchenSendContext,
+    isTerminalKitchenMutationError,
+    type KitchenSendQueueParams,
+} from "@/lib/kdsSendTraceability";
+import {
     getKitchenSentStatus,
     getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
@@ -73,6 +79,7 @@ import {
     queueDependentOperation,
     queueOperation,
     retryDeadLetterOperation,
+    updateOperationParams,
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
@@ -87,9 +94,14 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
 
-const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null => {
+const resolveTableNameForOrder = (
+  tableIdOrName?: string | null,
+): string | null => {
   if (!tableIdOrName) return null;
-  return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
+  return (
+    useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ??
+    tableIdOrName
+  );
 };
 
 if (__DEV__) {
@@ -173,6 +185,19 @@ function _getCalculatePaidStatus() {
 const MAX_KITCHEN_REQUEUE_GENERATIONS = 3;
 
 let _supabaseClient: any = null;
+
+/**
+ * Mirror of useOrderStore's getKioskSafeCreatorStaffId().
+ * Kiosk (self_service) orders must NOT attribute the logged-in employee who
+ * entered the PIN to start the kiosk session — otherwise KDS tickets show
+ * "Server: [employee name]" instead of "Self Service".
+ */
+function getKioskSafeCreatorStaffId(): string | null {
+  const orderStore = _getOrderStore();
+  const station = orderStore.getState().currentStation;
+  if (station?.station_type === "self_service") return null;
+  return useEmployeeStore.getState().getEffectiveCreatorStaffId() || null;
+}
 
 function isAlreadyDoneSyncError(
   error: any,
@@ -303,8 +328,7 @@ async function reconcileLostOrderCreations(): Promise<number> {
           p_customer_phone: order.customer_phone || null,
           p_special_instructions: null,
           p_device_id: getDeviceId(),
-          p_created_by_staff_id:
-            useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
+          p_created_by_staff_id: getKioskSafeCreatorStaffId(),
           p_station_id:
             useStoreSettingsStore.getState().selectedStation?.id || null,
         },
@@ -1352,51 +1376,53 @@ async function executeQueuedOperation(
           : Promise.resolve(null);
 
         // Lookback window = max(time since op was queued + 5 min slack, 10 min).
-        const authCheckPromise: Promise<{ matched: boolean; raw: unknown } | null> =
-          hasCheckableOrderId
-            ? (async () => {
-                try {
-                  const opAgeMs = Date.now() - new Date(op.timestamp).getTime();
-                  const lookbackSeconds = Math.max(
-                    600,
-                    Math.ceil(opAgeMs / 1000) + 300,
-                  );
-                  const amountCents =
-                    typeof finalParams.p_amount === "number" &&
-                    finalParams.p_amount > 0
-                      ? Math.round(finalParams.p_amount * 100)
-                      : null;
+        const authCheckPromise: Promise<{
+          matched: boolean;
+          raw: unknown;
+        } | null> = hasCheckableOrderId
+          ? (async () => {
+              try {
+                const opAgeMs = Date.now() - new Date(op.timestamp).getTime();
+                const lookbackSeconds = Math.max(
+                  600,
+                  Math.ceil(opAgeMs / 1000) + 300,
+                );
+                const amountCents =
+                  typeof finalParams.p_amount === "number" &&
+                  finalParams.p_amount > 0
+                    ? Math.round(finalParams.p_amount * 100)
+                    : null;
 
-                  const { data: authCheck, error: authCheckError } =
-                    await _supabaseClient.rpc("check_recent_payment", {
-                      p_order_id: finalParams.p_order_id,
-                      p_lookback_seconds: lookbackSeconds,
-                      p_amount_cents: amountCents,
-                      p_split_portion_index:
-                        finalParams.p_split_portion_index ?? null,
-                    });
+                const { data: authCheck, error: authCheckError } =
+                  await _supabaseClient.rpc("check_recent_payment", {
+                    p_order_id: finalParams.p_order_id,
+                    p_lookback_seconds: lookbackSeconds,
+                    p_amount_cents: amountCents,
+                    p_split_portion_index:
+                      finalParams.p_split_portion_index ?? null,
+                  });
 
-                  if (authCheckError) {
-                    // Don't block on the safety check failing — defensive only
-                    console.warn(
-                      "[OfflineSync:payment] check_recent_payment failed; proceeding (defensive only):",
-                      authCheckError,
-                    );
-                    return null;
-                  }
-                  return {
-                    matched: !!(authCheck as any)?.matched,
-                    raw: authCheck,
-                  };
-                } catch (checkErr) {
+                if (authCheckError) {
+                  // Don't block on the safety check failing — defensive only
                   console.warn(
-                    "[OfflineSync:payment] check_recent_payment threw; proceeding (defensive only):",
-                    checkErr,
+                    "[OfflineSync:payment] check_recent_payment failed; proceeding (defensive only):",
+                    authCheckError,
                   );
                   return null;
                 }
-              })()
-            : Promise.resolve(null);
+                return {
+                  matched: !!(authCheck as any)?.matched,
+                  raw: authCheck,
+                };
+              } catch (checkErr) {
+                console.warn(
+                  "[OfflineSync:payment] check_recent_payment threw; proceeding (defensive only):",
+                  checkErr,
+                );
+                return null;
+              }
+            })()
+          : Promise.resolve(null);
 
         // Safe: both promises catch internally and never reject.
         const [preCheckOrderStatus, authCheckResult] = await Promise.all([
@@ -1497,7 +1523,10 @@ async function executeQueuedOperation(
               errMsg,
             );
             if (queuedJournal?.id) {
-              failPaymentJournal(queuedJournal.id, `enforce_order_math: ${errMsg}`);
+              failPaymentJournal(
+                queuedJournal.id,
+                `enforce_order_math: ${errMsg}`,
+              );
             }
             // Surfaces to the operator with a remedy instead of vanishing.
             return OpTerminal("ORDER_MATH_INCONSISTENT", errMsg);
@@ -1545,10 +1574,7 @@ async function executeQueuedOperation(
 
         // Wave Cat-B: backend confirmed; close out the journal.
         if (queuedJournal?.id && (data as any)?.payment_id) {
-          completePaymentJournal(
-            queuedJournal.id,
-            (data as any).payment_id,
-          );
+          completePaymentJournal(queuedJournal.id, (data as any).payment_id);
         }
 
         // Sync order state from backend response if available
@@ -1927,6 +1953,27 @@ async function executeQueuedOperation(
               }`,
             );
 
+            // Self-service (kiosk) — set order_source on the backend row so
+            // KDS tickets reflect the correct origin.
+            const orderStore = _getOrderStore();
+            const currentStation = orderStore.getState().currentStation;
+            if (
+              currentStation?.station_type === "self_service" &&
+              _supabaseClient
+            ) {
+              try {
+                await _supabaseClient
+                  .from("orders")
+                  .update({ order_source: "kiosk" })
+                  .eq("id", backendId);
+              } catch (e) {
+                console.warn(
+                  "[OfflineSync:create_order] Failed to sync kiosk order_source:",
+                  e,
+                );
+              }
+            }
+
             // Invalidate orders query so hydrateWorkspace picks up the server version
             const locationId = createOrderParams.p_location_id;
             if (locationId) {
@@ -2212,36 +2259,32 @@ async function executeQueuedOperation(
             console.log(
               `[OfflineSync:add_item] Item was fired during sync, retroactively sending to kitchen`,
             );
+            const retroSendContext = createKitchenSendContext({
+              stationId:
+                useStoreSettingsStore.getState().selectedStation?.id ?? null,
+              deviceId: getDeviceId(),
+              staffId: getKioskSafeCreatorStaffId(),
+            });
             try {
               // Keep backend order out of draft before item kitchen status updates.
-              const { error: statusError } =
-                await OrderService.updateOrderStatus(
-                  _supabaseClient,
-                  actualDbOrderId,
-                  getOrderSentStatus() as any,
-                );
-
-              if (
-                statusError &&
-                statusError.code !== "P0001" &&
-                !statusError.message?.includes("already in")
-              ) {
-                throw statusError;
-              }
-
               // Wave 3.0d-4: keyOverride for retry-safety. Same item set +
               // status → cached result on retry, no fire_time drift.
               const kitchenSentStatus = getKitchenSentStatus();
               const { error: kitchenError } =
-                await OrderService.bulkUpdateOrderItemStatus(
+                await OrderService.sendOrderToKitchen(
                   _supabaseClient,
+                  actualDbOrderId,
                   [data.order_item_id],
+                  getOrderSentStatus(),
                   kitchenSentStatus,
                   {
-                    keyOverride: toBulkUpdateStatusKey(
-                      [data.order_item_id],
-                      kitchenSentStatus,
-                    ),
+                    staffId: retroSendContext.staffId,
+                    stationId: retroSendContext.stationId,
+                    deviceId: retroSendContext.deviceId,
+                    idempotencyKey: retroSendContext.sendIdempotencyKey,
+                    itemsIdempotencyKey:
+                      retroSendContext.itemsIdempotencyKey,
+                    replay: true,
                   },
                 );
 
@@ -2253,11 +2296,34 @@ async function executeQueuedOperation(
                 `[OfflineSync:add_item] Retroactive kitchen send failed, queuing send_to_kitchen:`,
                 retroErr,
               );
+              if (isTerminalKitchenMutationError(retroErr)) {
+                useSyncStatusStore.getState().setSyncStatus(
+                  localItemId,
+                  "failed",
+                  retroErr.hint,
+                );
+                return true;
+              }
               // Queue send_to_kitchen as fallback — don't fail the add_item op (prevents duplicates)
               await queueFailedOperation(
                 "send_to_kitchen",
-                { localOrderId, localItemIds: [localItemId] },
+                buildKitchenSendQueueParams(
+                  localOrderId,
+                  [localItemId],
+                  retroSendContext,
+                  {
+                    orderStatus: getOrderSentStatus(),
+                    itemStatus: getKitchenSentStatus(),
+                  },
+                  {
+                    resolvedItemIds: [data.order_item_id],
+                    unresolvedLocalItemIds: [],
+                  },
+                ),
                 localOrderId,
+                undefined,
+                undefined,
+                { idempotencyKey: retroSendContext.sendIdempotencyKey },
               );
             }
           }
@@ -2729,7 +2795,40 @@ async function executeQueuedOperation(
       // SEND TO KITCHEN - Updates order status + item statuses
       // ================================================================
       case "send_to_kitchen": {
-        const { localOrderId, localItemIds } = op.params;
+        const params = op.params as Partial<KitchenSendQueueParams> & {
+          localOrderId: string;
+          localItemIds?: string[];
+        };
+        const { localOrderId, localItemIds } = params;
+        const sendContext = createKitchenSendContext({
+          stationId:
+            params.stationId ??
+            useStoreSettingsStore.getState().selectedStation?.id ??
+            null,
+          deviceId: params.deviceId ?? getDeviceId(),
+          staffId:
+            params.staffId ??
+            useEmployeeStore.getState().getEffectiveCreatorStaffId() ??
+            null,
+          sendIdempotencyKey:
+            (op.params.sendIdempotencyKey as string | undefined) ??
+            op.idempotencyKey,
+          itemsIdempotencyKey: params.itemsIdempotencyKey,
+        });
+        const orderStatus = params.orderStatus ?? getOrderSentStatus();
+        const itemStatus = params.itemStatus ?? getKitchenSentStatus();
+
+        // Backfill legacy queued operations before the first RPC attempt. This
+        // makes app restarts and automatic retries reuse the exact same context.
+        await updateOperationParams(op.id, {
+          stationId: sendContext.stationId,
+          deviceId: sendContext.deviceId,
+          staffId: sendContext.staffId,
+          sendIdempotencyKey: sendContext.sendIdempotencyKey,
+          itemsIdempotencyKey: sendContext.itemsIdempotencyKey,
+          orderStatus,
+          itemStatus,
+        });
 
         console.log(
           `[OfflineSync:send_to_kitchen] ====== SENDING TO KITCHEN ======`,
@@ -2764,10 +2863,21 @@ async function executeQueuedOperation(
           ) as any;
 
           // 1. Resolve item IDs FIRST (before any RPC calls)
-          let resolvedItemIds: string[] = [];
-          let unresolvedLocalItemIds: string[] = [];
+          let resolvedItemIds: string[] = (params.resolvedItemIds ?? []).filter(
+            (id) => isValidUUID(id),
+          );
+          let unresolvedLocalItemIds: string[] = [
+            ...(params.unresolvedLocalItemIds ?? []),
+          ];
+          const hasPersistedAttemptItems = Array.isArray(
+            params.resolvedItemIds,
+          );
 
-          if (localItemIds && localItemIds.length > 0) {
+          if (
+            !hasPersistedAttemptItems &&
+            localItemIds &&
+            localItemIds.length > 0
+          ) {
             for (const localItemId of localItemIds) {
               const resolved = resolveItemId(localOrderId, localItemId);
               if (resolved) {
@@ -2789,6 +2899,7 @@ async function executeQueuedOperation(
             // never written to the resolveItemId map (race condition). Look up
             // db_order_item_id directly from ordersById for any matching local IDs.
             if (resolvedItemIds.length === 0) {
+              const stillUnresolvedLocalItemIds: string[] = [];
               if (liveOrder) {
                 for (const localItemId of unresolvedLocalItemIds) {
                   const liveItem = liveOrder.items.find(
@@ -2796,8 +2907,12 @@ async function executeQueuedOperation(
                   );
                   if (liveItem?.db_order_item_id) {
                     resolvedItemIds.push(liveItem.db_order_item_id);
+                  } else {
+                    stillUnresolvedLocalItemIds.push(localItemId);
                   }
                 }
+              } else {
+                stillUnresolvedLocalItemIds.push(...unresolvedLocalItemIds);
               }
               // If still zero after live store fallback, items aren't synced yet — retry
               if (resolvedItemIds.length === 0) {
@@ -2807,9 +2922,9 @@ async function executeQueuedOperation(
                 return OpBlocked("items_not_synced");
               }
               // Resolved via live store — clear unresolved list so we don't re-queue them
-              unresolvedLocalItemIds = [];
+              unresolvedLocalItemIds = stillUnresolvedLocalItemIds;
             }
-          } else if (liveOrder?.items?.length) {
+          } else if (!hasPersistedAttemptItems && liveOrder?.items?.length) {
             // Fallback: legacy/older queued ops may not carry item IDs.
             // In that case, send all currently-fired items on the order.
             resolvedItemIds = liveOrder.items
@@ -2840,83 +2955,55 @@ async function executeQueuedOperation(
             }
           }
 
+          // Freeze the exact DB/local item split before the first RPC. If the
+          // response is lost, retry must not add newly-resolved IDs under the
+          // same idempotency key and accidentally change the logical request.
+          await updateOperationParams(op.id, {
+            resolvedItemIds,
+            unresolvedLocalItemIds,
+          });
+
           // Do NOT infer backend kitchen delivery from local optimistic statuses.
           // Local items are marked sent immediately offline, so filtering by local
           // state can incorrectly skip the actual backend KDS update after reconnect.
 
-          // 2. Update order status
-          // The bulk_update_order_item_status RPC sets sent_to_kitchen_at on the parent order,
-          // which violates valid_status_transitions if the order is still in 'draft'.
-          // So we must transition the order out of 'draft' before updating items.
-          const currentOrder = Object.values(
-            _getOrderStore().getState().ordersById,
-          ).find((o: any) => o.db_order_id === resolvedOrderId);
-          const currentStatus = (currentOrder as any)?.order_status;
-          const targetOrderStatus = getOrderSentStatus();
-          const backendStatus =
-            currentStatus === "draft"
-              ? targetOrderStatus
-              : currentStatus === "sent_to_kitchen"
-                ? "sent_to_kitchen"
-                : currentStatus === "preparing"
-                  ? "preparing"
-                  : "preparing";
-
-          // Perf A1: ensureOrderOutOfDraft trusts the RPC's returned row on
-          // success and runs the verify-SELECT only on the ambiguous-P0001
-          // error path (catches "Order not found" masquerading as the benign
-          // "already in status" — both raise P0001 on staging+prod).
-          const transition = await OrderService.ensureOrderOutOfDraft(
+          // Commit the order transition, item transitions, KDS routing, and
+          // attempt ledger entry under one idempotent backend operation.
+          const sendResult = await OrderService.sendOrderToKitchen(
             _supabaseClient,
             resolvedOrderId,
-            backendStatus as any,
+            resolvedItemIds,
+            orderStatus,
+            itemStatus,
+            {
+              staffId: sendContext.staffId,
+              stationId: sendContext.stationId,
+              deviceId: sendContext.deviceId,
+              idempotencyKey: sendContext.sendIdempotencyKey,
+              itemsIdempotencyKey: sendContext.itemsIdempotencyKey,
+              replay: true,
+            },
           );
 
-          if (!transition.ok) {
+          if (sendResult.error) {
             console.error(
-              "[OfflineSync:send_to_kitchen] Order status transition failed; deferring item sync",
-              { resolvedOrderId, error: transition.error },
+              "[OfflineSync:send_to_kitchen] Composite send failed",
+              { resolvedOrderId, error: sendResult.error },
             );
-            return classifyError(transition.error, { opType: op.type });
+            if (isTerminalKitchenMutationError(sendResult.error)) {
+              return OpTerminal(
+                sendResult.error.code,
+                sendResult.error.message,
+                sendResult.error.hint,
+              );
+            }
+            return classifyError(sendResult.error, { opType: op.type });
           }
           console.log(
-            `[OfflineSync:send_to_kitchen] Order out of draft (target "${backendStatus}")`,
+            `[OfflineSync:send_to_kitchen] ${resolvedItemIds.length} items confirmed by composite send`,
           );
 
-          // 3. Update resolved item statuses
-          if (resolvedItemIds.length > 0) {
-            // Wave 3.0d-4: keyOverride for retry-safety. Same item set +
-            // status → cached result on retry, no fire_time drift.
-            const kitchenSentStatus = getKitchenSentStatus();
-            const { error: itemError } =
-              await OrderService.bulkUpdateOrderItemStatus(
-                _supabaseClient,
-                resolvedItemIds,
-                kitchenSentStatus,
-                {
-                  keyOverride: toBulkUpdateStatusKey(
-                    resolvedItemIds,
-                    kitchenSentStatus,
-                  ),
-                },
-              );
-
-            if (itemError) {
-              console.error(
-                "[OfflineSync:send_to_kitchen] Failed to update item statuses:",
-                itemError,
-              );
-              // Classify: a transient error retries, a rejection surfaces with
-              // a cause instead of spinning the whole operation.
-              return classifyError(itemError, { opType: op.type });
-            }
-
-            console.log(
-              `[OfflineSync:send_to_kitchen] ${resolvedItemIds.length} items marked as "sent"`,
-            );
-          }
-
-          // 4. Re-queue unresolved items so they aren't lost — but BOUNDED.
+          // Re-queue unresolved items so they aren't lost — but BOUNDED.
           //
           // This step spawns a NEW op and then returns success, so the original
           // op is removed as successful. `queueFailedOperation` does no dedupe
@@ -2925,9 +3012,8 @@ async function executeQueuedOperation(
           // the Syncing panel and the 24h TTL all key off an op FAILING, and
           // no op here ever does. If an item's db_order_item_id never
           // materialises (its add dead-lettered, it was voided mid-flight, or
-          // the registry mapping was lost on rekey), each generation costs two
-          // RPCs (ensureOrderOutOfDraft + bulkUpdateOrderItemStatus) and
-          // spawns another generation — indefinitely, and invisibly.
+          // the registry mapping was lost on rekey), each generation otherwise
+          // spawns another send attempt indefinitely and invisibly.
           //
           // The generation counter converts that silent infinite loop into a
           // visible, actionable dead-letter after a bounded number of passes.
@@ -2961,14 +3047,29 @@ async function executeQueuedOperation(
             console.log(
               `[OfflineSync:send_to_kitchen] Re-queuing ${unresolvedLocalItemIds.length} unresolved items (generation ${generation}/${MAX_KITCHEN_REQUEUE_GENERATIONS})`,
             );
+            // The unresolved subset is a new logical send, so it gets new keys;
+            // retries of that subset still retain those keys in its queue row.
+            const remainderContext = createKitchenSendContext({
+              stationId: sendContext.stationId,
+              deviceId: sendContext.deviceId,
+              staffId: sendContext.staffId,
+            });
             await queueFailedOperation(
               "send_to_kitchen",
-              {
+              buildKitchenSendQueueParams(
                 localOrderId,
-                localItemIds: unresolvedLocalItemIds,
-                requeueGeneration: generation,
-              },
+                unresolvedLocalItemIds,
+                remainderContext,
+                { orderStatus, itemStatus },
+                {
+                  requeueGeneration: generation,
+                  offline_batch: params.offline_batch,
+                },
+              ),
               localOrderId,
+              undefined,
+              undefined,
+              { idempotencyKey: remainderContext.sendIdempotencyKey },
             );
           }
 
@@ -3079,10 +3180,7 @@ async function executeQueuedOperation(
             }
             // Idempotent success: course already gone server-side.
             if (
-              isAlreadyDoneSyncError(error, [
-                "does not exist",
-                "not found",
-              ])
+              isAlreadyDoneSyncError(error, ["does not exist", "not found"])
             ) {
               return true;
             }
@@ -3206,6 +3304,9 @@ async function executeQueuedOperation(
               errCode: (error as any)?.code,
               errMessage: (error as any)?.message,
             });
+            if (isTerminalKitchenMutationError(error)) {
+              return OpTerminal(error.code, error.message, error.hint);
+            }
             return false;
           }
           if (__DEV__)
@@ -4347,6 +4448,7 @@ export async function queueFailedOperation(
   localOrderId: string,
   localItemId?: string,
   contextSnapshot?: Record<string, any>,
+  options?: { idempotencyKey?: string },
 ): Promise<string> {
   return queueOperation({
     type,
@@ -4354,6 +4456,7 @@ export async function queueFailedOperation(
     localOrderId,
     localItemId,
     contextSnapshot,
+    idempotencyKey: options?.idempotencyKey,
   });
 }
 

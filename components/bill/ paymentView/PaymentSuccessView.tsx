@@ -1,6 +1,8 @@
 "use no memo";
 
 import { runAfterPaint } from "@/lib/afterPaint";
+import { computeChangeBreakdown } from "@/lib/cashChange";
+import { hasOrderBalanceDue } from "@/lib/orderBalance";
 import { startInteraction } from "@/lib/perf";
 import { useUiScale } from "@/lib/uiScale";
 import { useToast } from "@/contexts/ToastContext";
@@ -20,7 +22,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Check, ChevronUp, Layers, Mail, MessageSquare, Printer } from "lucide-react-native";
+import { ArrowRight, Check, ChevronUp, Layers, Mail, MessageSquare, Printer } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
@@ -33,6 +35,8 @@ const PaymentSuccessView = () => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const close = usePaymentStore((s) => s.close);
+  const handleSuccessClose = usePaymentStore((s) => s.handleSuccessClose);
+  const payRemainingBalance = usePaymentStore((s) => s.payRemainingBalance);
   const paymentMethod = usePaymentStore((s) => s.paymentMethod);
   const completedPaymentInfo = usePaymentStore((s) => s.completedPaymentInfo);
   const activeTableId = usePaymentStore((s) => s.activeTableId);
@@ -98,6 +102,36 @@ const PaymentSuccessView = () => {
   const activeOrder = useActiveOrder();
   const items = activeOrder?.items || [];
   const isSplitPaid = !!activeOrder?.split_payment_path;
+
+  // A custom-amount split can settle less than the full bill — CustomAmountView
+  // explicitly allows it ("$X remaining will stay unpaid" / "Pay Allocated
+  // Amount"). When it does, this screen is a checkpoint, not a finish line: the
+  // payment succeeded but the CHECK is still open. Everything below that reads
+  // `hasBalanceDue` exists to stop the operator being offered "Start New Order"
+  // (or a dine-in table clear) while money is still on the check.
+  //
+  // This screen deliberately shows NO balance figure.
+  //
+  // At the instant the success view is created, the outstanding fields have not
+  // been decremented by the payment that just completed — `order.amount_due`,
+  // `cash_amount_due` and the `activeOrderOutstanding*` pair all still read the
+  // pre-payment totals (a $5 payment against a $1087.66 / $1045.83 dual-priced
+  // check showed the full 1087.66 / 1045.83 here, while the pay-remaining
+  // screen a moment later correctly showed 1082.66 / 1041.02). The corrected
+  // values only arrive with the debounced backend re-sync ~1s later.
+  //
+  // So there is no field to read and no snapshot to take that yields the right
+  // number at this moment. Rendering the live value instead just shows a wrong
+  // figure that later flickers to a right one. A wrong balance on a payment
+  // screen is worse than no balance, so we state only what we know for certain
+  // — the check is still open — and route the operator to the pay-remaining
+  // flow, which reads settled state at tap time and is correct there.
+  //
+  // Only the EXISTENCE of a balance is used, never its size, and existence is
+  // safe from the undecremented reads: an unpaid check reports > 0 either way,
+  // and a fully-paid one is caught by the `paid_status === "Paid"` short-circuit
+  // inside hasOrderBalanceDue. Read live so it self-corrects as sync lands.
+  const hasBalanceDue = hasOrderBalanceDue(activeOrder);
   // console.log("[PaymentSuccessView] items", items);
   // console.log("[PaymentSuccessView] activeOrder", activeOrder);
   const handleDone = () => {
@@ -327,22 +361,37 @@ const PaymentSuccessView = () => {
 
   return (
     <View className="flex-1 justify-between" style={{ backgroundColor: colors.screen }}>
-      {/* Main Content - Centered vertically if possible */}
-      <View className="flex-1 justify-center items-center px-6" style={{ paddingTop: s(28), paddingBottom: s(28) }}>
-        {/* Success Icon */}
+      {/* Main Content - Centered vertically if possible.
+          minHeight/flexShrink let this yield space to the footer rather than
+          being floored at its own content height; the footer below is
+          flexShrink: 0, so the action buttons stay on screen no matter what
+          this block contains. */}
+      <View
+        className="flex-1 justify-center items-center px-6"
+        style={{
+          paddingTop: hasBalanceDue ? s(16) : s(28),
+          paddingBottom: hasBalanceDue ? s(16) : s(28),
+          minHeight: 0,
+          flexShrink: 1,
+        }}
+      >
+        {/* Success Icon. Tightened when a balance is due — that state carries a
+            second figure and a second button, so the hero block gives up some
+            height to keep the whole view inside the sheet without scrolling. */}
         <Animated.View
           entering={iosOnly(FadeIn.delay(100))}
-          className="items-center mb-6"
-          style={{ marginTop: s(8) }}
+          className="items-center"
+          style={{ marginTop: s(8), marginBottom: hasBalanceDue ? s(16) : s(24) }}
         >
-          <View style={{ width: s(80), height: s(80), backgroundColor: colors.success + "15", borderRadius: s(40), alignItems: "center", justifyContent: "center", marginBottom: s(20), borderWidth: 2, borderColor: colors.success + "40" }}>
-            <Check color={colors.success} size={s(44)} strokeWidth={3.5} />
+          <View style={{ width: hasBalanceDue ? s(60) : s(80), height: hasBalanceDue ? s(60) : s(80), backgroundColor: colors.success + "15", borderRadius: hasBalanceDue ? s(30) : s(40), alignItems: "center", justifyContent: "center", marginBottom: hasBalanceDue ? s(12) : s(20), borderWidth: 2, borderColor: colors.success + "40" }}>
+            <Check color={colors.success} size={hasBalanceDue ? s(34) : s(44)} strokeWidth={3.5} />
           </View>
-          <Text style={{ fontSize: s(28), fontWeight: "800", color: colors.heading, marginBottom: s(8) }}>
-            Payment Successful
+          <Text style={{ fontSize: hasBalanceDue ? s(24) : s(28), fontWeight: "800", color: colors.heading, marginBottom: s(6) }}>
+            {hasBalanceDue ? "Payment Received" : "Payment Successful"}
           </Text>
           <Text style={{ fontSize: s(14), color: colors.label, fontWeight: "600" }}>
             {(completedPaymentInfo?.paymentMethod || paymentMethod || "Card")} Payment
+            {hasBalanceDue ? " — check still open" : ""}
           </Text>
         </Animated.View>
 
@@ -383,7 +432,30 @@ const PaymentSuccessView = () => {
 
             return (
               <>
-                {totalTips > 0 ? (
+                {hasBalanceDue ? (
+                  /* Partial settlement. Amount collected only — no balance
+                     figure, since none of the outstanding fields are
+                     decremented yet at this point in the flow (see the note by
+                     `hasBalanceDue` above). The wording states the fact we do
+                     know for certain; the exact remainder is shown on the
+                     pay-remaining screen, where it is settled and correct. */
+                  <>
+                    <Text style={{ color: colors.muted, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
+                      Paid Now
+                    </Text>
+                    <Text style={{ fontSize: s(38), fontWeight: "800", color: colors.teal, marginBottom: totalTips > 0 ? s(6) : s(12) }}>
+                      ${totalPaid.toFixed(2)}
+                    </Text>
+                    {totalTips > 0 && (
+                      <Text style={{ color: colors.success, fontSize: s(12), marginBottom: s(12) }}>
+                        incl. ${totalTips.toFixed(2)} tip
+                      </Text>
+                    )}
+                    <Text style={{ color: colors.warning, fontSize: s(12), fontWeight: "700", marginBottom: s(14), textAlign: "center" }}>
+                      Balance remaining on this check
+                    </Text>
+                  </>
+                ) : totalTips > 0 ? (
                   <>
                     <Text style={{ color: colors.muted, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
                       Bill Total
@@ -419,12 +491,68 @@ const PaymentSuccessView = () => {
             );
           })()}
 
+          {/* Cash change due — kept visible on this screen (which stays up until
+              Done/Finalize) so staff can count out change while the drawer is
+              open, instead of losing the figure when the entry screen closed. */}
+          {completedPaymentInfo?.paymentMethod === "Cash" &&
+            (completedPaymentInfo?.changeGiven ?? 0) > 0 && (
+              <View
+                style={{
+                  width: "100%",
+                  backgroundColor: colors.teal + "12",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "40",
+                  borderRadius: s(12),
+                  padding: s(16),
+                  marginBottom: s(18),
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: colors.teal, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
+                  Change Due
+                </Text>
+                <Text style={{ fontSize: s(34), fontWeight: "800", color: colors.teal, marginBottom: completedPaymentInfo?.amountTendered != null ? s(2) : s(8) }}>
+                  ${(completedPaymentInfo?.changeGiven ?? 0).toFixed(2)}
+                </Text>
+                {completedPaymentInfo?.amountTendered != null && (
+                  <Text style={{ color: colors.muted, fontSize: s(12), marginBottom: s(10) }}>
+                    Tendered ${completedPaymentInfo.amountTendered.toFixed(2)}
+                  </Text>
+                )}
+                {(() => {
+                  const breakdown = computeChangeBreakdown(
+                    completedPaymentInfo?.changeGiven ?? 0,
+                  );
+                  if (breakdown.length === 0) return null;
+                  return (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: s(6) }}>
+                      {breakdown.map(({ label, count }) => (
+                        <View
+                          key={label}
+                          style={{ flexDirection: "row", alignItems: "center", gap: s(3), backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.teal + "30", borderRadius: s(6), paddingHorizontal: s(10), paddingVertical: s(4) }}
+                        >
+                          <Text style={{ color: colors.teal, fontWeight: "700", fontSize: s(12) }}>{count}×</Text>
+                          <Text style={{ color: colors.teal, fontWeight: "600", fontSize: s(12) }}>{label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })()}
+              </View>
+            )}
+
           <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: s(18) }} />
 
           <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", marginBottom: s(12) }}>
-            <Text style={{ color: colors.muted, fontSize: s(13) }}>Transaction ID</Text>
+            <Text style={{ color: colors.muted, fontSize: s(13) }}>Order Number</Text>
             <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(13) }}>
-              #{activeOrder?.id.slice(-6).toUpperCase()}
+              {activeOrder?.display_number
+                ? activeOrder.display_number.startsWith("#")
+                  ? activeOrder.display_number
+                  : `#${activeOrder.display_number}`
+                : activeOrder?.order_number
+                  ? `#${activeOrder.order_number}`
+                  : `#${activeOrder?.id.slice(-6).toUpperCase()}`}
             </Text>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%" }}>
@@ -445,7 +573,7 @@ const PaymentSuccessView = () => {
       )}
 
       {/* Footer Actions - Fixed at Bottom */}
-      <View style={{ width: "100%", backgroundColor: colors.panel, paddingTop: s(12), paddingBottom: s(16), borderTopWidth: 1, borderTopColor: colors.border, zIndex: printMenuOpen ? 100 : 0 }}>
+      <View style={{ width: "100%", flexShrink: 0, backgroundColor: colors.panel, paddingTop: s(12), paddingBottom: s(16), borderTopWidth: 1, borderTopColor: colors.border, zIndex: printMenuOpen ? 100 : 0 }}>
         <View style={{ paddingHorizontal: s(20), gap: s(10) }}>
           {/* Secondary Actions Row */}
           <View style={{ flexDirection: "row", gap: s(8) }}>
@@ -546,17 +674,51 @@ const PaymentSuccessView = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Primary Action */}
-          <TouchableOpacity
-            onPress={handleDone}
-            style={{ width: "100%", paddingVertical: s(10), backgroundColor: colors.teal, borderRadius: s(8), alignItems: "center", shadowColor: colors.teal, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 }}
-          >
-            <Text style={{ color: colors.onSolid, fontWeight: "700", fontSize: s(13) }}>
-              {activeOrder?.order_type === "dine_in" || activeOrder?.order_type == 'Dine In'
-                ? "Finalize Payment"
-                : "Start New Order"}
-            </Text>
-          </TouchableOpacity>
+          {/* Primary Action.
+              With a balance still on the check, neither "Start New Order" nor
+              the dine-in "Finalize Payment" (which clears the table) is a legal
+              next step — both walk away from uncollected money. Collecting the
+              rest becomes the primary action, and leaving is demoted to a
+              labelled secondary that keeps the check open. */}
+          {hasBalanceDue ? (
+            <>
+              <TouchableOpacity
+                onPress={payRemainingBalance}
+                style={{ width: "100%", paddingVertical: s(10), backgroundColor: colors.teal, borderRadius: s(8), flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(6), shadowColor: colors.teal, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 }}
+              >
+                {/* No figure on the button. What the remainder actually costs
+                    depends on the tender chosen NEXT — a cash-priced balance
+                    and a card-priced one differ — and that choice hasn't been
+                    made yet, so any amount printed here would be wrong half the
+                    time. The card above shows both bases; the amount charged is
+                    resolved live from the tender picked on the next screen. */}
+                <Text style={{ color: colors.onSolid, fontWeight: "700", fontSize: s(13) }}>
+                  Pay Remaining Balance
+                </Text>
+                <ArrowRight size={s(15)} color={colors.onSolid} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleSuccessClose}
+                style={{ width: "100%", paddingVertical: s(9), backgroundColor: colors.card, borderRadius: s(8), borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+              >
+                <Text style={{ color: colors.label, fontWeight: "600", fontSize: s(12) }}>
+                  Close — Keep Balance Due
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              onPress={handleDone}
+              style={{ width: "100%", paddingVertical: s(10), backgroundColor: colors.teal, borderRadius: s(8), alignItems: "center", shadowColor: colors.teal, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 }}
+            >
+              <Text style={{ color: colors.onSolid, fontWeight: "700", fontSize: s(13) }}>
+                {activeOrder?.order_type === "dine_in" || activeOrder?.order_type == 'Dine In'
+                  ? "Finalize Payment"
+                  : "Start New Order"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 

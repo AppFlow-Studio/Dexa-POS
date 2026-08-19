@@ -1,14 +1,20 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { getBusinessDayBounds, getCurrentBusinessDay } from '@/lib/businessDay'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { useAnalyticsStore } from '@/stores/useAnalyticsStore'
+import { PaymentLineItem, useAnalyticsStore } from '@/stores/useAnalyticsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { DateTime } from 'luxon'
 import {
   AlertCircle,
   ArrowDownLeft,
+  Banknote,
   Calendar,
+  CalendarClock,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock,
   CreditCard,
   DollarSign,
@@ -23,7 +29,7 @@ import {
   Users,
   X,
 } from 'lucide-react-native'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart, PieChart } from '@/components/charts/LazyGiftedCharts'
 import {
   ActivityIndicator,
@@ -51,6 +57,32 @@ const fmtFull$ = (v: number) =>
 
 const fmtLabel = (s: string) =>
   s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
+// Device timezone fallback when the location has none configured.
+const deviceTz = () => {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York' }
+  catch { return 'America/New_York' }
+}
+
+// Format a JS Date in the store's timezone. `withTime` includes the clock time.
+const fmtInTz = (d: Date, tz: string, withTime: boolean) => {
+  const dt = DateTime.fromJSDate(d).setZone(tz)
+  if (!dt.isValid) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return dt.toFormat(withTime ? 'MMM d, h:mm a' : 'MMM d')
+}
+
+// Format an ISO timestamp as a clock time in the store's timezone.
+const fmtTimeInTz = (iso: string | null, tz: string) => {
+  if (!iso) return '—'
+  const dt = DateTime.fromISO(iso).setZone(tz)
+  return dt.isValid ? dt.toFormat('h:mm a') : '—'
+}
+
+// Human label for a card payment's brand + last four.
+const cardLabel = (row: PaymentLineItem) => {
+  const brand = row.cardBrand ? fmtLabel(row.cardBrand) : (row.isCard ? 'Card' : fmtLabel(row.method))
+  return row.last4 ? `${brand} •••• ${row.last4}` : brand
+}
 
 // Chart colors — varied palette for pie slices
 const CHART_COLORS = [
@@ -612,9 +644,92 @@ const StaffTab: React.FC<{ data: any }> = ({ data }) => {
   )
 }
 
+// ─── Payment detail dropdown (card / cash) ────────────────────────────────────
+
+interface PaymentDropdownProps {
+  title: string
+  icon: React.ReactNode
+  count: number
+  total: number
+  tips: number
+  items: PaymentLineItem[]
+  tz: string
+  showCardMeta: boolean
+}
+const PaymentDropdown: React.FC<PaymentDropdownProps> = ({ title, icon, count, total, tips, items, tz, showCardMeta }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const [open, setOpen] = useState(false)
+  return (
+    <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: s(10), overflow: 'hidden' }}>
+      <TouchableOpacity
+        onPress={() => setOpen((o) => !o)}
+        activeOpacity={0.7}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: s(12) }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8), flex: 1 }}>
+          <View style={{ width: s(28), height: s(28), borderRadius: s(8), backgroundColor: colors.teal + '18', alignItems: 'center', justifyContent: 'center' }}>
+            {icon}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>{title}</Text>
+            <Text style={{ fontSize: s(10), color: colors.muted }}>
+              {count} {count === 1 ? 'payment' : 'payments'}{tips > 0 ? ` · ${fmtFull$(tips)} tips` : ''}
+            </Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+          <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.teal }}>{fmtFull$(total)}</Text>
+          {open ? <ChevronUp size={s(16)} color={colors.muted} /> : <ChevronDown size={s(16)} color={colors.muted} />}
+        </View>
+      </TouchableOpacity>
+
+      {open && (
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
+          {items.length === 0 ? (
+            <View style={{ padding: s(16), alignItems: 'center' }}>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>No payments in this period</Text>
+            </View>
+          ) : (
+            <ScrollView style={{ maxHeight: s(220) }} nestedScrollEnabled showsVerticalScrollIndicator>
+              {items.map((row, i) => (
+                <View
+                  key={row.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderTopWidth: i === 0 ? 0 : 1,
+                    borderTopColor: colors.border,
+                  }}
+                >
+                  <View style={{ flex: 1, paddingRight: s(8) }}>
+                    <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }} numberOfLines={1}>
+                      {showCardMeta ? cardLabel(row) : 'Cash'}
+                    </Text>
+                    <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>{fmtTimeInTz(row.paidAt, tz)}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>{fmtFull$(row.amount)}</Text>
+                    {row.tip > 0 ? (
+                      <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal, marginTop: s(2) }}>+ {fmtFull$(row.tip)} tip</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      )}
+    </View>
+  )
+}
+
 // ─── Tab: Payments ────────────────────────────────────────────────────────────
 
-const PaymentsTab: React.FC<{ data: any }> = ({ data }) => {
+const PaymentsTab: React.FC<{ data: any; tz: string }> = ({ data, tz }) => {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
   return (
@@ -664,6 +779,31 @@ const PaymentsTab: React.FC<{ data: any }> = ({ data }) => {
           )
         })()}
       </View>
+
+      {/* Card / Cash captured — expandable detail lists */}
+      <View style={{ height: 1, backgroundColor: colors.border, marginTop: s(14), marginBottom: s(12) }} />
+      <View style={{ gap: s(10) }}>
+        <PaymentDropdown
+          title="Card Payments"
+          icon={<CreditCard size={s(15)} color={colors.teal} />}
+          count={data.payments.cardCount}
+          total={data.payments.cardTotal}
+          tips={data.payments.cardTips}
+          items={data.payments.cardPayments}
+          tz={tz}
+          showCardMeta
+        />
+        <PaymentDropdown
+          title="Cash Payments"
+          icon={<Banknote size={s(15)} color={colors.teal} />}
+          count={data.payments.cashCount}
+          total={data.payments.cashTotal}
+          tips={data.payments.cashTips}
+          items={data.payments.cashPayments}
+          tz={tz}
+          showCardMeta={false}
+        />
+      </View>
     </SectionCard>
   )
 }
@@ -685,10 +825,58 @@ const AnalyticsDashboardScreen = () => {
   const [tempEnd, setTempEnd] = useState(filters.dateRange.end)
   const [activePicker, setActivePicker] = useState<'from' | 'to' | null>(null)
 
-  const presets = makePresets()
+  // ── Business-day scope (timezone + rollover from the location) ──────────────
+  const bizConfig = useMemo(() => {
+    const raw = selectedStore?.timezone
+    const timezone = raw && DateTime.now().setZone(raw).isValid ? raw : deviceTz()
+    return { timezone, rolloverHour: selectedStore?.business_day_start_hour ?? 0 }
+  }, [selectedStore?.timezone, selectedStore?.business_day_start_hour])
+
+  const bizBounds = useMemo(() => {
+    try {
+      const day = getCurrentBusinessDay(bizConfig)
+      const { startUtc, endUtc } = getBusinessDayBounds(day, bizConfig)
+      return { day, start: new Date(startUtc), end: new Date(endUtc) }
+    } catch {
+      return null
+    }
+  }, [bizConfig])
+
+  const presets = useMemo(() => {
+    const base = makePresets()
+    if (!bizBounds) return base
+    return [{ label: 'Business Day', getRange: () => ({ start: bizBounds.start, end: bizBounds.end }) }, ...base]
+  }, [bizBounds?.day])
 
   const load = useCallback(() => { fetchData(supabase, locationId, merchantId) }, [supabase, locationId, merchantId, filters.dateRange])
-  useEffect(() => { load() }, [filters.dateRange, locationId, merchantId])
+
+  // Default the analytics scope to the current business day. Re-applies when the
+  // location changes or the business day rolls over. Gated so the first fetch
+  // uses the business-day range (no wasted calendar-today fetch).
+  const [rangeReady, setRangeReady] = useState(false)
+  useEffect(() => {
+    if (!locationId || !bizBounds) return
+    setDateRange({ start: bizBounds.start, end: bizBounds.end }, 'Business Day')
+    setRangeReady(true)
+  }, [locationId, bizBounds?.day])
+
+  useEffect(() => {
+    if (!locationId || !rangeReady) return
+    load()
+  }, [filters.dateRange, locationId, merchantId, rangeReady])
+
+  // "From X → To Y" label for the scope banner. Business-day scope shows the
+  // clock window (e.g. rollover-to-rollover); other ranges show dates.
+  const scopeRangeText = useMemo(() => {
+    const { start, end } = filters.dateRange
+    const tz = bizConfig.timezone
+    if (activePresetLabel === 'Business Day') {
+      return `${fmtInTz(start, tz, true)}  →  ${fmtInTz(end, tz, true)}`
+    }
+    const startTxt = fmtInTz(start, tz, false)
+    const endTxt = fmtInTz(end, tz, false)
+    return startTxt === endTxt ? startTxt : `${startTxt}  →  ${endTxt}`
+  }, [filters.dateRange, activePresetLabel, bizConfig.timezone])
 
   const applyCustomRange = () => {
     const start = new Date(tempStart); start.setHours(0, 0, 0, 0)
@@ -760,6 +948,39 @@ const AnalyticsDashboardScreen = () => {
         </View>
       </View>
 
+      {/* ── Business-day scope banner (pinned, prominent) ─────────── */}
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(12),
+        paddingHorizontal: s(16),
+        paddingVertical: s(10),
+        backgroundColor: colors.teal + '12',
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}>
+        <View style={{ width: s(34), height: s(34), borderRadius: s(9), backgroundColor: colors.teal + '22', alignItems: 'center', justifyContent: 'center' }}>
+          <CalendarClock size={s(18)} color={colors.teal} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.heading }}>
+            {activePresetLabel === 'Business Day' ? 'Current Business Day' : (activePresetLabel || 'Selected Range')}
+          </Text>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }} numberOfLines={1}>{scopeRangeText}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end', minWidth: s(72) }}>
+          <Text style={{ fontSize: s(9), fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Card</Text>
+          <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}>{data ? fmt$(data.payments.cardTotal) : '—'}</Text>
+          <Text style={{ fontSize: s(9), color: colors.muted }}>{data ? `${data.payments.cardCount} txns` : ''}</Text>
+        </View>
+        <View style={{ width: 1, height: s(30), backgroundColor: colors.border }} />
+        <View style={{ alignItems: 'flex-end', minWidth: s(72) }}>
+          <Text style={{ fontSize: s(9), fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Cash</Text>
+          <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}>{data ? fmt$(data.payments.cashTotal) : '—'}</Text>
+          <Text style={{ fontSize: s(9), color: colors.muted }}>{data ? `${data.payments.cashCount} txns` : ''}</Text>
+        </View>
+      </View>
+
       {/* ── Body ─────────────────────────────────────────────────── */}
       <ScrollView contentContainerStyle={{ padding: s(14) }} showsVerticalScrollIndicator={false}>
 
@@ -783,7 +1004,7 @@ const AnalyticsDashboardScreen = () => {
             {activeTab === 'items' && <ItemsTab data={data} />}
             {activeTab === 'customers' && <CustomersTab data={data} />}
             {activeTab === 'staff' && <StaffTab data={data} />}
-            {activeTab === 'payments' && <PaymentsTab data={data} />}
+            {activeTab === 'payments' && <PaymentsTab data={data} tz={bizConfig.timezone} />}
           </>
         )}
 

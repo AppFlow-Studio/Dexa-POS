@@ -62,9 +62,7 @@ export function normalizeOrderType(
  * makes the five tabs a true partition: Online + Dine-In + Takeaway + Delivery
  * === All.
  */
-export function getChannelTab(
-  order: OrderProfile,
-): Exclude<ChannelTab, "all"> {
+export function getChannelTab(order: OrderProfile): Exclude<ChannelTab, "all"> {
   if (order._isOnlineOrder) return "online";
   return normalizeOrderType(order.order_type);
 }
@@ -78,11 +76,7 @@ export function getChannelTab(
  * silently unreachable.
  */
 export type ProviderKey =
-  | "ubereats"
-  | "doordash"
-  | "grubhub"
-  | "house"
-  | "other";
+  "ubereats" | "doordash" | "grubhub" | "house" | "other";
 
 export const PROVIDER_LABELS: Record<ProviderKey, string> = {
   ubereats: "Uber Eats",
@@ -101,28 +95,38 @@ const PROVIDER_ORDER: ProviderKey[] = [
   "other",
 ];
 
+function resolveProviderKey(
+  isOnline: boolean,
+  deliveryPlatform: string | null | undefined,
+  orderSource: string | null | undefined,
+): ProviderKey | null {
+  if (!isOnline) return null;
+
+  const rawPlatform = deliveryPlatform?.trim() ?? "";
+  if (!rawPlatform) return null;
+
+  const resolved = resolveOrderPlatformLogo({
+    deliveryPlatform,
+    orderSource,
+  });
+
+  if (resolved.kind === "marketplace") {
+    return (resolved.provider as ProviderKey) ?? "other";
+  }
+  if (resolved.kind === "first_party") return "house";
+  return "other";
+}
+
 /**
  * Provider for an online order, or null when the order isn't online.
  * Always goes through the shared casing-normalizing resolver.
  */
 export function getProviderKey(order: OrderProfile): ProviderKey | null {
-  if (!order._isOnlineOrder) return null;
-  const resolved = resolveOrderPlatformLogo({
-    deliveryPlatform: order.delivery_platform,
-    orderSource: order.order_source,
-  });
-  switch (resolved.kind) {
-    case "marketplace":
-      // Resolver only labels these three as marketplaces today.
-      return (resolved.provider as ProviderKey) ?? "other";
-    case "first_party":
-      return "house";
-    default:
-      // The merchant's own storefront resolves to a generic "Online" badge (no
-      // marketplace to name), but for filtering it belongs with the direct
-      // channels rather than in the catch-all bucket.
-      return order.order_source === "online_store" ? "house" : "other";
-  }
+  return resolveProviderKey(
+    !!order._isOnlineOrder,
+    order.delivery_platform,
+    order.order_source,
+  );
 }
 
 /**
@@ -241,16 +245,11 @@ function summaryChannel(row: OrderSummaryLike): Exclude<ChannelTab, "all"> {
 }
 
 function summaryProvider(row: OrderSummaryLike): ProviderKey | null {
-  if (!isOnlineOrderSource(row.order_source)) return null;
-  const resolved = resolveOrderPlatformLogo({
-    deliveryPlatform: row.delivery_platform,
-    orderSource: row.order_source,
-  });
-  if (resolved.kind === "marketplace") {
-    return (resolved.provider as ProviderKey) ?? "other";
-  }
-  if (resolved.kind === "first_party") return "house";
-  return row.order_source === "online_store" ? "house" : "other";
+  return resolveProviderKey(
+    isOnlineOrderSource(row.order_source),
+    row.delivery_platform,
+    row.order_source,
+  );
 }
 
 function summaryMatchesStatus(
@@ -344,7 +343,13 @@ export function matchesSearch(order: OrderProfile, query: string): boolean {
     return true;
   }
   // "ubereats" / "uber_eats" typed without the space still matches "Uber Eats".
-  if (provider && PROVIDER_LABELS[provider].toLowerCase().replace(/\s+/g, "").includes(q.replace(/\s+/g, ""))) {
+  if (
+    provider &&
+    PROVIDER_LABELS[provider]
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .includes(q.replace(/\s+/g, ""))
+  ) {
     return true;
   }
 

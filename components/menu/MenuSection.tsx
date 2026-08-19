@@ -58,6 +58,9 @@ import {
 } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
+import MenuStaleBanner from "./MenuStaleBanner";
+import MenuUnavailableState from "./MenuUnavailableState";
+import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
 import MenuItem from "./MenuItem";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
 import OpenItemAdder from "./OpenItemAdder";
@@ -493,7 +496,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   );
 
   const visibleMenus = useMemo(
-    () => menus.filter((menu) => !hiddenMenuIds.includes(menu.id)),
+    () => filterPosOrderEntryMenus(menus, hiddenMenuIds),
     [menus, hiddenMenuIds],
   );
 
@@ -1232,6 +1235,14 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         {/* Row 2: Optional content below header (e.g. order badges) */}
         {headerBelow}
 
+        {/* Row 2b: "menu may be out of date" strip. Self-hiding — renders
+            nothing unless the grid is showing cached or no-longer-fresh data. */}
+        {!forceOrdersView && activeTab === "Menu" && (
+          <View className={isTableOrder ? "px-3" : ""}>
+            <MenuStaleBanner />
+          </View>
+        )}
+
         {/* Row 3: Category controls */}
         {!forceOrdersView &&
           activeTab === "Menu" &&
@@ -1272,38 +1283,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               />
             </View>
           ) : (
-            <View
-              style={{
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: sc(80),
-              }}
-            >
-              <Clock size={sc(64)} color={colors.muted} />
-              <Text
-                style={{
-                  color: colors.heading,
-                  fontSize: sc(24),
-                  fontWeight: "bold",
-                  marginTop: sc(16),
-                }}
-              >
-                No Menu Available
-              </Text>
-              <Text
-                style={{
-                  color: colors.muted,
-                  fontSize: sc(16),
-                  marginTop: sc(8),
-                  textAlign: "center",
-                  paddingHorizontal: sc(40),
-                }}
-              >
-                There are currently no menus scheduled for this time. Please
-                check back later or select a different order type.
-              </Text>
-            </View>
+            <MenuUnavailableState />
           ))}
 
         <View className={`flex-1 ${isTableOrder ? "px-3" : ""}`}>

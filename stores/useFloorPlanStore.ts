@@ -312,6 +312,12 @@ interface FloorPlanState {
   // Data
   locationId: string | null;
   floorPlans: FloorPlan[];
+  /**
+   * Opaque geometry token from get_floor_snapshot_v1. Sent back on the next
+   * load so the server can omit geometry when the layout hasn't changed.
+   * Null = no token yet (or the legacy RPC answered), so geometry is re-sent.
+   */
+  geometryVersion: string | null;
   activeFloorPlanId: string | null;
   tables: FloorPlanObject[];
   tablesById: Record<string, FloorPlanObject>; // O(1) lookup map
@@ -532,6 +538,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // Initial State
         locationId: null,
         floorPlans: [],
+        geometryVersion: null,
         activeFloorPlanId: null,
         tables: [],
         tablesById: {}, // O(1) lookup map
@@ -682,6 +689,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             realtimeChannel: null,
             locationId: null,
             floorPlans: [],
+            geometryVersion: null,
             activeFloorPlanId: null,
             loadingFloorPlanId: null,
             tables: [],
@@ -852,16 +860,50 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const supabase = getClient();
           const locationId = get().locationId;
           if (!supabase || !locationId) return;
-          const { data, error } = await FloorPlanService.getLocationFloorPlans(
+
+          // Versioned snapshot: geometry is only re-sent when the layout has
+          // actually changed, so an unedited floor costs its live status only
+          // (-79% payload, 5 round trips -> 1). Falls back to the legacy RPC
+          // where get_floor_snapshot_v1 isn't deployed.
+          const knownVersion = get().geometryVersion;
+          let { data: snap, error } = await FloorPlanService.getFloorSnapshot(
             supabase,
             locationId,
+            { knownVersion },
           );
           if (error) {
             set({ error: error.message });
             return;
           }
 
-          let plans = data || [];
+          // geometry === null means "your token is current, reuse your cache".
+          if (snap && snap.geometry === null) {
+            if (get().floorPlans.length > 0) {
+              // Normal warm path: keep cached geometry, refresh the token.
+              set({ geometryVersion: snap.geometry_version });
+              return;
+            }
+            // Token without geometry to match it — should be unreachable since
+            // both persist together, but re-requesting unconditionally is the
+            // difference between a stale-token bug and an EMPTY FLOOR PLAN on
+            // a live terminal. Ask again with no token.
+            const retry = await FloorPlanService.getFloorSnapshot(
+              supabase,
+              locationId,
+              { knownVersion: null },
+            );
+            if (retry.error) {
+              set({ error: retry.error.message });
+              return;
+            }
+            snap = retry.data;
+          }
+
+          if (snap?.geometry_version !== undefined) {
+            set({ geometryVersion: snap.geometry_version });
+          }
+
+          let plans = snap?.geometry || [];
 
           // The get_location_floor_plans RPC may not include canvas_width /
           // canvas_height. Patch them from the direct table if missing.
@@ -2306,6 +2348,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // non-active plans re-fetch on first switch after a cold start.
         partialize: (state) => ({
           floorPlans: state.floorPlans,
+          // Persisted WITH floorPlans, never apart: the two are written in the
+          // same snapshot, so a rehydrated token always describes the geometry
+          // rehydrated beside it. That is what lets a warm launch skip the
+          // geometry payload entirely. loadFloorPlans still re-requests without
+          // the token if it ever finds a token but no plans.
+          geometryVersion: state.geometryVersion,
           activeFloorPlanId: state.activeFloorPlanId,
           // Persist geometry WITHOUT the embedded session. onRehydrateStorage
           // below strips `session` from every rehydrated table unconditionally,

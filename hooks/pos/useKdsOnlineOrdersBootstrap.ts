@@ -48,6 +48,22 @@ export function useKdsOnlineOrdersBootstrap({
 
     const fetchOnlineOrders = async () => {
       try {
+        // PERF (db-perf-waves, 2026-08): this PostgREST embed is the single most
+        // expensive statement in the platform — 34,651 calls at a 1107.76ms mean,
+        // 38,384s of total DB time over the 254-day pg_stat_statements window.
+        //
+        // The cost is NOT the shape of the query. It is per-row RLS policy
+        // evaluation on orders / order_items / order_item_modifiers: the same
+        // embed with RLS bypassed measures 8.5ms. Wave 1
+        // (dexapos-website/supabase/migrations/20260815120000_wave1_order_rls_initplan.sql)
+        // hoists the auth calls in those policies into an InitPlan, which makes
+        // this query dramatically faster with no client change at all.
+        //
+        // So: do NOT "optimise" this into a bespoke RPC. Re-measure after Wave 1
+        // is applied and only revisit if it is still hot. The call is already
+        // deadline-wrapped below, so a slow response degrades to a skipped
+        // refresh (realtime broadcasts remain the primary feed) rather than a
+        // hung KDS.
         const { data, error } = await withDeadline(
           async (signal) =>
             await supabase

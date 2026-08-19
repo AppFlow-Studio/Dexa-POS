@@ -27,13 +27,12 @@ import {
 } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { PanGestureHandler } from "react-native-gesture-handler";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Popover from "react-native-popover-view";
 import Animated, {
     Extrapolation,
     interpolate,
     runOnJS,
-    useAnimatedGestureHandler,
     useAnimatedStyle,
     useSharedValue,
     withSpring,
@@ -876,18 +875,27 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
     }, 300);
   }, [onMarkDone]);
 
-  const swipeHandler = useAnimatedGestureHandler({
-    onStart: (_, ctx: any) => {
-      ctx.startY = translateY.value;
-    },
-    onActive: (event, ctx: any) => {
+  const startY = useSharedValue(0);
+
+  // reanimated 4 removed useAnimatedGestureHandler; use the gesture-handler v3
+  // Gesture API. PanGestureHandler props move onto the builder; the old `ctx`
+  // context object is replaced by a shared value.
+  const swipeGesture = Gesture.Pan()
+    .enabled(canSwipeComplete)
+    .activeOffsetY(-10)
+    .failOffsetX([-15, 15])
+    .failOffsetY(10)
+    .onStart(() => {
+      startY.value = translateY.value;
+    })
+    .onUpdate((event) => {
       // Only allow upward swipe (negative Y), clamp
       translateY.value = Math.min(
         0,
-        Math.max(-60, ctx.startY + event.translationY),
+        Math.max(-60, startY.value + event.translationY),
       );
-    },
-    onEnd: () => {
+    })
+    .onEnd(() => {
       if (translateY.value < -35) {
         translateY.value = withTiming(-60, { duration: 150 }, (finished) => {
           if (finished) runOnJS(handleSwipeComplete)();
@@ -895,8 +903,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
       } else {
         translateY.value = withSpring(0, { damping: 15, stiffness: 150 });
       }
-    },
-  });
+    });
 
   const animatedSwipeStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -953,13 +960,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           </Text>
         </Animated.View>
       )}
-      <PanGestureHandler
-        onGestureEvent={swipeHandler}
-        enabled={canSwipeComplete}
-        activeOffsetY={-10}
-        failOffsetX={[-15, 15]}
-        failOffsetY={10}
-      >
+      <GestureDetector gesture={swipeGesture}>
         <Animated.View
           style={canSwipeComplete ? animatedSwipeStyle : undefined}
         >
@@ -1085,7 +1086,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
             ) : null}
           </Popover>
         </Animated.View>
-      </PanGestureHandler>
+      </GestureDetector>
     </View>
   );
 };

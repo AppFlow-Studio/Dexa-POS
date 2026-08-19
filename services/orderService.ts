@@ -1,4 +1,11 @@
 import { getDeviceId } from "@/lib/deviceId";
+import {
+    type KitchenMutationResult,
+    type KitchenSendItemStatus,
+    type KitchenSendOrderStatus,
+    validateKitchenMutationResult,
+} from "@/lib/kdsSendTraceability";
+import type { OnlineOrderBoardSelection } from "@/lib/onlineOrderBoard";
 import { DEADLINES } from "@/lib/network/deadlines";
 import {
     rpcWithIdempotency,
@@ -6,6 +13,8 @@ import {
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline as _runWithDeadline } from "@/lib/network/runWithDeadline";
 import { clearPendingToGo, markPendingToGo } from "@/lib/pendingToGo";
+import type { RpcResult } from "@/lib/network/rpcVersionFallback";
+import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -845,7 +854,14 @@ export class OrderService {
       // trg_inkind_normalize BEFORE INSERT trigger on order_payments, which is
       // version-independent and therefore survives the next fork of this
       // lineage. See 20260802100100_order_payments_inkind_normalize_trigger.sql.
-      "process_payment_v16",
+      //
+      // v17 — forks v16 byte-identical + a valor_transaction branch that funnels
+      // Valor's nested card fields (cardLast4/rrn/approvalCode/entryMode) into the
+      // order_payments columns and stamps terminal_type='valor'. Without it the
+      // client called v16 (no valor arm) so Valor payments persisted with null
+      // last4/rrn/auth and a 'dejavoo' label. MUST match the direct payment path
+      // in useOrderStore.syncPaymentToBackend, which also calls v17.
+      "process_payment_v17",
       params,
       {
         deadline: DEADLINES.paymentRpc,
@@ -1253,6 +1269,45 @@ export class OrderService {
       return null;
     }
     return { start_ts: data[0].start_ts, end_ts: data[0].end_ts };
+  }
+
+  static async getOnlineOrdersBoard(
+    client: SupabaseClient,
+    locationId: string,
+    filter: {
+      preset: "today" | "yesterday" | "last_7_days" | "custom";
+      startDate: string | null;
+      endDate: string | null;
+    },
+  ): Promise<{ data: OnlineOrderBoardSelection[] | null; error: any }> {
+    const { data, error } = await _runWithDeadline<any[]>(
+      "get_online_orders_board_v1",
+      DEADLINES.read,
+      async (signal) => {
+        const result = await client
+          .rpc("get_online_orders_board_v1", {
+            p_location_id: locationId,
+            p_preset: filter.preset,
+            p_start_date: filter.startDate,
+            p_end_date: filter.endDate,
+          })
+          .abortSignal(signal);
+        return { data: result.data, error: result.error };
+      },
+    );
+
+    if (error) return { data: null, error };
+
+    return {
+      data: ((data ?? []) as any[]).map((row) => ({
+        orderId: row.order_id,
+        placedAt: row.placed_at ?? null,
+        isInRange: row.is_in_range === true,
+        itemCount: Number(row.item_count ?? 0),
+        orderData: row.order_data,
+      })),
+      error: null,
+    };
   }
 
   static async getHistoryOrders(
@@ -1958,7 +2013,7 @@ export class OrderService {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
     }
-    return rpcWithIdempotency<any>(
+    const result = await rpcWithIdempotency<KitchenMutationResult>(
       client,
       "bulk_update_order_item_status",
       "bulk_update_order_item_status", // v1 name (no key)
@@ -1970,6 +2025,91 @@ export class OrderService {
       },
       { deadline: DEADLINES.sendToKitchen, keyOverride: opts?.keyOverride },
     );
+
+    if (result.error) return result;
+
+    const countError = validateKitchenMutationResult(
+      result.data,
+      orderItemIds.length,
+      { operation: "status" },
+    );
+    if (countError) {
+      console.error("[KDS routing] Partial kitchen status update", {
+        ...countError.details,
+        status,
+        code: countError.code,
+      });
+      return { data: result.data, error: countError };
+    }
+
+    return result;
+  }
+
+  /**
+   * Atomically transitions a draft order and fires its items while recording
+   * station/device/idempotency context in the shared KDS send-attempt ledger.
+   */
+  static async sendOrderToKitchen(
+    client: SupabaseClient,
+    orderId: string,
+    orderItemIds: string[],
+    orderStatus: KitchenSendOrderStatus,
+    itemStatus: KitchenSendItemStatus,
+    opts: {
+      staffId: string | null;
+      stationId: string | null;
+      deviceId: string | null;
+      idempotencyKey: string;
+      itemsIdempotencyKey: string;
+      replay?: boolean;
+    },
+  ): Promise<{ data: KitchenMutationResult | null; error: any }> {
+    const result = await _runWithDeadline<KitchenMutationResult>(
+      "send_order_to_kitchen_v1",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("send_order_to_kitchen_v1", {
+            p_order_id: orderId,
+            p_order_status: orderStatus,
+            p_order_item_ids: orderItemIds,
+            p_item_status: itemStatus,
+            p_staff_id: opts.staffId,
+            p_idempotency_key: opts.idempotencyKey,
+            p_items_idempotency_key: opts.itemsIdempotencyKey,
+            p_station_id: opts.stationId,
+            p_device_id: opts.deviceId,
+          })
+          .abortSignal(signal);
+        return { data: data as KitchenMutationResult | null, error };
+      },
+    );
+
+    if (result.error) return result;
+
+    const countError = validateKitchenMutationResult(
+      result.data,
+      orderItemIds.length,
+      {
+        operation: "send",
+        orderId,
+        stationId: opts.stationId,
+        deviceId: opts.deviceId,
+        replay: opts.replay ?? false,
+        requireExplicitCounts: true,
+      },
+    );
+    if (countError) {
+      console.error("[KDS routing] Kitchen send was not fully applied", {
+        ...countError.details,
+        code: countError.code,
+        idempotencyKey: opts.idempotencyKey,
+        itemsIdempotencyKey: opts.itemsIdempotencyKey,
+      });
+      return { data: result.data, error: countError };
+    }
+
+    return result;
   }
 
   /**
@@ -2138,7 +2278,13 @@ export class OrderService {
     if (kdsDisplayId) {
       params.p_kds_display_id = kdsDisplayId;
     }
-    const { data, error } = await client.rpc("get_kds_tickets_v2", params);
+    // Prefer the location-scoped v3 (see useKDSStore for the measured rationale);
+    // fall back to v2 where v3 has not been deployed yet.
+    const { data, error } = await rpcWithVersionFallback<any>(
+      "get_kds_tickets_v3",
+      () => client.rpc("get_kds_tickets_v3", params) as unknown as Promise<RpcResult<any>>,
+      () => client.rpc("get_kds_tickets_v2", params) as unknown as Promise<RpcResult<any>>,
+    );
     return { data, error };
   }
 

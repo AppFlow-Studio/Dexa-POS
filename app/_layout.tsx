@@ -79,7 +79,7 @@ import {
     TokenCache,
     useAuth,
 } from "@clerk/clerk-expo";
-import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { BottomSheetModalProvider } from "@/components/ui/bottomSheet";
 import {
     DarkTheme,
     DefaultTheme,
@@ -111,6 +111,7 @@ import {
 } from "@/services/appUpdater";
 import * as Sentry from "@sentry/react-native";
 import { isRunningInExpoGo } from "expo";
+import * as ScreenOrientation from "expo-screen-orientation";
 import * as Updates from "expo-updates";
 
 const navigationIntegration = Sentry.reactNavigationIntegration({
@@ -132,7 +133,6 @@ Sentry.init({
   // Offline: cache up to 100 envelopes on disk (default 30)
   maxCacheItems: 100,
 
-  
   tracesSampleRate: 0.1,
 
   // Native crash + hang capture. Android ANRs are captured by the native SDK by
@@ -590,14 +590,38 @@ export default Sentry.wrap(function RootLayout() {
   const isKDS = useStoreSettingsStore(
     (s) => s.selectedStation?.station_type === "kds",
   );
+  const isKiosk = useStoreSettingsStore(
+    (s) => s.selectedStation?.station_type === "self_service",
+  );
   const isCFDMode = useStoreSettingsStore((s) => s.isCFDMode);
-  const isPOSMode = !isKDS && !isCFDMode;
+  const hasSelectedStation = useStoreSettingsStore((s) => !!s.selectedStation);
+  const isPOSMode = hasSelectedStation && !isKDS && !isKiosk && !isCFDMode;
   const isPinModalOpen = usePinOverrideStore((s) => s.isPinModalOpen);
   const isNoPrinterModalVisible = useNoPrinterModalStore((s) => s.visible);
   const isCustomizationOpen = useCustomizationStore((s) => s.isOpen);
   const [nativeUpdateManifest, setNativeUpdateManifest] =
     React.useState<VersionManifest | null>(null);
   setThemeMode(colorScheme === "light" ? "light" : "dark");
+
+  // Orientation management: lock to landscape when not on a kiosk station
+  // (the app's default per app.json). Lives in the root layout because it
+  // stays mounted across all navigation and layout changes, unlike
+  // (auth)/_layout or (main)/_layout.
+  React.useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (isKiosk) {
+      // Kiosk orientation is set by useKioskOrientation in the kiosk page.
+      // This effect only handles the non-kiosk lock path. Let the
+      // kiosk-specific hook manage the kiosk lock so it can use the profile.
+      return;
+    }
+    // Not a kiosk — lock to landscape (app.json default). lockAsync(DEFAULT)
+    // doesn't actually prevent rotation on Android when system auto-rotate is
+    // on; we must be explicit.
+    ScreenOrientation.lockAsync(
+      ScreenOrientation.OrientationLock.LANDSCAPE,
+    ).catch(() => {});
+  }, [isKiosk]);
 
   // Store the navigation container ref for cross-group navigation + Sentry tracing
   const navigationRef = useNavigationContainerRef();
@@ -995,7 +1019,7 @@ export default Sentry.wrap(function RootLayout() {
           >
             <TanstackProvider>
               <PosSyncProvider>
-                <GestureHandlerRootView>
+                <GestureHandlerRootView style={{ flex: 1 }}>
                   <UiScaleProvider>
                     <SafeAreaProvider>
                       <ThemeProvider

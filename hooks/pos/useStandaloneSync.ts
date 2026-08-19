@@ -1,5 +1,6 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useSession } from "@clerk/clerk-expo";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery } from "@tanstack/react-query";
 
 import { MenuItemIngredientSync, ModifierIngredientSync } from "@/types/menu";
@@ -140,6 +141,30 @@ export interface StandaloneSyncData {
  * @param merchantId - The merchant UUID
  * @param locationId - The location UUID
  */
+export const standaloneSyncQueryKey = (
+  merchantId: string | null,
+  locationId: string | null
+) => ["standalone_sync", merchantId, locationId] as const;
+
+/**
+ * Shared query config so the menu-management route and the post-boot background
+ * warm-up (see PosSyncProvider) hit the exact same cache entry. Without a single
+ * definition the warm-up would populate a different key and the route would
+ * refetch anyway.
+ */
+export const standaloneSyncQueryOptions = (
+  supabase: SupabaseClient,
+  merchantId: string | null,
+  locationId: string | null
+) => ({
+  queryKey: standaloneSyncQueryKey(merchantId, locationId),
+  queryFn: () => fetchStandaloneSync(supabase, merchantId, locationId),
+  // Same offline settings as main sync
+  networkMode: "offlineFirst" as const,
+  staleTime: Infinity,
+  gcTime: 1000 * 60 * 60 * 24, // 24 hours
+});
+
 export const useStandaloneSync = (
   merchantId: string | null,
   locationId: string | null
@@ -148,15 +173,22 @@ export const useStandaloneSync = (
   const { session, isLoaded: isSessionLoaded } = useSession();
 
   return useQuery<StandaloneSyncData>({
-    queryKey: ["standalone_sync", merchantId, locationId],
+    ...standaloneSyncQueryOptions(supabase, merchantId, locationId),
 
-    queryFn: async () => {
-      if (!merchantId || !locationId) {
-        throw new Error("Merchant ID and Location ID required");
-      }
-      console.log("merchantId", merchantId);
-      console.log("locationId", locationId);
-      // Fetch all 4 in parallel
+    // Wait for session to be loaded and have a valid token before querying
+    enabled: !!merchantId && !!locationId && isSessionLoaded && !!session,
+  });
+};
+
+export async function fetchStandaloneSync(
+  supabase: SupabaseClient,
+  merchantId: string | null,
+  locationId: string | null
+): Promise<StandaloneSyncData> {
+  if (!merchantId || !locationId) {
+    throw new Error("Merchant ID and Location ID required");
+  }
+  // Fetch all 4 in parallel
       const [
         categoriesResult,
         itemsResult,
@@ -324,15 +356,5 @@ export const useStandaloneSync = (
           inventory_item_id: row.inventory_item_id,
           quantity: row.quantity_used ?? 0,
         })),
-      };
-    },
-
-    // Wait for session to be loaded and have a valid token before querying
-    enabled: !!merchantId && !!locationId && isSessionLoaded && !!session,
-
-    // Same offline settings as main sync
-    networkMode: "offlineFirst",
-    staleTime: Infinity,
-    gcTime: 1000 * 60 * 60 * 24, // 24 hours
-  });
-};
+  };
+}

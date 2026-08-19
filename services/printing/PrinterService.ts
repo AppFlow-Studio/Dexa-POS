@@ -122,6 +122,32 @@ function kickAllReadyPrinters (): void {
 // PUBLIC API
 // ============================================================================
 
+function liveItemCount (order: OrderProfile | null | undefined): number {
+  return order?.items?.length ?? 0
+}
+
+/**
+ * A header-only broadcast shell: nothing in `items`, but the broadcast's
+ * `item_count` says the backend row HAS items.
+ *
+ * v3 broadcasts carry no `order_items` (only `item_count`), and item detail is
+ * hydrated on demand — W1-3 eager-fetches full detail only for orders inside
+ * this station's working scope and merely marks everything else detailStale.
+ * An order that never enters the working scope therefore keeps `items: []`
+ * indefinitely. Auto-accepted online orders are the systematic case: they land
+ * via broadcast, run through KDS and complete without ever being opened on the
+ * POS, so nothing ever calls the demand-side hydrator for them.
+ */
+export function isHeaderOnlyShell (
+  order: OrderProfile | null | undefined
+): boolean {
+  return (
+    !!order &&
+    liveItemCount(order) === 0 &&
+    (order._broadcastItemCount ?? 0) > 0
+  )
+}
+
 /**
  * Resolve the fullest available copy of an order for printing. Live surfaces
  * (sidebar, table sheet, payment sheet, menu) already pass the hydrated store
@@ -132,20 +158,85 @@ function kickAllReadyPrinters (): void {
  * exists in the order store (matched by local id, else db_order_id), prefer it
  * so EVERY print surface resolves the same receipt. Falls back to the passed
  * order for archived orders no longer held in the store.
+ *
+ * "Fullest" is the operative word: the store copy wins only when it is at least
+ * as complete as what we were handed. Previous-Orders keys its profiles by the
+ * db uuid — the same key a broadcast shell is stored under — so an unguarded
+ * swap replaced a fully-hydrated 6-item reprint with an empty header shell and
+ * printed "(no items)" under a $114.80 total (#S1-0010).
  */
 export function resolveFullOrder (order: OrderProfile): OrderProfile {
   try {
     const store = useOrderStore.getState()
-    const byLocal = store.ordersById[order.id]
-    if (byLocal) return byLocal
-    const localId = order.db_order_id
-      ? store.dbOrderIdIndex[order.db_order_id]
-      : undefined
-    if (localId && store.ordersById[localId]) return store.ordersById[localId]
+    const stored =
+      store.ordersById[order.id] ??
+      (order.db_order_id
+        ? store.ordersById[store.dbOrderIdIndex[order.db_order_id] ?? '']
+        : undefined)
+    if (!stored) return order
+    // Never trade item data away. A store copy with no items can still be the
+    // better source (fresher header, session binding) — but only when the
+    // caller has no items either.
+    if (liveItemCount(stored) === 0 && liveItemCount(order) > 0) return order
+    return stored
   } catch {
     // Store unavailable — print what we were handed.
   }
   return order
+}
+
+/**
+ * Force-hydrate item detail for a header-only shell before it reaches the
+ * renderer. Returns the fullest copy available afterwards.
+ *
+ * Only fires for orders we KNOW are missing items (`item_count` > 0 with an
+ * empty array), so the common path costs nothing. `force: true` bypasses the
+ * 5s detail-sync cooldown — the empty array IS the evidence of need. Failures
+ * are non-fatal here; the caller decides whether an item-less receipt may print.
+ */
+async function hydrateItemsForPrint (
+  order: OrderProfile
+): Promise<OrderProfile> {
+  if (!isHeaderOnlyShell(order)) return order
+  const dbId = order.db_order_id ?? order.id
+  try {
+    await useOrderStore
+      .getState()
+      .syncOrderFromBackendComplete(dbId, { force: true })
+    const store = useOrderStore.getState()
+    const rehydrated =
+      store.ordersById[store.dbOrderIdIndex[dbId] ?? dbId] ??
+      store.ordersById[order.id]
+    if (liveItemCount(rehydrated) > 0) return rehydrated!
+  } catch (e) {
+    console.warn('[PrinterService] Pre-print item hydration failed:', e)
+  }
+  return order
+}
+
+/**
+ * Guard the renderer's `(no items)` path. buildReceiptTemplateData derives
+ * Subtotal purely from the item array while Tax and TOTAL fall back to the
+ * persisted scalars, so an item-less finalized order prints a body-less receipt
+ * with a $0.00 subtotal under the real total. That is worse than not printing:
+ * it reconciles to nothing and reads as a $0 order to whoever holds the paper.
+ */
+function blockItemlessReceipt (order: OrderProfile, context: string): boolean {
+  if (!isHeaderOnlyShell(order)) return false
+  const expected = order._broadcastItemCount ?? 0
+  console.error(
+    `[PrinterService] ${context}: refusing to print — order ${
+      order.db_order_id ?? order.id
+    } has ${expected} item(s) on the backend but none loaded locally.`
+  )
+  toastService.show({
+    title: 'Receipt Not Printed',
+    message: `Could not load this order's ${expected} item${
+      expected === 1 ? '' : 's'
+    }. Check the connection and try again.`,
+    type: 'error'
+  })
+  return true
 }
 
 export const PrinterService = {
@@ -158,12 +249,13 @@ export const PrinterService = {
   ): Promise<boolean> {
     // Prefer the hydrated store copy so every surface — including Previous-Orders
     // reprints — renders the same receipt (full modifiers + live service charge).
-    const order = resolveFullOrder(inputOrder)
+    const order = await hydrateItemsForPrint(resolveFullOrder(inputOrder))
     const printer = getReceiptPrinter(location.id)
     if (!printer) {
       console.warn('[PrinterService] No receipt printer configured')
       return false
     }
+    if (blockItemlessReceipt(order, 'printReceipt')) return false
 
     const { printMerchantCopy, printCustomerCopy } =
       useLocationConfigStore.getState().config.printing
@@ -206,13 +298,14 @@ export const PrinterService = {
     location: SelectedLocation
   ): Promise<boolean> {
     if (payment.isVoided) return false
-    const order = resolveFullOrder(inputOrder)
+    const order = await hydrateItemsForPrint(resolveFullOrder(inputOrder))
 
     const printer = getReceiptPrinter(location.id)
     if (!printer) {
       console.warn('[PrinterService] No receipt printer configured')
       return false
     }
+    if (blockItemlessReceipt(order, 'printSplitPaymentReceipt')) return false
 
     const { printMerchantCopy, printCustomerCopy } =
       useLocationConfigStore.getState().config.printing
@@ -253,7 +346,7 @@ export const PrinterService = {
     inputOrder: OrderProfile,
     location: SelectedLocation
   ): Promise<boolean> {
-    const order = resolveFullOrder(inputOrder)
+    const order = await hydrateItemsForPrint(resolveFullOrder(inputOrder))
     const payments = (order.payments ?? []).filter(p => !p.isVoided)
     if (payments.length === 0) return false
     let ok = true

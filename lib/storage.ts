@@ -15,6 +15,7 @@
  */
 
 import { debounce } from "lodash";
+import { Platform } from "react-native";
 import { createMMKV } from "react-native-mmkv";
 import type { PersistStorage, StorageValue } from "zustand/middleware";
 import { StateStorage } from "zustand/middleware";
@@ -52,7 +53,16 @@ export const storage = createMMKV({
  */
 export const secureStorage = createMMKV({
   id: "dexa-pos-secure",
-  encryptionKey: "dexa-pos-secure-key-v1", // In production, derive from device-specific key
+  // MMKV's web backend (the CFD WebView bundle, web/cfd-entry.tsx) throws
+  // `'encryptionKey' is not supported on Web!` at module-eval and takes the
+  // whole CFD display down. Native keeps AES-256; web — the CFD display, which
+  // stores no PINs / sensitive data — falls back to the plain localStorage
+  // shim. This makes the module web-safe regardless of any transitive-import
+  // leak into the web bundle (belt-and-suspenders with the lazy-require guards
+  // in lib/uiScale.ts and contexts/CFDDisplayDataContext.base.ts).
+  ...(Platform.OS === "web"
+    ? {}
+    : { encryptionKey: "dexa-pos-secure-key-v1" }), // In production, derive from device-specific key
 });
 
 /**
@@ -753,13 +763,15 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
     }
   }
 
-  // Evict the Previous Orders offline-fallback snapshots (one per location),
-  // plus any legacy `today_orders:*` keys from a prior build. Both are
-  // best-effort caches, safe to drop on a full cache clear.
+  // Evict the Previous Orders + menu offline-fallback snapshots (one per
+  // location), plus any legacy `today_orders:*` keys from a prior build. All
+  // are best-effort caches, safe to drop on a full cache clear — the menu
+  // snapshot is rewritten by the next successful pos_sync.
   try {
     for (const key of syncStorage.getAllKeys()) {
       if (
         key.startsWith("prev_orders_offline:") ||
+        key.startsWith("menu_offline:") ||
         key.startsWith("today_orders:")
       ) {
         syncStorage.remove(key);
@@ -767,7 +779,7 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
       }
     }
   } catch (error) {
-    errors.push(`Failed to clear previous-orders offline cache: ${error}`);
+    errors.push(`Failed to clear offline fallback caches: ${error}`);
   }
 
   return { clearedKeys, errors };
