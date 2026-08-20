@@ -69,6 +69,7 @@ const initialState: CFDDisplayData = {
   paymentMethod: null,
   merchantHasLoyalty: false,
   pricingDisplayMode: "dual",
+  cfdUiScaleOverride: null,
   themeMode: "dark",
 };
 
@@ -145,6 +146,12 @@ export const useCFDWebDisplayStore = create<CFDWebDisplayStore>()((set) => ({
         payload.merchantHasLoyalty ?? current.merchantHasLoyalty,
       pricingDisplayMode:
         payload.pricingDisplayMode ?? current.pricingDisplayMode,
+      // `null` means "no override", so carry forward on key absence rather
+      // than via `??` — otherwise clearing the setting could never propagate.
+      cfdUiScaleOverride:
+        "cfdUiScaleOverride" in payload
+          ? (payload.cfdUiScaleOverride ?? null)
+          : current.cfdUiScaleOverride,
       themeMode: payload.themeMode ?? current.themeMode,
     }));
   },
@@ -207,6 +214,7 @@ export function CFDWebDisplayProvider({
       paymentMethod: s.paymentMethod,
       merchantHasLoyalty: s.merchantHasLoyalty,
       pricingDisplayMode: s.pricingDisplayMode,
+      cfdUiScaleOverride: s.cfdUiScaleOverride,
       themeMode: s.themeMode,
     })),
   );

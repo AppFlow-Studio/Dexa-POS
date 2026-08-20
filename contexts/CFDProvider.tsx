@@ -48,6 +48,7 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useSeatingStore } from '@/stores/useSeatingStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTipAdjustStore } from '@/stores/useTipAdjustStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -360,6 +361,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const cfdOrderingRightPanelMode = useStoreSettingsStore(
     s => s.cfdOrderingRightPanelMode
   )
+  // Operator-chosen CFD-only scale (Settings > Customer Display). Lives in
+  // POS settings but is consumed on the customer display, so it rides the
+  // payload out to every CFD transport like any other CFD setting.
+  const cfdUiScaleOverride = useSettingsStore(s => s.cfdUiScaleOverride)
   const tipsConfig = useLocationConfigStore(s => s.config.tips)
   const tipPresetPercentages = tipsConfig.presetPercentages
 
@@ -422,6 +427,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         paymentMethod: s.paymentMethod,
         merchantHasLoyalty: s.merchantHasLoyalty,
         pricingDisplayMode: s.pricingDisplayMode,
+        cfdUiScaleOverride: s.cfdUiScaleOverride,
         themeMode: s.themeMode
       }
     })
@@ -485,6 +491,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     useCFDBuiltinStore.getState().update({ pricingDisplayMode: cfdPricingDisplayMode })
   }, [cfdPricingDisplayMode])
+
+  // Mirror the CFD scale override into useCFDBuiltinStore so the on-device
+  // WebView applies it on every load, not just on the next payload flush.
+  useEffect(() => {
+    useCFDBuiltinStore.getState().update({ cfdUiScaleOverride })
+  }, [cfdUiScaleOverride])
 
   // Order store selectors - Individual selectors for stability
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -1431,6 +1443,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           : null,
       merchantHasLoyalty,
       pricingDisplayMode: cfdPricingDisplayMode,
+      cfdUiScaleOverride,
       themeMode: colorScheme
     }
 
@@ -1453,7 +1466,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       `${displayOutstandingTotal}|${displayAmountPaid}|${savingsAmount}|` +
       `${showCFDOrderingRightPanel ? 1 : 0}|${cfdOrderingRightPanelMode}|${
         merchantHasLoyalty ? 1 : 0
-      }|${cfdPricingDisplayMode}`
+      }|${cfdPricingDisplayMode}|${cfdUiScaleOverride ?? ''}`
 
     if (wsFingerprint === lastPayloadHashRef.current) {
       return () => {
@@ -1516,7 +1529,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     paymentActiveSplit,
     colorScheme,
     merchantHasLoyalty,
-    cfdPricingDisplayMode
+    cfdPricingDisplayMode,
+    cfdUiScaleOverride
   ])
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================

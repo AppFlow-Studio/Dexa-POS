@@ -154,6 +154,12 @@ export interface CFDPayload {
   // 'cash_only' = show only cash total
   pricingDisplayMode?: 'dual' | 'card_only' | 'cash_only'
 
+  // Operator-chosen scale multiplier for the customer display, set in
+  // Settings > Customer Display. Applies only to CFD screens — the POS keeps
+  // its own separate `uiScaleOverride`. `null` = follow the CFD's automatic
+  // per-device scale with no override.
+  cfdUiScaleOverride?: number | null
+
   // Theme
   themeMode?: 'light' | 'dark'
 

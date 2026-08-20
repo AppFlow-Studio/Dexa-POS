@@ -122,16 +122,77 @@ export function computeKioskUiScale(
 }
 
 /**
+ * Clamp range for the customer-facing display. Wider than the POS range on
+ * both ends: CFD panels vary far more than POS tablets (a 7" tethered tablet
+ * up to a 27" counter display), and the operator is tuning for a customer
+ * standing at arm's length rather than their own hand.
+ */
+export const MIN_CFD_UI_SCALE = 0.6;
+export const MAX_CFD_UI_SCALE = 2.0;
+
+/**
+ * CFD scale override, supplied by whatever renders a CFD screen tree.
+ *
+ * The override lives in POS settings (`cfdUiScaleOverride`) but has to reach
+ * three different runtimes: the external CFD tablet (its own app + its own
+ * MMKV), the on-device secondary display, and the CFD WebView bundle (which
+ * cannot touch MMKV at all — see the Platform split at the top of this file).
+ * So it travels *in the CFD payload* like every other CFD setting, and the
+ * receiving side republishes it through this context.
+ *
+ * `useUiScale()` consults it, which is what makes every existing CFD screen
+ * honour the setting without a single per-screen change — they all already
+ * call `useUiScale()`.
+ */
+const CFDScaleContext = React.createContext<number | null>(null);
+
+/**
+ * Provides the CFD scale override to a CFD screen subtree. `override` is the
+ * raw multiplier from settings (`null` = no override, follow automatic scale).
+ */
+export function CFDScaleProvider({
+  override,
+  children,
+}: {
+  override: number | null | undefined;
+  children: React.ReactNode;
+}) {
+  return React.createElement(
+    CFDScaleContext.Provider,
+    { value: override ?? null },
+    children,
+  );
+}
+
+/**
+ * The CFD scale override currently in effect, or `null` outside a CFD tree.
+ */
+export function useCFDScaleOverride(): number | null {
+  return React.useContext(CFDScaleContext);
+}
+
+/**
  * Reactive UI scale. Re-computes if the window dimensions change (e.g. a
  * foldable, or split-screen). Use this in components that do raw numeric
  * sizing off Dimensions and need to scale manually.
+ *
+ * Inside a CFD screen tree (see CFDScaleProvider) the CFD's own override and
+ * clamp range apply instead of the POS ones, so operators can size the
+ * customer display independently of the POS UI.
  */
 export function useUiScale(): number {
   const { width, height } = useWindowDimensions();
-  const override = useSettingsStore((s) => s.uiScaleOverride);
+  const posOverride = useSettingsStore((s) => s.uiScaleOverride);
+  const cfdOverride = useCFDScaleOverride();
   const base = computeUiScale(width, height);
-  if (override == null) return base;
-  return Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, base * override));
+  if (cfdOverride != null) {
+    return Math.min(
+      MAX_CFD_UI_SCALE,
+      Math.max(MIN_CFD_UI_SCALE, base * cfdOverride),
+    );
+  }
+  if (posOverride == null) return base;
+  return Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, base * posOverride));
 }
 
 /**
