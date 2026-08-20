@@ -1,3 +1,4 @@
+import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
@@ -18,13 +19,37 @@ import {
   ShoppingCart,
   Trash2,
 } from "lucide-react-native";
-import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  Image,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  FadeOutRight,
+  LinearTransition,
+} from "react-native-reanimated";
 
 /**
  * Shared kiosk cart review. Lists each line with its selected modifiers, a qty
  * stepper, and a remove action; shows the subtotal and a Checkout CTA.
  * Presentation only — reads/mutates useKioskCartStore directly. Theme-driven,
  * so any template can mount it via onBack / onCheckout.
+ *
+ * Line rows are deliberately generous: on a 32" panel the customer is reviewing
+ * their order from standing distance, and the qty/remove controls need real
+ * fingertip-sized targets, not the compact list density a POS operator works
+ * with. Rows animate in, slide out on removal, and reflow with a layout
+ * transition so quantity edits read as direct manipulation.
+ *
+ * **Landscape** splits into two panes — lines left, totals and Checkout right —
+ * and lays the lines out two-up. A single full-width column stretched each line
+ * to 1842px on a 1920px panel behind a 167px thumbnail, which is all gap and no
+ * content. Portrait keeps the single column with the totals pinned at the foot.
  */
 export function KioskCartView({
   config,
@@ -54,6 +79,14 @@ export function KioskCartView({
 
   const muted = `${config.textColor}99`;
   const faint = `${config.textColor}12`;
+  const itemCount = lines.reduce((n, l) => n + l.quantity, 0);
+
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const isHorizontal = screenWidth > screenHeight;
+  // Two-up in landscape. `justifyContent: space-between` + a percentage width
+  // avoids mixing a px gap with percentage children, which is what makes a
+  // wrapping row overflow at awkward pane widths.
+  const lineWidth = isHorizontal ? ("49%" as const) : undefined;
 
   return (
     <View
@@ -65,23 +98,46 @@ export function KioskCartView({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: kioskPx(12, s),
+          gap: kioskPx(14, s),
           paddingHorizontal: kioskPx(24, s),
           paddingVertical: kioskPx(18, s),
         }}
       >
-        <Pressable onPress={onBack} hitSlop={8}>
-          <ChevronLeft size={kioskPx(28, s)} color={config.textColor} />
-        </Pressable>
+        <KioskPressable
+          onPress={onBack}
+          pressedScale={0.88}
+          style={{
+            width: kioskPx(52, s),
+            height: kioskPx(52, s),
+            borderRadius: kioskPx(26, s),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: faint,
+          }}
+        >
+          <ChevronLeft size={kioskPx(30, s)} color={config.textColor} />
+        </KioskPressable>
         <Text
           style={{
-            fontSize: kioskPx(26, s),
+            fontSize: kioskPx(30, s),
             fontWeight: "800",
             color: config.textColor,
           }}
         >
           Your Order
         </Text>
+        {itemCount > 0 && (
+          <Animated.Text
+            layout={LinearTransition.duration(180)}
+            style={{
+              fontSize: kioskPx(18, s),
+              fontWeight: "600",
+              color: muted,
+            }}
+          >
+            {itemCount} {itemCount === 1 ? "item" : "items"}
+          </Animated.Text>
+        )}
       </View>
 
       {lines.length === 0 ? (
@@ -89,32 +145,43 @@ export function KioskCartView({
       ) : (
         <>
           <ScrollView
+            style={{ flex: 1 }}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{
               paddingHorizontal: kioskPx(24, s),
               paddingBottom: kioskPx(24, s),
-              gap: kioskPx(14, s),
             }}
           >
-            {lines.map((line) => (
-              <CartLineRow
-                key={line.lineId}
-                line={line}
-                config={config}
-                faint={faint}
-                muted={muted}
-                onInc={() => incQuantity(line.lineId)}
-                onDec={() => decQuantity(line.lineId)}
-                onRemove={() => removeLine(line.lineId)}
-              />
-            ))}
+            <View
+              style={{
+                flexDirection: isHorizontal ? "row" : "column",
+                flexWrap: isHorizontal ? "wrap" : "nowrap",
+                justifyContent: "space-between",
+                rowGap: kioskPx(16, s),
+              }}
+            >
+              {lines.map((line, index) => (
+                <CartLineRow
+                  key={line.lineId}
+                  index={index}
+                  line={line}
+                  width={lineWidth}
+                  config={config}
+                  faint={faint}
+                  muted={muted}
+                  onInc={() => incQuantity(line.lineId)}
+                  onDec={() => decQuantity(line.lineId)}
+                  onRemove={() => removeLine(line.lineId)}
+                />
+              ))}
+            </View>
           </ScrollView>
 
-          {/* Sticky footer — subtotal + checkout */}
+          {/* Totals + checkout */}
           <View
             style={{
               paddingHorizontal: kioskPx(24, s),
-              paddingTop: kioskPx(16, s),
+              paddingTop: kioskPx(18, s),
               paddingBottom: kioskPx(22, s),
               borderTopWidth: 1,
               borderTopColor: faint,
@@ -150,27 +217,34 @@ export function KioskCartView({
               emphasize
             />
 
-            <Pressable
+            <KioskPressable
               onPress={onCheckout}
+              pressedScale={0.97}
               style={{
-                height: kioskPx(60, s),
-                borderRadius: kioskPx(18, s),
+                height: kioskPx(72, s),
+                borderRadius: kioskPx(20, s),
                 alignItems: "center",
                 justifyContent: "center",
                 marginTop: kioskPx(4, s),
                 backgroundColor: config.primaryColor,
+                shadowColor: config.primaryColor,
+                shadowOpacity: 0.35,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 6 },
+                elevation: 6,
               }}
             >
-              <Text
+              <Animated.Text
+                layout={LinearTransition.duration(180)}
                 style={{
                   color: "#FFFFFF",
-                  fontSize: kioskPx(18, s),
+                  fontSize: kioskPx(22, s),
                   fontWeight: "800",
                 }}
               >
                 Checkout · ${estTotal.toFixed(2)}
-              </Text>
-            </Pressable>
+              </Animated.Text>
+            </KioskPressable>
           </View>
         </>
       )}
@@ -180,6 +254,8 @@ export function KioskCartView({
 
 function CartLineRow({
   line,
+  index,
+  width,
   config,
   faint,
   muted,
@@ -188,6 +264,9 @@ function CartLineRow({
   onRemove,
 }: {
   line: KioskCartLine;
+  index: number;
+  /** Set in landscape to lay the lines out two-up. */
+  width?: "49%";
   config: KioskConfig;
   faint: string;
   muted: string;
@@ -209,24 +288,40 @@ function CartLineRow({
     .flatMap((g) => g.options.map((o) => o.name))
     .join(", ");
 
+  const thumb = kioskPx(104, s);
+  const total = lineTotal(line);
+  const unit = line.quantity > 0 ? total / line.quantity : total;
+
   return (
-    <View
+    <Animated.View
+      entering={FadeInDown.delay(Math.min(index, 8) * 35)
+        .duration(280)
+        .springify()
+        .damping(18)}
+      exiting={FadeOutRight.duration(200)}
+      layout={LinearTransition.duration(220)}
       style={{
+        width,
         flexDirection: "row",
-        gap: kioskPx(14, s),
-        padding: kioskPx(14, s),
-        borderRadius: kioskPx(18, s),
+        gap: kioskPx(18, s),
+        padding: kioskPx(18, s),
+        borderRadius: kioskPx(22, s),
         borderWidth: 1,
         borderColor: faint,
         backgroundColor: config.backgroundColor,
+        shadowColor: "#000",
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: 1,
       }}
     >
       {/* Thumb */}
       <View
         style={{
-          width: kioskPx(72, s),
-          height: kioskPx(72, s),
-          borderRadius: kioskPx(14, s),
+          width: thumb,
+          height: thumb,
+          borderRadius: kioskPx(18, s),
           overflow: "hidden",
           backgroundColor: `${config.primaryColor}10`,
           alignItems: "center",
@@ -242,55 +337,71 @@ function CartLineRow({
         ) : (
           <PlaceholderIcon
             color={`${config.textColor}40`}
-            size={kioskPx(28, s)}
+            size={thumb * 0.42}
           />
         )}
       </View>
 
       {/* Details */}
-      <View style={{ flex: 1, justifyContent: "space-between" }}>
+      <View style={{ flex: 1, justifyContent: "space-between", gap: kioskPx(10, s) }}>
         <View>
           <View
             style={{
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "flex-start",
-              gap: kioskPx(8, s),
+              gap: kioskPx(10, s),
             }}
           >
             <Text
               style={{
                 flex: 1,
-                fontSize: kioskPx(17, s),
+                fontSize: kioskPx(21, s),
                 fontWeight: "700",
+                lineHeight: kioskPx(27, s),
                 color: config.textColor,
               }}
               numberOfLines={2}
             >
               {line.name}
             </Text>
-            <Text
+            <Animated.Text
+              layout={LinearTransition.duration(180)}
               style={{
-                fontSize: kioskPx(17, s),
+                fontSize: kioskPx(21, s),
                 fontWeight: "800",
                 color: config.textColor,
               }}
             >
-              ${lineTotal(line).toFixed(2)}
-            </Text>
+              ${total.toFixed(2)}
+            </Animated.Text>
           </View>
+
           {modifierText ? (
             <Text
               style={{
-                fontSize: kioskPx(14, s),
+                fontSize: kioskPx(16, s),
+                lineHeight: kioskPx(22, s),
                 color: muted,
-                marginTop: kioskPx(4, s),
+                marginTop: kioskPx(5, s),
               }}
-              numberOfLines={2}
+              numberOfLines={3}
             >
               {modifierText}
             </Text>
           ) : null}
+
+          {line.quantity > 1 && (
+            <Text
+              style={{
+                fontSize: kioskPx(15, s),
+                color: muted,
+                marginTop: kioskPx(4, s),
+              }}
+            >
+              ${unit.toFixed(2)} each
+            </Text>
+          )}
         </View>
 
         {/* Qty + remove */}
@@ -299,50 +410,101 @@ function CartLineRow({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            marginTop: kioskPx(10, s),
           }}
         >
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: kioskPx(16, s),
-              paddingHorizontal: kioskPx(14, s),
-              paddingVertical: kioskPx(7, s),
+              gap: kioskPx(8, s),
+              paddingHorizontal: kioskPx(6, s),
               borderRadius: 999,
               borderWidth: 1.5,
               borderColor: faint,
             }}
           >
-            <Pressable onPress={onDec} hitSlop={6}>
-              <Minus size={kioskPx(18, s)} color={config.textColor} />
-            </Pressable>
-            <Text
+            <QtyButton
+              scale={s}
+              color={config.textColor}
+              Icon={Minus}
+              onPress={onDec}
+            />
+            <Animated.Text
+              layout={LinearTransition.duration(160)}
               style={{
-                fontSize: kioskPx(16, s),
-                fontWeight: "700",
+                fontSize: kioskPx(20, s),
+                fontWeight: "800",
                 color: config.textColor,
-                minWidth: kioskPx(18, s),
+                minWidth: kioskPx(26, s),
                 textAlign: "center",
               }}
             >
               {line.quantity}
-            </Text>
-            <Pressable onPress={onInc} hitSlop={6}>
-              <Plus size={kioskPx(18, s)} color={config.textColor} />
-            </Pressable>
+            </Animated.Text>
+            <QtyButton
+              scale={s}
+              color={config.textColor}
+              Icon={Plus}
+              onPress={onInc}
+            />
           </View>
 
-          <Pressable
+          <KioskPressable
             onPress={onRemove}
-            hitSlop={6}
-            style={{ padding: kioskPx(6, s) }}
+            pressedScale={0.85}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: kioskPx(8, s),
+              paddingHorizontal: kioskPx(16, s),
+              height: kioskPx(46, s),
+              borderRadius: 999,
+              backgroundColor: "#EF444414",
+            }}
           >
-            <Trash2 size={kioskPx(20, s)} color="#EF4444" />
-          </Pressable>
+            <Trash2 size={kioskPx(21, s)} color="#EF4444" />
+            <Text
+              style={{
+                fontSize: kioskPx(16, s),
+                fontWeight: "700",
+                color: "#EF4444",
+              }}
+            >
+              Remove
+            </Text>
+          </KioskPressable>
         </View>
       </View>
-    </View>
+    </Animated.View>
+  );
+}
+
+/** Circular +/- with a fingertip-sized hit area. */
+function QtyButton({
+  scale: s,
+  color,
+  Icon,
+  onPress,
+}: {
+  scale: number;
+  color: string;
+  Icon: typeof Minus;
+  onPress: () => void;
+}) {
+  return (
+    <KioskPressable
+      onPress={onPress}
+      pressedScale={0.82}
+      style={{
+        width: kioskPx(46, s),
+        height: kioskPx(46, s),
+        borderRadius: kioskPx(23, s),
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Icon size={kioskPx(22, s)} color={color} />
+    </KioskPressable>
   );
 }
 
@@ -357,14 +519,16 @@ function EmptyCart({
 }) {
   const s = useKioskUiScale();
   return (
-    <View
+    <Animated.View
+      entering={FadeIn.duration(240)}
+      exiting={FadeOut.duration(160)}
       className="flex-1 items-center justify-center px-10"
-      style={{ gap: kioskPx(18, s) }}
+      style={{ gap: kioskPx(20, s) }}
     >
-      <ShoppingCart size={kioskPx(72, s)} color={`${config.textColor}30`} />
+      <ShoppingCart size={kioskPx(84, s)} color={`${config.textColor}30`} />
       <Text
         style={{
-          fontSize: kioskPx(22, s),
+          fontSize: kioskPx(26, s),
           fontWeight: "700",
           color: config.textColor,
         }}
@@ -372,31 +536,32 @@ function EmptyCart({
         Your cart is empty
       </Text>
       <Text
-        style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}
+        style={{ fontSize: kioskPx(18, s), color: muted, textAlign: "center" }}
       >
         Add some items from the menu to get started.
       </Text>
-      <Pressable
+      <KioskPressable
         onPress={onBack}
+        pressedScale={0.95}
         style={{
           marginTop: kioskPx(6, s),
-          paddingHorizontal: kioskPx(28, s),
-          paddingVertical: kioskPx(14, s),
-          borderRadius: kioskPx(16, s),
+          paddingHorizontal: kioskPx(32, s),
+          paddingVertical: kioskPx(18, s),
+          borderRadius: kioskPx(18, s),
           backgroundColor: config.primaryColor,
         }}
       >
         <Text
           style={{
             color: "#FFFFFF",
-            fontSize: kioskPx(16, s),
+            fontSize: kioskPx(19, s),
             fontWeight: "700",
           }}
         >
           Browse Menu
         </Text>
-      </Pressable>
-    </View>
+      </KioskPressable>
+    </Animated.View>
   );
 }
 
@@ -424,22 +589,23 @@ function SummaryRow({
     >
       <Text
         style={{
-          fontSize: kioskPx(emphasize ? 18 : 15, s),
+          fontSize: kioskPx(emphasize ? 22 : 17, s),
           color: emphasize ? color : muted,
-          fontWeight: emphasize ? "800" : "400",
+          fontWeight: emphasize ? "800" : "500",
         }}
       >
         {label}
       </Text>
-      <Text
+      <Animated.Text
+        layout={LinearTransition.duration(180)}
         style={{
-          fontSize: kioskPx(emphasize ? 22 : 15, s),
+          fontSize: kioskPx(emphasize ? 26 : 17, s),
           fontWeight: emphasize ? "800" : "600",
           color,
         }}
       >
         ${value.toFixed(2)}
-      </Text>
+      </Animated.Text>
     </View>
   );
 }

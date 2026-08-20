@@ -1137,7 +1137,9 @@ export function KioskDiagnosticsScreen({
         <Text className="text-sm text-gray-500 mb-4">
           How many menu items show across each row. “Auto” uses the template
           default ({config.orientation === "vertical" ? "3" : "4"} for this
-          orientation).
+          orientation). Fewer columns means wider cards, larger item text, and
+          room for descriptions; more columns fits more on screen at smaller
+          type.
         </Text>
         <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
           {(["auto", 2, 3, 4] as KioskMenuColumns[]).map((opt) => {

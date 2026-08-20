@@ -1,113 +1,57 @@
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskRowMetrics,
+  type KioskRowMetrics,
+} from "@/components/kiosk/shared/kioskCardMetrics";
+import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
-import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ShoppingCart } from "lucide-react-native";
+import { ShoppingCart, SlidersHorizontal } from "lucide-react-native";
 import React, { useMemo } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, Text, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
 /**
- * Full-width row variant of KioskMenuItem — image on the left, name/
- * description/price stacked on the right. Used by templates that lay the
- * menu out as a single scrollable list (grouped by category) instead of a
- * grid, e.g. Template C.
+ * Row variant of the menu card — square image left, copy right.
+ *
+ * `KioskItemGrid` switches to this automatically when a cell is much wider
+ * than its height budget (see `shouldUseRowLayout`), which in practice is the
+ * 2-column landscape case. A top-image card there would have to letterbox its
+ * photo to roughly 2.7:1 to fit the row height, and the result reads as a
+ * banner rather than a product. Turning the card on its side keeps the photo
+ * square, gives the copy a sensible column, and fits ~3.5 rows on screen
+ * instead of ~1.9.
+ *
+ * Same visual language as KioskMenuItem: no cast shadow (see the shadows note
+ * in docs/features/kiosk), hairline accent border, "Options" affordance, and
+ * an in-cart badge that springs on change.
  */
 interface KioskMenuItemRowProps {
   item: MenuItemType;
   config: KioskConfig;
+  cardWidth: number;
+  maxCardHeight: number;
   onPress: (item: MenuItemType) => void;
 }
-
-const useStyles = (s: number) =>
-  StyleSheet.create({
-    container: {
-      flexDirection: "row",
-      alignItems: "center",
-      borderRadius: kioskPx(18, s),
-      overflow: "hidden",
-      borderWidth: 1,
-      padding: kioskPx(10, s),
-      gap: kioskPx(14, s),
-    },
-    containerDisabled: {
-      opacity: 0.4,
-    },
-    imageWrapper: {
-      width: kioskPx(88, s),
-      height: kioskPx(88, s),
-      borderRadius: kioskPx(14, s),
-      overflow: "hidden",
-    },
-    image: {
-      width: "100%",
-      height: "100%",
-    },
-    placeholderContainer: {
-      width: "100%",
-      height: "100%",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    content: {
-      flex: 1,
-      gap: kioskPx(4, s),
-    },
-    nameText: {
-      fontSize: kioskPx(17, s),
-      fontWeight: "700",
-    },
-    descriptionText: {
-      fontSize: kioskPx(13, s),
-    },
-    priceRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: kioskPx(10, s),
-      marginTop: kioskPx(2, s),
-    },
-    cardPrice: {
-      fontSize: kioskPx(16, s),
-      fontWeight: "700",
-    },
-    modifierDot: {
-      position: "absolute",
-      top: kioskPx(8, s),
-      right: kioskPx(8, s),
-      width: kioskPx(10, s),
-      height: kioskPx(10, s),
-      borderRadius: 999,
-    },
-    inCartBadge: {
-      position: "absolute",
-      top: kioskPx(5, s),
-      left: kioskPx(5, s),
-      zIndex: 20,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: kioskPx(3, s),
-      paddingLeft: kioskPx(5, s),
-      paddingRight: kioskPx(8, s),
-      paddingVertical: kioskPx(3, s),
-      borderRadius: 999,
-    },
-    inCartBadgeText: {
-      color: "#FFFFFF",
-      fontWeight: "800",
-      fontSize: kioskPx(12, s),
-    },
-  });
 
 const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
   item,
   config,
+  cardWidth,
+  maxCardHeight,
   onPress,
 }) => {
-  const s = useKioskUiScale();
-  const styles = useStyles(s);
+  const m = useMemo(
+    () => kioskRowMetrics(cardWidth, maxCardHeight),
+    [cardWidth, maxCardHeight],
+  );
   const isDisabled = item.availability === false;
   const hasModifiers = !!item.modifierGroupIds?.length;
   const qtyInCart = useKioskItemQuantity(item.id);
@@ -126,82 +70,206 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
   const accent = config.accentColor;
 
   return (
-    <TouchableOpacity
+    <KioskPressable
       disabled={isDisabled}
-      activeOpacity={0.85}
+      pressedScale={0.97}
       onPress={() => onPress(item)}
-      style={[
-        styles.container,
-        {
-          backgroundColor: config.backgroundColor,
-          borderColor: `${accent}30`,
-        },
-        isDisabled && styles.containerDisabled,
-      ]}
+      style={{
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: m.pad,
+        padding: m.pad,
+        borderRadius: m.radius,
+        borderWidth: 1,
+        backgroundColor: config.backgroundColor,
+        borderColor: `${accent}33`,
+        opacity: isDisabled ? 0.45 : 1,
+      }}
     >
-      <View style={styles.imageWrapper}>
+      <View
+        style={{
+          width: m.imageSize,
+          height: m.imageSize,
+          borderRadius: m.imageRadius,
+          overflow: "hidden",
+        }}
+      >
         {resolvedImageSource ? (
           <Image
             source={resolvedImageSource}
-            style={styles.image}
+            style={{ width: "100%", height: "100%" }}
             resizeMode="cover"
           />
         ) : (
           <View
-            style={[
-              styles.placeholderContainer,
-              { backgroundColor: `${accent}10` },
-            ]}
+            style={{
+              width: "100%",
+              height: "100%",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: `${accent}10`,
+            }}
           >
             <PlaceholderIcon
               color={`${config.textColor}55`}
-              size={kioskPx(32, s)}
+              size={m.placeholderSize}
             />
           </View>
         )}
 
-        {inCart && (
-          <View style={[styles.inCartBadge, { backgroundColor: accent }]}>
-            <ShoppingCart
-              size={kioskPx(11, s)}
-              color="#FFFFFF"
-              strokeWidth={2.75}
-            />
-            <Text style={styles.inCartBadgeText}>{qtyInCart}</Text>
+        {inCart && <InCartBadge qty={qtyInCart} accent={accent} m={m} />}
+
+        {isDisabled && (
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              paddingVertical: m.gap,
+              alignItems: "center",
+              backgroundColor: "rgba(0,0,0,0.55)",
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: m.descSize,
+                fontWeight: "700",
+              }}
+            >
+              Unavailable
+            </Text>
           </View>
         )}
       </View>
 
-      <View style={styles.content}>
+      <View style={{ flex: 1, gap: m.gap }}>
         <Text
-          style={[styles.nameText, { color: config.textColor }]}
-          numberOfLines={1}
+          style={{
+            fontSize: m.nameSize,
+            lineHeight: m.nameLineHeight,
+            fontWeight: "700",
+            color: config.textColor,
+          }}
+          numberOfLines={2}
         >
           {item.name}
         </Text>
 
-        {item.description ? (
+        {m.showDescription && item.description ? (
           <Text
-            style={[styles.descriptionText, { color: `${config.textColor}99` }]}
-            numberOfLines={2}
+            style={{
+              fontSize: m.descSize,
+              lineHeight: m.descLineHeight,
+              color: `${config.textColor}99`,
+            }}
+            numberOfLines={m.descLines}
           >
             {item.description}
           </Text>
         ) : null}
 
-        <View style={styles.priceRow}>
-          <Text style={[styles.cardPrice, { color: config.textColor }]}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: m.pad,
+            marginTop: m.gap,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: m.priceSize,
+              fontWeight: "800",
+              color: config.textColor,
+            }}
+          >
             ${item.price?.toFixed(2)}
           </Text>
+
+          {hasModifiers && (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: m.gap * 0.6,
+              }}
+            >
+              <SlidersHorizontal size={m.optionsIconSize} color={accent} />
+              <Text
+                style={{
+                  fontSize: m.optionsTextSize,
+                  fontWeight: "600",
+                  color: accent,
+                }}
+              >
+                Options
+              </Text>
+            </View>
+          )}
         </View>
       </View>
-
-      {hasModifiers && (
-        <View style={[styles.modifierDot, { backgroundColor: accent }]} />
-      )}
-    </TouchableOpacity>
+    </KioskPressable>
   );
 };
+
+function InCartBadge({
+  qty,
+  accent,
+  m,
+}: {
+  qty: number;
+  accent: string;
+  m: KioskRowMetrics;
+}) {
+  const pop = useSharedValue(1);
+
+  React.useEffect(() => {
+    pop.value = 1.28;
+    pop.value = withSpring(1, { damping: 9, stiffness: 260, mass: 0.5 });
+  }, [qty, pop]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: pop.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: "absolute",
+          top: m.gap,
+          left: m.gap,
+          paddingHorizontal: m.gap,
+          paddingVertical: m.gap * 0.5,
+          borderRadius: 999,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: m.gap * 0.6,
+          backgroundColor: accent,
+        },
+        style,
+      ]}
+    >
+      <ShoppingCart
+        size={m.badgeIconSize}
+        color="#FFFFFF"
+        strokeWidth={2.75}
+      />
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontWeight: "800",
+          fontSize: m.badgeTextSize,
+        }}
+      >
+        {qty}
+      </Text>
+    </Animated.View>
+  );
+}
 
 export default React.memo(KioskMenuItemRow, (prev, next) => {
   return (
@@ -211,6 +279,8 @@ export default React.memo(KioskMenuItemRow, (prev, next) => {
     prev.item.name === next.item.name &&
     prev.item.description === next.item.description &&
     prev.item.image === next.item.image &&
+    prev.cardWidth === next.cardWidth &&
+    prev.maxCardHeight === next.maxCardHeight &&
     prev.config.accentColor === next.config.accentColor &&
     prev.config.backgroundColor === next.config.backgroundColor &&
     prev.config.textColor === next.config.textColor &&

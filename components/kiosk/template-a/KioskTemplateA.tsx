@@ -76,7 +76,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   if (screen === "orderType") {
     return (
       <View className="flex-1" onTouchStart={registerActivity}>
-        <KioskScreenTransition>
+        <KioskScreenTransition direction="fade">
           <KioskOrderTypeScreen
             config={config}
             onSelect={(type) => {
@@ -129,7 +129,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
       <View
         style={{ display: screen === "menu" ? "flex" : "none", flex: 1 }}
       >
-        <KioskScreenTransition key="menu">
+        <KioskScreenTransition key="menu" direction="fade">
           <KioskMenuView
             config={config}
             onSelectItem={(item) => {
@@ -147,7 +147,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
       </View>
 
       {screen === "itemDetail" && selectedItem && (
-        <KioskScreenTransition key="itemDetail">
+        <KioskScreenTransition key="itemDetail" direction="forward">
           <KioskItemDetail
             config={config}
             item={selectedItem}
@@ -158,7 +158,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
       )}
 
       {screen === "cart" && (
-        <KioskScreenTransition key="cart">
+        <KioskScreenTransition key="cart" direction="forward">
           <KioskCartView
             config={config}
             onBack={() => setScreen("menu")}
@@ -168,7 +168,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
       )}
 
       {screen === "checkout" && (
-        <KioskScreenTransition key="checkout">
+        <KioskScreenTransition key="checkout" direction="up">
           <KioskCheckoutView
             config={config}
             onBack={() => setScreen("cart")}

@@ -1,4 +1,5 @@
 import { KioskCustomerInfoStep } from "@/components/kiosk/shared/KioskCustomerInfoStep";
+import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import {
   useKioskCheckout,
@@ -14,7 +15,14 @@ import {
   Heart,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 /**
  * Template A checkout flow: prepare order (real totals incl. tax) → optional tip
@@ -205,7 +213,7 @@ export function KioskCheckoutView({
             Processing your order…
           </Text>
           <Text style={{ fontSize: kioskPx(15, scale), color: muted }}>
-            Please don't leave this screen.
+            Please don&apos;t leave this screen.
           </Text>
         </>
       )}
@@ -256,7 +264,7 @@ function TapCardScreen({
         }}
       >
         Follow the prompts on the card reader.
-        {"\n"}Please don't leave this screen.
+        {"\n"}Please don&apos;t leave this screen.
       </Text>
 
       <ActivityIndicator
@@ -474,6 +482,13 @@ function TipStep({
   onConfirm: (tipAmount: number) => void;
 }) {
   const s = useKioskUiScale();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  // Landscape has roughly half the vertical budget of portrait but nearly
+  // double the width, and this screen was a single centred column either way:
+  // measured, it ran 32-47px past the viewport on every landscape panel, and
+  // since nothing scrolled the summary and Pay button were clipped. Two panes
+  // spend the width instead — same structure KioskItemDetail uses.
+  const isHorizontal = screenWidth > screenHeight;
   const [selected, setSelected] = useState<number | null>(null); // percent, -1 = no tip
   const muted = `${config.textColor}99`;
   const faint = `${config.textColor}12`;
@@ -493,36 +508,30 @@ function TipStep({
   const noTip = selected === -1;
   const disabled = selected == null || loading || !totals;
 
-  return (
-    <View
-      className="flex-1"
-      style={{ backgroundColor: config.backgroundColor }}
+  const backButton = (
+    <KioskPressable
+      onPress={onBack}
+      pressedScale={0.9}
+      style={{
+        position: "absolute",
+        top: kioskPx(20, s),
+        left: kioskPx(20, s),
+        zIndex: 10,
+        width: kioskPx(52, s),
+        height: kioskPx(52, s),
+        borderRadius: kioskPx(26, s),
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: faint,
+      }}
     >
-      {/* Back */}
-      <Pressable
-        onPress={onBack}
-        hitSlop={8}
-        style={{
-          position: "absolute",
-          top: kioskPx(20, s),
-          left: kioskPx(20, s),
-          zIndex: 10,
-          width: kioskPx(48, s),
-          height: kioskPx(48, s),
-          borderRadius: kioskPx(24, s),
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: faint,
-        }}
-      >
-        <ChevronLeft size={kioskPx(26, s)} color={config.textColor} />
-      </Pressable>
+      <ChevronLeft size={kioskPx(28, s)} color={config.textColor} />
+    </KioskPressable>
+  );
 
-      <View
-        className="flex-1 items-center justify-center px-8"
-        style={{ gap: kioskPx(28, s) }}
-      >
-        {/* Heading */}
+  const chooser = (
+    <>
+      {/* Heading */}
         <View style={{ alignItems: "center", gap: kioskPx(12, s) }}>
           <View
             style={{
@@ -569,7 +578,7 @@ function TipStep({
             flexDirection: "row",
             gap: kioskPx(12, s),
             width: "100%",
-            maxWidth: kioskPx(560, s),
+            maxWidth: kioskPx(isHorizontal ? 760 : 560, s),
           }}
         >
           {presets.map((pct) => {
@@ -634,17 +643,11 @@ function TipStep({
             No tip
           </Text>
         </Pressable>
-      </View>
+    </>
+  );
 
-      {/* Footer — summary card + pay */}
-      <View
-        style={{
-          paddingHorizontal: kioskPx(24, s),
-          paddingTop: kioskPx(18, s),
-          paddingBottom: kioskPx(24, s),
-          gap: kioskPx(14, s),
-        }}
-      >
+  const summary = (
+    <>
         <View
           style={{
             padding: kioskPx(16, s),
@@ -717,6 +720,83 @@ function TipStep({
               : `Pay $${grandTotal.toFixed(2)}`}
           </Text>
         </Pressable>
+    </>
+  );
+
+  // ─── Landscape: chooser left, summary + pay right ────────────────
+  if (isHorizontal) {
+    return (
+      <View
+        className="flex-1"
+        style={{ backgroundColor: config.backgroundColor }}
+      >
+        {backButton}
+        <View style={{ flex: 1, flexDirection: "row" }}>
+          <View
+            style={{
+              flex: 1.35,
+              alignItems: "center",
+              justifyContent: "center",
+              paddingHorizontal: kioskPx(32, s),
+              paddingVertical: kioskPx(24, s),
+              gap: kioskPx(22, s),
+            }}
+          >
+            {chooser}
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              justifyContent: "center",
+              paddingHorizontal: kioskPx(28, s),
+              paddingVertical: kioskPx(24, s),
+              gap: kioskPx(16, s),
+              borderLeftWidth: 1,
+              borderLeftColor: faint,
+              backgroundColor: `${config.primaryColor}06`,
+            }}
+          >
+            {summary}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ─── Portrait: single column, summary pinned at the foot ─────────
+  return (
+    <View
+      className="flex-1"
+      style={{ backgroundColor: config.backgroundColor }}
+    >
+      {backButton}
+
+      {/* Scrolls only if a long preset row ever exceeds the space; centred
+          otherwise, so short menus keep the original balanced look. */}
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          flexGrow: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: kioskPx(32, s),
+          gap: kioskPx(28, s),
+        }}
+      >
+        {chooser}
+      </ScrollView>
+
+      <View
+        style={{
+          paddingHorizontal: kioskPx(24, s),
+          paddingTop: kioskPx(18, s),
+          paddingBottom: kioskPx(24, s),
+          gap: kioskPx(14, s),
+        }}
+      >
+        {summary}
       </View>
     </View>
   );
