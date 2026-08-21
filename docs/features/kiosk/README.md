@@ -56,21 +56,96 @@ those cells to `KioskMenuItemRow` (square image left, copy right), which keeps
 the photo at 1:1 and fits ~3.5 rows instead of ~1.9. In practice this is the
 2-column landscape case; portrait never triggers it.
 
+### 2c. `kioskFeatureRowMetrics` — the one-per-row layout
+
+Setting **Items per row** to 1 switches the grid to `KioskMenuItemFeatureRow`:
+a full-width band with the copy on the left and the photo bleeding off the
+right edge, its inner side dissolved into the card by a horizontal gradient
+painted in the card's own background colour. Built for tall vertical kiosks,
+where a grid of small cards wastes the panel.
+
+Three things make it work and are easy to break:
+
+- **The row owns its height.** At one column the cell would otherwise inherit
+  the grid's whole height budget and one item would fill the screen. Height is
+  `width × 0.27`, capped by the grid budget only on short viewports. That ratio
+  is a *scannability* target, not a taste call — it keeps ~7 rows in view on a
+  1080x1920 panel. A third of the width fits four, which reads as a stack of
+  posters rather than a menu.
+- **The copy stops where the fade starts.** `textInset` is derived from
+  `fadeSolidStop` (the gradient's first stop), so text always lands on solid
+  card colour and never on the crisp half of the photo. The gradient starts on
+  `kioskCardSurface`, the card's own fill — not the page colour.
+- **The copy shape is solved, not guessed.** `nameLines` and `descLines` come
+  out of `FEATURE_ROW_COPY_SHAPES` — the first shape that fits the height left
+  after padding and the price row, preferring to drop description lines before
+  name lines. The card **must** apply both as `numberOfLines`; hard-coding 2 on
+  the name lets it overflow a band that only budgeted one line, and the band
+  clips.
+
+Fade to the surface colour at zero alpha (`kioskFadeEnd`), never to
+`transparent`: RN interpolates toward `rgba(0,0,0,0)` and leaves a grey bruise
+across the middle of the photo.
+
+The photo goes through `OptimizedListImage` (expo-image) rather than RN
+`Image`. A gradient is painted over it before it decodes, so a hard swap-in is
+much more visible here than on a plain card — the cross-dissolve and the disk
+cache are both doing real work.
+
 ### 3. `kioskLayout.ts` — screen-proportional dimensions
 
 `kioskRailWidth`, `kioskBannerHeight`, `kioskDetailHeroHeight`. These track the
 *viewport* rather than the UI scale, because a fixed multiple of the scale can
 swallow a short panel. The category rail also narrows as column count rises, so
-the grid gets the width back.
+the grid gets the width back — but not below two columns, where the feature row
+wants *more* width, not less.
+
+## Orientation
+
+`useKioskOrientation(profileOrientation)` both applies the lock and returns the
+orientation the layouts should render for. `app/(main)/kiosk.tsx` folds that
+value back into the config it passes down, so every consumer keeps reading
+`config.orientation` and there is exactly one place that resolves it.
+
+The device-local override (Kiosk Settings → Menu Layout → Orientation, stored
+in `useKioskDeviceSettingsStore`) wins over the profile. It defaults to
+`"profile"`, so an untouched kiosk behaves as it always did.
+
+`"auto"` calls `unlockAsync()` — it does not lock at all — and derives the
+orientation from the window. That is the only honest way to "detect the
+device": the app forces landscape at the manifest and root-layout level, so
+while a lock is held the reported dimensions only tell you what the app asked
+for. Unlocked, a stand-mounted tablet with system auto-rotate off settles into
+its mount's orientation, and one with auto-rotate on follows the panel live
+(`useWindowDimensions` re-renders; `MainActivity` declares `configChanges` for
+orientation so nothing is recreated).
+
+The diagnostics screen deliberately receives the **raw** profile config, not the
+resolved one — it inspects and edits the profile — and re-derives the effective
+orientation itself for display.
 
 ## Shared components
 
-`KioskItemGrid` owns the responsive measurement and the entrance cascade for
-all three templates — templates supply `items` / `numColumns` / `resetKey` and
-nothing else. `KioskPressable` is the standard tappable surface (UI-thread
-scale+opacity press feedback). `KioskScreenTransition` takes a `direction`
-(`forward` / `up` / `fade`) describing how a screen relates to the one it
-replaces.
+`KioskItemGrid` owns the responsive measurement, the card-shape choice and the
+entrance cascade for all three templates — templates supply `items` /
+`numColumns` / `resetKey` and nothing else.
+
+**It renders nothing until it has measured itself.** The window used to stand
+in for the first frame, but the window is not the grid pane — beside a category
+rail it over-estimates the width by a third — so every card painted once at the
+wrong size and then jumped. On the top-image cards that was a barely-visible
+reflow; on the feature row the photo is *positioned* from that width and its
+gradient stops are derived from it, so the photo slid and the blend re-mixed as
+the row settled. One blank frame is cheaper, and the entrance cascade covers
+it. Don't reintroduce a window-based estimate. `KioskPressable` is the standard
+tappable surface (UI-thread scale+opacity press feedback).
+`KioskScreenTransition` takes a `direction` (`forward` / `up` / `fade`)
+describing how a screen relates to the one it replaces.
+
+**Device-local settings** (`useKioskDeviceSettingsStore`, MMKV) are the ones a
+manager sets on the tablet itself rather than on the website: `menuColumns` and
+`orientationMode`. Both default to deferring — `"auto"` and `"profile"` — so an
+untouched device behaves as though the setting did not exist.
 
 ## Conventions
 
@@ -84,10 +159,17 @@ replaces.
 
 ## Layout variants
 
-`KioskMenuItem` (image on top) and `KioskMenuItemRow` (image left) are two
-shapes of the same card, chosen per-cell by `KioskItemGrid` via
-`shouldUseRowLayout`. Neither is template-specific — all three templates get
-both automatically.
+`KioskMenuItem` (image on top), `KioskMenuItemRow` (square image left) and
+`KioskMenuItemFeatureRow` (full-width, photo blended off the right edge) are
+three shapes of the same card, chosen by `KioskItemGrid`: one column always
+means the feature row; otherwise `shouldUseRowLayout` picks between the other
+two per cell. None is template-specific — all three templates get all three
+automatically.
+
+`numColumns === 1` also changes the FlatList itself: `columnWrapperStyle` is
+rejected on a single-column list (there is no row wrapper), so the cell carries
+its own bottom margin and drops the `flex: 1 / numColumns` basis that would
+otherwise fight the row's own height.
 
 ## Sizing an element against its leftover space
 
@@ -123,6 +205,18 @@ clipped; cart lines stretched to 1842px on a 1920px panel behind a 167px
 thumbnail. When adding a screen, check it at 1280x720 as well as 1920x1080 —
 the short panel is where a scaled fixed-height footer bites first.
 
+**The software keyboard is a fourth landscape squeeze.** The app runs
+`adjustResize`, so a keyboard takes roughly half a landscape kiosk's height
+away from the layout. A centred block with a text input is then taller than
+what's left and the input lands behind the keyboard — `KioskCustomerInfoStep`'s
+name step anchors to the top and tightens its rhythm instead (`lift`), and
+wraps the block in a `ScrollView` as the backstop for any panel size. Portrait
+keeps centring: there is enough height above the keyboard for it.
+
+Key that off orientation, not a `Keyboard` visibility listener. The input
+autofocuses, so the keyboard is up for essentially the whole life of the
+screen; reacting to the event only adds a visible jump ~300ms after entry.
+
 ## Screen transitions
 
 Every kiosk screen cross-fades. Sliding was tried and removed: full-screen
@@ -130,6 +224,17 @@ travel on a kiosk panel reads as sluggish rather than polished, and the
 incoming screen is usually still building its subtree while it moves.
 `KioskScreenTransition` still accepts `direction` so call sites document how
 screens relate, but all values render the same fade today.
+
+**Screens must be stacked, not flowed.** `KioskScreenTransition` is
+`position: absolute` and every template wraps its screens in one `flex: 1` body
+container. An exiting screen stays mounted for the length of its fade; as a
+flow child with `flex: 1` it would share the column with the incoming screen
+for those frames — both squeezed to half height — and then snap. That reflow,
+not the fade, is what made "Add to Cart" look like the item-detail screen hung
+around for a beat. Stacked, the outgoing screen fades out *over* the incoming
+one, which is a true cross-fade and reads instant. Exit (110ms, eased in) is
+deliberately faster than entrance (170ms, eased out) so the outgoing screen
+sheds most of its opacity in the first frames instead of loitering at 50%.
 
 ## Shadows on animated surfaces
 
@@ -139,11 +244,30 @@ parent's animating alpha is not composited with it — the shadow renders at ful
 strength against a still-fading child. The menu card hit this (shadow on the
 card, `entering` on the grid's wrapper) and the cart button hit it on exit.
 
-The menu card now carries no shadow at all: it sits on a background of the same
-colour, so the hairline border defines it, and a grid of cards each casting an
-elevation shadow is also a real per-frame cost on kiosk hardware. `CartLineRow`
-and the item-detail photo are the correct pattern — shadow and `entering` on one
-view.
+The menu card carries no shadow at all: it is separated from the page by its
+own fill (see Card surfaces below) plus a hairline border, and a grid of cards
+each casting an elevation shadow is a real per-frame cost on kiosk hardware.
+`CartLineRow` and the item-detail photo are the correct pattern — shadow and
+`entering` on one view.
+
+## Card surfaces
+
+Menu cards are filled with `kioskCardSurface(config.backgroundColor)`, a solid
+colour one perceptible step off the page — down on a light theme, up on a dark
+one, since you cannot go lighter than white. All three card variants use it, so
+the menu reads as one system whichever shape a cell resolves to. Before this,
+cards were painted in the page colour and separated by a 1px border alone,
+which reads as a wireframe from the few feet a customer actually stands away.
+
+**It has to be a solid colour, not a translucent overlay.** The feature row
+fades its photo out into the card, and a gradient needs a real colour to start
+from. One derived hex keeps fill and fade in exact agreement; a translucent
+fill would leave the blend ending on the *page* colour, one step off the card
+around it — a faint seam down the middle of every photo.
+
+`kioskFadeEnd` is the matching helper for the far end of any kiosk fade. Both
+return the input unchanged / `null` for colours they cannot parse, so an
+unexpected colour format degrades to the old flat look instead of a dirty one.
 
 ## Unavailable modifier options
 

@@ -18,13 +18,17 @@ const clamp = (v: number, min: number, max: number) =>
  * needs the width more than the rail does, so the rail gives some back. This
  * is what keeps a 4-column portrait layout from squeezing cards into slivers
  * beside an over-wide sidebar.
+ *
+ * Below two columns the relationship stops holding — a single feature row per
+ * line wants *more* width for its copy and photo, not less — so one column
+ * keeps the two-column base rather than inverting the formula into a wider rail.
  */
 export function kioskRailWidth(
   isVertical: boolean,
   numColumns: number,
 ): `${number}%` {
   const base = isVertical ? 34 : 26;
-  const pct = clamp(base - (numColumns - 2) * 3.5, 18, 36);
+  const pct = clamp(base - Math.max(0, numColumns - 2) * 3.5, 18, 36);
   return `${pct}%`;
 }
 

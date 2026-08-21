@@ -3,6 +3,7 @@ import {
   type KioskCardMetrics,
 } from "@/components/kiosk/shared/kioskCardMetrics";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import { kioskCardSurface } from "@/components/kiosk/shared/kioskSurface";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
@@ -70,6 +71,10 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
   );
 
   const accent = config.accentColor;
+  const surface = useMemo(
+    () => kioskCardSurface(config.backgroundColor),
+    [config.backgroundColor],
+  );
 
   return (
     <KioskPressable
@@ -81,7 +86,7 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
         borderRadius: m.radius,
         overflow: "hidden",
         borderWidth: 1,
-        backgroundColor: config.backgroundColor,
+        backgroundColor: surface,
         borderColor: `${accent}33`,
         opacity: isDisabled ? 0.45 : 1,
       }}

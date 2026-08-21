@@ -1,14 +1,20 @@
 import {
   kioskCardMetrics,
+  kioskFeatureRowMetrics,
   kioskRowMetrics,
   shouldUseRowLayout,
 } from "@/components/kiosk/shared/kioskCardMetrics";
+import { resolveKioskOrientationMode } from "@/stores/useKioskDeviceSettingsStore";
 import {
   hasOrderableItem,
   isItemOrderable,
 } from "@/components/kiosk/shared/kioskItemAvailability";
 import { selectableModifierGroups } from "@/components/kiosk/shared/useItemModifiers";
 import { kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
+import {
+  kioskCardSurface,
+  kioskFadeEnd,
+} from "@/components/kiosk/shared/kioskSurface";
 import {
   BASELINE_HEIGHT_DP,
   BASELINE_WIDTH_DP,
@@ -140,9 +146,17 @@ describe("kioskRailWidth", () => {
     );
   });
 
+  it("does not widen the rail below two columns", () => {
+    // One column is the feature row, which wants *more* width, not less — the
+    // give-width-back formula must not run backwards into an oversized rail.
+    expect(parseFloat(kioskRailWidth(true, 1))).toBe(
+      parseFloat(kioskRailWidth(true, 2)),
+    );
+  });
+
   it("stays within sane bounds at every column count", () => {
     for (const vertical of [true, false]) {
-      for (const cols of [2, 3, 4]) {
+      for (const cols of [1, 2, 3, 4]) {
         const pct = parseFloat(kioskRailWidth(vertical, cols));
         expect(pct).toBeGreaterThanOrEqual(18);
         expect(pct).toBeLessThanOrEqual(36);
@@ -346,5 +360,144 @@ describe("shouldUseRowLayout", () => {
     expect(m.nameSize).toBeGreaterThanOrEqual(16);
     // The whole row must fit well inside the budget it was given.
     expect(m.imageSize + m.pad * 2).toBeLessThan(443);
+  });
+});
+
+describe("kioskFeatureRowMetrics", () => {
+  // 1080x1920 portrait kiosk, 34% rail: the grid gets ~713dp, less padding.
+  const PORTRAIT_ROW_WIDTH = 681;
+
+  it("sizes the row from its own width, not the whole grid height", () => {
+    const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 879);
+    // The layout is a scannable list of bands, not a stack of posters: a
+    // 1080x1920 panel's grid is ~1500dp tall, and this has to keep six-ish
+    // rows in view there.
+    expect(1500 / (m.height + 20)).toBeGreaterThan(6);
+    expect(m.height).toBeGreaterThan(150);
+  });
+
+  it("still caps to the grid's budget on a short viewport", () => {
+    const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 140);
+    expect(m.height).toBeLessThanOrEqual(140);
+  });
+
+  it("keeps the copy clear of the photo's un-faded half", () => {
+    const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 879);
+    const copyRightEdge = PORTRAIT_ROW_WIDTH - m.textInset;
+    const photoLeftEdge = PORTRAIT_ROW_WIDTH - m.imageWidth;
+    const fadeStartsAt = photoLeftEdge + m.imageWidth * m.fadeSolidStop;
+
+    // Text ends before the gradient starts lifting off the photo.
+    expect(copyRightEdge).toBeLessThanOrEqual(fadeStartsAt + 1);
+    // …but the copy column is still the dominant half of the row.
+    expect(copyRightEdge).toBeGreaterThan(PORTRAIT_ROW_WIDTH * 0.5);
+  });
+
+  it("leaves the photo's outer edge fully crisp", () => {
+    const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 879);
+    expect(m.fadeStop).toBeGreaterThan(m.fadeSolidStop);
+    expect(m.fadeStop).toBeLessThan(1);
+  });
+
+  it("fits the copy shape it reports inside the band at every size", () => {
+    // The card clips to its height and applies `nameLines` / `descLines` as
+    // numberOfLines, so whatever shape the solve returns has to actually fit —
+    // otherwise the longest-named items are exactly the ones that get cropped.
+    for (const width of [320, 480, PORTRAIT_ROW_WIDTH, 1388, 2400]) {
+      const m = kioskFeatureRowMetrics(width, 2000);
+      const blocks = m.showDescription ? 3 : 2;
+      const copy =
+        m.padV * 2 +
+        m.nameLineHeight * m.nameLines +
+        (m.showDescription ? m.descLineHeight * m.descLines : 0) +
+        m.priceRowHeight +
+        m.gap * (blocks - 1);
+      expect(copy).toBeLessThanOrEqual(m.height);
+    }
+  });
+
+  it("keeps a two-line name and a description at the default proportions", () => {
+    // The whole point of the row is name + description side by side with the
+    // photo; the solve must not quietly spend the height elsewhere.
+    const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 879);
+    expect(m.nameLines).toBe(2);
+    expect(m.showDescription).toBe(true);
+    expect(m.descLines).toBeGreaterThanOrEqual(1);
+  });
+
+  it("gives up description lines before name lines when height is scarce", () => {
+    const squat = kioskFeatureRowMetrics(681, 150);
+    expect(squat.height).toBe(150);
+    expect(squat.nameLines).toBe(2);
+    expect(squat.showDescription).toBe(false);
+  });
+
+  it("keeps type readable on a narrow row and bounded on a huge one", () => {
+    const narrow = kioskFeatureRowMetrics(320, 600);
+    const huge = kioskFeatureRowMetrics(2400, 1600);
+
+    expect(narrow.nameSize).toBeGreaterThanOrEqual(16);
+    expect(huge.nameSize).toBeLessThanOrEqual(46);
+    expect(huge.nameSize).toBeGreaterThan(narrow.nameSize);
+  });
+});
+
+describe("kioskCardSurface", () => {
+  /** Sum of the channels — enough to say "lighter" or "darker". */
+  const brightness = (hex: string) =>
+    parseInt(hex.slice(1, 3), 16) +
+    parseInt(hex.slice(3, 5), 16) +
+    parseInt(hex.slice(5, 7), 16);
+
+  it("steps a card down off a light page and up off a dark one", () => {
+    // Light page → darker card (you cannot go lighter than white);
+    // dark page → lighter card.
+    expect(brightness(kioskCardSurface("#FFFFFF"))).toBeLessThan(
+      brightness("#FFFFFF"),
+    );
+    expect(brightness(kioskCardSurface("#101010"))).toBeGreaterThan(
+      brightness("#101010"),
+    );
+  });
+
+  it("keeps the step subtle enough to stay a background", () => {
+    // Big enough to see from standing distance, small enough that item copy
+    // keeps its contrast against it.
+    const light = kioskCardSurface("#FFFFFF");
+    expect(light).toBe("#f2f2f2");
+  });
+
+  it("returns a parseable solid colour, so the fade can start from it", () => {
+    for (const bg of ["#FFFFFF", "#101010", "#fff", "#0C4FD1"]) {
+      const surface = kioskCardSurface(bg);
+      expect(surface).toMatch(/^#[0-9a-f]{6}$/);
+      expect(kioskFadeEnd(surface)).toBe(`${surface}00`);
+    }
+  });
+
+  it("leaves a colour it cannot parse exactly as it found it", () => {
+    // A card matching the page is the old look — plain, but never wrong.
+    expect(kioskCardSurface("rgb(255,255,255)")).toBe("rgb(255,255,255)");
+    expect(kioskFadeEnd("rgb(255,255,255)")).toBeNull();
+  });
+});
+
+describe("resolveKioskOrientationMode", () => {
+  it("defers to the profile by default", () => {
+    expect(resolveKioskOrientationMode("profile", "horizontal")).toBe(
+      "horizontal",
+    );
+    expect(resolveKioskOrientationMode("profile", "vertical")).toBe("vertical");
+  });
+
+  it("falls back to vertical when there is no profile orientation yet", () => {
+    expect(resolveKioskOrientationMode("profile", undefined)).toBe("vertical");
+  });
+
+  it("lets a device-local choice override the profile", () => {
+    expect(resolveKioskOrientationMode("horizontal", "vertical")).toBe(
+      "horizontal",
+    );
+    expect(resolveKioskOrientationMode("auto", "vertical")).toBe("auto");
   });
 });

@@ -16,8 +16,10 @@ import {
 } from "@/services/terminals/terminalIdentity";
 import { clearStationData } from "@/services/cacheService";
 import {
+    resolveKioskOrientationMode,
     useKioskDeviceSettingsStore,
     type KioskMenuColumns,
+    type KioskOrientationMode,
 } from "@/stores/useKioskDeviceSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
@@ -52,6 +54,7 @@ import {
     Plus,
     Printer,
     RefreshCw,
+    RotateCcw,
     SlidersHorizontal,
     Usb,
     Wifi,
@@ -68,6 +71,7 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
+    useWindowDimensions,
     View,
     type ViewStyle,
 } from "react-native";
@@ -109,7 +113,7 @@ const SECTIONS: {
     label: "Menu Layout",
     Icon: LayoutGrid,
     title: "Menu Layout",
-    subtitle: "How menu items are arranged on this device",
+    subtitle: "Orientation and how menu items are arranged on this device",
   },
   {
     id: "printers",
@@ -175,6 +179,24 @@ export function KioskDiagnosticsScreen({
   // ── Menu layout (device-local) ──
   const menuColumns = useKioskDeviceSettingsStore((s) => s.menuColumns);
   const setMenuColumns = useKioskDeviceSettingsStore((s) => s.setMenuColumns);
+  const orientationMode = useKioskDeviceSettingsStore((s) => s.orientationMode);
+  const setOrientationMode = useKioskDeviceSettingsStore(
+    (s) => s.setOrientationMode,
+  );
+  // `config` here is the raw profile, so the orientation the customer-facing
+  // flow will actually render is re-derived the same way useKioskOrientation
+  // does it — device override first, then the panel's own shape for "auto".
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const orientationTarget = resolveKioskOrientationMode(
+    orientationMode,
+    config.orientation,
+  );
+  const effectiveOrientation =
+    orientationTarget === "auto"
+      ? winWidth >= winHeight
+        ? "horizontal"
+        : "vertical"
+      : orientationTarget;
 
   // ── Payment Terminal ──────────────────────────────────────────────
   const supabase = useSupabaseClient();
@@ -1131,42 +1153,110 @@ export function KioskDiagnosticsScreen({
     </>
   );
 
+  const ORIENTATION_OPTIONS: {
+    id: KioskOrientationMode;
+    label: string;
+    hint: string;
+  }[] = [
+    {
+      id: "profile",
+      label: "Profile",
+      hint: `Follow the kiosk profile (${config.orientation === "vertical" ? "Vertical" : "Horizontal"})`,
+    },
+    {
+      id: "auto",
+      label: "Auto",
+      hint: "Detect from the device — lays out to match however this panel is mounted",
+    },
+    { id: "vertical", label: "Vertical", hint: "Force portrait on this device" },
+    {
+      id: "horizontal",
+      label: "Horizontal",
+      hint: "Force landscape on this device",
+    },
+  ];
+
+  const activeOrientationHint =
+    ORIENTATION_OPTIONS.find((o) => o.id === orientationMode)?.hint ?? "";
+
   const renderMenuLayout = () => (
-    <Section title="Items per row" Icon={LayoutGrid}>
-      <View className="px-5 py-5">
-        <Text className="text-sm text-gray-500 mb-4">
-          How many menu items show across each row. “Auto” uses the template
-          default ({config.orientation === "vertical" ? "3" : "4"} for this
-          orientation). Fewer columns means wider cards, larger item text, and
-          room for descriptions; more columns fits more on screen at smaller
-          type.
-        </Text>
-        <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
-          {(["auto", 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
-            const active = menuColumns === opt;
-            return (
-              <TouchableOpacity
-                key={String(opt)}
-                onPress={() => setMenuColumns(opt)}
-                activeOpacity={0.85}
-                className={`flex-1 py-3.5 items-center rounded-xl ${
-                  active ? "bg-white" : ""
-                }`}
-                style={active ? cardShadow : undefined}
-              >
-                <Text
-                  className={`text-base font-bold ${
-                    active ? "text-teal-700" : "text-gray-400"
+    <>
+      <Section title="Orientation" Icon={RotateCcw}>
+        <View className="px-5 py-5">
+          <Text className="text-sm text-gray-500 mb-4">
+            Which way this kiosk lays itself out. “Auto” stops locking the screen
+            and renders for whatever shape the panel reports — use it when the
+            hardware’s own mounting decides. The other options lock the screen.
+            This setting is device-local and overrides the profile.
+          </Text>
+          <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+            {ORIENTATION_OPTIONS.map((opt) => {
+              const active = orientationMode === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  onPress={() => setOrientationMode(opt.id)}
+                  activeOpacity={0.85}
+                  className={`flex-1 py-3.5 items-center rounded-xl ${
+                    active ? "bg-white" : ""
                   }`}
+                  style={active ? cardShadow : undefined}
                 >
-                  {opt === "auto" ? "Auto" : opt}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                  <Text
+                    className={`text-base font-bold ${
+                      active ? "text-teal-700" : "text-gray-400"
+                    }`}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text className="text-xs text-gray-400 mt-3">
+            {activeOrientationHint} · Currently rendering {effectiveOrientation}.
+          </Text>
         </View>
-      </View>
-    </Section>
+      </Section>
+
+      <Section title="Items per row" Icon={LayoutGrid}>
+        <View className="px-5 py-5">
+          <Text className="text-sm text-gray-500 mb-4">
+            How many menu items show across each row. “Auto” uses the template
+            default ({effectiveOrientation === "vertical" ? "3" : "4"} for this
+            orientation). Fewer columns means wider cards, larger item text, and
+            room for descriptions; more columns fits more on screen at smaller
+            type. “1” switches to the full-width feature row — name and
+            description on the left, photo blended into the right edge — which
+            suits tall vertical kiosks.
+          </Text>
+          <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+            {(["auto", 1, 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
+              const active = menuColumns === opt;
+              return (
+                <TouchableOpacity
+                  key={String(opt)}
+                  onPress={() => setMenuColumns(opt)}
+                  activeOpacity={0.85}
+                  className={`flex-1 py-3.5 items-center rounded-xl ${
+                    active ? "bg-white" : ""
+                  }`}
+                  style={active ? cardShadow : undefined}
+                >
+                  <Text
+                    className={`text-base font-bold ${
+                      active ? "text-teal-700" : "text-gray-400"
+                    }`}
+                  >
+                    {opt === "auto" ? "Auto" : opt}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Section>
+    </>
   );
 
   const renderAbout = () => (

@@ -12,7 +12,7 @@ import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useCallback, useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 /**
  * Template A — its own ordering flow and layout.
@@ -122,61 +122,69 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
         />
       )}
 
-      {/* Body */}
-      {/* Menu stays mounted across itemDetail navigation so the category rail
-          and item grid keep their scroll position when an item is added and
-          the customer is returned to the menu (see onAdded below). */}
-      <View
-        style={{ display: screen === "menu" ? "flex" : "none", flex: 1 }}
-      >
-        <KioskScreenTransition key="menu" direction="fade">
-          <KioskMenuView
-            config={config}
-            onSelectItem={(item) => {
-              setSelectedItem(item);
-              setScreen("itemDetail");
-            }}
-          />
-          <KioskCartButton
-            config={config}
-            itemCount={itemCount}
-            subtotal={subtotal}
-            onPress={() => setScreen("cart")}
-          />
-        </KioskScreenTransition>
+      {/* Body — a single stacking context. Every screen fills it absolutely
+          (see KioskScreenTransition) so an outgoing screen fades out *over* the
+          incoming one rather than sharing the column with it for the length of
+          its exit animation. */}
+      <View style={{ flex: 1 }}>
+        {/* Menu stays mounted across itemDetail navigation so the category rail
+            and item grid keep their scroll position when an item is added and
+            the customer is returned to the menu (see onAdded below). */}
+        <View
+          style={[
+            StyleSheet.absoluteFillObject,
+            { display: screen === "menu" ? "flex" : "none" },
+          ]}
+        >
+          <KioskScreenTransition key="menu" direction="fade">
+            <KioskMenuView
+              config={config}
+              onSelectItem={(item) => {
+                setSelectedItem(item);
+                setScreen("itemDetail");
+              }}
+            />
+            <KioskCartButton
+              config={config}
+              itemCount={itemCount}
+              subtotal={subtotal}
+              onPress={() => setScreen("cart")}
+            />
+          </KioskScreenTransition>
+        </View>
+
+        {screen === "itemDetail" && selectedItem && (
+          <KioskScreenTransition key="itemDetail" direction="forward">
+            <KioskItemDetail
+              config={config}
+              item={selectedItem}
+              onBack={() => setScreen("menu")}
+              onAdded={() => setScreen("menu")}
+            />
+          </KioskScreenTransition>
+        )}
+
+        {screen === "cart" && (
+          <KioskScreenTransition key="cart" direction="forward">
+            <KioskCartView
+              config={config}
+              onBack={() => setScreen("menu")}
+              onCheckout={() => setScreen("checkout")}
+            />
+          </KioskScreenTransition>
+        )}
+
+        {screen === "checkout" && (
+          <KioskScreenTransition key="checkout" direction="up">
+            <KioskCheckoutView
+              config={config}
+              onBack={() => setScreen("cart")}
+              onPaid={() => setPaid(true)}
+              onDone={resetToIdle}
+            />
+          </KioskScreenTransition>
+        )}
       </View>
-
-      {screen === "itemDetail" && selectedItem && (
-        <KioskScreenTransition key="itemDetail" direction="forward">
-          <KioskItemDetail
-            config={config}
-            item={selectedItem}
-            onBack={() => setScreen("menu")}
-            onAdded={() => setScreen("menu")}
-          />
-        </KioskScreenTransition>
-      )}
-
-      {screen === "cart" && (
-        <KioskScreenTransition key="cart" direction="forward">
-          <KioskCartView
-            config={config}
-            onBack={() => setScreen("menu")}
-            onCheckout={() => setScreen("checkout")}
-          />
-        </KioskScreenTransition>
-      )}
-
-      {screen === "checkout" && (
-        <KioskScreenTransition key="checkout" direction="up">
-          <KioskCheckoutView
-            config={config}
-            onBack={() => setScreen("cart")}
-            onPaid={() => setPaid(true)}
-            onDone={resetToIdle}
-          />
-        </KioskScreenTransition>
-      )}
     </View>
   );
 }

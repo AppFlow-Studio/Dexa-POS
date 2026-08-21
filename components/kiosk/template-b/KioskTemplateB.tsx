@@ -12,7 +12,7 @@ import { KioskMenuViewB } from "@/components/kiosk/template-b/KioskMenuViewB";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useCallback, useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 /**
  * Template B — its own ordering flow and layout.
@@ -109,57 +109,65 @@ export function KioskTemplateB({ config, onExit }: KioskTemplateProps) {
         />
       )}
 
-      <View
-        style={{ display: screen === "menu" ? "flex" : "none", flex: 1 }}
-      >
-        <KioskScreenTransition key="menu" direction="fade">
-          <KioskMenuViewB
-            config={config}
-            onSelectItem={(item) => {
-              setSelectedItem(item);
-              setScreen("itemDetail");
-            }}
-          />
-          <KioskCartButton
-            config={config}
-            itemCount={itemCount}
-            subtotal={subtotal}
-            onPress={() => setScreen("cart")}
-          />
-        </KioskScreenTransition>
+      {/* Body — one stacking context; screens fill it absolutely so an
+          outgoing screen cross-fades over the incoming one instead of sharing
+          the column with it. See KioskScreenTransition. */}
+      <View style={{ flex: 1 }}>
+        <View
+          style={[
+            StyleSheet.absoluteFillObject,
+            { display: screen === "menu" ? "flex" : "none" },
+          ]}
+        >
+          <KioskScreenTransition key="menu" direction="fade">
+            <KioskMenuViewB
+              config={config}
+              onSelectItem={(item) => {
+                setSelectedItem(item);
+                setScreen("itemDetail");
+              }}
+            />
+            <KioskCartButton
+              config={config}
+              itemCount={itemCount}
+              subtotal={subtotal}
+              onPress={() => setScreen("cart")}
+            />
+          </KioskScreenTransition>
+        </View>
+
+        {screen === "itemDetail" && selectedItem && (
+          <KioskScreenTransition key="itemDetail" direction="forward">
+            <KioskItemDetail
+              config={config}
+              item={selectedItem}
+              onBack={() => setScreen("menu")}
+              onAdded={() => setScreen("menu")}
+            />
+          </KioskScreenTransition>
+        )}
+
+        {screen === "cart" && (
+          <KioskScreenTransition key="cart" direction="forward">
+            <KioskCartView
+              config={config}
+              onBack={() => setScreen("menu")}
+              onCheckout={() => setScreen("checkout")}
+            />
+          </KioskScreenTransition>
+        )}
+
+        {screen === "checkout" && (
+          <KioskScreenTransition key="checkout" direction="up">
+            <KioskCheckoutView
+              config={config}
+              onBack={() => setScreen("cart")}
+              onPaid={() => setPaid(true)}
+              onDone={resetToIdle}
+            />
+          </KioskScreenTransition>
+        )}
       </View>
-
-      {screen === "itemDetail" && selectedItem && (
-        <KioskScreenTransition key="itemDetail" direction="forward">
-          <KioskItemDetail
-            config={config}
-            item={selectedItem}
-            onBack={() => setScreen("menu")}
-            onAdded={() => setScreen("menu")}
-          />
-        </KioskScreenTransition>
-      )}
-
-      {screen === "cart" && (
-        <KioskScreenTransition key="cart" direction="forward">
-          <KioskCartView
-            config={config}
-            onBack={() => setScreen("menu")}
-            onCheckout={() => setScreen("checkout")}
-          />
-        </KioskScreenTransition>
-      )}
-
-      {screen === "checkout" && (
-        <KioskScreenTransition key="checkout" direction="up">
-          <KioskCheckoutView
-            config={config}
-            onBack={() => setScreen("cart")}
-            onPaid={() => setPaid(true)}
-            onDone={resetToIdle}
-          />
-        </KioskScreenTransition>
-      )}
     </View>
   );
 }
