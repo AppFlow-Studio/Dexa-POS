@@ -2,6 +2,7 @@ import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shar
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
+import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
@@ -43,7 +44,10 @@ export function KioskMenuViewB({
 
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter((m) => isMenuAvailableNow(m.id))
+      .filter(
+        (m) =>
+          isMenuVisibleOnChannel(m, "kiosk") && isMenuAvailableNow(m.id),
+      )
       .map((m) => ({
         menuId: m.id,
         title: m.name,

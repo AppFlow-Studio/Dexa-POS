@@ -110,6 +110,9 @@ The grant is therefore always issued, and the timeout controls its **lifetime**:
 
 ## Verification
 
+- Focused manager-access lifetime tests added on 2026-08-21: Always Require PIN
+  creates no reusable session, timed access expires at its configured boundary,
+  and closing the PIN request clears its one-time pending navigation.
 - `npx tsc --noEmit` — clean.
 - `npx jest` — 1465 passing, 29 failing across 10 suites. **Identical to the
   baseline on a stashed tree** (pre-existing `uuid` ESM transform config issue and
