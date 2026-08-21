@@ -13,7 +13,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 /**
- * Raw envelope returned by `get_pos_bootstrap_v1`.
+ * Raw envelope returned by `get_pos_bootstrap_v2`.
  *
  * Differs from `PosSyncData` in one place: `snoozes` arrives as the grouped
  * `{ items, modifiers }` object that `get_active_snoozes` produces, and is
@@ -34,7 +34,7 @@ interface PosBootstrapPayload {
 /**
  * Hook to sync POS data from the backend.
  *
- * ONE round trip: `get_pos_bootstrap_v1` returns the menu tree, recipes, tax
+ * ONE round trip: `get_pos_bootstrap_v2` returns the menu tree, recipes, tax
  * rates and active snoozes in a single versioned envelope. This replaced five
  * parallel requests (get_pos_full_sync + two recipe tables + tax_rates +
  * get_active_snoozes), two of which duplicated queries useStandaloneSync was
@@ -53,13 +53,14 @@ export const usePosSync = (locationId: string | null) => {
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
 
-      // Single round trip. Wrapped with deadline so bad WiFi falls back to
+      // Single round trip. v2 enriches the existing bootstrap with menu channel
+      // visibility. Wrapped with deadline so bad WiFi falls back to
       // TanStack `offlineFirst` cache instead of hanging the UI.
       const result = await withDeadline(
         async (signal) =>
-          await supabase
-            .rpc("get_pos_bootstrap_v1", { p_location_id: locationId })
-            .abortSignal(signal),
+          await (supabase.rpc as any)("get_pos_bootstrap_v2", {
+            p_location_id: locationId,
+          }).abortSignal(signal),
         DEADLINES.menuSync,
         "pos_sync",
       );
@@ -71,7 +72,7 @@ export const usePosSync = (locationId: string | null) => {
       }
 
       const data = result.data as unknown as PosBootstrapPayload | null;
-      if (!data) throw new Error("get_pos_bootstrap_v1 returned no payload");
+      if (!data) throw new Error("get_pos_bootstrap_v2 returned no payload");
 
       // Tax rates now ride along in the envelope. The zero-row case is still
       // worth shouting about: it usually means a stale JWT or a location

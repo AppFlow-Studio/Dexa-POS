@@ -1,6 +1,7 @@
 import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
@@ -45,7 +46,10 @@ export function KioskMenuView({
   // Build one section per available menu, listing its available categories.
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter((m) => isMenuAvailableNow(m.id))
+      .filter(
+        (m) =>
+          isMenuVisibleOnChannel(m, "kiosk") && isMenuAvailableNow(m.id),
+      )
       .map((m) => ({
         menuId: m.id,
         title: m.name,

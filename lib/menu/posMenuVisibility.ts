@@ -1,6 +1,9 @@
 export type PosOrderEntryMenuVisibility = {
   id: string;
   isActive: boolean;
+  channelVisibility?: {
+    pos?: boolean;
+  };
 };
 
 export const filterPosOrderEntryMenus = <
@@ -11,5 +14,10 @@ export const filterPosOrderEntryMenus = <
 ): T[] => {
   const hiddenIds = new Set(hiddenMenuIds);
 
-  return menus.filter((menu) => menu.isActive && !hiddenIds.has(menu.id));
+  return menus.filter(
+    (menu) =>
+      menu.isActive &&
+      menu.channelVisibility?.pos !== false &&
+      !hiddenIds.has(menu.id),
+  );
 };
