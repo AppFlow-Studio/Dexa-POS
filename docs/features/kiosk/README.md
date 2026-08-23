@@ -124,6 +124,23 @@ The diagnostics screen deliberately receives the **raw** profile config, not the
 resolved one — it inspects and edits the profile — and re-derives the effective
 orientation itself for display.
 
+### `active` gates the lock — non-kiosk stations must not be touched
+
+`useKioskOrientation(profileOrientation, active = true)`. The shared
+`app/(main)/_layout.tsx` and `app/(auth)/_layout.tsx` call this hook for **every**
+station (hooks can't be conditional), so they pass `active = isKiosk` (or
+`isKiosk || isKioskRoute`). When `active` is false the hook touches nothing and
+leaves orientation to `app/_layout.tsx`'s landscape lock.
+
+This flag is load-bearing: `resolveKioskOrientationMode("profile", undefined)`
+returns `"vertical"` (the intended kiosk default when a profile hasn't set an
+orientation). A non-kiosk station has no profile orientation, so before the flag
+existed it passed `undefined` expecting a no-op — and instead **portrait-locked
+the entire landscape-only POS** (Android `FIXED_ORIENTATION` letterbox: black
+side bars, a squeezed portrait column, and a measurable FPS hit). Passing
+`undefined` to a hook whose resolver has a non-`undefined` default is not a
+no-op. Regression test: `__tests__/useKioskOrientation.test.tsx`.
+
 ## Shared components
 
 `KioskItemGrid` owns the responsive measurement, the card-shape choice and the

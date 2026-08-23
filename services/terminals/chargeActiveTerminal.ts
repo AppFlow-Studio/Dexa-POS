@@ -89,8 +89,12 @@ const INDETERMINATE_MESSAGE =
 
 /**
  * Charge the card on the station's active terminal, mirroring the POS.
- * Falls back to an 800 ms simulated approval when no terminal is configured, so
- * dev / no-hardware kiosks still complete an order.
+ *
+ * In DEV builds only, falls back to an 800 ms simulated approval when no
+ * terminal is configured (or the type is unsupported), so no-hardware /
+ * emulator kiosks can still exercise the flow. In a RELEASE build those cases
+ * hard-fail (`ok: false`) — an unattended self-service kiosk must NEVER mark an
+ * order paid without actually collecting money.
  */
 export async function chargeActiveTerminal(
   args: ChargeActiveTerminalArgs,
@@ -102,10 +106,23 @@ export async function chargeActiveTerminal(
 
   const terminal = resolveActiveProcessor().activeTerminal;
 
-  // No configured terminal — simulate (unchanged legacy behaviour).
+  // No configured terminal.
   if (!terminal) {
-    await new Promise((r) => setTimeout(r, 800));
-    return { ok: true, terminalResponse: { simulated: true, amount } };
+    // DEV only: simulate an approval so the flow can be exercised on an
+    // emulator / no-hardware kiosk. In a release build this MUST fail — a
+    // shipped kiosk with no terminal cannot mark an order paid for free.
+    if (__DEV__) {
+      console.warn(
+        "[chargeActiveTerminal] No terminal configured — simulating approval (__DEV__ only).",
+      );
+      await new Promise((r) => setTimeout(r, 800));
+      return { ok: true, terminalResponse: { simulated: true, amount } };
+    }
+    return {
+      ok: false,
+      message:
+        "No payment terminal is configured for this kiosk. Please see a staff member.",
+    };
   }
 
   const journalKey = uuidv4();
@@ -474,7 +491,17 @@ export async function chargeActiveTerminal(
     return { ok: true, terminalId: terminal.id, terminalResponse };
   }
 
-  // Unknown / unsupported terminal type — simulate rather than block the order.
-  await new Promise((r) => setTimeout(r, 800));
-  return { ok: true, terminalResponse: { simulated: true, amount } };
+  // Unknown / unsupported terminal type.
+  if (__DEV__) {
+    console.warn(
+      `[chargeActiveTerminal] Unsupported terminal type "${terminal.terminal_type}" — simulating approval (__DEV__ only).`,
+    );
+    await new Promise((r) => setTimeout(r, 800));
+    return { ok: true, terminalResponse: { simulated: true, amount } };
+  }
+  return {
+    ok: false,
+    message:
+      "This kiosk's payment terminal isn't supported. Please see a staff member.",
+  };
 }

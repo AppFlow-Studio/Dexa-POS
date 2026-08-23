@@ -30,11 +30,21 @@ import { Platform, useWindowDimensions } from "react-native";
  * profile; its default is "profile", so an untouched kiosk behaves exactly as
  * before.
  *
+ * `active` gates whether this hook may dictate orientation at all. The shared
+ * main/auth layouts call this hook for *every* station (hooks can't be
+ * conditional), so on a non-kiosk station they pass `active = false` — without
+ * it, the "profile" device default resolves an absent kiosk profile to
+ * "vertical" (resolveKioskOrientationMode) and portrait-locks the whole
+ * landscape-only POS. When inactive the hook touches nothing and leaves
+ * orientation to app/_layout's landscape lock.
+ *
  * @param profileOrientation the website-configured profile orientation
+ * @param active whether this call is in a kiosk context and may lock (default true)
  * @returns the orientation every kiosk layout should key off
  */
 export function useKioskOrientation(
   profileOrientation: KioskOrientation | undefined,
+  active: boolean = true,
 ): KioskOrientation {
   const mode = useKioskDeviceSettingsStore((s) => s.orientationMode);
   const { width, height } = useWindowDimensions();
@@ -43,6 +53,10 @@ export function useKioskOrientation(
 
   useEffect(() => {
     if (Platform.OS === "web") return;
+    // Not a kiosk context — don't assert any lock. When `active` flips
+    // true→false (leaving a kiosk for a POS station) the previous effect's
+    // cleanup runs first and restores landscape, so there's nothing to do here.
+    if (!active) return;
 
     let cancelled = false;
     (async () => {
@@ -72,7 +86,7 @@ export function useKioskOrientation(
         ScreenOrientation.OrientationLock.LANDSCAPE,
       ).catch(() => {});
     };
-  }, [target]);
+  }, [target, active]);
 
   if (target !== "auto") return target;
   // Square-ish panels (rare, but they exist) fall to landscape — the kiosk's

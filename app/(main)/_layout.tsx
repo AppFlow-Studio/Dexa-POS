@@ -104,9 +104,7 @@ export default function MainLayout() {
   // so switching station types doesn't leave the device stuck in kiosk
   // orientation. The query is enabled/disabled implicitly by stationId.
   const { config: kioskConfig } = useKioskProfile();
-  useKioskOrientation(
-    isKiosk || isKioskRoute ? kioskConfig?.orientation : undefined,
-  );
+  useKioskOrientation(kioskConfig?.orientation, isKiosk || isKioskRoute);
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null);
