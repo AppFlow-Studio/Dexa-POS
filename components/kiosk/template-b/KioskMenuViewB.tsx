@@ -1,5 +1,11 @@
 import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
-import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
+import {
+  hasOrderableItem,
+  useModifierGroupResolver,
+  useOrderableItems,
+} from "@/components/kiosk/shared/kioskItemAvailability";
+import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
+import { kioskBannerHeight, kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import type { MenuItemType } from "@/lib/types";
@@ -11,7 +17,7 @@ import {
 import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 
 /**
  * Template B menu view — same two-pane category/item split as Template A,
@@ -34,6 +40,7 @@ export function KioskMenuViewB({
 }) {
   const s = useKioskUiScale();
   const menus = useMenuStore((s) => s.menus);
+  const resolveGroups = useModifierGroupResolver();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
@@ -51,11 +58,11 @@ export function KioskMenuViewB({
           (c) =>
             c.isActive &&
             isCategoryAvailableNow(c.name) &&
-            (c.items?.length ?? 0) > 0,
+            hasOrderableItem(c.items, resolveGroups),
         ),
       }))
       .filter((s) => s.data.length > 0);
-  }, [menus, isMenuAvailableNow, isCategoryAvailableNow]);
+  }, [menus, isMenuAvailableNow, isCategoryAvailableNow, resolveGroups]);
 
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -70,14 +77,12 @@ export function KioskMenuViewB({
     };
   }, [sections, activeKey]);
 
-  const items = useMemo(
-    () => (activeCategory?.items ?? []).filter((i) => i.availability !== false),
-    [activeCategory],
-  );
+  const items = useOrderableItems(activeCategory?.items);
 
   const bannerImages = kioskOrderBannerImages(config);
   const hasMedia = bannerImages.length > 0 && isVertical;
-  const bannerHeight = kioskPx(420, s);
+  const { height: screenHeight } = useWindowDimensions();
+  const bannerHeight = kioskBannerHeight(screenHeight);
 
   return (
     <View className="flex-1">
@@ -107,7 +112,7 @@ export function KioskMenuViewB({
 
       <View className="flex-1 flex-row">
         {/* Left rail — categories grouped by menu */}
-        <View style={{ width: isVertical ? "33.3333%" : "25%" }}>
+        <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
           <KioskCategoryRail
             config={config}
             sections={sections}
@@ -118,38 +123,12 @@ export function KioskMenuViewB({
 
         {/* Right pane — item grid */}
         <View className="flex-1">
-          <FlatList
-            key={numColumns}
-            data={items}
-            keyExtractor={(i) => i.id}
+          <KioskItemGrid
+            config={config}
+            items={items}
             numColumns={numColumns}
-            columnWrapperStyle={{
-              gap: kioskPx(12, s),
-              marginBottom: kioskPx(12, s),
-            }}
-            contentContainerStyle={{ padding: kioskPx(16, s) }}
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <View style={{ flex: 1 / numColumns }}>
-                <KioskMenuItem
-                  item={item}
-                  config={config}
-                  onPress={onSelectItem}
-                />
-              </View>
-            )}
-            ListEmptyComponent={
-              <View className="flex-1 items-center justify-center py-20">
-                <Text
-                  style={{
-                    fontSize: kioskPx(18, s),
-                    color: `${config.textColor}99`,
-                  }}
-                >
-                  No items in this category.
-                </Text>
-              </View>
-            }
+            resetKey={resolvedKey}
+            onSelectItem={onSelectItem}
           />
         </View>
       </View>

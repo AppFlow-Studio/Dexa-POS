@@ -168,6 +168,14 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   // UI Scale Override
   uiScaleOverride: number | null;
   setUiScaleOverride: (value: number | null) => void;
+
+  // Customer-Facing Display (CFD) scale override. Deliberately independent of
+  // `uiScaleOverride`: the CFD is a physically separate screen (external
+  // tablet or on-device secondary display) read by a customer at a different
+  // distance, so it gets its own multiplier. `null` = follow the CFD's own
+  // automatic scale with no operator override.
+  cfdUiScaleOverride: number | null;
+  setCfdUiScaleOverride: (value: number | null) => void;
   setDefaultSittingTimeMinutes: (minutes: number) => void;
   setOrderLineSettings: (settings: Partial<OrderLineSettings>) => void;
   updateDiningSettings: (
@@ -501,6 +509,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       // UI Scale Override
       uiScaleOverride: null,
+      cfdUiScaleOverride: null,
 
       setDefaultSittingTimeMinutes: (minutes) =>
         set({ defaultSittingTimeMinutes: minutes }),
@@ -565,6 +574,8 @@ export const useSettingsStore = create<SettingsState>()(
 
       setUiScaleOverride: (value) => set({ uiScaleOverride: value }),
 
+      setCfdUiScaleOverride: (value) => set({ cfdUiScaleOverride: value }),
+
       setOrderLineSettings: (settings) =>
         set((state) => ({
           orderLineSettings: { ...state.orderLineSettings, ...settings },
@@ -602,6 +613,7 @@ export const useSettingsStore = create<SettingsState>()(
         orderLineSettings: state.orderLineSettings,
         // UI Scale Override
         uiScaleOverride: state.uiScaleOverride,
+        cfdUiScaleOverride: state.cfdUiScaleOverride,
       }),
     },
   ),

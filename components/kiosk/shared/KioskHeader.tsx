@@ -1,10 +1,11 @@
+import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { Image } from "expo-image";
 import { ShoppingBag, UtensilsCrossed, X } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 /**
  * Shared kiosk header.
@@ -41,7 +42,7 @@ export function KioskHeader({
   return (
     <View
       style={{
-        height: kioskPx(88, s),
+        height: kioskPx(96, s),
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
@@ -61,7 +62,7 @@ export function KioskHeader({
         {config.logoUrl ? (
           <Image
             source={{ uri: config.logoUrl }}
-            style={{ height: kioskPx(48, s), width: kioskPx(140, s) }}
+            style={{ height: kioskPx(54, s), width: kioskPx(156, s) }}
             contentFit="contain"
             cachePolicy="memory-disk"
           />
@@ -69,7 +70,7 @@ export function KioskHeader({
           <Text
             style={{
               color: "#FFFFFF",
-              fontSize: kioskPx(22, s),
+              fontSize: kioskPx(25, s),
               fontWeight: "700",
             }}
           >
@@ -90,33 +91,34 @@ export function KioskHeader({
         {SEGMENTS.map(({ type, label, Icon }) => {
           const active = orderType === type;
           return (
-            <Pressable
+            <KioskPressable
               key={type}
               onPress={() => onChangeOrderType(type)}
+              pressedScale={0.94}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: kioskPx(8, s),
-                paddingHorizontal: kioskPx(22, s),
-                paddingVertical: kioskPx(11, s),
+                gap: kioskPx(9, s),
+                paddingHorizontal: kioskPx(26, s),
+                paddingVertical: kioskPx(13, s),
                 borderRadius: 999,
                 backgroundColor: active ? "#FFFFFF" : "transparent",
               }}
             >
               <Icon
-                size={kioskPx(18, s)}
+                size={kioskPx(21, s)}
                 color={active ? config.primaryColor : "rgba(255,255,255,0.9)"}
               />
               <Text
                 style={{
-                  fontSize: kioskPx(15, s),
+                  fontSize: kioskPx(18, s),
                   fontWeight: active ? "700" : "500",
                   color: active ? config.primaryColor : "rgba(255,255,255,0.9)",
                 }}
               >
                 {label}
               </Text>
-            </Pressable>
+            </KioskPressable>
           );
         })}
       </View>
@@ -130,31 +132,32 @@ export function KioskHeader({
           justifyContent: "flex-end",
         }}
       >
-        <Pressable
+        <KioskPressable
           onPress={onExit}
+          pressedScale={0.93}
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: kioskPx(8, s),
-            paddingHorizontal: kioskPx(18, s),
-            paddingVertical: kioskPx(10, s),
+            gap: kioskPx(9, s),
+            paddingHorizontal: kioskPx(22, s),
+            paddingVertical: kioskPx(13, s),
             borderRadius: 999,
             backgroundColor: "rgba(255,255,255,0.14)",
             borderWidth: 1.5,
             borderColor: "rgba(255,255,255,0.6)",
           }}
         >
-          <X size={kioskPx(18, s)} color="#FFFFFF" />
+          <X size={kioskPx(21, s)} color="#FFFFFF" />
           <Text
             style={{
               color: "#FFFFFF",
-              fontSize: kioskPx(15, s),
+              fontSize: kioskPx(18, s),
               fontWeight: "600",
             }}
           >
             Cancel
           </Text>
-        </Pressable>
+        </KioskPressable>
       </View>
     </View>
   );

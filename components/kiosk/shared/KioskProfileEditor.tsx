@@ -1,6 +1,7 @@
 import { KioskAssetsManager } from "@/components/kiosk/shared/KioskAssetsManager";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { toastService } from "@/lib/toastService";
+import { useKioskDeviceSettingsStore } from "@/stores/useKioskDeviceSettingsStore";
 import type {
   KioskConfig,
   KioskOrientation,
@@ -164,6 +165,10 @@ export function KioskProfileEditor({
   onRefreshKioskConfig?: () => void | Promise<unknown>;
 }) {
   const supabase = useSupabaseClient();
+  // The device can override the profile's orientation (Menu Layout →
+  // Orientation). When it does, say so here rather than letting a manager set
+  // an orientation that silently does nothing on the tablet in their hands.
+  const orientationMode = useKioskDeviceSettingsStore((s) => s.orientationMode);
 
   const [draft, setDraft] = useState<EditableProfile>(() =>
     extractEditable(config),
@@ -348,6 +353,11 @@ export function KioskProfileEditor({
         />
         <Segmented
           label="Orientation"
+          hint={
+            orientationMode === "profile"
+              ? "Applies to every kiosk on this profile."
+              : `Ignored on this device — Menu Layout → Orientation is set to “${orientationMode}”.`
+          }
           options={[
             { value: "vertical", label: "Vertical" },
             { value: "horizontal", label: "Horizontal" },
@@ -1076,11 +1086,13 @@ function TemplateThumb({ kind }: { kind: KioskTemplateId }) {
 
 function Segmented<T extends string>({
   label,
+  hint,
   options,
   value,
   onChange,
 }: {
   label: string;
+  hint?: string;
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
@@ -1088,6 +1100,9 @@ function Segmented<T extends string>({
   return (
     <View>
       <Text className="text-xs font-medium text-gray-500 mb-1.5">{label}</Text>
+      {hint ? (
+        <Text className="text-[11px] text-gray-400 mb-1.5 -mt-1">{hint}</Text>
+      ) : null}
       <View className="flex-row bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
         {options.map((opt) => {
           const active = value === opt.value;

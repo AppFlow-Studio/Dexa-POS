@@ -65,6 +65,17 @@ export const KIOSK_MIN_UI_SCALE = 0.7;
 export const KIOSK_MAX_UI_SCALE = 3.0;
 
 /**
+ * Extra multiplier applied on top of the raw kiosk ratio.
+ *
+ * A POS tablet is read at ~1ft, held or propped on a counter. A kiosk is read
+ * by a customer *standing* ~2-3ft from a wall/floor-mounted panel, so the same
+ * dp type reads noticeably smaller to them. This bumps the whole kiosk UI
+ * (type, padding, radii - everything routed through `--ui-scale`) to close
+ * that gap without touching a single component.
+ */
+export const KIOSK_LEGIBILITY_BOOST = 1.12;
+
+/**
  * Scale tracks whichever axis is tightest relative to the baseline, so the
  * UI fits on short phones (height-constrained) and narrow ones (width-
  * constrained) alike. On tablets near the baseline this is ~1.0.
@@ -79,32 +90,109 @@ export function computeUiScale(widthDp: number, heightDp?: number): number {
 }
 
 /**
- * Kiosk-specific scale computation. Same logic as computeUiScale but clamped
- * to KIOSK_MIN/MAX_UI_SCALE so huge kiosk displays get proportionally larger UI.
+ * Kiosk-specific scale computation.
+ *
+ * **Orientation-aware**, unlike computeUiScale. The baseline (1333x752) is a
+ * *landscape* tablet, so comparing axis-to-axis breaks down the moment the
+ * panel is portrait: a 1080x1920dp kiosk measures its 1080 width against the
+ * baseline's 1333 landscape width, `Math.min` picks that 0.81, and a 32"
+ * kiosk ends up with *smaller* type than a 10" tablet - the exact opposite of
+ * what it needs. Matching short-edge to short-edge and long-edge to long-edge
+ * resolves the same panel to ~1.44x in either orientation.
+ *
+ * The result is then multiplied by KIOSK_LEGIBILITY_BOOST for standing viewing
+ * distance, and clamped to KIOSK_MIN/MAX_UI_SCALE.
  */
 export function computeKioskUiScale(
   widthDp: number,
   heightDp?: number,
 ): number {
   if (!widthDp || widthDp <= 0) return 1;
-  const widthRatio = widthDp / BASELINE_WIDTH_DP;
-  const heightRatio =
-    heightDp && heightDp > 0 ? heightDp / BASELINE_HEIGHT_DP : widthRatio;
-  const raw = Math.min(widthRatio, heightRatio);
-  return Math.min(KIOSK_MAX_UI_SCALE, Math.max(KIOSK_MIN_UI_SCALE, raw));
+  const h = heightDp && heightDp > 0 ? heightDp : widthDp;
+  const shortEdge = Math.min(widthDp, h);
+  const longEdge = Math.max(widthDp, h);
+  const raw = Math.min(
+    shortEdge / BASELINE_HEIGHT_DP,
+    longEdge / BASELINE_WIDTH_DP,
+  );
+  return Math.min(
+    KIOSK_MAX_UI_SCALE,
+    Math.max(KIOSK_MIN_UI_SCALE, raw * KIOSK_LEGIBILITY_BOOST),
+  );
+}
+
+/**
+ * Clamp range for the customer-facing display. Wider than the POS range on
+ * both ends: CFD panels vary far more than POS tablets (a 7" tethered tablet
+ * up to a 27" counter display), and the operator is tuning for a customer
+ * standing at arm's length rather than their own hand.
+ */
+export const MIN_CFD_UI_SCALE = 0.6;
+export const MAX_CFD_UI_SCALE = 2.0;
+
+/**
+ * CFD scale override, supplied by whatever renders a CFD screen tree.
+ *
+ * The override lives in POS settings (`cfdUiScaleOverride`) but has to reach
+ * three different runtimes: the external CFD tablet (its own app + its own
+ * MMKV), the on-device secondary display, and the CFD WebView bundle (which
+ * cannot touch MMKV at all — see the Platform split at the top of this file).
+ * So it travels *in the CFD payload* like every other CFD setting, and the
+ * receiving side republishes it through this context.
+ *
+ * `useUiScale()` consults it, which is what makes every existing CFD screen
+ * honour the setting without a single per-screen change — they all already
+ * call `useUiScale()`.
+ */
+const CFDScaleContext = React.createContext<number | null>(null);
+
+/**
+ * Provides the CFD scale override to a CFD screen subtree. `override` is the
+ * raw multiplier from settings (`null` = no override, follow automatic scale).
+ */
+export function CFDScaleProvider({
+  override,
+  children,
+}: {
+  override: number | null | undefined;
+  children: React.ReactNode;
+}) {
+  return React.createElement(
+    CFDScaleContext.Provider,
+    { value: override ?? null },
+    children,
+  );
+}
+
+/**
+ * The CFD scale override currently in effect, or `null` outside a CFD tree.
+ */
+export function useCFDScaleOverride(): number | null {
+  return React.useContext(CFDScaleContext);
 }
 
 /**
  * Reactive UI scale. Re-computes if the window dimensions change (e.g. a
  * foldable, or split-screen). Use this in components that do raw numeric
  * sizing off Dimensions and need to scale manually.
+ *
+ * Inside a CFD screen tree (see CFDScaleProvider) the CFD's own override and
+ * clamp range apply instead of the POS ones, so operators can size the
+ * customer display independently of the POS UI.
  */
 export function useUiScale(): number {
   const { width, height } = useWindowDimensions();
-  const override = useSettingsStore((s) => s.uiScaleOverride);
+  const posOverride = useSettingsStore((s) => s.uiScaleOverride);
+  const cfdOverride = useCFDScaleOverride();
   const base = computeUiScale(width, height);
-  if (override == null) return base;
-  return Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, base * override));
+  if (cfdOverride != null) {
+    return Math.min(
+      MAX_CFD_UI_SCALE,
+      Math.max(MIN_CFD_UI_SCALE, base * cfdOverride),
+    );
+  }
+  if (posOverride == null) return base;
+  return Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, base * posOverride));
 }
 
 /**

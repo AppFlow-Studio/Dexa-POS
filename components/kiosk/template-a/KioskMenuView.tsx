@@ -1,8 +1,12 @@
 import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
-import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  hasOrderableItem,
+  useModifierGroupResolver,
+  useOrderableItems,
+} from "@/components/kiosk/shared/kioskItemAvailability";
+import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
+import { kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
 import type { MenuItemType } from "@/lib/types";
-import { useKioskUiScale } from "@/lib/uiScale";
 import {
   resolveKioskColumns,
   useKioskDeviceSettingsStore,
@@ -10,7 +14,7 @@ import {
 import { useMenuStore } from "@/stores/useMenuStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { View } from "react-native";
 
 /**
  * Template A menu view — two-pane split:
@@ -31,8 +35,8 @@ export function KioskMenuView({
   config: KioskConfig;
   onSelectItem: (item: MenuItemType) => void;
 }) {
-  const s = useKioskUiScale();
   const menus = useMenuStore((s) => s.menus);
+  const resolveGroups = useModifierGroupResolver();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
@@ -53,11 +57,11 @@ export function KioskMenuView({
           (c) =>
             c.isActive &&
             isCategoryAvailableNow(c.name) &&
-            (c.items?.length ?? 0) > 0,
+            hasOrderableItem(c.items, resolveGroups),
         ),
       }))
       .filter((s) => s.data.length > 0);
-  }, [menus, isMenuAvailableNow, isCategoryAvailableNow]);
+  }, [menus, isMenuAvailableNow, isCategoryAvailableNow, resolveGroups]);
 
   // Selection keyed by menuId+categoryId so the same category name in two menus
   // stays distinct.
@@ -74,15 +78,12 @@ export function KioskMenuView({
     };
   }, [sections, activeKey]);
 
-  const items = useMemo(
-    () => (activeCategory?.items ?? []).filter((i) => i.availability !== false),
-    [activeCategory],
-  );
+  const items = useOrderableItems(activeCategory?.items);
 
   return (
     <View className="flex-1 flex-row">
       {/* Left rail — categories grouped by menu */}
-      <View style={{ width: isVertical ? "33.3333%" : "25%" }}>
+      <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
         <KioskCategoryRail
           config={config}
           sections={sections}
@@ -91,40 +92,14 @@ export function KioskMenuView({
         />
       </View>
 
-      {/* Right pane — item grid */}
+      {/* Right pane - item grid */}
       <View className="flex-1">
-        <FlatList
-          key={numColumns}
-          data={items}
-          keyExtractor={(i) => i.id}
+        <KioskItemGrid
+          config={config}
+          items={items}
           numColumns={numColumns}
-          columnWrapperStyle={{
-            gap: kioskPx(12, s),
-            marginBottom: kioskPx(12, s),
-          }}
-          contentContainerStyle={{ padding: kioskPx(16, s) }}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <View style={{ flex: 1 / numColumns }}>
-              <KioskMenuItem
-                item={item}
-                config={config}
-                onPress={onSelectItem}
-              />
-            </View>
-          )}
-          ListEmptyComponent={
-            <View className="flex-1 items-center justify-center py-20">
-              <Text
-                style={{
-                  fontSize: kioskPx(18, s),
-                  color: `${config.textColor}99`,
-                }}
-              >
-                No items in this category.
-              </Text>
-            </View>
-          }
+          resetKey={resolvedKey}
+          onSelectItem={onSelectItem}
         />
       </View>
     </View>
