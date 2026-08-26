@@ -274,8 +274,8 @@ export class StarMicronicsDriver implements PrinterDriver {
   /**
    * Strict-confirm variant: kick the drawer AND read drawer-sense on the SAME
    * open connection (baseline before + after). Returns a polarity-agnostic
-   * transition. Used by PrinterService when drawerRoutingV2 is on. `ok` is
-   * still the print ACK — the sense here is advisory.
+   * transition. Used by PrinterService for strict-confirm. `ok` is still the
+   * print ACK — the sense here is advisory.
    */
   async openCashDrawerConfirmed(): Promise<DrawerKickSense> {
     return this._kickCashDrawer(true);

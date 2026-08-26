@@ -96,7 +96,7 @@ interface CashDrawerState {
   drawerName: string | null;
   // Printer that physically holds the drawer (cash_drawers.host_printer_id).
   // Read synchronously by PrinterService.openCashDrawer for deterministic
-  // routing under drawerRoutingV2; null = infer the host from drawer-sense.
+  // Star-first routing; null = infer the host from drawer-sense.
   hostPrinterId: string | null;
 
   // Post-clock-in prompt flag

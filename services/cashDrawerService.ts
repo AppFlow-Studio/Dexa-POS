@@ -5,7 +5,6 @@
  * Coordinates between the local store and the backend.
  */
 
-import { isDrawerRoutingV2Enabled } from "@/lib/network/featureFlags";
 import { captureRpcError } from "@/lib/supabase";
 import {
     DenominationCount,
@@ -72,6 +71,26 @@ export async function findDrawerForStation(
  * Pass null to clear the binding (revert to sense-based inference). Also updates
  * the local store so PrinterService.openCashDrawer sees it synchronously.
  */
+// Self-adapting prod safety: the client ships (incl. via OTA) independently of
+// the host_printer_id DB migration. Reads use select('*') so they never 400;
+// the first write that hits a missing column flips this latch so we stop
+// attempting writes for the session (resets on restart, i.e. after the
+// migration lands). Replaces the need for a feature flag.
+let hostPrinterColumnUnavailable = false;
+
+function isMissingHostPrinterColumn(error: {
+  code?: string;
+  message?: string;
+}): boolean {
+  const code = error.code ?? "";
+  const msg = error.message ?? "";
+  if (code === "42703" || code === "PGRST204") return true;
+  return (
+    /host_printer_id/i.test(msg) &&
+    /column|schema cache|does not exist|could not find/i.test(msg)
+  );
+}
+
 export async function setDrawerHostPrinter(
   supabase: SupabaseClient,
   drawerId: string,
@@ -83,6 +102,11 @@ export async function setDrawerHostPrinter(
     .update({ host_printer_id: hostPrinterId } as never)
     .eq("id", drawerId);
   if (error) {
+    if (isMissingHostPrinterColumn(error)) {
+      // Migration not applied on this DB yet — latch off and stay quiet.
+      hostPrinterColumnUnavailable = true;
+      return false;
+    }
     console.warn(
       "[cashDrawerService] setDrawerHostPrinter failed:",
       error.message,
@@ -107,11 +131,8 @@ export async function maybeAutoBindDrawerHost(
   drawerId: string,
   locationId: string,
 ): Promise<string | null> {
-  // Gate the write behind drawerRoutingV2: when the flag is off (prod default,
-  // pre-rollout) the host_printer_id column may not exist yet, so skip the
-  // write entirely rather than fire a failing UPDATE. By the time the flag is
-  // on for a station, the migration has landed (Wave 4 sequencing).
-  if (!isDrawerRoutingV2Enabled()) return null;
+  // Skip if a prior write proved the column absent on this DB (pre-migration).
+  if (hostPrinterColumnUnavailable) return null;
   const wired = usePrinterStore
     .getState()
     .printers.filter((p) => {

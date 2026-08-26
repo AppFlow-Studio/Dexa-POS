@@ -1,6 +1,6 @@
 // Unit tests for the P0 cash-drawer kick fix:
 //   - structured CashDrawerKickResult (no_candidate / ok / all_failed)
-//   - Star-first, sense-evidenced selection under drawerRoutingV2
+//   - Star-first, sense-evidenced selection (host binding → wired Star → Landi)
 //   - explicit binding precedence, Landi last-resort, candidate fallback
 //   - strict-confirm sense plumbed through to the result
 //   - operator-facing outcome helpers (lib/cashDrawerKick)
@@ -20,10 +20,6 @@ jest.mock("@/services/printing/DriverFactory", () => ({
 }));
 
 import { PrinterService } from "@/services/printing/PrinterService";
-import {
-  isDrawerRoutingV2Enabled,
-  setDrawerRoutingV2Enabled,
-} from "@/lib/network/featureFlags";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
@@ -90,7 +86,6 @@ function setPrinters(printers: any[]) {
 beforeEach(() => {
   for (const k of Object.keys(drivers)) delete drivers[k];
   setPrinters([]);
-  setDrawerRoutingV2Enabled(false);
   useStoreSettingsStore.setState({
     selectedStation: { id: "station-1" },
     selectedStore: { id: "loc-1" },
@@ -107,7 +102,7 @@ describe("PrinterService.openCashDrawer — result contract", () => {
     expect(r.candidatesTried).toEqual([]);
   });
 
-  it("returns ok naming the chosen printer on ACK (legacy ranking)", async () => {
+  it("returns ok naming the chosen printer on ACK", async () => {
     setPrinters([star("s1")]);
     drivers["s1"] = fakeDriver({ ack: true });
     const r = await PrinterService.openCashDrawer();
@@ -129,9 +124,7 @@ describe("PrinterService.openCashDrawer — result contract", () => {
   });
 });
 
-describe("PrinterService.openCashDrawer — drawerRoutingV2 selection", () => {
-  beforeEach(() => setDrawerRoutingV2Enabled(true));
-
+describe("PrinterService.openCashDrawer — Star-first selection", () => {
   it("prefers a sense-wired Star over an unwired one", async () => {
     setPrinters([
       star("unwired", {
@@ -235,14 +228,5 @@ describe("cashDrawerKick outcome helpers", () => {
     expect(describeCashDrawerKickError({ ok: false, error: "unreachable" })).toMatch(
       /could not reach/i,
     );
-  });
-});
-
-describe("drawerRoutingV2 flag", () => {
-  it("defaults off and toggles", () => {
-    setDrawerRoutingV2Enabled(false);
-    expect(isDrawerRoutingV2Enabled()).toBe(false);
-    setDrawerRoutingV2Enabled(true);
-    expect(isDrawerRoutingV2Enabled()).toBe(true);
   });
 });

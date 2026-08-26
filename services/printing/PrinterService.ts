@@ -15,7 +15,6 @@ import {
   KEY_RECEIPT_RECONCILE_MISMATCH
 } from '@/lib/telemetry/keys'
 import { recordCount } from '@/lib/telemetry/registry'
-import { isDrawerRoutingV2Enabled } from '@/lib/network/featureFlags'
 import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
@@ -137,37 +136,7 @@ function dedupeDrawerCandidates (printers: PrinterConfig[]): PrinterConfig[] {
   return [...new Map(printers.map(p => [p.id, p])).values()]
 }
 
-// Legacy ranking (drawerRoutingV2 OFF) — preserved verbatim for regression parity.
-function rankDrawerCandidatesLegacy (
-  drawerPrinters: PrinterConfig[]
-): PrinterConfig[] {
-  const sorted = [
-    ...drawerPrinters.filter(
-      p => p.printerType === 'star_micronics' && p.isConnected
-    ),
-    ...drawerPrinters.filter(
-      p => p.printerType === 'star_micronics' && !p.isConnected
-    ),
-    ...drawerPrinters.filter(
-      p =>
-        p.printerType !== 'star_micronics' &&
-        p.isDefaultReceipt &&
-        p.isConnected
-    ),
-    ...drawerPrinters.filter(
-      p =>
-        p.printerType !== 'star_micronics' &&
-        p.isDefaultReceipt &&
-        !p.isConnected
-    ),
-    ...drawerPrinters.filter(
-      p => p.printerType !== 'star_micronics' && !p.isDefaultReceipt
-    )
-  ]
-  return dedupeDrawerCandidates(sorted)
-}
-
-// V2 ranking (drawerRoutingV2 ON) — Star-first, evidence-ranked, Landi last.
+// Star-first ranking — evidence-ranked, Landi last.
 //   1. explicit binding (cash_drawers.host_printer_id, hydrated into the store)
 //   2. sense-evidenced Stars (lastDrawerExternalDevice===true OR
 //      lastDrawerSignalDetail!==null) — receipt printer preferred
@@ -175,7 +144,7 @@ function rankDrawerCandidatesLegacy (
 //      simply not have been probed yet)
 //   4. Stars with positive evidence of NO drawer — deprioritized, still tried
 //   5. non-Star drawer-capable (Landi builtin) — last-resort only
-function rankDrawerCandidatesV2 (
+function rankDrawerCandidates (
   drawerPrinters: PrinterConfig[],
   locationId: string | null,
   stationId: string | null
@@ -191,8 +160,8 @@ function rankDrawerCandidatesV2 (
     meta(p).lastDrawerExternalDevice === false &&
     (meta(p).lastDrawerSignalDetail ?? null) === null
 
-  // Explicit binding wins outright (Wave 3 populates hostPrinterId; read
-  // defensively so this is a no-op until then).
+  // Explicit binding wins outright (cash_drawers.host_printer_id, hydrated into
+  // the store; read defensively so it's a no-op until a binding exists).
   const boundId = (useCashDrawerStore.getState() as { hostPrinterId?: string | null })
     .hostPrinterId
   const receipt = getReceiptPrinter(locationId ?? '', stationId)
@@ -220,7 +189,7 @@ function rankDrawerCandidatesV2 (
 // throws and never adds latency to the kick (fire-and-forget after it returns).
 function recordKickAttempt (
   result: CashDrawerKickResult,
-  meta: { routingV2: boolean; trigger?: string }
+  meta: { trigger?: string }
 ): void {
   try {
     if (result.ok) {
@@ -246,7 +215,6 @@ function recordKickAttempt (
       at: new Date().toISOString(),
       ok: result.ok,
       trigger: meta.trigger ?? null,
-      routingV2: meta.routingV2,
       printerId: result.printerId ?? null,
       printerName: result.printerName ?? null,
       printerType: result.printerType ?? null,
@@ -709,16 +677,16 @@ export const PrinterService = {
    * Kick the cash drawer. Returns a structured result — `ok` is driven ONLY by
    * the driver command ACK; the sense fields are advisory (strict-confirm).
    *
-   * Selection: legacy ranking by default; Star-first, sense-evidenced,
-   * bounded-timeout routing when `drawerRoutingV2` is enabled. See
-   * rankDrawerCandidatesV2 / rankDrawerCandidatesLegacy.
+   * Selection is Star-first and sense-evidenced (see rankDrawerCandidates):
+   * explicit host binding → wired Stars (receipt-preferred) → unknown-sense
+   * Stars → Landi built-in last-resort. Each candidate is bounded by a
+   * per-candidate timeout so a dead printer can't stall the kick.
    */
   async openCashDrawer (opts?: {
     stationId?: string | null
     locationId?: string | null
     trigger?: string
   }): Promise<CashDrawerKickResult> {
-    const routingV2 = isDrawerRoutingV2Enabled()
     const settings = useStoreSettingsStore.getState()
     const stationId = opts?.stationId ?? settings.selectedStation?.id ?? null
     const locationId = opts?.locationId ?? settings.selectedStore?.id ?? null
@@ -739,13 +707,11 @@ export const PrinterService = {
         error: 'no_candidate',
         candidatesTried: []
       }
-      recordKickAttempt(result, { routingV2, trigger })
+      recordKickAttempt(result, { trigger })
       return result
     }
 
-    const candidates = routingV2
-      ? rankDrawerCandidatesV2(drawerPrinters, locationId, stationId)
-      : rankDrawerCandidatesLegacy(drawerPrinters)
+    const candidates = rankDrawerCandidates(drawerPrinters, locationId, stationId)
 
     const tried: string[] = []
     let lastErr: { error: CashDrawerKickError; message?: string } | null = null
@@ -761,32 +727,23 @@ export const PrinterService = {
         )
         const driver = getDriver(printer)
         if (!driver.isConnected()) {
-          if (routingV2) {
-            await withDrawerTimeout(
-              driver.initialize(printer),
-              DRAWER_KICK_TIMEOUT_MS
-            )
-          } else {
-            await driver.initialize(printer)
-          }
+          await withDrawerTimeout(
+            driver.initialize(printer),
+            DRAWER_KICK_TIMEOUT_MS
+          )
         }
 
-        let sense: DrawerKickSense | null = null
-        if (routingV2) {
-          // Prefer the confirmed variant (Star) for strict-confirm; other
-          // drivers fall back to the plain void kick.
-          const confirmFn = (
-            driver as {
-              openCashDrawerConfirmed?: () => Promise<DrawerKickSense>
-            }
-          ).openCashDrawerConfirmed
-          const kick = confirmFn
-            ? confirmFn.call(driver)
-            : driver.openCashDrawer().then(() => null)
-          sense = await withDrawerTimeout(kick, DRAWER_KICK_TIMEOUT_MS)
-        } else {
-          await driver.openCashDrawer()
-        }
+        // Prefer the confirmed variant (Star) for strict-confirm; other
+        // drivers fall back to the plain void kick.
+        const confirmFn = (
+          driver as {
+            openCashDrawerConfirmed?: () => Promise<DrawerKickSense>
+          }
+        ).openCashDrawerConfirmed
+        const kick = confirmFn
+          ? confirmFn.call(driver)
+          : driver.openCashDrawer().then(() => null)
+        const sense = await withDrawerTimeout(kick, DRAWER_KICK_TIMEOUT_MS)
 
         const result: CashDrawerKickResult = {
           ok: true,
@@ -798,7 +755,7 @@ export const PrinterService = {
           drawerConfirmed: sense?.drawerConfirmed ?? null,
           externalDevice: sense?.externalDevice ?? null
         }
-        recordKickAttempt(result, { routingV2, trigger })
+        recordKickAttempt(result, { trigger })
         return result
       } catch (e) {
         lastErr = classifyKickError(e)
@@ -817,7 +774,7 @@ export const PrinterService = {
       errorMessage: lastErr?.message,
       candidatesTried: tried
     }
-    recordKickAttempt(result, { routingV2, trigger })
+    recordKickAttempt(result, { trigger })
     return result
   },
 
