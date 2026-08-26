@@ -27,7 +27,7 @@ import { v4 as uuidv4 } from "uuid";
  *   1. startNewOrder({ tableId: null })           → local takeout order
  *   2. setActiveOrder + ensureActiveOrderCreated  → backend row exists
  *   3. addItemToActiveOrder per cart line         → store recomputes totals/tax
- *   4. chargeCard (terminal, or mock if none)     → card approved
+ *   4. chargeCard (terminal; DEV-only mock if none) → card approved
  *   5. sendNewItemsToKitchenForOrder              → items to KDS (before pay RPC)
  *   6. payFullCard                                → records the payment
  *
