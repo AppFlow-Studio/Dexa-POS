@@ -48,8 +48,8 @@ import Animated, {
  *
  * **Landscape** splits into two panes the same way the tip screen does — the
  * scrolling line list on the left, the totals card at the top of the right pane
- * and the Checkout CTA at its foot behind a divider — and lays the lines out two-up when the list
- * pane is wide enough. A single full-width column stretched each line to 1842px
+ * and the Checkout CTA at its foot behind a divider — and lays the lines out
+ * two-up when the list pane is wide enough. A single full-width column stretched each line to 1842px
  * on a 1920px panel behind a 167px thumbnail, which is all gap and no content,
  * and a full-width totals footer wasted the height landscape has least of.
  * Portrait keeps the single column with the totals pinned at the foot.
