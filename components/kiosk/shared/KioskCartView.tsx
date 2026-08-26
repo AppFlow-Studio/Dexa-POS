@@ -543,7 +543,7 @@ function CartLineRow({
               paddingHorizontal: kioskPx(16, s),
               height: kioskPx(46, s),
               borderRadius: 999,
-              backgroundColor: "#EF444414",
+              backgroundColor: config.backgroundColor,
             }}
           >
             <Trash2 size={kioskPx(21, s)} color="#EF4444" />
