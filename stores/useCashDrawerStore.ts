@@ -94,12 +94,21 @@ interface CashDrawerState {
   // Drawer config for this station
   drawerId: string | null;
   drawerName: string | null;
+  // Printer that physically holds the drawer (cash_drawers.host_printer_id).
+  // Read synchronously by PrinterService.openCashDrawer for deterministic
+  // routing under drawerRoutingV2; null = infer the host from drawer-sense.
+  hostPrinterId: string | null;
 
   // Post-clock-in prompt flag
   shouldPromptOpen: boolean;
 
   // Actions
-  setDrawer: (drawerId: string, drawerName: string) => void;
+  setDrawer: (
+    drawerId: string,
+    drawerName: string,
+    hostPrinterId?: string | null,
+  ) => void;
+  setHostPrinterId: (hostPrinterId: string | null) => void;
   openSession: (session: DrawerSession) => void;
   closeSession: (
     closingAmount: number,
@@ -129,10 +138,19 @@ export const useCashDrawerStore = create<CashDrawerState>()(
       isLoading: false,
       drawerId: null,
       drawerName: null,
+      hostPrinterId: null,
       shouldPromptOpen: false,
 
-      setDrawer: (drawerId: string, drawerName: string) => {
-        set({ drawerId, drawerName });
+      setDrawer: (
+        drawerId: string,
+        drawerName: string,
+        hostPrinterId: string | null = null,
+      ) => {
+        set({ drawerId, drawerName, hostPrinterId });
+      },
+
+      setHostPrinterId: (hostPrinterId: string | null) => {
+        set({ hostPrinterId });
       },
 
       openSession: (session: DrawerSession) => {
@@ -195,6 +213,7 @@ export const useCashDrawerStore = create<CashDrawerState>()(
           operations: [],
           drawerId: null,
           drawerName: null,
+          hostPrinterId: null,
           shouldPromptOpen: false,
         });
       },
@@ -236,6 +255,7 @@ export const useCashDrawerStore = create<CashDrawerState>()(
         activeSession: state.activeSession,
         drawerId: state.drawerId,
         drawerName: state.drawerName,
+        hostPrinterId: state.hostPrinterId,
         // Persist operations so they survive app restart during an open session
         operations: state.operations,
       }),

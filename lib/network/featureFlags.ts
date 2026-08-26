@@ -50,6 +50,7 @@ const RECOVERY_UI_KEY = "flag.paymentRecoveryUI";
 const REFUND_RECOVERY_UI_KEY = "flag.refundRecoveryUI";
 const BLOCKED_ADD_ITEM_KEY = "bad_wifi.blocked_add_item_v1";
 const PERSIST_MEMO_KEY = "persist.memo_gate_v1";
+const DRAWER_ROUTING_V2_KEY = "flag.drawerRoutingV2";
 
 // Env-var override: read once at module load. EXPO_PUBLIC_* values are
 // inlined at build time, so this evaluates to a constant in production.
@@ -240,6 +241,28 @@ export function isPersistMemoEnabled(): boolean {
 
 export function setPersistMemoEnabled(enabled: boolean): void {
   writeBool(PERSIST_MEMO_KEY, enabled);
+}
+
+// P0 cash-drawer: gates the Star-first deterministic drawer-kick routing
+// (sense-evidenced selection + bounded per-candidate timeout + strict-confirm
+// read-back) in PrinterService.openCashDrawer. When OFF (default), the legacy
+// ranking runs unchanged — Wave 1 honesty/telemetry still records so we gather
+// baseline evidence before flipping. Flip is the L1 rollback (<30s, per-station).
+//   EXPO_PUBLIC_DRAWER_ROUTING_V2=0|false → force OFF
+//   EXPO_PUBLIC_DRAWER_ROUTING_V2=1|true  → force ON
+const ENV_DRAWER_ROUTING_V2 = process.env.EXPO_PUBLIC_DRAWER_ROUTING_V2;
+const ENV_DRAWER_ROUTING_V2_FORCE_OFF =
+  ENV_DRAWER_ROUTING_V2 === "0" || ENV_DRAWER_ROUTING_V2 === "false";
+const ENV_DRAWER_ROUTING_V2_FORCE_ON = isTruthyEnv(ENV_DRAWER_ROUTING_V2);
+
+export function isDrawerRoutingV2Enabled(): boolean {
+  if (ENV_DRAWER_ROUTING_V2_FORCE_OFF) return false;
+  if (ENV_DRAWER_ROUTING_V2_FORCE_ON) return true;
+  return readBool(DRAWER_ROUTING_V2_KEY);
+}
+
+export function setDrawerRoutingV2Enabled(enabled: boolean): void {
+  writeBool(DRAWER_ROUTING_V2_KEY, enabled);
 }
 
 export function subscribeFlags(listener: () => void): () => void {

@@ -101,6 +101,57 @@ export interface PrinterConfig {
 }
 
 // ============================================================================
+// CASH DRAWER KICK
+// ============================================================================
+
+/**
+ * Drawer-sense evidence read back from a Star printer around a kick.
+ * Only Star firmware exposes a drawer channel; other drivers return nulls.
+ * `drawerConfirmed` is a polarity-agnostic TRANSITION (baseline→after), not an
+ * absolute reading — `null` means indeterminate (no sense channel, or the
+ * read-back failed) and MUST NOT be treated as failure.
+ */
+export interface DrawerKickSense {
+  /** externalDevice1Connected after the kick — is a drawer physically wired. */
+  externalDevice: boolean | null;
+  /** drawer1OpenCloseSignal after the kick (detail channel; null = no channel). */
+  drawerSignalDetail: boolean | null;
+  /** State transition observed between baseline and post-kick read. */
+  drawerConfirmed: boolean | null;
+}
+
+export type CashDrawerKickError =
+  | "no_candidate"
+  | "in_use"
+  | "unreachable"
+  | "not_initialized"
+  | "timeout"
+  | "all_failed"
+  | "unknown";
+
+/**
+ * Structured result of a cash-drawer kick. `ok` is driven ONLY by the driver
+ * command ACK — the sense fields are best-effort corroboration that can, at
+ * most, downgrade the caller to a warning; they never flip a delivered kick to
+ * a failure.
+ */
+export interface CashDrawerKickResult {
+  ok: boolean;
+  printerId?: string;
+  printerName?: string;
+  printerType?: string;
+  transport?: string;
+  error?: CashDrawerKickError;
+  errorMessage?: string;
+  /** Printer ids attempted, in order — for the durable record + toast. */
+  candidatesTried?: string[];
+  /** Sense transition seen (Star only); null = couldn't determine. */
+  drawerConfirmed?: boolean | null;
+  /** Whether a drawer was sensed wired to the chosen Star. */
+  externalDevice?: boolean | null;
+}
+
+// ============================================================================
 // PRINT JOB (discriminated union: raw ESC/POS bytes OR structured document)
 // ============================================================================
 

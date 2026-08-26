@@ -9,10 +9,18 @@
 import CashDrawerSheet from '@/components/cash-drawer/CashDrawerSheet'
 import { Switch } from '@/components/ui/switch'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import {
+  classifyKickOutcome,
+  describeCashDrawerKickError,
+  DRAWER_UNCONFIRMED_MESSAGE
+} from '@/lib/cashDrawerKick'
 import { colors } from '@/lib/theme'
+import { toastService } from '@/lib/toastService'
 import { useUiScale } from '@/lib/uiScale'
-import { hydrateDrawerSession } from '@/services/cashDrawerService'
+import { hydrateDrawerSession, setDrawerHostPrinter } from '@/services/cashDrawerService'
+import { PrinterService } from '@/services/printing/PrinterService'
 import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
+import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { Station } from '@/types/station'
@@ -73,14 +81,18 @@ export default function CashManagementScreen () {
 
   const drawerId = useCashDrawerStore(s => s.drawerId)
   const drawerName = useCashDrawerStore(s => s.drawerName)
+  const hostPrinterId = useCashDrawerStore(s => s.hostPrinterId)
   const activeSession = useCashDrawerStore(s => s.activeSession)
   const getRunningBalance = useCashDrawerStore(s => s.getRunningBalance)
   const operations = useCashDrawerStore(s => s.operations)
+  const printers = usePrinterStore(s => s.printers)
 
   const isSessionOpen = activeSession?.status === 'open'
 
   const [isCashDrawerSheetOpen, setCashDrawerSheetOpen] = useState(false)
   const [isRefreshing, setRefreshing] = useState(false)
+  const [isTestingPop, setTestingPop] = useState(false)
+  const [hostPickerOpen, setHostPickerOpen] = useState(false)
 
   const handleRefresh = useCallback(async () => {
     if (!selectedStation || !selectedStore || isRefreshing) return
@@ -88,6 +100,81 @@ export default function CashManagementScreen () {
     await hydrateDrawerSession(supabase, selectedStation.id, selectedStore.id)
     setRefreshing(false)
   }, [selectedStation, selectedStore, supabase, isRefreshing])
+
+  // Ground-truth verification: kick the drawer for THIS station and report
+  // exactly which printer answered and whether the pop was confirmed. This is
+  // the installer's proof the drawer is wired to the printer the kick targets.
+  const handleTestPop = useCallback(async () => {
+    if (isTestingPop) return
+    setTestingPop(true)
+    try {
+      const kick = await PrinterService.openCashDrawer({
+        stationId: selectedStation?.id ?? null,
+        locationId: selectedStore?.id ?? null,
+        trigger: 'manual'
+      })
+      const outcome = classifyKickOutcome(kick)
+      if (outcome === 'failed') {
+        toastService.show({
+          title: 'Drawer Did Not Open',
+          message: describeCashDrawerKickError(kick),
+          type: 'error',
+          duration: 6000
+        })
+      } else if (outcome === 'unconfirmed') {
+        toastService.show({
+          title: 'Check the Drawer',
+          message: kick.printerName
+            ? `${DRAWER_UNCONFIRMED_MESSAGE} (tried ${kick.printerName})`
+            : DRAWER_UNCONFIRMED_MESSAGE,
+          type: 'warning',
+          duration: 6000
+        })
+      } else {
+        toastService.show({
+          title: 'Cash Drawer Opened',
+          message: kick.printerName
+            ? `Popped via ${kick.printerName}.`
+            : 'Drawer kick sent.',
+          type: 'success',
+          duration: 5000
+        })
+      }
+    } catch (err) {
+      console.error('[CashMgmt] test pop error:', err)
+      toastService.show({
+        title: 'Drawer Did Not Open',
+        message: 'The cash drawer could not be opened.',
+        type: 'error',
+        duration: 6000
+      })
+    } finally {
+      setTestingPop(false)
+    }
+  }, [isTestingPop, selectedStation, selectedStore])
+
+  // Explicit host-printer override — bind the drawer to a specific printer, or
+  // clear to fall back to sense-based auto-detection.
+  const handleSetHostPrinter = useCallback(
+    async (printerId: string | null) => {
+      setHostPickerOpen(false)
+      if (!drawerId) return
+      const ok = await setDrawerHostPrinter(supabase, drawerId, printerId)
+      toastService.show({
+        title: ok ? 'Drawer Host Updated' : 'Update Failed',
+        message: ok
+          ? printerId
+            ? `Bound to ${
+                printers.find(p => p.id === printerId)?.printerName ?? 'printer'
+              }.`
+            : 'Cleared — will auto-detect from drawer sense.'
+          : 'Could not update the drawer host printer.',
+        type: ok ? 'success' : 'error',
+        duration: 4000
+      })
+    },
+    [drawerId, supabase, printers]
+  )
 
   const queryClient = useQueryClient()
 
@@ -931,6 +1018,129 @@ export default function CashManagementScreen () {
                   v => updateCashDrawerSettings({ defaultOpeningAmount: v }),
                   '$'
                 )}
+                {/* Test Pop — ground-truth verify the drawer is wired to the
+                    printer the kick targets for this station. */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: s(9)
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: s(12) }}>
+                    <Text
+                      style={{
+                        fontSize: s(13),
+                        fontWeight: '500',
+                        color: colors.heading
+                      }}
+                    >
+                      Test Cash Drawer
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: s(10),
+                        color: colors.muted,
+                        marginTop: s(1)
+                      }}
+                    >
+                      Kick the drawer for this station and confirm which printer
+                      answered
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleTestPop}
+                    disabled={isTestingPop}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: s(12),
+                      height: s(36),
+                      borderRadius: s(8),
+                      backgroundColor: colors.teal + '15',
+                      borderWidth: 1,
+                      borderColor: colors.teal + '30',
+                      opacity: isTestingPop ? 0.6 : 1
+                    }}
+                  >
+                    {isTestingPop ? (
+                      <ActivityIndicator size='small' color={colors.teal} />
+                    ) : (
+                      <>
+                        <Banknote size={s(14)} color={colors.teal} />
+                        <Text
+                          style={{
+                            marginLeft: s(6),
+                            fontSize: s(12),
+                            fontWeight: '600',
+                            color: colors.teal
+                          }}
+                        >
+                          Test Pop
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {/* Drawer Host Printer — explicit binding override; when unset
+                    the kick auto-detects the host from Star drawer-sense. */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: s(9)
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: s(12) }}>
+                    <Text
+                      style={{
+                        fontSize: s(13),
+                        fontWeight: '500',
+                        color: colors.heading
+                      }}
+                    >
+                      Drawer Host Printer
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: s(10),
+                        color: colors.muted,
+                        marginTop: s(1)
+                      }}
+                    >
+                      {hostPrinterId
+                        ? printers.find(p => p.id === hostPrinterId)
+                            ?.printerName ?? 'Bound printer'
+                        : 'Auto-detect from drawer sense'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setHostPickerOpen(true)}
+                    disabled={!drawerId}
+                    style={{
+                      paddingHorizontal: s(12),
+                      height: s(36),
+                      justifyContent: 'center',
+                      borderRadius: s(8),
+                      backgroundColor: colors.teal + '15',
+                      borderWidth: 1,
+                      borderColor: colors.teal + '30',
+                      opacity: drawerId ? 1 : 0.5
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        fontWeight: '600',
+                        color: colors.teal
+                      }}
+                    >
+                      Change
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </View>
@@ -1006,6 +1216,162 @@ export default function CashManagementScreen () {
         isOpen={isCashDrawerSheetOpen}
         onClose={() => setCashDrawerSheetOpen(false)}
       />
+
+      {/* ── Drawer Host Printer Picker ── */}
+      <Modal
+        visible={hostPickerOpen}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setHostPickerOpen(false)}
+      >
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: s(20)
+          }}
+          activeOpacity={1}
+          onPress={() => setHostPickerOpen(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={{
+              width: '100%',
+              backgroundColor: colors.panel,
+              borderRadius: s(16),
+              borderWidth: 1,
+              borderColor: colors.border,
+              overflow: 'hidden'
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: s(14),
+                paddingVertical: s(10),
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border
+              }}
+            >
+              <View>
+                <Text
+                  style={{
+                    fontSize: s(13),
+                    fontWeight: '700',
+                    color: colors.heading
+                  }}
+                >
+                  Drawer Host Printer
+                </Text>
+                <Text
+                  style={{ fontSize: s(10), color: colors.label, marginTop: s(1) }}
+                >
+                  {drawerName || 'Cash Drawer'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setHostPickerOpen(false)}
+                style={{ padding: s(4) }}
+              >
+                <X size={s(14)} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={{ maxHeight: s(300) }}
+              contentContainerStyle={{ padding: s(12) }}
+            >
+              {/* Auto-detect (clear binding) */}
+              <TouchableOpacity
+                onPress={() => handleSetHostPrinter(null)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingVertical: s(10),
+                  paddingHorizontal: s(10),
+                  borderRadius: s(8),
+                  backgroundColor: !hostPrinterId
+                    ? colors.teal + '12'
+                    : 'transparent'
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      fontWeight: '600',
+                      color: colors.heading
+                    }}
+                  >
+                    Auto-detect
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      color: colors.muted,
+                      marginTop: s(1)
+                    }}
+                  >
+                    Infer the host from Star drawer sense
+                  </Text>
+                </View>
+                {!hostPrinterId && <Check size={s(15)} color={colors.teal} />}
+              </TouchableOpacity>
+
+              {printers
+                .filter(p => p.isActive && p.locationId === selectedStore?.id)
+                .map(p => {
+                  const selected = hostPrinterId === p.id
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      onPress={() => handleSetHostPrinter(p.id)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingVertical: s(10),
+                        paddingHorizontal: s(10),
+                        borderRadius: s(8),
+                        backgroundColor: selected
+                          ? colors.teal + '12'
+                          : 'transparent'
+                      }}
+                    >
+                      <View style={{ flex: 1, marginRight: s(8) }}>
+                        <Text
+                          style={{
+                            fontSize: s(12),
+                            fontWeight: '600',
+                            color: colors.heading
+                          }}
+                        >
+                          {p.printerName}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: s(10),
+                            color: colors.muted,
+                            marginTop: s(1)
+                          }}
+                        >
+                          {p.printerType}
+                          {p.networkAddress ? ` · ${p.networkAddress}` : ''}
+                        </Text>
+                      </View>
+                      {selected && <Check size={s(15)} color={colors.teal} />}
+                    </TouchableOpacity>
+                  )
+                })}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ── Drawer Picker Modal ── */}
       <Modal

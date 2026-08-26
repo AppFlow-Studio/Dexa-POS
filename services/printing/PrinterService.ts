@@ -8,8 +8,15 @@ import { onlineOrderShortCode } from '@/lib/onlineOrderLabel'
 import { isOnlineOrderSource } from '@/lib/orderSource'
 import { resolveOrderPlatformLogo } from '@/lib/orderPlatformResolver'
 import { INKIND_LABEL } from '@/lib/paymentMethod'
-import { KEY_RECEIPT_RECONCILE_MISMATCH } from '@/lib/telemetry/keys'
+import {
+  KEY_CASH_DRAWER_KICK_FAIL,
+  KEY_CASH_DRAWER_KICK_OK,
+  KEY_CASH_DRAWER_KICK_UNCONFIRMED,
+  KEY_RECEIPT_RECONCILE_MISMATCH
+} from '@/lib/telemetry/keys'
 import { recordCount } from '@/lib/telemetry/registry'
+import { isDrawerRoutingV2Enabled } from '@/lib/network/featureFlags'
+import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -31,7 +38,10 @@ import {
 } from '@/stores/useStoreSettingsStore'
 import { PrintDocument } from '@/types/print-document'
 import {
+  CashDrawerKickError,
+  CashDrawerKickResult,
   DocumentPrintJob,
+  DrawerKickSense,
   KitchenTicketData,
   KitchenTicketItemData,
   PrinterConfig,
@@ -86,6 +96,173 @@ let backoffWakeupTimer: ReturnType<typeof setTimeout> | null = null
 const FAILURE_TOAST_DEDUP_MS = 30_000
 const PROCESSING_STUCK_MS = 30_000 // Safety: force-release a stuck printer slot
 const BACKOFF_WAKEUP_MS = 250 // Wake-up delay when only retry-backoff jobs remain
+
+// ============================================================================
+// CASH DRAWER KICK — selection, bounded timeout, telemetry
+// ============================================================================
+
+// Per-candidate cap: below the Star 12s openTimeout (starPrinterFactory) so a
+// dead/unreachable Star can't stack ~24s across candidates. The caller moves on
+// even if the underlying withInUseRetry keeps running orphaned on that address
+// (harmless — the next candidate is a different address/mutex).
+const DRAWER_KICK_TIMEOUT_MS = 4500
+
+function classifyKickError (e: any): { error: CashDrawerKickError; message?: string } {
+  const msg = e?.message ? String(e.message) : undefined
+  if (e?.name === 'StarPrinterBusyError') return { error: 'in_use', message: msg }
+  if (e?.__drawerKickTimeout) return { error: 'timeout', message: msg }
+  if (msg && /not initialized/i.test(msg)) return { error: 'not_initialized', message: msg }
+  if (msg && /unreachable|timed? ?out|ECONN|network|refused/i.test(msg)) {
+    return { error: 'unreachable', message: msg }
+  }
+  return { error: 'unknown', message: msg }
+}
+
+// Bounded race so an unreachable candidate can't stall the kick. On timeout the
+// rejection is tagged so classifyKickError maps it to `timeout` and the loop
+// advances to the next candidate.
+function withDrawerTimeout<T> (p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err: any = new Error(`Cash drawer kick timed out after ${ms}ms`)
+      err.__drawerKickTimeout = true
+      reject(err)
+    }, ms)
+  })
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer)) as Promise<T>
+}
+
+function dedupeDrawerCandidates (printers: PrinterConfig[]): PrinterConfig[] {
+  return [...new Map(printers.map(p => [p.id, p])).values()]
+}
+
+// Legacy ranking (drawerRoutingV2 OFF) — preserved verbatim for regression parity.
+function rankDrawerCandidatesLegacy (
+  drawerPrinters: PrinterConfig[]
+): PrinterConfig[] {
+  const sorted = [
+    ...drawerPrinters.filter(
+      p => p.printerType === 'star_micronics' && p.isConnected
+    ),
+    ...drawerPrinters.filter(
+      p => p.printerType === 'star_micronics' && !p.isConnected
+    ),
+    ...drawerPrinters.filter(
+      p =>
+        p.printerType !== 'star_micronics' &&
+        p.isDefaultReceipt &&
+        p.isConnected
+    ),
+    ...drawerPrinters.filter(
+      p =>
+        p.printerType !== 'star_micronics' &&
+        p.isDefaultReceipt &&
+        !p.isConnected
+    ),
+    ...drawerPrinters.filter(
+      p => p.printerType !== 'star_micronics' && !p.isDefaultReceipt
+    )
+  ]
+  return dedupeDrawerCandidates(sorted)
+}
+
+// V2 ranking (drawerRoutingV2 ON) — Star-first, evidence-ranked, Landi last.
+//   1. explicit binding (cash_drawers.host_printer_id, hydrated into the store)
+//   2. sense-evidenced Stars (lastDrawerExternalDevice===true OR
+//      lastDrawerSignalDetail!==null) — receipt printer preferred
+//   3. unknown-sense Stars (null / un-probed) — NOT excluded (a real host may
+//      simply not have been probed yet)
+//   4. Stars with positive evidence of NO drawer — deprioritized, still tried
+//   5. non-Star drawer-capable (Landi builtin) — last-resort only
+function rankDrawerCandidatesV2 (
+  drawerPrinters: PrinterConfig[],
+  locationId: string | null,
+  stationId: string | null
+): PrinterConfig[] {
+  const meta = (p: PrinterConfig) => (p.metadata ?? {}) as Record<string, unknown>
+  const isStar = (p: PrinterConfig) => p.printerType === 'star_micronics'
+  const wiredStar = (p: PrinterConfig) =>
+    isStar(p) &&
+    (meta(p).lastDrawerExternalDevice === true ||
+      (meta(p).lastDrawerSignalDetail ?? null) !== null)
+  const unwiredStar = (p: PrinterConfig) =>
+    isStar(p) &&
+    meta(p).lastDrawerExternalDevice === false &&
+    (meta(p).lastDrawerSignalDetail ?? null) === null
+
+  // Explicit binding wins outright (Wave 3 populates hostPrinterId; read
+  // defensively so this is a no-op until then).
+  const boundId = (useCashDrawerStore.getState() as { hostPrinterId?: string | null })
+    .hostPrinterId
+  const receipt = getReceiptPrinter(locationId ?? '', stationId)
+
+  const ordered: PrinterConfig[] = []
+  if (boundId) {
+    const bound = drawerPrinters.find(p => p.id === boundId)
+    if (bound) ordered.push(bound)
+  }
+  const wired = drawerPrinters.filter(wiredStar)
+  ordered.push(
+    ...wired.filter(p => p.id === receipt?.id),
+    ...wired.filter(p => p.id !== receipt?.id)
+  )
+  ordered.push(
+    ...drawerPrinters.filter(p => isStar(p) && !wiredStar(p) && !unwiredStar(p))
+  )
+  ordered.push(...drawerPrinters.filter(unwiredStar))
+  ordered.push(...drawerPrinters.filter(p => !isStar(p)))
+  return dedupeDrawerCandidates(ordered)
+}
+
+// Durable per-attempt record: aggregate telemetry counters + a capped,
+// queryable trail on the chosen (or last-tried) printer's metadata. Never
+// throws and never adds latency to the kick (fire-and-forget after it returns).
+function recordKickAttempt (
+  result: CashDrawerKickResult,
+  meta: { routingV2: boolean; trigger?: string }
+): void {
+  try {
+    if (result.ok) {
+      recordCount(KEY_CASH_DRAWER_KICK_OK, 1)
+      // Strict-confirm tripwire: ACKed, a drawer is wired, yet no open
+      // transition was seen — the "kick silently hit the wrong printer" signal.
+      if (result.externalDevice === true && result.drawerConfirmed === false) {
+        recordCount(KEY_CASH_DRAWER_KICK_UNCONFIRMED, 1)
+      }
+    } else {
+      recordCount(KEY_CASH_DRAWER_KICK_FAIL, 1)
+    }
+
+    const tried = result.candidatesTried ?? []
+    const targetId = result.printerId ?? tried[tried.length - 1]
+    if (!targetId) return
+    const store = usePrinterStore.getState()
+    const p = store.printers.find(x => x.id === targetId)
+    const existing = Array.isArray((p?.metadata as any)?.recentKicks)
+      ? ((p!.metadata as any).recentKicks as unknown[])
+      : []
+    const entry = {
+      at: new Date().toISOString(),
+      ok: result.ok,
+      trigger: meta.trigger ?? null,
+      routingV2: meta.routingV2,
+      printerId: result.printerId ?? null,
+      printerName: result.printerName ?? null,
+      printerType: result.printerType ?? null,
+      transport: result.transport ?? null,
+      error: result.error ?? null,
+      errorMessage: result.errorMessage ?? null,
+      drawerConfirmed: result.drawerConfirmed ?? null,
+      externalDevice: result.externalDevice ?? null,
+      candidatesTried: tried
+    }
+    const recentKicks = [entry, ...existing].slice(0, 10)
+    void store.syncPrinterStatus(targetId, { metadata: { recentKicks } })
+  } catch (e) {
+    if (__DEV__) console.warn('[PrinterService] recordKickAttempt failed:', e)
+  }
+}
 
 // Schedule a queue drain. Coalesces multiple calls into one pending run.
 // At drain time we kick a parallel `drainPrinter` for every printer that has a
@@ -529,9 +706,24 @@ export const PrinterService = {
   },
 
   /**
-   * Open the cash drawer on the default receipt printer.
+   * Kick the cash drawer. Returns a structured result — `ok` is driven ONLY by
+   * the driver command ACK; the sense fields are advisory (strict-confirm).
+   *
+   * Selection: legacy ranking by default; Star-first, sense-evidenced,
+   * bounded-timeout routing when `drawerRoutingV2` is enabled. See
+   * rankDrawerCandidatesV2 / rankDrawerCandidatesLegacy.
    */
-  async openCashDrawer (): Promise<boolean> {
+  async openCashDrawer (opts?: {
+    stationId?: string | null
+    locationId?: string | null
+    trigger?: string
+  }): Promise<CashDrawerKickResult> {
+    const routingV2 = isDrawerRoutingV2Enabled()
+    const settings = useStoreSettingsStore.getState()
+    const stationId = opts?.stationId ?? settings.selectedStation?.id ?? null
+    const locationId = opts?.locationId ?? settings.selectedStore?.id ?? null
+    const trigger = opts?.trigger
+
     const { printers } = usePrinterStore.getState()
     // Drawer-capable: flag set OR Star Micronics (always has DK port)
     const drawerPrinters = printers.filter(
@@ -542,38 +734,25 @@ export const PrinterService = {
 
     if (drawerPrinters.length === 0) {
       console.warn('[PrinterService] No printer with cash drawer support')
-      return false
+      const result: CashDrawerKickResult = {
+        ok: false,
+        error: 'no_candidate',
+        candidatesTried: []
+      }
+      recordKickAttempt(result, { routingV2, trigger })
+      return result
     }
 
-    // Sort by priority: Star Micronics first (has real DK port), then connected default receipt, etc.
-    const sorted = [
-      ...drawerPrinters.filter(
-        p => p.printerType === 'star_micronics' && p.isConnected
-      ),
-      ...drawerPrinters.filter(
-        p => p.printerType === 'star_micronics' && !p.isConnected
-      ),
-      ...drawerPrinters.filter(
-        p =>
-          p.printerType !== 'star_micronics' &&
-          p.isDefaultReceipt &&
-          p.isConnected
-      ),
-      ...drawerPrinters.filter(
-        p =>
-          p.printerType !== 'star_micronics' &&
-          p.isDefaultReceipt &&
-          !p.isConnected
-      ),
-      ...drawerPrinters.filter(
-        p => p.printerType !== 'star_micronics' && !p.isDefaultReceipt
-      )
-    ]
-    // Deduplicate (a printer may match multiple filters)
-    const candidates = [...new Map(sorted.map(p => [p.id, p])).values()]
+    const candidates = routingV2
+      ? rankDrawerCandidatesV2(drawerPrinters, locationId, stationId)
+      : rankDrawerCandidatesLegacy(drawerPrinters)
+
+    const tried: string[] = []
+    let lastErr: { error: CashDrawerKickError; message?: string } | null = null
 
     // Try each candidate — if one fails, fall back to next
     for (const printer of candidates) {
+      tried.push(printer.id)
       try {
         console.log(
           `[PrinterService] Opening cash drawer via ${printer.printerType} (${
@@ -582,11 +761,47 @@ export const PrinterService = {
         )
         const driver = getDriver(printer)
         if (!driver.isConnected()) {
-          await driver.initialize(printer)
+          if (routingV2) {
+            await withDrawerTimeout(
+              driver.initialize(printer),
+              DRAWER_KICK_TIMEOUT_MS
+            )
+          } else {
+            await driver.initialize(printer)
+          }
         }
-        await driver.openCashDrawer()
-        return true
+
+        let sense: DrawerKickSense | null = null
+        if (routingV2) {
+          // Prefer the confirmed variant (Star) for strict-confirm; other
+          // drivers fall back to the plain void kick.
+          const confirmFn = (
+            driver as {
+              openCashDrawerConfirmed?: () => Promise<DrawerKickSense>
+            }
+          ).openCashDrawerConfirmed
+          const kick = confirmFn
+            ? confirmFn.call(driver)
+            : driver.openCashDrawer().then(() => null)
+          sense = await withDrawerTimeout(kick, DRAWER_KICK_TIMEOUT_MS)
+        } else {
+          await driver.openCashDrawer()
+        }
+
+        const result: CashDrawerKickResult = {
+          ok: true,
+          printerId: printer.id,
+          printerName: printer.printerName,
+          printerType: printer.printerType,
+          transport: printer.connectionType,
+          candidatesTried: tried,
+          drawerConfirmed: sense?.drawerConfirmed ?? null,
+          externalDevice: sense?.externalDevice ?? null
+        }
+        recordKickAttempt(result, { routingV2, trigger })
+        return result
       } catch (e) {
+        lastErr = classifyKickError(e)
         console.warn(
           `[PrinterService] Cash drawer failed on ${printer.printerName}:`,
           e
@@ -596,7 +811,14 @@ export const PrinterService = {
     }
 
     console.error('[PrinterService] All cash drawer candidates failed')
-    return false
+    const result: CashDrawerKickResult = {
+      ok: false,
+      error: lastErr?.error ?? 'all_failed',
+      errorMessage: lastErr?.message,
+      candidatesTried: tried
+    }
+    recordKickAttempt(result, { routingV2, trigger })
+    return result
   },
 
   /**

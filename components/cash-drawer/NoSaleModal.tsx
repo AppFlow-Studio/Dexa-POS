@@ -9,6 +9,11 @@ import PinDisplay from '@/components/auth/PinDisplay'
 import PinNumpad from '@/components/auth/PinNumpad'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import {
+  classifyKickOutcome,
+  describeCashDrawerKickError,
+  DRAWER_UNCONFIRMED_MESSAGE
+} from '@/lib/cashDrawerKick'
 import { colors } from '@/lib/theme'
 import type { MerchantRole } from '@/lib/types'
 import { recordDrawerOperation } from '@/services/cashDrawerService'
@@ -130,18 +135,32 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
         approvedBy: approvedBy || undefined
       })
 
-      // Open the physical cash drawer
-      try {
-        await PrinterService.openCashDrawer()
-      } catch {
-        // Non-blocking — drawer open is best-effort
+      // Open the physical cash drawer. The No-Sale is already audit-recorded
+      // above, so a failed kick never rolls it back — it only informs the
+      // operator the drawer stayed shut.
+      const kick = await PrinterService.openCashDrawer({ trigger: 'no_sale' })
+      const outcome = classifyKickOutcome(kick)
+      if (outcome === 'failed') {
+        show({
+          title: 'Drawer Did Not Open',
+          message: describeCashDrawerKickError(kick),
+          type: 'error'
+        })
+      } else if (outcome === 'unconfirmed') {
+        show({
+          title: 'Check the Drawer',
+          message: DRAWER_UNCONFIRMED_MESSAGE,
+          type: 'warning'
+        })
+      } else {
+        show({
+          title: 'No Sale',
+          message: kick.printerName
+            ? `Cash drawer opened (${kick.printerName}).`
+            : 'Cash drawer opened.',
+          type: 'success'
+        })
       }
-
-      show({
-        title: 'No Sale',
-        message: 'Cash drawer opened.',
-        type: 'success'
-      })
 
       // Check no-sale threshold after recording
       const noSaleCount = getNoSaleCount()
