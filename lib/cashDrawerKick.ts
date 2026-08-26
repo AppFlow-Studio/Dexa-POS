@@ -5,20 +5,27 @@ import { CashDrawerKickResult } from "@/types/printer";
  * call site (No Sale, Pay In/Out, manual Open Drawer, Test Pop) reacts
  * identically.
  *
- * - `ok`          — command ACKed and (if sensed) the drawer opened.
- * - `unconfirmed` — command ACKed, a drawer IS wired, but the Star sense saw no
- *                   open transition (strict-confirm tripwire). Surface a warning,
- *                   never a hard error — a fast re-close or an inverted-polarity
- *                   sense can produce this on a drawer that physically opened.
+ * - `ok`          — command ACKed and the drawer-open signal transitioned (the
+ *                   drawer physically popped), OR the sense was unreadable so we
+ *                   trust the ACK.
+ * - `unconfirmed` — command ACKed but the Star drawer-open signal did NOT change
+ *                   state. This catches BOTH a wired drawer that failed to pop
+ *                   AND a printer with no drawer on its DK port (which still ACKs
+ *                   the open-loop pulse). Surface a warning, never a hard error.
  * - `failed`      — no candidate / every candidate failed. Surface an error.
+ *
+ * NOTE: we key off `drawerConfirmed` (the before→after transition), NOT
+ * `externalDevice1Connected` — on Star the latter is often `null` even when no
+ * drawer is physically present, so it can't distinguish "no drawer" from
+ * "solenoid-only". The transition is the signal that actually moves.
  */
 export type KickOutcome = "ok" | "unconfirmed" | "failed";
 
 export function classifyKickOutcome(result: CashDrawerKickResult): KickOutcome {
   if (!result.ok) return "failed";
-  if (result.externalDevice === true && result.drawerConfirmed === false) {
-    return "unconfirmed";
-  }
+  // Sense read completed and showed no open transition → nothing opened.
+  // `null` (sense unreadable) falls through to `ok` — trust the ACK.
+  if (result.drawerConfirmed === false) return "unconfirmed";
   return "ok";
 }
 
@@ -41,6 +48,6 @@ export function describeCashDrawerKickError(
   }
 }
 
-/** Warning shown when a wired drawer's sense didn't confirm an open. */
+/** Warning shown when the drawer-open signal didn't move after the kick. */
 export const DRAWER_UNCONFIRMED_MESSAGE =
-  "The drawer may not have opened — please check the till.";
+  "No drawer opened — check that a cash drawer is connected to this printer.";

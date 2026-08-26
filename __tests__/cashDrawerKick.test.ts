@@ -239,9 +239,24 @@ describe("cashDrawerKick outcome helpers", () => {
     ).toBe("unconfirmed");
   });
 
-  it("does NOT flag unconfirmed when no drawer is sensed wired", () => {
+  it("flags unconfirmed on a no-drawer Star (externalDevice null, no transition)", () => {
+    // Real repro: printer connected, no drawer on the DK port. The pulse ACKs
+    // (ok) but the drawer-open signal never moves (drawerConfirmed false) and
+    // externalDevice1Connected reports null — must NOT show a green success.
+    expect(
+      classifyKickOutcome({ ok: true, externalDevice: null, drawerConfirmed: false }),
+    ).toBe("unconfirmed");
+  });
+
+  it("trusts the ACK when the sense is unreadable (drawerConfirmed null)", () => {
     expect(
       classifyKickOutcome({ ok: true, externalDevice: null, drawerConfirmed: null }),
+    ).toBe("ok");
+  });
+
+  it("treats a confirmed transition as ok", () => {
+    expect(
+      classifyKickOutcome({ ok: true, externalDevice: true, drawerConfirmed: true }),
     ).toBe("ok");
   });
 
