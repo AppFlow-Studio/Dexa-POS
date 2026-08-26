@@ -46,11 +46,18 @@ import Animated, {
  * with. Rows animate in, slide out on removal, and reflow with a layout
  * transition so quantity edits read as direct manipulation.
  *
- * **Landscape** splits into two panes — lines left, totals and Checkout right —
- * and lays the lines out two-up. A single full-width column stretched each line
- * to 1842px on a 1920px panel behind a 167px thumbnail, which is all gap and no
- * content. Portrait keeps the single column with the totals pinned at the foot.
+ * **Landscape** splits into two panes the same way the tip screen does — the
+ * scrolling line list on the left, the totals card and Checkout CTA pinned
+ * centre-right behind a divider — and lays the lines out two-up when the list
+ * pane is wide enough. A single full-width column stretched each line to 1842px
+ * on a 1920px panel behind a 167px thumbnail, which is all gap and no content,
+ * and a full-width totals footer wasted the height landscape has least of.
+ * Portrait keeps the single column with the totals pinned at the foot.
  */
+
+/** Landscape list-pane flex against a 1-flex summary pane (mirrors TipStep). */
+const LIST_PANE_FLEX = 1.45;
+
 export function KioskCartView({
   config,
   onBack,
@@ -83,171 +90,248 @@ export function KioskCartView({
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isHorizontal = screenWidth > screenHeight;
-  // Two-up in landscape. `justifyContent: space-between` + a percentage width
-  // avoids mixing a px gap with percentage children, which is what makes a
-  // wrapping row overflow at awkward pane widths.
-  const lineWidth = isHorizontal ? ("49%" as const) : undefined;
+  // Landscape splits 1.45 : 1, so the list pane is well under half the panel on
+  // a small tablet. Go two-up only when each line still clears ~430px of usable
+  // width — below that the thumbnail plus qty stepper plus Remove pill collide.
+  // `justifyContent: space-between` + a percentage width avoids mixing a px gap
+  // with percentage children, which is what makes a wrapping row overflow at
+  // awkward pane widths.
+  const listPaneWidth = isHorizontal
+    ? screenWidth * (LIST_PANE_FLEX / (LIST_PANE_FLEX + 1)) - kioskPx(48, s)
+    : screenWidth;
+  const twoUp = isHorizontal && listPaneWidth / 2 >= kioskPx(430, s);
+  const lineWidth = twoUp ? ("49%" as const) : undefined;
 
-  return (
+  const header = (
     <View
-      className="flex-1"
-      style={{ backgroundColor: config.backgroundColor }}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: kioskPx(14, s),
+        paddingHorizontal: kioskPx(24, s),
+        paddingVertical: kioskPx(18, s),
+      }}
     >
-      {/* Header row */}
-      <View
+      <KioskPressable
+        onPress={onBack}
+        pressedScale={0.88}
         style={{
-          flexDirection: "row",
+          width: kioskPx(52, s),
+          height: kioskPx(52, s),
+          borderRadius: kioskPx(26, s),
           alignItems: "center",
-          gap: kioskPx(14, s),
-          paddingHorizontal: kioskPx(24, s),
-          paddingVertical: kioskPx(18, s),
+          justifyContent: "center",
+          backgroundColor: faint,
         }}
       >
-        <KioskPressable
-          onPress={onBack}
-          pressedScale={0.88}
+        <ChevronLeft size={kioskPx(30, s)} color={config.textColor} />
+      </KioskPressable>
+      <Text
+        style={{
+          fontSize: kioskPx(30, s),
+          fontWeight: "800",
+          color: config.textColor,
+        }}
+      >
+        Your Order
+      </Text>
+      {itemCount > 0 && (
+        <Animated.Text
+          layout={LinearTransition.duration(180)}
           style={{
-            width: kioskPx(52, s),
-            height: kioskPx(52, s),
-            borderRadius: kioskPx(26, s),
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: faint,
+            fontSize: kioskPx(18, s),
+            fontWeight: "600",
+            color: muted,
           }}
         >
-          <ChevronLeft size={kioskPx(30, s)} color={config.textColor} />
-        </KioskPressable>
-        <Text
-          style={{
-            fontSize: kioskPx(30, s),
-            fontWeight: "800",
-            color: config.textColor,
-          }}
-        >
-          Your Order
-        </Text>
-        {itemCount > 0 && (
-          <Animated.Text
-            layout={LinearTransition.duration(180)}
-            style={{
-              fontSize: kioskPx(18, s),
-              fontWeight: "600",
-              color: muted,
-            }}
-          >
-            {itemCount} {itemCount === 1 ? "item" : "items"}
-          </Animated.Text>
-        )}
+          {itemCount} {itemCount === 1 ? "item" : "items"}
+        </Animated.Text>
+      )}
+    </View>
+  );
+
+  const list = (
+    <ScrollView
+      style={{ flex: 1 }}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingHorizontal: kioskPx(24, s),
+        paddingBottom: kioskPx(24, s),
+      }}
+    >
+      <View
+        style={{
+          flexDirection: twoUp ? "row" : "column",
+          flexWrap: twoUp ? "wrap" : "nowrap",
+          justifyContent: "space-between",
+          rowGap: kioskPx(16, s),
+        }}
+      >
+        {lines.map((line, index) => (
+          <CartLineRow
+            key={line.lineId}
+            index={index}
+            line={line}
+            width={lineWidth}
+            config={config}
+            faint={faint}
+            muted={muted}
+            onInc={() => incQuantity(line.lineId)}
+            onDec={() => decQuantity(line.lineId)}
+            onRemove={() => removeLine(line.lineId)}
+          />
+        ))}
       </View>
+    </ScrollView>
+  );
 
-      {lines.length === 0 ? (
+  const summaryRows = (
+    <>
+      <SummaryRow
+        label="Subtotal"
+        value={subtotal}
+        muted={muted}
+        color={config.textColor}
+      />
+      {taxRatePct > 0 && (
+        <SummaryRow
+          label={`Tax (${taxRatePct}%)`}
+          value={estTax}
+          muted={muted}
+          color={config.textColor}
+        />
+      )}
+      {/* Stronger than `faint` so it still reads inside the landscape summary
+          card, whose fill is `faint`. */}
+      <View style={{ height: 1, backgroundColor: `${config.textColor}22` }} />
+      <SummaryRow
+        label="Total"
+        value={estTotal}
+        muted={muted}
+        color={config.textColor}
+        emphasize
+      />
+    </>
+  );
+
+  const checkoutButton = (
+    <KioskPressable
+      onPress={onCheckout}
+      pressedScale={0.97}
+      style={{
+        height: kioskPx(72, s),
+        borderRadius: kioskPx(20, s),
+        alignItems: "center",
+        justifyContent: "center",
+        marginTop: kioskPx(4, s),
+        backgroundColor: config.primaryColor,
+        shadowColor: config.primaryColor,
+        shadowOpacity: 0.35,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 6,
+      }}
+    >
+      <Animated.Text
+        layout={LinearTransition.duration(180)}
+        style={{
+          color: "#FFFFFF",
+          fontSize: kioskPx(22, s),
+          fontWeight: "800",
+        }}
+      >
+        Checkout · ${estTotal.toFixed(2)}
+      </Animated.Text>
+    </KioskPressable>
+  );
+
+  // Empty cart owns the whole screen in either orientation — a summary pane of
+  // zeroes next to a dead Checkout button reads as broken, not as a layout.
+  if (lines.length === 0) {
+    return (
+      <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+        {header}
         <EmptyCart config={config} onBack={onBack} muted={muted} />
-      ) : (
-        <>
-          <ScrollView
-            style={{ flex: 1 }}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingHorizontal: kioskPx(24, s),
-              paddingBottom: kioskPx(24, s),
-            }}
-          >
-            <View
-              style={{
-                flexDirection: isHorizontal ? "row" : "column",
-                flexWrap: isHorizontal ? "wrap" : "nowrap",
-                justifyContent: "space-between",
-                rowGap: kioskPx(16, s),
-              }}
-            >
-              {lines.map((line, index) => (
-                <CartLineRow
-                  key={line.lineId}
-                  index={index}
-                  line={line}
-                  width={lineWidth}
-                  config={config}
-                  faint={faint}
-                  muted={muted}
-                  onInc={() => incQuantity(line.lineId)}
-                  onDec={() => decQuantity(line.lineId)}
-                  onRemove={() => removeLine(line.lineId)}
-                />
-              ))}
-            </View>
-          </ScrollView>
+      </View>
+    );
+  }
 
-          {/* Totals + checkout */}
+  // ─── Landscape: lines left, totals + Checkout right ──────────────
+  if (isHorizontal) {
+    return (
+      <View
+        className="flex-1"
+        style={{ backgroundColor: config.backgroundColor }}
+      >
+        <View style={{ flex: 1, flexDirection: "row" }}>
+          <View style={{ flex: LIST_PANE_FLEX }}>
+            {header}
+            {list}
+          </View>
+
           <View
             style={{
-              paddingHorizontal: kioskPx(24, s),
-              paddingTop: kioskPx(18, s),
-              paddingBottom: kioskPx(22, s),
-              borderTopWidth: 1,
-              borderTopColor: faint,
-              backgroundColor: config.backgroundColor,
-              shadowColor: "#000",
-              shadowOpacity: 0.08,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: -4 },
-              elevation: 12,
-              gap: kioskPx(14, s),
+              flex: 1,
+              justifyContent: "center",
+              paddingHorizontal: kioskPx(28, s),
+              paddingVertical: kioskPx(24, s),
+              gap: kioskPx(16, s),
+              borderLeftWidth: 1,
+              borderLeftColor: faint,
+              backgroundColor: `${config.primaryColor}06`,
             }}
           >
-            <SummaryRow
-              label="Subtotal"
-              value={subtotal}
-              muted={muted}
-              color={config.textColor}
-            />
-            {taxRatePct > 0 && (
-              <SummaryRow
-                label={`Tax (${taxRatePct}%)`}
-                value={estTax}
-                muted={muted}
-                color={config.textColor}
-              />
-            )}
-            <View style={{ height: 1, backgroundColor: faint }} />
-            <SummaryRow
-              label="Total"
-              value={estTotal}
-              muted={muted}
-              color={config.textColor}
-              emphasize
-            />
-
-            <KioskPressable
-              onPress={onCheckout}
-              pressedScale={0.97}
+            <Text
               style={{
-                height: kioskPx(72, s),
-                borderRadius: kioskPx(20, s),
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: kioskPx(4, s),
-                backgroundColor: config.primaryColor,
-                shadowColor: config.primaryColor,
-                shadowOpacity: 0.35,
-                shadowRadius: 14,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 6,
+                fontSize: kioskPx(24, s),
+                fontWeight: "800",
+                color: config.textColor,
               }}
             >
-              <Animated.Text
-                layout={LinearTransition.duration(180)}
-                style={{
-                  color: "#FFFFFF",
-                  fontSize: kioskPx(22, s),
-                  fontWeight: "800",
-                }}
-              >
-                Checkout · ${estTotal.toFixed(2)}
-              </Animated.Text>
-            </KioskPressable>
+              Order Summary
+            </Text>
+            <View
+              style={{
+                padding: kioskPx(16, s),
+                borderRadius: kioskPx(18, s),
+                backgroundColor: faint,
+                gap: kioskPx(10, s),
+              }}
+            >
+              {summaryRows}
+            </View>
+            {checkoutButton}
           </View>
-        </>
-      )}
+        </View>
+      </View>
+    );
+  }
+
+  // ─── Portrait: single column, totals pinned at the foot ──────────
+  return (
+    <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+      {header}
+      {list}
+
+      <View
+        style={{
+          paddingHorizontal: kioskPx(24, s),
+          paddingTop: kioskPx(18, s),
+          paddingBottom: kioskPx(22, s),
+          borderTopWidth: 1,
+          borderTopColor: faint,
+          backgroundColor: config.backgroundColor,
+          shadowColor: "#000",
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: -4 },
+          elevation: 12,
+          gap: kioskPx(14, s),
+        }}
+      >
+        {summaryRows}
+        {checkoutButton}
+      </View>
     </View>
   );
 }
@@ -459,7 +543,7 @@ function CartLineRow({
               paddingHorizontal: kioskPx(16, s),
               height: kioskPx(46, s),
               borderRadius: 999,
-              backgroundColor: "#EF444414",
+              backgroundColor: config.backgroundColor,
             }}
           >
             <Trash2 size={kioskPx(21, s)} color="#EF4444" />
