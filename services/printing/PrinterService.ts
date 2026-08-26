@@ -136,14 +136,21 @@ function dedupeDrawerCandidates (printers: PrinterConfig[]): PrinterConfig[] {
   return [...new Map(printers.map(p => [p.id, p])).values()]
 }
 
-// Star-first ranking — evidence-ranked, Landi last.
-//   1. explicit binding (cash_drawers.host_printer_id, hydrated into the store)
-//   2. sense-evidenced Stars (lastDrawerExternalDevice===true OR
-//      lastDrawerSignalDetail!==null) — receipt printer preferred
-//   3. unknown-sense Stars (null / un-probed) — NOT excluded (a real host may
-//      simply not have been probed yet)
-//   4. Stars with positive evidence of NO drawer — deprioritized, still tried
-//   5. non-Star drawer-capable (Landi builtin) — last-resort only
+// Star-first candidate selection. Guiding rule: NEVER fall through to a printer
+// that would ACK a drawer pulse WITHOUT actually holding the drawer — a
+// drawer-less Star, or the built-in Landi whose dead DK port resolves success
+// regardless. That fallthrough IS the P0 "silent success": the host printer is
+// down, the kick lands on the wrong printer, and we report OK while the real
+// drawer stays shut.
+//
+//   1. Explicit binding (host_printer_id) → kick ONLY that printer. If it's
+//      down, fail honestly — no fallthrough.
+//   2. Sense-wired Star(s) known (externalDevice===true OR signalDetail!==null)
+//      → the drawer is positively on a Star; restrict to those (receipt-first)
+//      so a drawer-less fallback can't mask a host failure.
+//   3. Host unknown → best-effort guess across Stars only (receipt-first,
+//      unwired Stars last). The built-in Landi is EXCLUDED — its port is
+//      non-functional and it ACKs falsely.
 function rankDrawerCandidates (
   drawerPrinters: PrinterConfig[],
   locationId: string | null,
@@ -151,6 +158,7 @@ function rankDrawerCandidates (
 ): PrinterConfig[] {
   const meta = (p: PrinterConfig) => (p.metadata ?? {}) as Record<string, unknown>
   const isStar = (p: PrinterConfig) => p.printerType === 'star_micronics'
+  const isBuiltin = (p: PrinterConfig) => p.connectionType === 'builtin'
   const wiredStar = (p: PrinterConfig) =>
     isStar(p) &&
     (meta(p).lastDrawerExternalDevice === true ||
@@ -160,28 +168,36 @@ function rankDrawerCandidates (
     meta(p).lastDrawerExternalDevice === false &&
     (meta(p).lastDrawerSignalDetail ?? null) === null
 
-  // Explicit binding wins outright (cash_drawers.host_printer_id, hydrated into
-  // the store; read defensively so it's a no-op until a binding exists).
-  const boundId = (useCashDrawerStore.getState() as { hostPrinterId?: string | null })
-    .hostPrinterId
   const receipt = getReceiptPrinter(locationId ?? '', stationId)
 
-  const ordered: PrinterConfig[] = []
+  // 1) Explicit binding — deterministic single target, no fallthrough.
+  const boundId = useCashDrawerStore.getState().hostPrinterId
   if (boundId) {
     const bound = drawerPrinters.find(p => p.id === boundId)
-    if (bound) ordered.push(bound)
+    if (bound) return [bound]
+    // Binding points to a missing/inactive printer — fall through to sense.
   }
+
+  // 2) Positively-known host on a Star — restrict to wired Stars only.
   const wired = drawerPrinters.filter(wiredStar)
-  ordered.push(
-    ...wired.filter(p => p.id === receipt?.id),
-    ...wired.filter(p => p.id !== receipt?.id)
-  )
-  ordered.push(
-    ...drawerPrinters.filter(p => isStar(p) && !wiredStar(p) && !unwiredStar(p))
-  )
-  ordered.push(...drawerPrinters.filter(unwiredStar))
-  ordered.push(...drawerPrinters.filter(p => !isStar(p)))
-  return dedupeDrawerCandidates(ordered)
+  if (wired.length > 0) {
+    return dedupeDrawerCandidates([
+      ...wired.filter(p => p.id === receipt?.id),
+      ...wired.filter(p => p.id !== receipt?.id)
+    ])
+  }
+
+  // 3) Host unknown — guess across Stars only (never the false-ACK built-in),
+  //    receipt-first, unwired Stars last. Any non-Star, non-builtin
+  //    drawer-capable printer is a final resort (rare; these mostly throw
+  //    rather than falsely ACK).
+  const stars = drawerPrinters.filter(isStar)
+  return dedupeDrawerCandidates([
+    ...stars.filter(p => p.id === receipt?.id),
+    ...stars.filter(p => p.id !== receipt?.id && !unwiredStar(p)),
+    ...stars.filter(unwiredStar),
+    ...drawerPrinters.filter(p => !isStar(p) && !isBuiltin(p))
+  ])
 }
 
 // Durable per-attempt record: aggregate telemetry counters + a capped,

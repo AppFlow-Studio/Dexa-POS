@@ -164,7 +164,7 @@ describe("PrinterService.openCashDrawer — Star-first selection", () => {
     expect(r.printerId).toBe("bound");
   });
 
-  it("keeps the Landi built-in as last-resort behind a wired Star", async () => {
+  it("prefers a wired Star over the built-in Landi", async () => {
     setPrinters([
       landi("landi"),
       star("wired", { metadata: { lastDrawerExternalDevice: true } }),
@@ -176,6 +176,37 @@ describe("PrinterService.openCashDrawer — Star-first selection", () => {
     });
     const r = await PrinterService.openCashDrawer();
     expect(r.printerId).toBe("wired");
+  });
+
+  it("NEVER falls through to the built-in Landi when the host Star is down", async () => {
+    // Regression: Star host disconnected; the only other candidate is the
+    // built-in Landi, whose dead DK port would falsely ACK. It must NOT be
+    // tried — the kick fails honestly instead of reporting a phantom success.
+    setPrinters([
+      landi("landi"),
+      star("wired", { metadata: { lastDrawerExternalDevice: true } }),
+    ]);
+    drivers["landi"] = fakeDriver({ ack: true }); // would falsely succeed
+    drivers["wired"] = fakeDriver({ ack: false, sense: {} as DrawerKickSense });
+    const r = await PrinterService.openCashDrawer();
+    expect(r.ok).toBe(false);
+    expect(r.candidatesTried).toEqual(["wired"]); // landi excluded entirely
+  });
+
+  it("explicit binding kicks only the bound printer — no fallthrough when down", async () => {
+    useCashDrawerStore.setState({ hostPrinterId: "bound" } as any);
+    setPrinters([
+      star("bound", { metadata: { lastDrawerExternalDevice: true } }),
+      star("otherWired", { metadata: { lastDrawerExternalDevice: true } }),
+    ]);
+    drivers["bound"] = fakeDriver({ ack: false, sense: {} as DrawerKickSense });
+    drivers["otherWired"] = fakeDriver({
+      ack: true,
+      sense: { externalDevice: true, drawerSignalDetail: true, drawerConfirmed: true },
+    });
+    const r = await PrinterService.openCashDrawer();
+    expect(r.ok).toBe(false);
+    expect(r.candidatesTried).toEqual(["bound"]);
   });
 
   it("falls back to the next candidate when the first fails", async () => {
