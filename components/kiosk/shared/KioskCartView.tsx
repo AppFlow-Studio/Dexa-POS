@@ -47,8 +47,8 @@ import Animated, {
  * transition so quantity edits read as direct manipulation.
  *
  * **Landscape** splits into two panes the same way the tip screen does — the
- * scrolling line list on the left, the totals card and Checkout CTA pinned
- * centre-right behind a divider — and lays the lines out two-up when the list
+ * scrolling line list on the left, the totals card at the top of the right pane
+ * and the Checkout CTA at its foot behind a divider — and lays the lines out two-up when the list
  * pane is wide enough. A single full-width column stretched each line to 1842px
  * on a 1920px panel behind a 167px thumbnail, which is all gap and no content,
  * and a full-width totals footer wasted the height landscape has least of.
@@ -269,36 +269,41 @@ export function KioskCartView({
             {list}
           </View>
 
+          {/* Summary pinned to the top of the pane, Checkout to the bottom —
+              the CTA is the last thing the eye lands on, and a bottom-anchored
+              button is where a thumb reaches on a portrait-tall pane. */}
           <View
             style={{
               flex: 1,
-              justifyContent: "center",
+              justifyContent: "space-between",
               paddingHorizontal: kioskPx(28, s),
               paddingVertical: kioskPx(24, s),
-              gap: kioskPx(16, s),
               borderLeftWidth: 1,
               borderLeftColor: faint,
               backgroundColor: `${config.primaryColor}06`,
             }}
           >
-            <Text
-              style={{
-                fontSize: kioskPx(24, s),
-                fontWeight: "800",
-                color: config.textColor,
-              }}
-            >
-              Order Summary
-            </Text>
-            <View
-              style={{
-                padding: kioskPx(16, s),
-                borderRadius: kioskPx(18, s),
-                backgroundColor: faint,
-                gap: kioskPx(10, s),
-              }}
-            >
-              {summaryRows}
+            <View style={{ gap: kioskPx(16, s) }}>
+              <Text
+                style={{
+                  fontSize: kioskPx(24, s),
+                  fontWeight: "800",
+                  color: config.textColor,
+                  textAlign: "center",
+                }}
+              >
+                Order Summary
+              </Text>
+              <View
+                style={{
+                  padding: kioskPx(16, s),
+                  borderRadius: kioskPx(18, s),
+                  backgroundColor: faint,
+                  gap: kioskPx(10, s),
+                }}
+              >
+                {summaryRows}
+              </View>
             </View>
             {checkoutButton}
           </View>
@@ -426,20 +431,17 @@ function CartLineRow({
         )}
       </View>
 
-      {/* Details */}
-      <View style={{ flex: 1, justifyContent: "space-between", gap: kioskPx(10, s) }}>
-        <View>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: kioskPx(10, s),
-            }}
-          >
+      {/* Details — name / modifiers / qty on the left, price with Remove
+          centred beneath it on the right. Price and Remove share one column
+          precisely so they line up: as separate ends of two space-between rows
+          the (wider) Remove pill always sat left of the price above it. */}
+      <View style={{ flex: 1, flexDirection: "row", gap: kioskPx(10, s) }}>
+        <View
+          style={{ flex: 1, justifyContent: "space-between", gap: kioskPx(10, s) }}
+        >
+          <View>
             <Text
               style={{
-                flex: 1,
                 fontSize: kioskPx(21, s),
                 fontWeight: "700",
                 lineHeight: kioskPx(27, s),
@@ -449,55 +451,38 @@ function CartLineRow({
             >
               {line.name}
             </Text>
-            <Animated.Text
-              layout={LinearTransition.duration(180)}
-              style={{
-                fontSize: kioskPx(21, s),
-                fontWeight: "800",
-                color: config.textColor,
-              }}
-            >
-              ${total.toFixed(2)}
-            </Animated.Text>
+
+            {modifierText ? (
+              <Text
+                style={{
+                  fontSize: kioskPx(16, s),
+                  lineHeight: kioskPx(22, s),
+                  color: muted,
+                  marginTop: kioskPx(5, s),
+                }}
+                numberOfLines={3}
+              >
+                {modifierText}
+              </Text>
+            ) : null}
+
+            {line.quantity > 1 && (
+              <Text
+                style={{
+                  fontSize: kioskPx(15, s),
+                  color: muted,
+                  marginTop: kioskPx(4, s),
+                }}
+              >
+                ${unit.toFixed(2)} each
+              </Text>
+            )}
           </View>
 
-          {modifierText ? (
-            <Text
-              style={{
-                fontSize: kioskPx(16, s),
-                lineHeight: kioskPx(22, s),
-                color: muted,
-                marginTop: kioskPx(5, s),
-              }}
-              numberOfLines={3}
-            >
-              {modifierText}
-            </Text>
-          ) : null}
-
-          {line.quantity > 1 && (
-            <Text
-              style={{
-                fontSize: kioskPx(15, s),
-                color: muted,
-                marginTop: kioskPx(4, s),
-              }}
-            >
-              ${unit.toFixed(2)} each
-            </Text>
-          )}
-        </View>
-
-        {/* Qty + remove */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
+          {/* Qty */}
           <View
             style={{
+              alignSelf: "flex-start",
               flexDirection: "row",
               alignItems: "center",
               gap: kioskPx(8, s),
@@ -532,6 +517,26 @@ function CartLineRow({
               onPress={onInc}
             />
           </View>
+        </View>
+
+        {/* Price, with Remove centred underneath it */}
+        <View
+          style={{
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: kioskPx(10, s),
+          }}
+        >
+          <Animated.Text
+            layout={LinearTransition.duration(180)}
+            style={{
+              fontSize: kioskPx(21, s),
+              fontWeight: "800",
+              color: config.textColor,
+            }}
+          >
+            ${total.toFixed(2)}
+          </Animated.Text>
 
           <KioskPressable
             onPress={onRemove}
@@ -539,8 +544,9 @@ function CartLineRow({
             style={{
               flexDirection: "row",
               alignItems: "center",
+              justifyContent: "center",
               gap: kioskPx(8, s),
-              paddingHorizontal: kioskPx(16, s),
+              paddingHorizontal: kioskPx(12, s),
               height: kioskPx(46, s),
               borderRadius: 999,
               backgroundColor: config.backgroundColor,
