@@ -6,8 +6,8 @@
 - Notion page: `3b98280c-1b1d-8194-9732-f2ee39d3004a`
 - Notion URL: `https://app.notion.com/p/3b98280c1b1d81949732f2ee39d3004a`
 - POS status: code complete; shared migration review/application and physical QA remain.
-- Shared migration owner/path: `DexaPOS-Website/supabase/migrations/20260814120000_kds_routing_traceability.sql`
-- Migration state: not applied. Temur DDL review is required before staging.
+- Shared migration owner/path: `DexaPOS-Website/supabase/migrations/20260814130000_kds_routing_traceability.sql`
+- Migration state: **APPLIED and verified on the live project (`dfwqakoyittmrwbqvxgw`)** as of 2026-08-27 — `kds_send_attempts`/`kds_routing_log` exist, the nine-argument `send_order_to_kitchen_v1` resolves and carries `station_id`/`device_id`/`idempotency_key`/`was_replay`. Temur's DDL review sign-off checkbox below remains the only open gate.
 
 ## Scope
 
@@ -102,6 +102,15 @@ The POS reports success only when explicit requested/updated counts exist and ma
 
 - `npx jest __tests__/kdsRoutingTraceability.test.ts __tests__/sendToKitchenRequeueBound.test.ts --runInBand`
 - Result: 2 suites passed, 20 tests passed.
+- Kitchen-send & order-sync audit suites (all green):
+  - `__tests__/sendToKitchenReAddSameItem.test.ts` — K1 reported bug (re-add + re-send).
+  - `__tests__/sendToKitchenBatchScoping.test.ts` — K3/K4/K5 + S2 batch scoping and `fire_time` COALESCE.
+  - `__tests__/kitchenStatusConsolidation.test.ts` — K8 one source of truth + guard script.
+  - `__tests__/sendToKitchenTruthfulOutcome.test.ts` — K6/K10 awaited effect outcomes.
+  - `__tests__/lateItemSendFromLiveStates.test.ts` — K7 paying/closing sends.
+  - `__tests__/syncBarrierBatchScoping.test.ts` — K9/S4 batch-scoped sync barrier.
+  - `__tests__/convergenceGaps.test.ts` — S3/S5/S6/S7/S8/S9.
+- `npm run check:kitchen-status` — bans bare `kitchen_status === 'sent'` literals outside `lib/kitchenStatusUtils.ts` (requires bash).
 - Targeted ESLint on all changed runtime files: 0 errors. Reported warnings are pre-existing file-level warnings.
 - `npx tsc --noEmit --pretty false`: no errors from ticket files. The command remains non-green because the repo is missing existing kiosk/Expo modules (`expo-screen-orientation`, `expo-video`, and `reanimated-color-picker`) and has their related implicit-any errors.
 - `git diff --check`: passed.
@@ -122,6 +131,13 @@ select pg_get_functiondef(
 
 Both functions must remain `SECURITY DEFINER` with a pinned `search_path`. Do not apply a second POS migration.
 
+**Re-fire safety migration (audit S2):** `supabase/migrations/20260827160000_fix_kds_refire_preserves_fire_time.sql`
+(in the POS repo, alongside its other shared-schema migrations) redefines
+`bulk_update_order_item_status_v2` so the `'sent'` branch uses
+`COALESCE(fire_time, v_now)` — a re-fired item keeps its original KDS ticket
+identity and timer. Apply it (staging then production) before shipping the
+batch-scoping client changes, otherwise re-fires still rewrite `fire_time`.
+
 ## Physical KDS QA Matrix
 
 Use disposable staging orders and record order IDs, station IDs, device IDs, timestamps, and videos.
@@ -136,6 +152,9 @@ Use disposable staging orders and record order IDs, station IDs, device IDs, tim
 | Disabled displays | Disable every KDS display only at a disposable location and send an order. | No success toast; `KITCHEN_NO_ACTIVE_ROUTE`; routing trace records `no_active_display`. Restore displays afterward. |
 | Lifecycle regression | Exercise sent, preparing, ready, served, recall, void, and full refund. | Existing KDS state transitions remain; voided/refunded items do not block readiness. |
 | Performance | Record 20 comparable sends before and after migration. | Compare p95 Supabase/RPC duration; no material routing-delay regression. |
+| Re-add and re-send (audit K1) | Ring A, Send; ring identical A again, Send — on two displays, both workflow modes (2-step and 3-step). | Second send shows success; the cart holds TWO lines; `kds_send_attempts` records only A₂'s id; no item re-fires A₁; `fire_time` of A₁ unchanged. |
+| Late item during cook (audit S2) | Fire two items, start one on the KDS, ring a third, Send. | The first two keep their KDS tickets and timers; the third appears as a new line/ticket; no `kds_item_status` reset on the in-progress item. |
+| Offline burst (audit S7) | Go offline, send three times over overlapping items, reconnect. | `__queue()` shows ONE send_to_kitchen op per order (union of items); one replay; no ticket churn; `kds_send_attempts` has one replay row. |
 
 Inspect the trace after each test:
 
@@ -153,6 +172,11 @@ from public.kds_send_attempts
 where order_id = '<order_id>'::uuid
 order by created_at;
 ```
+
+After the matrix, re-run the Phase 0 baseline queries (unsent items on sent
+orders, items pushed through >1 send, partial sends) and compare against the
+numbers recorded at audit time — that comparison is the sign-off for the
+kitchen-send & order-sync audit.
 
 ## Files
 
@@ -184,6 +208,60 @@ order by created_at;
 
 - POS implementation: complete.
 - Shared database review/application: pending.
+
+---
+
+## Architecture B — Device-Truth Capture (see also the HQ FEATURE doc)
+
+This ticket (Architecture A) records what the server routed. Architecture B —
+device truth — records what the tablet actually received and painted, so HQ can
+diff the two and classify every "it never showed" complaint. The server side is
+`DexaPOS-Website/supabase/migrations/20260827130000_kds_device_truth.sql`
+(ledgers + `report_kds_device_events` + `get_kds_device_truth_for_order` +
+`get_kds_display_truth_window` + `v_kds_device_truth_health`), documented in
+`DexaPOS-Website/docs/features/kds/FEATURE-2026-08-27-HQ-KDS-DEVICE-TRUTH.md`.
+
+The POS side of the 80/20 (inert until the fleet ships a build with it):
+
+- `services/kds/kdsDeviceTruth.ts` collects two per-item signals:
+  - `arrived` — the item's ticket reached the KDS store from the server.
+  - `ack` — the item's ticket was painted on the active KDS tab.
+- `app/(main)/kds.tsx` marks both: arrived for every store ticket, ack only for
+  the rendered tab's tickets (honest by construction — the kitchen can only see
+  the active tab).
+- `services/hardware/heartbeat.ts` flushes the pending batch to
+  `report_kds_device_events` once per 60s heartbeat. At-least-once with
+  server-side dedupe: a failed flush retries with the original
+  `client_event_at`, and the unique
+  `(kds_display_id, order_item_id, event_type, client_event_at)` index makes a
+  replayed buffer a no-op. Each item is emitted once per session; the batch is
+  capped at 500.
+- `database.types.ts` carries the `report_kds_device_events` RPC signature.
+- `__tests__/kdsDeviceTruth.test.ts` covers dedupe, batching, retry
+  idempotency, display-switch reset, and the backlog cap (7 tests).
+
+### Classification produced by the diff
+
+| Server | Device | Verdict |
+| --- | --- | --- |
+| routed | ack present | **CONFIRMED** — device really showed it |
+| routed | arrived, no ack | **RENDER_SUSPECT** — received, maybe never painted |
+| routed | neither; item active + device online | **NEVER_SHOWED** — the real bug |
+| routed | neither; device offline at fire | **OFFLINE** — expected, not a bug |
+| no routing log | device event exists | **GHOST** — stale cache on device |
+
+Until this emitter ships to a display, its diffs report `NO_DEVICE_DATA` —
+absence of device evidence is not evidence of a device fault.
+
+## Sign-Off (Architecture B)
+
+- Shared migration (`20260827130000_kds_device_truth.sql`): ready to apply;
+  needs Temur review + staging apply (synthetic-device check in the FEATURE
+  doc).
+- POS emitter: complete; needs a physical QA pass on a real KDS tablet
+  (report an order, verify `kds_device_events` rows appear within ~60s, then
+  check the HQ kds-truth page and the order sheet's Device view tab).
+- Independent verifier signs off.
 - Physical routing parity: pending.
 - Offline replay proof: pending.
 - Independent verification: pending.

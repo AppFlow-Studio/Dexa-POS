@@ -1,7 +1,9 @@
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
+import { MasonryFlashList } from "@shopify/flash-list";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
+import * as Application from "expo-application";
 import {
     getBucketedElapsed,
     getUrgencyLevel,
@@ -14,6 +16,12 @@ import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { replaceRoute } from "@/lib/rootNavigation";
+import {
+  markKdsItemAcked,
+  markKdsItemArrived,
+  resetKdsDeviceTruth,
+  setKdsDeviceTruthContext,
+} from "@/services/kds/kdsDeviceTruth";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
@@ -51,7 +59,6 @@ import {
     GestureResponderEvent,
     Pressable,
     Animated as RNAnimated,
-    ScrollView,
     Text,
     TouchableOpacity,
     View,
@@ -2506,6 +2513,12 @@ const KitchenDisplayScreen = () => {
   const cookingTickets = useKDSStore((s) => s.ticketsByStatus.cooking);
   const readyTickets = useKDSStore((s) => s.ticketsByStatus.ready);
 
+  // Device-truth emitter (Architecture B): every ticket in the store is an
+  // `arrived`; every ticket rendered to the screen is an `ack`. Both are
+  // flushed to report_kds_device_events on the heartbeat.
+  const allTickets = useKDSStore((s) => s.tickets);
+  const kdsDisplayId = useKDSStore((s) => s.kdsDisplayId);
+
   // Start the single global clock. Nothing at page scope subscribes to it —
   // consumers are leaf components (KDSTicketTimer for MM:SS, KDSTicketCard for
   // its bucketed urgency level), so a tick never re-renders this page.
@@ -2517,6 +2530,25 @@ const KitchenDisplayScreen = () => {
       fetchKDSDisplay(selectedStation.id);
     }
   }, [selectedStation?.id, fetchKDSDisplay]);
+
+  // Point the device-truth emitter at this display. Switching displays resets
+  // its buffer so events are never reported against the wrong screen.
+  useEffect(() => {
+    setKdsDeviceTruthContext(
+      kdsDisplayId,
+      getDeviceId(),
+      Application.nativeApplicationVersion ?? null,
+    );
+  }, [kdsDisplayId]);
+
+  // arrived: the item's ticket reached this device from the server.
+  useEffect(() => {
+    for (const ticket of allTickets) {
+      for (const item of ticket.items ?? []) {
+        if (item.id) markKdsItemArrived(item.id, ticket.db_order_id);
+      }
+    }
+  }, [allTickets]);
 
   // Update time display every 30 seconds
   useEffect(() => {
@@ -2555,6 +2587,7 @@ const KitchenDisplayScreen = () => {
   useEffect(() => {
     return () => {
       useKDSStore.getState()._cleanup();
+      resetKdsDeviceTruth();
     };
   }, []);
 
@@ -3249,16 +3282,34 @@ const KitchenDisplayScreen = () => {
     [activeTabTickets, activeStatus, kdsServedOrderSort],
   );
 
-  const columnizedTickets = useMemo(() => {
-    const cols: KDSTicket[][] = Array.from({ length: columnCount }, () => []);
+  // ack: the ticket was actually painted to this screen. Only the active
+  // tab's tickets are rendered at any moment, so an item is only acked once
+  // the kitchen could genuinely have seen it — honest by construction.
+  useEffect(() => {
+    for (const ticket of ticketsForLayout) {
+      for (const item of ticket.items ?? []) {
+        if (item.id) markKdsItemAcked(item.id, ticket.db_order_id);
+      }
+    }
+  }, [ticketsForLayout]);
 
-    // Always distribute in row-major order so removal reflows left-to-right.
-    ticketsForLayout.forEach((ticket, index) => {
-      cols[index % columnCount].push(ticket);
-    });
+  // Masonry: each column packs independently, so a ticket sits directly under
+  // the one above it in its own column rather than being pushed down by the
+  // tallest card in the row. MasonryFlashList still drives every column from a
+  // single scroll surface, so they all move together.
+  const renderMasonryTicket = useCallback(
+    ({ item }: { item: KDSTicket }) => (
+      <View style={{ paddingHorizontal: s(2) }}>
+        {isDoneTab ? renderDoneTicketCard(item) : renderTicketCard(item)}
+      </View>
+    ),
+    [isDoneTab, renderDoneTicketCard, renderTicketCard, s],
+  );
 
-    return cols;
-  }, [ticketsForLayout, columnCount]);
+  const ticketKeyExtractor = useCallback(
+    (ticket: KDSTicket) => ticket.ticket_id,
+    [],
+  );
 
   // Skeleton grid for loading state
   const renderSkeletons = () => (
@@ -3884,7 +3935,7 @@ const KitchenDisplayScreen = () => {
         </View>
       )}
 
-      {/* ─── Active tab ticket grid (ScrollView, one tab rendered at a time) ─── */}
+      {/* ─── Active tab ticket grid (one virtualized list; all columns scroll together) ─── */}
       {!isReady || (isInitialLoading && !hasHydrated) ? (
         renderSkeletons()
       ) : activeTabTickets.length === 0 ? (
@@ -3901,37 +3952,33 @@ const KitchenDisplayScreen = () => {
           </Text>
         </View>
       ) : (
-        <ScrollView
-          key={`kds-${activeStatus}-${columnCount}`}
-          contentContainerStyle={{
-            padding: s(4),
-            paddingBottom: s(20),
-            flexGrow: 1,
-          }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={true}
-        >
-          {/* Tapping empty space clears the single-select focus. Card Pressables
-              capture their own taps, so this only fires for the surrounding area. */}
-          <Pressable style={{ flex: 1 }} onPress={handleClearFocus}>
-            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-              {columnizedTickets.map((colTickets, col) => (
-                <View
-                  key={`col-${activeStatus}-${col}`}
-                  style={{ flex: 1, paddingHorizontal: s(2) }}
-                >
-                  {colTickets.map((ticket) => (
-                    <View key={ticket.ticket_id}>
-                      {isDoneTab
-                        ? renderDoneTicketCard(ticket)
-                        : renderTicketCard(ticket)}
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </View>
-          </Pressable>
-        </ScrollView>
+        <View style={{ flex: 1 }}>
+          <MasonryFlashList
+            key={`kds-${activeStatus}-${columnCount}`}
+            data={ticketsForLayout}
+            numColumns={columnCount}
+            renderItem={renderMasonryTicket}
+            keyExtractor={ticketKeyExtractor}
+            estimatedItemSize={s(220)}
+            /* Ticket height varies with item count, so the estimate is only a
+               seed — render well ahead of the viewport so a fling never waits
+               on a row being recycled. */
+            drawDistance={s(900)}
+            extraData={focusedTicketId}
+            contentContainerStyle={{
+              paddingHorizontal: s(4),
+              paddingTop: s(4),
+              paddingBottom: s(20),
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+            /* Tapping empty space below the grid clears the single-select focus.
+               Card Pressables capture their own taps. */
+            ListFooterComponent={
+              <Pressable style={{ height: s(80) }} onPress={handleClearFocus} />
+            }
+          />
+        </View>
       )}
 
       {/* ─── Action Menu Overlay ─── */}

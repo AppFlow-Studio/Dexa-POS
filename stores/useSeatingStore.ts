@@ -63,6 +63,15 @@ type SeatingState = {
   ) => void;
   setSeatCount: (orderId: string, seatCount: number) => void;
   assignItemsToActiveSeat: (orderId: string, itemIds: string[]) => void;
+  /**
+   * Drop the seating entries for a cart line that was removed (S8). Keeps
+   * itemSeatMap / dbIdToSeatMap from leaking for the life of the order.
+   */
+  removeItemSeat: (
+    orderId: string,
+    itemId: string,
+    dbItemId?: string,
+  ) => void;
   addSeat: (orderId: string) => number;
   removeSeat: (orderId: string) => { removedSeat: number; reassignedItemCount: number };
 
@@ -308,6 +317,16 @@ export const useSeatingStore = create<SeatingState>()(
             o.itemSeatMap[id] = o.activeSeat;
           }
         }
+      });
+    },
+
+    removeItemSeat: (orderId, itemId, dbItemId?) => {
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        // S8: prune the removed line's seat pointers.
+        delete o.itemSeatMap[itemId];
+        if (dbItemId) delete o.dbIdToSeatMap[dbItemId];
       });
     },
 
