@@ -7,6 +7,7 @@ import { DiscoveredPrinterList } from "@/components/settings/DiscoveredPrinterLi
 import { ManualIpPanel } from "@/components/settings/ManualIpPanel";
 import { PrinterListSection } from "@/components/settings/PrinterListSection";
 import { PrinterRoutingModal } from "@/components/settings/PrinterRoutingModal";
+import { useLocationCashDrawers } from "@/hooks/useLocationCashDrawers";
 import { useLocationStations } from "@/hooks/useLocationStations";
 import { usePrinterDiscovery } from "@/hooks/usePrinterDiscovery";
 import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
@@ -427,6 +428,18 @@ function PrinterListTab({
     return map;
   }, [stations]);
 
+  // Reverse binding map: printer.id -> cash drawers it hosts (host_printer_id).
+  // Drives the "Drawer: <name>" chip on each printer card.
+  const { data: locationDrawers } = useLocationCashDrawers();
+  const drawerHostsByPrinterId = useMemo(() => {
+    const map: Record<string, { id: string; name: string }[]> = {};
+    for (const d of locationDrawers ?? []) {
+      if (!d.host_printer_id) continue;
+      (map[d.host_printer_id] ??= []).push({ id: d.id, name: d.name });
+    }
+    return map;
+  }, [locationDrawers]);
+
   const claimedPrinterId =
     selectedStation?.current_receipt_printer_id ?? null;
   const claimedPrinter = useMemo(
@@ -541,6 +554,7 @@ function PrinterListTab({
         printers={receiptPrinters}
         selectedStationId={selectedStation?.id ?? null}
         claimsByPrinterId={claimsByPrinterId}
+        drawerHostsByPrinterId={drawerHostsByPrinterId}
         onRetryConnection={async (p) => {
           await retryConnection(p);
         }}
@@ -561,6 +575,7 @@ function PrinterListTab({
         printers={kitchenPrinters}
         selectedStationId={selectedStation?.id ?? null}
         claimsByPrinterId={claimsByPrinterId}
+        drawerHostsByPrinterId={drawerHostsByPrinterId}
         onRetryConnection={async (p) => {
           await retryConnection(p);
         }}

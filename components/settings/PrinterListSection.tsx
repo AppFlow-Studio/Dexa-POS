@@ -6,6 +6,7 @@ import {
   View,
 } from "react-native";
 import {
+  Banknote,
   CheckCircle2,
   HelpCircle,
   Lock,
@@ -38,6 +39,10 @@ export interface PrinterListSectionProps {
   // their receipt printer. Drives the "Your station" / "Used by N other
   // station(s)" chips. Omit (or pass {}) to disable the chip column.
   claimsByPrinterId?: Record<string, string[]>;
+  // Map of printer.id -> cash drawers bound to it (cash_drawers.host_printer_id).
+  // Drives the "Drawer: <name>" chip so the printer card shows which drawer it
+  // physically holds. Omit to disable.
+  drawerHostsByPrinterId?: Record<string, { id: string; name: string }[]>;
   // Callbacks
   onRetryConnection: (printer: PrinterConfig) => Promise<void>;
   onTestPrint: (printer: PrinterConfig) => Promise<void>;
@@ -120,6 +125,7 @@ export function PrinterListSection({
   printers,
   selectedStationId,
   claimsByPrinterId,
+  drawerHostsByPrinterId,
   onRetryConnection,
   onTestPrint,
   onConfigurePrinter,
@@ -214,6 +220,9 @@ export function PrinterListSection({
             (sid) => sid !== selectedStationId,
           ).length;
 
+          // Reverse binding: which cash drawer(s) this printer physically holds.
+          const drawerHosts = drawerHostsByPrinterId?.[printer.id] ?? [];
+
           return (
             <View
               key={printer.id}
@@ -305,6 +314,21 @@ export function PrinterListSection({
                       {role.label}
                     </Text>
                   </View>
+                  {drawerHosts.length > 0 && (
+                    <View style={{
+                      flexShrink: 0, flexDirection: "row", alignItems: "center", gap: s(3),
+                      backgroundColor: colors.success + "18",
+                      borderWidth: 1, borderColor: colors.success + "55",
+                      paddingHorizontal: s(7), paddingVertical: s(2), borderRadius: s(20),
+                    }}>
+                      <Banknote size={s(10)} color={colors.success} />
+                      <Text style={{ fontSize: s(10), fontWeight: "700", color: colors.success }} numberOfLines={1}>
+                        {drawerHosts.length === 1
+                          ? `Drawer: ${drawerHosts[0].name}`
+                          : `${drawerHosts.length} drawers`}
+                      </Text>
+                    </View>
+                  )}
                   {claimedByCurrent && (
                     <View style={{
                       flexShrink: 0,

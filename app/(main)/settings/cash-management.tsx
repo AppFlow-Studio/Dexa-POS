@@ -62,6 +62,7 @@ interface CashDrawerRow {
   station_id: string | null
   is_active: boolean | null
   device_id: string | null
+  host_printer_id?: string | null
   device_catalog: {
     model_name: string
     manufacturer: string
@@ -155,11 +156,23 @@ export default function CashManagementScreen () {
 
   // Explicit host-printer override — bind the drawer to a specific printer, or
   // clear to fall back to sense-based auto-detection.
+  const queryClient = useQueryClient()
+
   const handleSetHostPrinter = useCallback(
     async (printerId: string | null) => {
       setHostPickerOpen(false)
       if (!drawerId) return
       const ok = await setDrawerHostPrinter(supabase, drawerId, printerId)
+      if (ok) {
+        // Refresh both indicators immediately: the per-station "Drawer host"
+        // line here and the "Drawer: X" chip on the Printers screen.
+        queryClient.invalidateQueries({
+          queryKey: ['cash-drawers-location', selectedStore?.id]
+        })
+        queryClient.invalidateQueries({
+          queryKey: ['location-cash-drawers', selectedStore?.id]
+        })
+      }
       toastService.show({
         title: ok ? 'Drawer Host Updated' : 'Update Failed',
         message: ok
@@ -173,10 +186,8 @@ export default function CashManagementScreen () {
         duration: 4000
       })
     },
-    [drawerId, supabase, printers]
+    [drawerId, supabase, printers, queryClient, selectedStore?.id]
   )
-
-  const queryClient = useQueryClient()
 
   // ─── Station list ─────────────────────────────────────────────────────────
   const { data: stations = [], isLoading: loadingStations } = useQuery<
@@ -207,9 +218,10 @@ export default function CashManagementScreen () {
       if (!selectedStore?.id) return []
       const { data, error } = await supabase
         .from('cash_drawers')
-        .select(
-          'id, name, station_id, is_active, device_id, device_catalog(model_name, manufacturer)'
-        )
+        // select('*') is prod-safe: host_printer_id is simply absent (→ null)
+        // where the migration hasn't landed, instead of 400-ing on an explicit
+        // column list.
+        .select('*, device_catalog(model_name, manufacturer)')
         .eq('location_id', selectedStore.id)
         .eq('is_active', true)
         .order('name')
@@ -623,6 +635,28 @@ export default function CashManagementScreen () {
                             >
                               {station.station_type} · #{station.station_number}
                             </Text>
+                            {/* Forward binding: which printer holds this
+                                station's drawer (or auto-detect if unbound). */}
+                            {assignedDrawer && (
+                              <Text
+                                style={{
+                                  fontSize: s(10),
+                                  color: assignedDrawer.host_printer_id
+                                    ? colors.teal
+                                    : colors.muted,
+                                  marginTop: s(1)
+                                }}
+                                numberOfLines={1}
+                              >
+                                {assignedDrawer.host_printer_id
+                                  ? `Drawer host: ${
+                                      printers.find(
+                                        p => p.id === assignedDrawer.host_printer_id
+                                      )?.printerName ?? 'Bound printer'
+                                    }`
+                                  : 'Drawer host: auto-detect'}
+                              </Text>
+                            )}
                           </View>
                           {assignedDrawer ? (
                             <TouchableOpacity
