@@ -12231,7 +12231,9 @@ export const useOrderStore = create<OrderState>()(
                     ?.dual_pricing_percentage;
                 if (dualPricingPct != null && dualPricingPct > 0) {
                   const rate = dualPricingPct / 100;
-                  cashSavingsValue = round2((amount * rate) / (1 - rate));
+                  // Surcharge model: card = cash × (1 + rate), so a cash payment
+                  // of `amount` saved cash × rate vs. card (matches FALLBACK 1).
+                  cashSavingsValue = round2(amount * rate);
                 }
               }
             }
