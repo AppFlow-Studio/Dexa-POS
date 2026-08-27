@@ -1,4 +1,5 @@
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
+import { MasonryFlashList } from "@shopify/flash-list";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
@@ -51,7 +52,6 @@ import {
     GestureResponderEvent,
     Pressable,
     Animated as RNAnimated,
-    ScrollView,
     Text,
     TouchableOpacity,
     View,
@@ -3249,16 +3249,23 @@ const KitchenDisplayScreen = () => {
     [activeTabTickets, activeStatus, kdsServedOrderSort],
   );
 
-  const columnizedTickets = useMemo(() => {
-    const cols: KDSTicket[][] = Array.from({ length: columnCount }, () => []);
+  // Masonry: each column packs independently, so a ticket sits directly under
+  // the one above it in its own column rather than being pushed down by the
+  // tallest card in the row. MasonryFlashList still drives every column from a
+  // single scroll surface, so they all move together.
+  const renderMasonryTicket = useCallback(
+    ({ item }: { item: KDSTicket }) => (
+      <View style={{ paddingHorizontal: s(2) }}>
+        {isDoneTab ? renderDoneTicketCard(item) : renderTicketCard(item)}
+      </View>
+    ),
+    [isDoneTab, renderDoneTicketCard, renderTicketCard, s],
+  );
 
-    // Always distribute in row-major order so removal reflows left-to-right.
-    ticketsForLayout.forEach((ticket, index) => {
-      cols[index % columnCount].push(ticket);
-    });
-
-    return cols;
-  }, [ticketsForLayout, columnCount]);
+  const ticketKeyExtractor = useCallback(
+    (ticket: KDSTicket) => ticket.ticket_id,
+    [],
+  );
 
   // Skeleton grid for loading state
   const renderSkeletons = () => (
@@ -3884,7 +3891,7 @@ const KitchenDisplayScreen = () => {
         </View>
       )}
 
-      {/* ─── Active tab ticket grid (ScrollView, one tab rendered at a time) ─── */}
+      {/* ─── Active tab ticket grid (one virtualized list; all columns scroll together) ─── */}
       {!isReady || (isInitialLoading && !hasHydrated) ? (
         renderSkeletons()
       ) : activeTabTickets.length === 0 ? (
@@ -3901,37 +3908,33 @@ const KitchenDisplayScreen = () => {
           </Text>
         </View>
       ) : (
-        <ScrollView
-          key={`kds-${activeStatus}-${columnCount}`}
-          contentContainerStyle={{
-            padding: s(4),
-            paddingBottom: s(20),
-            flexGrow: 1,
-          }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={true}
-        >
-          {/* Tapping empty space clears the single-select focus. Card Pressables
-              capture their own taps, so this only fires for the surrounding area. */}
-          <Pressable style={{ flex: 1 }} onPress={handleClearFocus}>
-            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-              {columnizedTickets.map((colTickets, col) => (
-                <View
-                  key={`col-${activeStatus}-${col}`}
-                  style={{ flex: 1, paddingHorizontal: s(2) }}
-                >
-                  {colTickets.map((ticket) => (
-                    <View key={ticket.ticket_id}>
-                      {isDoneTab
-                        ? renderDoneTicketCard(ticket)
-                        : renderTicketCard(ticket)}
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </View>
-          </Pressable>
-        </ScrollView>
+        <View style={{ flex: 1 }}>
+          <MasonryFlashList
+            key={`kds-${activeStatus}-${columnCount}`}
+            data={ticketsForLayout}
+            numColumns={columnCount}
+            renderItem={renderMasonryTicket}
+            keyExtractor={ticketKeyExtractor}
+            estimatedItemSize={s(220)}
+            /* Ticket height varies with item count, so the estimate is only a
+               seed — render well ahead of the viewport so a fling never waits
+               on a row being recycled. */
+            drawDistance={s(900)}
+            extraData={focusedTicketId}
+            contentContainerStyle={{
+              paddingHorizontal: s(4),
+              paddingTop: s(4),
+              paddingBottom: s(20),
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+            /* Tapping empty space below the grid clears the single-select focus.
+               Card Pressables capture their own taps. */
+            ListFooterComponent={
+              <Pressable style={{ height: s(80) }} onPress={handleClearFocus} />
+            }
+          />
+        </View>
       )}
 
       {/* ─── Action Menu Overlay ─── */}
