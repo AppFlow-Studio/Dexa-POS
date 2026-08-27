@@ -6,8 +6,8 @@
 - Notion page: `3b98280c-1b1d-8194-9732-f2ee39d3004a`
 - Notion URL: `https://app.notion.com/p/3b98280c1b1d81949732f2ee39d3004a`
 - POS status: code complete; shared migration review/application and physical QA remain.
-- Shared migration owner/path: `DexaPOS-Website/supabase/migrations/20260814120000_kds_routing_traceability.sql`
-- Migration state: not applied. Temur DDL review is required before staging.
+- Shared migration owner/path: `DexaPOS-Website/supabase/migrations/20260814130000_kds_routing_traceability.sql`
+- Migration state: **APPLIED and verified on the live project (`dfwqakoyittmrwbqvxgw`)** as of 2026-08-27 — `kds_send_attempts`/`kds_routing_log` exist, the nine-argument `send_order_to_kitchen_v1` resolves and carries `station_id`/`device_id`/`idempotency_key`/`was_replay`. Temur's DDL review sign-off checkbox below remains the only open gate.
 
 ## Scope
 
@@ -102,6 +102,15 @@ The POS reports success only when explicit requested/updated counts exist and ma
 
 - `npx jest __tests__/kdsRoutingTraceability.test.ts __tests__/sendToKitchenRequeueBound.test.ts --runInBand`
 - Result: 2 suites passed, 20 tests passed.
+- Kitchen-send & order-sync audit suites (all green):
+  - `__tests__/sendToKitchenReAddSameItem.test.ts` — K1 reported bug (re-add + re-send).
+  - `__tests__/sendToKitchenBatchScoping.test.ts` — K3/K4/K5 + S2 batch scoping and `fire_time` COALESCE.
+  - `__tests__/kitchenStatusConsolidation.test.ts` — K8 one source of truth + guard script.
+  - `__tests__/sendToKitchenTruthfulOutcome.test.ts` — K6/K10 awaited effect outcomes.
+  - `__tests__/lateItemSendFromLiveStates.test.ts` — K7 paying/closing sends.
+  - `__tests__/syncBarrierBatchScoping.test.ts` — K9/S4 batch-scoped sync barrier.
+  - `__tests__/convergenceGaps.test.ts` — S3/S5/S6/S7/S8/S9.
+- `npm run check:kitchen-status` — bans bare `kitchen_status === 'sent'` literals outside `lib/kitchenStatusUtils.ts` (requires bash).
 - Targeted ESLint on all changed runtime files: 0 errors. Reported warnings are pre-existing file-level warnings.
 - `npx tsc --noEmit --pretty false`: no errors from ticket files. The command remains non-green because the repo is missing existing kiosk/Expo modules (`expo-screen-orientation`, `expo-video`, and `reanimated-color-picker`) and has their related implicit-any errors.
 - `git diff --check`: passed.
@@ -122,6 +131,13 @@ select pg_get_functiondef(
 
 Both functions must remain `SECURITY DEFINER` with a pinned `search_path`. Do not apply a second POS migration.
 
+**Re-fire safety migration (audit S2):** `supabase/migrations/20260827160000_fix_kds_refire_preserves_fire_time.sql`
+(in the POS repo, alongside its other shared-schema migrations) redefines
+`bulk_update_order_item_status_v2` so the `'sent'` branch uses
+`COALESCE(fire_time, v_now)` — a re-fired item keeps its original KDS ticket
+identity and timer. Apply it (staging then production) before shipping the
+batch-scoping client changes, otherwise re-fires still rewrite `fire_time`.
+
 ## Physical KDS QA Matrix
 
 Use disposable staging orders and record order IDs, station IDs, device IDs, timestamps, and videos.
@@ -136,6 +152,9 @@ Use disposable staging orders and record order IDs, station IDs, device IDs, tim
 | Disabled displays | Disable every KDS display only at a disposable location and send an order. | No success toast; `KITCHEN_NO_ACTIVE_ROUTE`; routing trace records `no_active_display`. Restore displays afterward. |
 | Lifecycle regression | Exercise sent, preparing, ready, served, recall, void, and full refund. | Existing KDS state transitions remain; voided/refunded items do not block readiness. |
 | Performance | Record 20 comparable sends before and after migration. | Compare p95 Supabase/RPC duration; no material routing-delay regression. |
+| Re-add and re-send (audit K1) | Ring A, Send; ring identical A again, Send — on two displays, both workflow modes (2-step and 3-step). | Second send shows success; the cart holds TWO lines; `kds_send_attempts` records only A₂'s id; no item re-fires A₁; `fire_time` of A₁ unchanged. |
+| Late item during cook (audit S2) | Fire two items, start one on the KDS, ring a third, Send. | The first two keep their KDS tickets and timers; the third appears as a new line/ticket; no `kds_item_status` reset on the in-progress item. |
+| Offline burst (audit S7) | Go offline, send three times over overlapping items, reconnect. | `__queue()` shows ONE send_to_kitchen op per order (union of items); one replay; no ticket churn; `kds_send_attempts` has one replay row. |
 
 Inspect the trace after each test:
 
@@ -153,6 +172,11 @@ from public.kds_send_attempts
 where order_id = '<order_id>'::uuid
 order by created_at;
 ```
+
+After the matrix, re-run the Phase 0 baseline queries (unsent items on sent
+orders, items pushed through >1 send, partial sends) and compare against the
+numbers recorded at audit time — that comparison is the sign-off for the
+kitchen-send & order-sync audit.
 
 ## Files
 

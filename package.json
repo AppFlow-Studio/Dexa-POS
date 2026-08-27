@@ -13,6 +13,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "check:rpc-discipline": "bash ./scripts/check-rpc-discipline.sh",
+    "check:kitchen-status": "bash ./scripts/check-kitchen-status-literals.sh",
     "bridge": "./scripts/setup-emulator-bridge.sh",
     "build:cfd-web": "node ./scripts/build-cfd-web.js",
     "eas-build-pre-install": "npm config set legacy-peer-deps true",
