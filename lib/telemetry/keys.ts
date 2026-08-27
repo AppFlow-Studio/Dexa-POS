@@ -44,6 +44,16 @@ export const KEY_RECEIPT_RECONCILE_MISMATCH = internKey(
   "receipt.reconcile_mismatch",
 );
 
+// Cash drawer kick (services/printing/PrinterService.ts openCashDrawer).
+// ok = kicks whose driver command ACKed; fail = every candidate failed or none
+// existed; unconfirmed = ACKed but a wired Star's sense showed no open transition
+// (strict-confirm tripwire — the "silently hit the wrong printer" signal).
+export const KEY_CASH_DRAWER_KICK_OK = internKey("cash_drawer.kick_ok");
+export const KEY_CASH_DRAWER_KICK_FAIL = internKey("cash_drawer.kick_fail");
+export const KEY_CASH_DRAWER_KICK_UNCONFIRMED = internKey(
+  "cash_drawer.kick_unconfirmed",
+);
+
 // Storage / persistence (lib/storage.ts)
 export const KEY_FLUSH_ALL_MS = internKey("flush_all_ms");
 
