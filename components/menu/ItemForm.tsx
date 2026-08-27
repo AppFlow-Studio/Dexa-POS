@@ -89,6 +89,16 @@ const MEAL_OPTIONS: MenuItemType['meal'][number][] = [
   'Specials'
 ]
 
+// Human-readable labels + priority order for naming the first invalid field in
+// the validation toast and scrolling it into view.
+const FIELD_LABELS: Record<string, string> = {
+  name: 'Name',
+  price: 'Price',
+  cashPrice: 'Cash price',
+  categories: 'Category'
+}
+const FIELD_PRIORITY = ['name', 'price', 'cashPrice', 'categories']
+
 const ItemForm: React.FC<ItemFormProps> = ({
   initialData,
   onSubmit,
@@ -99,6 +109,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
 }) => {
   const categories = useMenuStore(s => s.categories)
   const modifierGroups = useMenuStore(s => s.modifierGroups)
+  const lastSyncedAt = useMenuStore(s => s.syncState.lastSyncedAt)
   const { show } = useToast()
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
@@ -130,6 +141,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const hasSavedRef = useRef(false)
+  // Scroll-to-first-invalid-field support: the form ScrollView + a map of each
+  // validatable section's y-offset within the scroll content (set via onLayout).
+  const scrollRef = useRef<ScrollView>(null)
+  const fieldOffsetsRef = useRef<Record<string, number>>({})
   const [initialFormData, setInitialFormData] =
     useState<MenuItemFormData | null>(null)
 
@@ -246,14 +261,30 @@ const ItemForm: React.FC<ItemFormProps> = ({
       ;(newErrors as any).categories = 'Please select at least one category'
     }
     setErrors(newErrors)
-    if (Object.keys(newErrors).length > 0) {
+    const errorKeys = Object.keys(newErrors)
+    if (errorKeys.length > 0) {
+      // Name the failing field(s) in the toast instead of a generic message.
+      const labels = FIELD_PRIORITY.filter(k => errorKeys.includes(k)).map(
+        k => FIELD_LABELS[k]
+      )
       show({
         title: 'Validation Error',
-        message: 'Please correct the highlighted fields before saving.',
+        message: labels.length
+          ? `Please fix: ${labels.join(', ')}.`
+          : 'Please correct the highlighted fields before saving.',
         type: 'error'
       })
+      // Scroll the first invalid field into view so it isn't stuck off-screen.
+      const firstKey = FIELD_PRIORITY.find(k => errorKeys.includes(k))
+      const offset = firstKey ? fieldOffsetsRef.current[firstKey] : undefined
+      if (typeof offset === 'number') {
+        scrollRef.current?.scrollTo({
+          y: Math.max(0, offset - s(20)),
+          animated: true
+        })
+      }
     }
-    return Object.keys(newErrors).length === 0
+    return errorKeys.length === 0
   }
 
   const pickImage = async () => {
@@ -532,8 +563,21 @@ const ItemForm: React.FC<ItemFormProps> = ({
   }
 
   const availableCategories = categories
-    .filter(cat => cat.isActive && cat.location_id === currentLocationId)
-    .sort((a, b) => a.order - b.order)
+    .filter(
+      cat =>
+        cat.isActive &&
+        // Global categories (location_id null) are the normal case for a
+        // single-location merchant — include them alongside this location's
+        // local categories. Do NOT filter global categories out.
+        (cat.location_id == null || cat.location_id === currentLocationId)
+    )
+    .sort((a, b) => {
+      // Global categories first (mirrors the web grouping), then display order
+      const ag = a.location_id == null ? 0 : 1
+      const bg = b.location_id == null ? 0 : 1
+      if (ag !== bg) return ag - bg
+      return a.order - b.order
+    })
 
   // Section label style
   const sectionLabel = {
@@ -651,12 +695,18 @@ const ItemForm: React.FC<ItemFormProps> = ({
       >
         {/* Left: Form */}
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: s(14) }}
           showsVerticalScrollIndicator={false}
         >
           {/* Basic Info */}
-          <View style={card}>
+          <View
+            style={card}
+            onLayout={e => {
+              fieldOffsetsRef.current.name = e.nativeEvent.layout.y
+            }}
+          >
             <Text style={sectionLabel}>Basic Information</Text>
 
             {/* Name */}
@@ -829,7 +879,13 @@ const ItemForm: React.FC<ItemFormProps> = ({
           </View>
 
           {/* Pricing */}
-          <View style={card}>
+          <View
+            style={card}
+            onLayout={e => {
+              fieldOffsetsRef.current.price = e.nativeEvent.layout.y
+              fieldOffsetsRef.current.cashPrice = e.nativeEvent.layout.y
+            }}
+          >
             <Text style={sectionLabel}>Pricing</Text>
 
             {isDualPricing && (
@@ -1042,7 +1098,12 @@ const ItemForm: React.FC<ItemFormProps> = ({
           </View>
 
           {/* Categories */}
-          <View style={card}>
+          <View
+            style={card}
+            onLayout={e => {
+              fieldOffsetsRef.current.categories = e.nativeEvent.layout.y
+            }}
+          >
             <View
               style={{
                 flexDirection: 'row',
@@ -1080,45 +1141,74 @@ const ItemForm: React.FC<ItemFormProps> = ({
             </View>
 
             {availableCategories.length === 0 ? (
-              <View
-                style={{
-                  backgroundColor: colors.screen,
-                  borderRadius: 8,
-                  padding: 14,
-                  alignItems: 'center'
-                }}
-              >
-                <Text
-                  style={{ fontSize: 12, color: colors.muted, marginBottom: 8 }}
-                >
-                  No categories yet
-                </Text>
-                <TouchableOpacity
-                  onPress={() => router.push('/menu/add-category')}
+              !lastSyncedAt ? (
+                // The menu has never synced this session (e.g. cold start before
+                // the bootstrap fetch completed) — don't imply the merchant has
+                // zero categories or nudge them to create one.
+                <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
+                    backgroundColor: colors.screen,
                     borderRadius: 8,
-                    backgroundColor: colors.teal + '20',
-                    borderWidth: 1,
-                    borderColor: colors.teal + '50'
+                    padding: 14,
+                    alignItems: 'center'
                   }}
                 >
-                  <Plus size={12} color={colors.teal} />
                   <Text
                     style={{
                       fontSize: 12,
-                      color: colors.teal,
-                      fontWeight: '600'
+                      color: colors.muted,
+                      textAlign: 'center'
                     }}
                   >
-                    Create Category
+                    Categories have not loaded yet. Sync the menu and try
+                    again.
                   </Text>
-                </TouchableOpacity>
-              </View>
+                </View>
+              ) : (
+                <View
+                  style={{
+                    backgroundColor: colors.screen,
+                    borderRadius: 8,
+                    padding: 14,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.muted,
+                      marginBottom: 8
+                    }}
+                  >
+                    No categories yet
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => router.push('/menu/add-category')}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: colors.teal + '20',
+                      borderWidth: 1,
+                      borderColor: colors.teal + '50'
+                    }}
+                  >
+                    <Plus size={12} color={colors.teal} />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: colors.teal,
+                        fontWeight: '600'
+                      }}
+                    >
+                      Create Category
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )
             ) : (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {availableCategories.map(category => {
