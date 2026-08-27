@@ -208,6 +208,60 @@ kitchen-send & order-sync audit.
 
 - POS implementation: complete.
 - Shared database review/application: pending.
+
+---
+
+## Architecture B — Device-Truth Capture (see also the HQ FEATURE doc)
+
+This ticket (Architecture A) records what the server routed. Architecture B —
+device truth — records what the tablet actually received and painted, so HQ can
+diff the two and classify every "it never showed" complaint. The server side is
+`DexaPOS-Website/supabase/migrations/20260827130000_kds_device_truth.sql`
+(ledgers + `report_kds_device_events` + `get_kds_device_truth_for_order` +
+`get_kds_display_truth_window` + `v_kds_device_truth_health`), documented in
+`DexaPOS-Website/docs/features/kds/FEATURE-2026-08-27-HQ-KDS-DEVICE-TRUTH.md`.
+
+The POS side of the 80/20 (inert until the fleet ships a build with it):
+
+- `services/kds/kdsDeviceTruth.ts` collects two per-item signals:
+  - `arrived` — the item's ticket reached the KDS store from the server.
+  - `ack` — the item's ticket was painted on the active KDS tab.
+- `app/(main)/kds.tsx` marks both: arrived for every store ticket, ack only for
+  the rendered tab's tickets (honest by construction — the kitchen can only see
+  the active tab).
+- `services/hardware/heartbeat.ts` flushes the pending batch to
+  `report_kds_device_events` once per 60s heartbeat. At-least-once with
+  server-side dedupe: a failed flush retries with the original
+  `client_event_at`, and the unique
+  `(kds_display_id, order_item_id, event_type, client_event_at)` index makes a
+  replayed buffer a no-op. Each item is emitted once per session; the batch is
+  capped at 500.
+- `database.types.ts` carries the `report_kds_device_events` RPC signature.
+- `__tests__/kdsDeviceTruth.test.ts` covers dedupe, batching, retry
+  idempotency, display-switch reset, and the backlog cap (7 tests).
+
+### Classification produced by the diff
+
+| Server | Device | Verdict |
+| --- | --- | --- |
+| routed | ack present | **CONFIRMED** — device really showed it |
+| routed | arrived, no ack | **RENDER_SUSPECT** — received, maybe never painted |
+| routed | neither; item active + device online | **NEVER_SHOWED** — the real bug |
+| routed | neither; device offline at fire | **OFFLINE** — expected, not a bug |
+| no routing log | device event exists | **GHOST** — stale cache on device |
+
+Until this emitter ships to a display, its diffs report `NO_DEVICE_DATA` —
+absence of device evidence is not evidence of a device fault.
+
+## Sign-Off (Architecture B)
+
+- Shared migration (`20260827130000_kds_device_truth.sql`): ready to apply;
+  needs Temur review + staging apply (synthetic-device check in the FEATURE
+  doc).
+- POS emitter: complete; needs a physical QA pass on a real KDS tablet
+  (report an order, verify `kds_device_events` rows appear within ~60s, then
+  check the HQ kds-truth page and the order sheet's Device view tab).
+- Independent verifier signs off.
 - Physical routing parity: pending.
 - Offline replay proof: pending.
 - Independent verification: pending.

@@ -3,6 +3,7 @@ import { MasonryFlashList } from "@shopify/flash-list";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
+import * as Application from "expo-application";
 import {
     getBucketedElapsed,
     getUrgencyLevel,
@@ -15,6 +16,12 @@ import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { replaceRoute } from "@/lib/rootNavigation";
+import {
+  markKdsItemAcked,
+  markKdsItemArrived,
+  resetKdsDeviceTruth,
+  setKdsDeviceTruthContext,
+} from "@/services/kds/kdsDeviceTruth";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
@@ -2506,6 +2513,12 @@ const KitchenDisplayScreen = () => {
   const cookingTickets = useKDSStore((s) => s.ticketsByStatus.cooking);
   const readyTickets = useKDSStore((s) => s.ticketsByStatus.ready);
 
+  // Device-truth emitter (Architecture B): every ticket in the store is an
+  // `arrived`; every ticket rendered to the screen is an `ack`. Both are
+  // flushed to report_kds_device_events on the heartbeat.
+  const allTickets = useKDSStore((s) => s.tickets);
+  const kdsDisplayId = useKDSStore((s) => s.kdsDisplayId);
+
   // Start the single global clock. Nothing at page scope subscribes to it —
   // consumers are leaf components (KDSTicketTimer for MM:SS, KDSTicketCard for
   // its bucketed urgency level), so a tick never re-renders this page.
@@ -2517,6 +2530,25 @@ const KitchenDisplayScreen = () => {
       fetchKDSDisplay(selectedStation.id);
     }
   }, [selectedStation?.id, fetchKDSDisplay]);
+
+  // Point the device-truth emitter at this display. Switching displays resets
+  // its buffer so events are never reported against the wrong screen.
+  useEffect(() => {
+    setKdsDeviceTruthContext(
+      kdsDisplayId,
+      getDeviceId(),
+      Application.nativeApplicationVersion ?? null,
+    );
+  }, [kdsDisplayId]);
+
+  // arrived: the item's ticket reached this device from the server.
+  useEffect(() => {
+    for (const ticket of allTickets) {
+      for (const item of ticket.items ?? []) {
+        if (item.id) markKdsItemArrived(item.id, ticket.db_order_id);
+      }
+    }
+  }, [allTickets]);
 
   // Update time display every 30 seconds
   useEffect(() => {
@@ -2555,6 +2587,7 @@ const KitchenDisplayScreen = () => {
   useEffect(() => {
     return () => {
       useKDSStore.getState()._cleanup();
+      resetKdsDeviceTruth();
     };
   }, []);
 
@@ -3248,6 +3281,17 @@ const KitchenDisplayScreen = () => {
       }),
     [activeTabTickets, activeStatus, kdsServedOrderSort],
   );
+
+  // ack: the ticket was actually painted to this screen. Only the active
+  // tab's tickets are rendered at any moment, so an item is only acked once
+  // the kitchen could genuinely have seen it — honest by construction.
+  useEffect(() => {
+    for (const ticket of ticketsForLayout) {
+      for (const item of ticket.items ?? []) {
+        if (item.id) markKdsItemAcked(item.id, ticket.db_order_id);
+      }
+    }
+  }, [ticketsForLayout]);
 
   // Masonry: each column packs independently, so a ticket sits directly under
   // the one above it in its own column rather than being pushed down by the
