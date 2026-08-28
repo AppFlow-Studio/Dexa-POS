@@ -9,12 +9,17 @@ import { standaloneSyncQueryOptions } from "@/hooks/pos/useStandaloneSync";
 import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { getDbSizeBytes, initLocalDb } from "@/lib/db/index";
+import { stationKind } from "@/lib/db/policy";
+import { purgeForbiddenTables } from "@/lib/db/teardown";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import {
     getBucketKeyCount,
     getStorageSizeStats,
     type StorageBucketName,
 } from "@/lib/storage";
+import { KEY_DB_SIZE_BYTES } from "@/lib/telemetry/keys";
+import { recordCount } from "@/lib/telemetry/registry";
 import { initLandiPrinter } from "@/native/LandiPrinter";
 import { applyRecipes } from "@/stores/applyRecipes";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
@@ -586,7 +591,52 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         });
       }
     }
+
+    // Local SQLite growth is watched on the same schedule as the MMKV buckets,
+    // so there is one place to look when storage is the suspect. Async and
+    // detached: this must never delay boot.
+    void getDbSizeBytes().then((bytes) => {
+      if (bytes === null) return;
+      recordCount(KEY_DB_SIZE_BYTES, bytes);
+      if (bytes > TEN_MB) {
+        Sentry.captureMessage("Local DB size exceeded 10MB", {
+          level: "warning",
+          tags: { source: "storage_monitor", bucket: "sqlite" },
+          extra: { totalBytes: bytes, thresholdBytes: TEN_MB },
+        });
+      }
+    });
   }, []);
+
+  /**
+   * Local SQLite lifecycle (Track A, Phase 1).
+   *
+   * Opens the database, honours any purge owed from an env switch, and drops
+   * the tables this station kind may not hold. Runs on EVERY station kind
+   * including KDS and kiosk — unlike most subsystems here, which skip when
+   * isKDS. That is deliberate: a KDS or kiosk device is exactly where the
+   * station purge has to run, so gating this on isKDS would skip the case it
+   * exists for.
+   *
+   * Phase 1 writes nothing and reads nothing. This only creates the file and
+   * enforces the policy.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const kind = stationKind(selectedStation?.station_type);
+
+    void (async () => {
+      const db = await initLocalDb();
+      if (cancelled || !db) return;
+      // Re-provisioned devices (POS -> kiosk) must shed the data the new
+      // station kind may not hold. No-ops on a POS.
+      await purgeForbiddenTables(kind);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStation?.station_type]);
 
   // Watermark of the menu currently applied to the store, scoped to the
   // location it came from. Drives the version reconcile below.

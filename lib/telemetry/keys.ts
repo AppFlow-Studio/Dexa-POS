@@ -215,3 +215,52 @@ export function persistKeyIds(name: string): PersistKeyIds {
   }
   return ids;
 }
+
+// ============================================================================
+// Local SQLite database (lib/db/*) — Track A foundation.
+// ============================================================================
+
+// Lifecycle
+export const KEY_DB_INIT_MS = internKey("db.init_ms");
+export const KEY_DB_INIT_ERROR = internKey("db.init_error");
+export const KEY_DB_REBUILD = internKey("db.rebuild");
+export const KEY_DB_SIZE_BYTES = internKey("db.size_bytes");
+
+// Write boundary (lib/db/write.ts). `policy_reject` is the important one: a
+// non-zero count means a sync descriptor is trying to write a table this
+// station kind may not hold, which is a misconfiguration, not a normal event.
+export const KEY_DB_WRITE_MS = internKey("db.write_ms");
+export const KEY_DB_WRITE_ROWS = internKey("db.write_rows");
+export const KEY_DB_WRITE_ERROR = internKey("db.write_error");
+export const KEY_DB_POLICY_REJECT = internKey("db.policy_reject");
+export const KEY_DB_PRUNED_ROWS = internKey("db.pruned_rows");
+
+// Teardown — one count per purge path, so a purge that never fires is visible.
+export const KEY_DB_PURGE_CACHE = internKey("db.purge.cache_clear");
+export const KEY_DB_PURGE_ENV = internKey("db.purge.env_switch");
+export const KEY_DB_PURGE_STATION = internKey("db.purge.station_change");
+
+/**
+ * Per-persisted-key boot hydration cost — the Phase 1 measurement that decides
+ * whether (and in what order) the 31 MMKV-persisted stores are worth moving to
+ * rows in a later phase. Ordered by parse_ms, not by intuition.
+ */
+export interface BootHydrateKeyIds {
+  parseMs: number;
+  bytes: number;
+}
+
+const bootHydrateCache: Record<string, BootHydrateKeyIds> =
+  Object.create(null);
+
+export function bootHydrateKeyIds(name: string): BootHydrateKeyIds {
+  let ids = bootHydrateCache[name];
+  if (ids === undefined) {
+    ids = {
+      parseMs: internKey(`boot.persist_parse_ms.${name}`),
+      bytes: internKey(`boot.persist_bytes.${name}`),
+    };
+    bootHydrateCache[name] = ids;
+  }
+  return ids;
+}

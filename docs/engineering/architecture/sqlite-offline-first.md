@@ -699,9 +699,56 @@ start the next phase until the current one has run a full service period on real
 
 ### Track A — the read database *(no server work required)*
 
-#### Phase 1 · Foundation *(no user-visible change)*
+#### Phase 1 · Foundation *(no user-visible change)* — ✅ **BUILT**
 
 **Flag:** none — inert until something reads it.
+
+**Status: code complete, 60/60 tests green, `tsc --noEmit` clean.** Not yet run on a
+device — the one acceptance item still outstanding is the on-device measurement pass
+(see "Still outstanding" below).
+
+| Delivered | File |
+| --- | --- |
+| Schema, DDL + naming contract | [lib/db/schema.ts](lib/db/schema.ts) |
+| Open / pragma / version / rebuild | [lib/db/index.ts](lib/db/index.ts) |
+| Station scoping | [lib/db/policy.ts](lib/db/policy.ts) |
+| Retention + freshness descriptors | [lib/db/entities.ts](lib/db/entities.ts) |
+| The single write boundary | [lib/db/write.ts](lib/db/write.ts) |
+| Money ↔ minor-units, one helper | [lib/db/money.ts](lib/db/money.ts) |
+| Purge paths | [lib/db/teardown.ts](lib/db/teardown.ts), [lib/db/purgeFlag.ts](lib/db/purgeFlag.ts) |
+| Cap-sizing harness | [lib/db/measure.ts](lib/db/measure.ts) |
+| Freshness hook + component | [hooks/db/useLocalFreshness.ts](hooks/db/useLocalFreshness.ts), [components/db/SyncFreshness.tsx](components/db/SyncFreshness.tsx) |
+| Boot wiring, station purge, size monitor | [contexts/PosSyncProvider.tsx](contexts/PosSyncProvider.tsx) |
+| Env-switch purge flag | [lib/storage.ts](lib/storage.ts) |
+| Per-key boot hydration instrumentation | [lib/storage.ts](lib/storage.ts), [lib/telemetry/keys.ts](lib/telemetry/keys.ts) |
+
+**Three decisions worth recording, because they were not in the plan:**
+
+1. **The env-switch purge is a flag, not a call.** `reconcileEnvironmentOnBoot()` is
+   synchronous and runs at module load; deleting a SQLite file is async. A
+   fire-and-forget delete from there races the first write of the *new* environment's
+   data and can take that out instead. So the switch records an intent synchronously and
+   `initLocalDb()` honours it before opening anything — race-free, and it survives a crash
+   in between. `lib/db/purgeFlag.ts` is a constants-only leaf so this cannot become an
+   import cycle with `lib/storage.ts`.
+2. **Tests run against a real SQL engine.** `__mocks__/expo-sqlite.js` is backed by
+   `node:sqlite` (built into Node 22+). Everything Phase 1 has to prove is SQL behaviour —
+   the retention `DELETE`, `ON DELETE CASCADE`, the immutable-id trigger, partial indexes,
+   `ON CONFLICT` upserts, transaction rollback. A hand-written fake would pass all of them
+   while proving none.
+3. **The immutable-id trigger ships now, in Track A**, even though client-minted UUIDs are
+   Phase 6. It costs nothing today and means no code written during Track A can establish
+   a rekeying habit that Phase 6 would then have to unpick.
+
+**Still outstanding before Phase 2:**
+
+- [ ] **Run the measurement pass on the lowest-spec device.** `lib/db/measure.ts` is built
+      but has not been run. Until it has, the retention caps in `lib/db/entities.ts` are
+      explicitly marked `PROVISIONAL` and are **not** derived values. Record the results in
+      §11 with the derivation, not just the number.
+- [ ] Boot the app on device and confirm zero behavior change.
+- [ ] Capture the `boot.persist_parse_ms.*` ranking across the 31 persisted keys — this is
+      what orders any future persistence work, and the ranking may well say "don't bother".
 
 **Build** Add `expo-sqlite`. `lib/db/index.ts`: open, WAL, `synchronous = NORMAL`,
 `foreign_keys = ON`. Full schema per §7 — **including the offline-first columns, inert** (§4.3 ①).
