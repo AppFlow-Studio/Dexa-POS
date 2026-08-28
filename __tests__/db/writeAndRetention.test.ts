@@ -7,6 +7,7 @@
  * would pass all of these while proving none of them.
  */
 import { ENTITIES, type EntityDescriptor } from "@/lib/db/entities";
+import { SCHEMA_VERSION } from "@/lib/db/schema";
 import {
   __resetLocalDbForTests,
   destroyLocalDb,
@@ -74,7 +75,7 @@ describe("initLocalDb", () => {
     const row = await getDb()!.getFirstAsync<{ user_version: number }>(
       "PRAGMA user_version",
     );
-    expect(row?.user_version).toBe(1);
+    expect(row?.user_version).toBe(SCHEMA_VERSION);
   });
 
   it("is idempotent — a second init does not duplicate or throw", async () => {

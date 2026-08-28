@@ -19,13 +19,14 @@ data, and they stay converged.
 
 **The concern, stated once.** This codebase already tried local-first writes and reverted to
 online-first because "local rows got created and the server rows sometimes didn't." Repeating
-the attempt without changing what *caused* that will reproduce it. So §1 establishes the actual
+the attempt without changing what _caused_ that will reproduce it. So §1 establishes the actual
 cause from the code, and §2–§3 establish the one precondition that removes it. Everything after
 assumes that precondition is met.
 
 **The precondition, stated as a gate:**
 
 > ### The Identity Gate
+>
 > **The client must mint the row's real primary key at creation time, and the server must accept
 > it unchanged.** A row's identity must never change between creation and sync.
 >
@@ -68,31 +69,31 @@ export function generateLocalId(entityType: EntityType): string {
 **No `create_order` variant accepts an ID.** Verified against `database.types.ts`: `create_order`,
 `create_order_v2` (×2 overloads) and `create_order_v3` (×2) all take location/merchant/type/
 customer args and **return** the server-generated UUID. `create_order_v3` added
-`p_idempotency_key` — which dedupes the *call*, but the row's identity still originates on the
+`p_idempotency_key` — which dedupes the _call_, but the row's identity still originates on the
 server. Same for items: `add_order_item_v4` takes `p_order_id` and mints the item id server-side.
 
 **So every row is born with one identity and acquires a different one at sync time.** That single
 fact is the source of all of it. When `local_order_…` becomes `550e8400-…`, every reference has
 to be rewritten, atomically, across at least:
 
-| Reference | Where |
-| --- | --- |
-| `ordersById` key | `useOrderStore` |
-| `dbOrderIdIndex` | `useOrderStore` — 12+ hand-maintained sites (`:4740`, `:7157`, `:7232`, `:7246`…) |
-| `workingSetOrderIds` / `_workingSetLookup` | `useOrderStore:5258` |
-| `persistableOrderIds` | `useOrderStore:4742-4744` |
-| Queue op `entity_id` | `offlineSyncService` |
-| Local→backend map | `offlineIdRegistry` (530 lines, its own MMKV persistence) |
-| Table session order refs | `useTableSessionStore` |
-| KDS ticket order refs | `useKDSStore` |
-| Payment item coverage | `usePaymentStore` |
-| Seating index | `useSeatingStore.byOrderId` |
+| Reference                                  | Where                                                                             |
+| ------------------------------------------ | --------------------------------------------------------------------------------- |
+| `ordersById` key                           | `useOrderStore`                                                                   |
+| `dbOrderIdIndex`                           | `useOrderStore` — 12+ hand-maintained sites (`:4740`, `:7157`, `:7232`, `:7246`…) |
+| `workingSetOrderIds` / `_workingSetLookup` | `useOrderStore:5258`                                                              |
+| `persistableOrderIds`                      | `useOrderStore:4742-4744`                                                         |
+| Queue op `entity_id`                       | `offlineSyncService`                                                              |
+| Local→backend map                          | `offlineIdRegistry` (530 lines, its own MMKV persistence)                         |
+| Table session order refs                   | `useTableSessionStore`                                                            |
+| KDS ticket order refs                      | `useKDSStore`                                                                     |
+| Payment item coverage                      | `usePaymentStore`                                                                 |
+| Seating index                              | `useSeatingStore.byOrderId`                                                       |
 
 Miss one → an orphan. Race one → a duplicate. **That is exactly the reported failure**, and it is
 why the codebase now carries six separate layers of defense against it — idempotency keys,
 `offlineIdRegistry`, `reconcileLostOrderCreations`, `markOperationBlocked`, `cartShapeReconcile`,
-`orderHeaderReconcile` — plus an explicit in-code guard for *"stale `dbOrderIdIndex` and merging
-would leak items from this order"* (`useOrderStore.ts:5353`) and a CLAUDE.md warning that
+`orderHeaderReconcile` — plus an explicit in-code guard for _"stale `dbOrderIdIndex` and merging
+would leak items from this order"_ (`useOrderStore.ts:5353`) and a CLAUDE.md warning that
 `getOrder()` is fragile in `DraggableTable` because of "timing gaps in `dbOrderIdIndex` after
 seating."
 
@@ -127,16 +128,16 @@ that accept an ID, a local database, and a convergence engine. The conflict prim
 ### What stable identity deletes
 
 Once a row's UUID is minted on the device and never changes, these stop being necessary — not
-worked around, *unnecessary*:
+worked around, _unnecessary_:
 
-| Deleted | Size |
-| --- | --- |
-| `lib/offlineIdRegistry.ts` | 530 lines + its MMKV persistence |
-| `dbOrderIdIndex` and its maintenance | 12+ sites in `useOrderStore` |
-| `isLocalId` / `resolveToBackendId` / `resolveId` branching | every call site |
-| `reconcileLostOrderCreations()` | `offlineSyncInit.ts:262` |
-| The rekey path in `useOrderStore` | `:4734-4776` |
-| The stale-index guard | `:5353` |
+| Deleted                                                    | Size                             |
+| ---------------------------------------------------------- | -------------------------------- |
+| `lib/offlineIdRegistry.ts`                                 | 530 lines + its MMKV persistence |
+| `dbOrderIdIndex` and its maintenance                       | 12+ sites in `useOrderStore`     |
+| `isLocalId` / `resolveToBackendId` / `resolveId` branching | every call site                  |
+| `reconcileLostOrderCreations()`                            | `offlineSyncInit.ts:262`         |
+| The rekey path in `useOrderStore`                          | `:4734-4776`                     |
+| The stale-index guard                                      | `:5353`                          |
 
 That is the real prize of the write track, and it is worth having on its own merits — **even if
 Phases 7–9 never happen**, Phase 6 leaves the codebase meaningfully safer while changing no
@@ -146,7 +147,7 @@ behavior.
 
 ## 3. What "always in sync" can and cannot mean
 
-Two writers on a network partition cannot be *identical at all times* — that is not a design
+Two writers on a network partition cannot be _identical at all times_ — that is not a design
 choice, it is CAP. What is achievable, and what this plan promises, is stronger than it sounds:
 
 > **Convergence.** Given no further writes and restored connectivity, every device and the server
@@ -190,7 +191,7 @@ to keep that operation online-only, explicitly (§6).
 ```
 
 **The store hierarchy is unchanged.** Zustand stays the UI's reactive layer; it becomes a
-*projection of SQLite* rather than an independent copy. One direction of flow: SQLite → Zustand →
+_projection of SQLite_ rather than an independent copy. One direction of flow: SQLite → Zustand →
 render. Writes go the other way through a single API. Two stores can no longer disagree about an
 order, because neither owns it.
 
@@ -208,7 +209,7 @@ await db.withTransactionAsync(async () => {
 });
 ```
 
-Either the order exists *and* is queued to sync, or neither happened. There is no third state.
+Either the order exists _and_ is queued to sync, or neither happened. There is no third state.
 This is what makes "local created, server didn't" not merely unlikely but **unrepresentable**.
 
 ### 4.2 One table, not two zones
@@ -244,17 +245,17 @@ projection can always be dropped and refetched, so during Phases 1–5 a schema 
 freedom ends at Phase 7**, the first phase where SQLite holds data the server does not. Two
 settings flip at exactly that boundary, and they are the boundary:
 
-| | Phases 1–5 (reads) | Phase 7+ (writes) |
-| --- | --- | --- |
-| Schema change | Drop and rebuild | Forward-only migration ladder |
+|                      | Phases 1–5 (reads)                    | Phase 7+ (writes)                          |
+| -------------------- | ------------------------------------- | ------------------------------------------ |
+| Schema change        | Drop and rebuild                      | Forward-only migration ladder              |
 | `PRAGMA synchronous` | `NORMAL` — a lost commit is a refetch | **`FULL`** — a lost commit is a lost order |
 
 Make that flip a single reviewed commit with both changes in it. It is the moment the local
 database stops being a cache.
 
 **③ Screens read through a selector API, never through the storage layer.** During the read track
-the resolution rule is *live work → Zustand, settled → SQLite*; after the write track it collapses
-to *everything → SQLite*. If screens encode that rule, every screen changes twice. So screens call
+the resolution rule is _live work → Zustand, settled → SQLite_; after the write track it collapses
+to _everything → SQLite_. If screens encode that rule, every screen changes twice. So screens call
 `useOrders(filter)` / `useOrder(id)` and the rule lives **inside the hook**, exactly as
 `stores/selectors/orderSelectors.ts` already does today. The source swap then lands in one file
 per entity and no screen notices.
@@ -268,21 +269,21 @@ selector boundary in Phase 3, the first read page, before there are twelve call 
 
 Whole-row last-writer-wins is wrong for a POS: two servers adding items to the same table offline
 would lose one server's items. Merge is **per-field, per-entity**, and every rule below is chosen
-to be commutative and to fail in the direction that loses the *least* and is *safest for the
-guest*.
+to be commutative and to fail in the direction that loses the _least_ and is _safest for the
+guest_.
 
-| Entity / field | Rule | Why this direction |
-| --- | --- | --- |
-| **Order item set** | **Add-wins union**, keyed by item UUID | Two stations each add items offline → guest gets both. Losing an ordered item is worse than an extra line the server can void |
-| **Item removal / void** | **Remove-wins** (tombstone beats a concurrent add) | Un-voiding an item the manager voided is worse than losing a re-add. The tombstone already exists on remote: `order_items.is_voided` / `voided_at` (§7.4) |
-| **Item quantity** | LWW on `(updated_at, device_id)` | The UI sets an absolute quantity from a picker, not an increment, so LWW is faithful to the gesture. **Not** a counter — do not treat it as one |
-| **Item modifiers** | Replace whole set, LWW on the parent item | `replace_order_item_modifiers_v2` is already replace-semantics server-side. Keep them aligned |
-| **Order status** | **Monotonic advance** along the `lib/tableStateMachine.ts` partial order; never regresses | `paid` must never fall back to `open`. Merge = take the further-advanced state |
-| **Order header** (customer, type, table, notes) | LWW per field on `(updated_at, device_id)` | Independent scalars. Per-*field*, so a name edit and a table move on two devices both survive |
-| **Payments** | **Server authoritative. No merge.** | §6 |
-| **Totals / tax** | **Derived, never merged** — recomputed from the merged item set | Merging a computed total against its inputs is how money goes wrong. Compute after merge, both sides, `decimal.js` |
-| **Table session** | Monotonic status; local-only statuses (`seating`/`ordering`/`paying`/`closing`) never sync — as today | `isLocalOnlyStatus()` already guards this |
-| **Menu / inventory / customers / staff** | **Server-authoritative pull.** Device does not originate | Nothing here is created offline on a POS. Delta-pull only — §8.2 |
+| Entity / field                                  | Rule                                                                                                  | Why this direction                                                                                                                                        |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Order item set**                              | **Add-wins union**, keyed by item UUID                                                                | Two stations each add items offline → guest gets both. Losing an ordered item is worse than an extra line the server can void                             |
+| **Item removal / void**                         | **Remove-wins** (tombstone beats a concurrent add)                                                    | Un-voiding an item the manager voided is worse than losing a re-add. The tombstone already exists on remote: `order_items.is_voided` / `voided_at` (§7.4) |
+| **Item quantity**                               | LWW on `(updated_at, device_id)`                                                                      | The UI sets an absolute quantity from a picker, not an increment, so LWW is faithful to the gesture. **Not** a counter — do not treat it as one           |
+| **Item modifiers**                              | Replace whole set, LWW on the parent item                                                             | `replace_order_item_modifiers_v2` is already replace-semantics server-side. Keep them aligned                                                             |
+| **Order status**                                | **Monotonic advance** along the `lib/tableStateMachine.ts` partial order; never regresses             | `paid` must never fall back to `open`. Merge = take the further-advanced state                                                                            |
+| **Order header** (customer, type, table, notes) | LWW per field on `(updated_at, device_id)`                                                            | Independent scalars. Per-_field_, so a name edit and a table move on two devices both survive                                                             |
+| **Payments**                                    | **Server authoritative. No merge.**                                                                   | §6                                                                                                                                                        |
+| **Totals / tax**                                | **Derived, never merged** — recomputed from the merged item set                                       | Merging a computed total against its inputs is how money goes wrong. Compute after merge, both sides, `decimal.js`                                        |
+| **Table session**                               | Monotonic status; local-only statuses (`seating`/`ordering`/`paying`/`closing`) never sync — as today | `isLocalOnlyStatus()` already guards this                                                                                                                 |
+| **Menu / inventory / customers / staff**        | **Server-authoritative pull.** Device does not originate                                              | Nothing here is created offline on a POS. Delta-pull only — §8.2                                                                                          |
 
 **Tie-break.** Every LWW rule compares `(updated_at, device_id)` — never `updated_at` alone. Two
 devices can write in the same millisecond; without a deterministic tiebreak the merge is not
@@ -305,19 +306,19 @@ new one beside it.
 This is the one place the goal cannot be met in full, for a physical reason rather than an
 architectural one, so it gets an explicit line rather than a best effort.
 
-| Operation | Offline? | Rule |
-| --- | :---: | --- |
-| Build/modify an order, items, modifiers, courses, seats | ✅ | Fully offline-first |
-| Send to kitchen / KDS routing | ✅ | Queues; fires on reconnect. Print locally now |
-| **Cash payment** | ✅ | The cash drawer *is* the device. Local is truth; server reconciles |
-| **Card authorization** | ❌ | Requires the processor. Cannot be queued — a queued "approval" is a lie to the cashier and a chargeback to the merchant |
-| Tip adjust, refund, void payment | ❌ | Operates on a processor-side transaction |
-| **Settlement / batchout / EOD commit** | ❌ | **Server authoritative, always.** Local computes the *preview* only |
-| Order locking for payment | ❌ | `is_order_locked` is a server mutex. An offline device cannot hold it; on reconnect, **lock-wins** and local edits to a locked order are rejected and surfaced |
+| Operation                                               | Offline? | Rule                                                                                                                                                           |
+| ------------------------------------------------------- | :------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build/modify an order, items, modifiers, courses, seats |    ✅    | Fully offline-first                                                                                                                                            |
+| Send to kitchen / KDS routing                           |    ✅    | Queues; fires on reconnect. Print locally now                                                                                                                  |
+| **Cash payment**                                        |    ✅    | The cash drawer _is_ the device. Local is truth; server reconciles                                                                                             |
+| **Card authorization**                                  |    ❌    | Requires the processor. Cannot be queued — a queued "approval" is a lie to the cashier and a chargeback to the merchant                                        |
+| Tip adjust, refund, void payment                        |    ❌    | Operates on a processor-side transaction                                                                                                                       |
+| **Settlement / batchout / EOD commit**                  |    ❌    | **Server authoritative, always.** Local computes the _preview_ only                                                                                            |
+| Order locking for payment                               |    ❌    | `is_order_locked` is a server mutex. An offline device cannot hold it; on reconnect, **lock-wins** and local edits to a locked order are rejected and surfaced |
 
 **The degraded-mode UX matters as much as the rule.** Offline, the card button is disabled with a
 plain reason — `Card payment needs a connection. Cash is available.` — not a spinner and not a
-silent failure. Store-and-forward card capture with a floor limit is a *merchant risk decision*,
+silent failure. Store-and-forward card capture with a floor limit is a _merchant risk decision_,
 not an engineering one; if it is ever wanted, it is its own project with its own sign-off.
 
 ---
@@ -329,13 +330,13 @@ not an engineering one; if it is ever wanted, it is its own project with its own
 Every column below was read from `database.types.ts` on this branch. Three different fidelity
 rules apply, and conflating them is how a local schema drifts from the remote one:
 
-| Part of a row | Rule | Why |
-| --- | --- | --- |
-| **Identity** — `id`, and every foreign key (`order_id`, `location_id`, `menu_item_id`, `staff_profile_id`…) | **Byte-identical to remote.** Same UUID, same name | Convergence is defined by both sides agreeing on which row is which. A renamed or re-derived key breaks it silently |
-| **Watermarks and versions** — `updated_at`, `created_at`, `sync_version`, `version` | **Byte-identical to remote** | The delta cursor is a direct comparison against a server value. A local re-interpretation desynchronizes the pull |
-| **`payload`** | **Verbatim server JSON, unmodified** | The render path stays `_transformFetchedOrder`. New server fields appear with no device migration |
-| **Promoted columns** | A **verified subset of real remote columns, keeping the remote name** | Filtering/sorting/search need real columns. Keeping the name means there is no translation layer to get wrong |
-| **Table shape** | **Not** the remote table graph — the shape the app already consumes | See below |
+| Part of a row                                                                                               | Rule                                                                  | Why                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Identity** — `id`, and every foreign key (`order_id`, `location_id`, `menu_item_id`, `staff_profile_id`…) | **Byte-identical to remote.** Same UUID, same name                    | Convergence is defined by both sides agreeing on which row is which. A renamed or re-derived key breaks it silently |
+| **Watermarks and versions** — `updated_at`, `created_at`, `sync_version`, `version`                         | **Byte-identical to remote**                                          | The delta cursor is a direct comparison against a server value. A local re-interpretation desynchronizes the pull   |
+| **`payload`**                                                                                               | **Verbatim server JSON, unmodified**                                  | The render path stays `_transformFetchedOrder`. New server fields appear with no device migration                   |
+| **Promoted columns**                                                                                        | A **verified subset of real remote columns, keeping the remote name** | Filtering/sorting/search need real columns. Keeping the name means there is no translation layer to get wrong       |
+| **Table shape**                                                                                             | **Not** the remote table graph — the shape the app already consumes   | See below                                                                                                           |
 
 **The one place we deliberately do not clone: the menu.** Remotely a menu item's effective price
 and availability are spread across `menu_items` (merchant-level `price`, `cash_price`,
@@ -583,7 +584,7 @@ accidental push of a local-only field a review-visible mistake rather than a run
 
 ### 7.3 The `synchronous` flip
 
-`synchronous = FULL` is the one deliberate performance sacrifice in this document, and it *defines*
+`synchronous = FULL` is the one deliberate performance sacrifice in this document, and it _defines_
 the Track A → Track B boundary. Under WAL, `NORMAL` can lose the last commits on an OS crash or
 power loss. Through Phases 1–5 that is fine — SQLite holds a projection and a lost commit is a
 refetch. From Phase 6 it holds the only copy of a guest's order, and it is not.
@@ -596,19 +597,19 @@ The `_`-prefixed offline-first columns are created in Phase 1 and sit unused unt
 dormant column costs nothing and means the write track adds behavior instead of migrating a
 database that by then holds real data.
 
-### 7.4 Correction: tombstones mostly *do* exist
+### 7.4 Correction: tombstones mostly _do_ exist
 
 An earlier revision of this document claimed there are no tombstones anywhere, from
 `grep -c "deleted_at" database.types.ts` → 0. The grep was right; the conclusion was too broad.
 
 **Voids and cancellations are soft deletes, and they already ride the `updated_at` watermark:**
 
-| Entity | Tombstone | Rides the delta? |
-| --- | --- | --- |
-| Order | `voided_at`, `void_reason`, `voided_by`, `cancelled_at` | ✅ — `updated_at` bumps |
-| Order item | `is_voided`, `voided_at`, `void_reason` | ✅ — `updated_at` bumps |
-| Menu item | `availability` = false; location override `is_available` | ✅ |
-| Inventory item, vendor, customer, staff | `is_active` = false | ✅ |
+| Entity                                  | Tombstone                                                | Rides the delta?        |
+| --------------------------------------- | -------------------------------------------------------- | ----------------------- |
+| Order                                   | `voided_at`, `void_reason`, `voided_by`, `cancelled_at`  | ✅ — `updated_at` bumps |
+| Order item                              | `is_voided`, `voided_at`, `void_reason`                  | ✅ — `updated_at` bumps |
+| Menu item                               | `availability` = false; location override `is_available` | ✅                      |
+| Inventory item, vendor, customer, staff | `is_active` = false                                      | ✅                      |
 
 That materially improves the remove-wins rule (§5): the common case — a manager voids an item on
 another station — is a **status change the delta already delivers**, not a disappearance the
@@ -619,7 +620,6 @@ what the manifest reconcile (§8.2) is for, and it is now correctly sized as a r
 rather than the primary delete mechanism. The `deleted_at` / `sync_tombstones` server ticket is
 still worth filing — it closes the last gap — but it is **no longer a hard blocker for Phase 7**,
 because item voids already have a real tombstone.
-
 
 ## 8. The sync protocol
 
@@ -641,7 +641,7 @@ loop over outbox WHERE status IN ('pending','failed') AND next_attempt_at <= now
 Two properties worth naming:
 
 - **Ordering is per-entity, not global.** Items for order A must not head-of-line block order B.
-  `depends_on` expresses the real dependency (an item waits for its order's create *only if* the
+  `depends_on` expresses the real dependency (an item waits for its order's create _only if_ the
   server hasn't seen the order yet — and with client-minted IDs, it usually doesn't need to).
 - **Retry is free.** Same client UUID + same idempotency key = the server can dedupe perfectly.
   This is what `p_idempotency_key` on `create_order_v3` / `add_order_item_v4` already exists for.
@@ -652,7 +652,7 @@ Unchanged from the previous draft, and it is the part that was already right. Pe
 descriptors, `(watermark, watermark_id)` keyset resume, transactional apply, resumable paging,
 prune-inside-insert. Three schema facts it must still handle, all verified on this branch:
 
-- **Only *hard* deletes are invisible.** There is no `deleted_at` anywhere (0 hits across 634
+- **Only _hard_ deletes are invisible.** There is no `deleted_at` anywhere (0 hits across 634
   table definitions), but voids and deactivations are real soft deletes that ride the `updated_at`
   watermark normally — `orders.voided_at`, `order_items.is_voided`, `is_active`, `availability`
   (§7.4). So the delta already carries the common case. Ship the **manifest reconcile** (id +
@@ -683,10 +683,10 @@ delta pull, not a full refetch.
 it can corrupt, and every phase in it ships user-visible value. Track B turns that database into
 the write target and needs the Identity Gate (§0).
 
-| | Phases | Server work needed | Worst failure | Value if the project stops here |
-| --- | --- | --- | --- | --- |
-| **A · Reads** | 1–5 | **None** | Stale data → drop and refetch | Offline reads, instant paging, local reporting, two caches deleted, one P1 fixed |
-| **B · Writes** | 6–9 | `create_order_v4`, `add_order_item_v5` | Lost or duplicated orders | Full offline operation |
+|                | Phases | Server work needed                     | Worst failure                 | Value if the project stops here                                                  |
+| -------------- | ------ | -------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------- |
+| **A · Reads**  | 1–5    | **None**                               | Stale data → drop and refetch | Offline reads, instant paging, local reporting, two caches deleted, one P1 fixed |
+| **B · Writes** | 6–9    | `create_order_v4`, `add_order_item_v5` | Lost or duplicated orders     | Full offline operation                                                           |
 
 The line between Phase 5 and Phase 6 is the most consequential in this document: it is where the
 local database stops being a cache and starts being the only copy of something. `synchronous` and
@@ -697,36 +697,37 @@ start the next phase until the current one has run a full service period on real
 
 ---
 
-### Track A — the read database *(no server work required)*
+### Track A — the read database _(no server work required)_
 
-#### Phase 1 · Foundation *(no user-visible change)* — ✅ **BUILT**
+#### Phase 1 · Foundation _(no user-visible change)_ — ✅ **BUILT + MEASURED**
 
 **Flag:** none — inert until something reads it.
 
-**Status: code complete, 60/60 tests green, `tsc --noEmit` clean.** Not yet run on a
-device — the one acceptance item still outstanding is the on-device measurement pass
-(see "Still outstanding" below).
+**Status: code complete, 103/103 local-DB tests green, `tsc --noEmit` clean. Measurement
+pass ran on device 2026-08-28 (Samsung SM-P613) — caps derived (see "Still outstanding"
+for the numbers). The one remaining Phase 1 item is the `boot.persist_parse_ms.*`
+ranking, which does not block Phase 2.**
 
-| Delivered | File |
-| --- | --- |
-| Schema, DDL + naming contract | [lib/db/schema.ts](lib/db/schema.ts) |
-| Open / pragma / version / rebuild | [lib/db/index.ts](lib/db/index.ts) |
-| Station scoping | [lib/db/policy.ts](lib/db/policy.ts) |
-| Retention + freshness descriptors | [lib/db/entities.ts](lib/db/entities.ts) |
-| The single write boundary | [lib/db/write.ts](lib/db/write.ts) |
-| Money ↔ minor-units, one helper | [lib/db/money.ts](lib/db/money.ts) |
-| Purge paths | [lib/db/teardown.ts](lib/db/teardown.ts), [lib/db/purgeFlag.ts](lib/db/purgeFlag.ts) |
-| Cap-sizing harness | [lib/db/measure.ts](lib/db/measure.ts) |
-| Freshness hook + component | [hooks/db/useLocalFreshness.ts](hooks/db/useLocalFreshness.ts), [components/db/SyncFreshness.tsx](components/db/SyncFreshness.tsx) |
-| Boot wiring, station purge, size monitor | [contexts/PosSyncProvider.tsx](contexts/PosSyncProvider.tsx) |
-| Env-switch purge flag | [lib/storage.ts](lib/storage.ts) |
-| Per-key boot hydration instrumentation | [lib/storage.ts](lib/storage.ts), [lib/telemetry/keys.ts](lib/telemetry/keys.ts) |
+| Delivered                                | File                                                                                                                               |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Schema, DDL + naming contract            | [lib/db/schema.ts](lib/db/schema.ts)                                                                                               |
+| Open / pragma / version / rebuild        | [lib/db/index.ts](lib/db/index.ts)                                                                                                 |
+| Station scoping                          | [lib/db/policy.ts](lib/db/policy.ts)                                                                                               |
+| Retention + freshness descriptors        | [lib/db/entities.ts](lib/db/entities.ts)                                                                                           |
+| The single write boundary                | [lib/db/write.ts](lib/db/write.ts)                                                                                                 |
+| Money ↔ minor-units, one helper          | [lib/db/money.ts](lib/db/money.ts)                                                                                                 |
+| Purge paths                              | [lib/db/teardown.ts](lib/db/teardown.ts), [lib/db/purgeFlag.ts](lib/db/purgeFlag.ts)                                               |
+| Cap-sizing harness                       | [lib/db/measure.ts](lib/db/measure.ts)                                                                                             |
+| Freshness hook + component               | [hooks/db/useLocalFreshness.ts](hooks/db/useLocalFreshness.ts), [components/db/SyncFreshness.tsx](components/db/SyncFreshness.tsx) |
+| Boot wiring, station purge, size monitor | [contexts/PosSyncProvider.tsx](contexts/PosSyncProvider.tsx)                                                                       |
+| Env-switch purge flag                    | [lib/storage.ts](lib/storage.ts)                                                                                                   |
+| Per-key boot hydration instrumentation   | [lib/storage.ts](lib/storage.ts), [lib/telemetry/keys.ts](lib/telemetry/keys.ts)                                                   |
 
 **Three decisions worth recording, because they were not in the plan:**
 
 1. **The env-switch purge is a flag, not a call.** `reconcileEnvironmentOnBoot()` is
    synchronous and runs at module load; deleting a SQLite file is async. A
-   fire-and-forget delete from there races the first write of the *new* environment's
+   fire-and-forget delete from there races the first write of the _new_ environment's
    data and can take that out instead. So the switch records an intent synchronously and
    `initLocalDb()` honours it before opening anything — race-free, and it survives a crash
    in between. `lib/db/purgeFlag.ts` is a constants-only leaf so this cannot become an
@@ -742,17 +743,31 @@ device — the one acceptance item still outstanding is the on-device measuremen
 
 **Still outstanding before Phase 2:**
 
-- [ ] **Run the measurement pass on the lowest-spec device.** `lib/db/measure.ts` is built
-      but has not been run. Until it has, the retention caps in `lib/db/entities.ts` are
-      explicitly marked `PROVISIONAL` and are **not** derived values. Record the results in
-      §11 with the derivation, not just the number.
-- [ ] Boot the app on device and confirm zero behavior change.
+- [x] **Run the measurement pass on the lowest-spec device.** Ran 2026-08-28 on a Samsung
+      SM-P613 (the fleet's low-mid tablet). Results (bytes/row incl. indexes):
+      `order_items 403 · order_payments 1120 · inventory_items 795 · customers 786 ·
+    staff 328 · menu_items 1212`. **Orders' insert-diff reads 0 on a pre-populated
+      table** (rows reuse existing pages, so `PRAGMA page_count` doesn't move); the orders
+      number is the REAL payload from the mirror's actual rows — **1387 B/row over 2,000
+      orders** (second run; first run's insert-diffs for the other tables are the valid
+      ones, since later runs reuse those pages). Derivation: at a conservative 50 MB
+      mirror budget, no table is budget-bound (per-order ≈ 3.4–3.7 KB incl. items +
+      payments → orders ≈ 14k, customers ≈ 66k, inventory ≈ 66k, staff ≈ 160k), so the
+      caps are **workload-derived** and stay at their
+      current values — `orders 2000` ≈ 47 days at the busiest location (B1: 42.6
+      orders/day), and customers 5000 / inventory 2000 / staff 500 are generously above
+      real volume (18 staff, ~54 menu items on the test device). Caps flipped from
+      `PROVISIONAL` to derived in [lib/db/entities.ts](lib/db/entities.ts).
+- [x] Boot the app on device and confirm zero behavior change — the device ran the full
+      POS boot (menu, floor plan, employees, terminals) with the local DB open and the
+      delta loop live; no behavior change observed. The Phase 2 shadow runs exercised the
+      same device across several boots.
 - [ ] Capture the `boot.persist_parse_ms.*` ranking across the 31 persisted keys — this is
       what orders any future persistence work, and the ranking may well say "don't bother".
 
 **Build** Add `expo-sqlite`. `lib/db/index.ts`: open, WAL, `synchronous = NORMAL`,
 `foreign_keys = ON`. Full schema per §7 — **including the offline-first columns, inert** (§4.3 ①).
-`lib/db/policy.ts` with `stationKind()` + `canStore()` enforced *inside the single write helper*.
+`lib/db/policy.ts` with `stationKind()` + `canStore()` enforced _inside the single write helper_.
 Descriptor-driven retention pruned in the insert transaction. Teardown wired into
 `clearCacheData()`, `reconcileEnvironmentOnBoot()` and station change. `useLocalFreshness` +
 `<SyncFreshness>`. **Write nothing, read nothing.**
@@ -775,9 +790,234 @@ write boundary, and every Phase 1 measurement has a number.
 
 ---
 
-#### Phase 2 · Delta sync engine *(pull only)*
+#### Phase 2 · Delta sync engine _(pull only)_ — ✅ **WIRED (flag-gated, default off)**
 
 **Flag:** `EXPO_PUBLIC_DELTA_SYNC`
+
+**Status: code complete, 103/103 local-DB tests green, `tsc --noEmit` clean, full suite at
+its known baseline (10 pre-existing failures, unchanged).** Wired into `PosSyncProvider` via
+[hooks/db/useDeltaSync.ts](hooks/db/useDeltaSync.ts) — registers the orders descriptor,
+pulls on a 30 s cycle, manifest reconcile daily. Inert until the flag is set and Phase 3
+read screens exist.
+
+| Delivered                                                      | File                                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------ |
+| The pull cycle, manifest reconcile, cursor helpers             | [lib/db/syncEngine.ts](lib/db/syncEngine.ts)                 |
+| Descriptor contract (`pullDelta` / `pullManifest` / watermark) | [lib/db/entities.ts](lib/db/entities.ts)                     |
+| Orders descriptor — keyset query + row mapping                 | [lib/db/descriptors/orders.ts](lib/db/descriptors/orders.ts) |
+| Realtime through the same write boundary                       | [lib/db/realtimeApply.ts](lib/db/realtimeApply.ts)           |
+| Watermark now advances **inside** the write transaction        | [lib/db/write.ts](lib/db/write.ts)                           |
+| A fake PostgREST that really implements keyset filtering       | [**tests**/db/fakeSupabase.ts](__tests__/db/fakeSupabase.ts) |
+
+**Three things testing found that the plan had wrong or missing:**
+
+1. **`TEXT PRIMARY KEY` permits NULL in SQLite.** Every primary key was nullable, and
+   because NULLs are distinct in a unique index, a malformed server row could have
+   inserted repeatedly as separate NULL-keyed rows. All ten single-column PKs are now
+   `NOT NULL`; schema bumped to v2.
+2. **Voided items must be mirrored, not filtered.** The existing `useOrdersQuery` embed
+   filters `order_items.is_voided = false`. The mirror must NOT: the void _is_ the
+   tombstone (§7.4), and dropping it would make a voided item silently reappear.
+3. **The empty manifest needs a safety valve.** An empty id-list for a window we hold rows
+   in is far more likely to be a broken query, an RLS change or a filtered response than a
+   genuine mass deletion — and the cost of being wrong is wiping real history. The
+   reconcile now refuses to act on it.
+
+**Two properties worth naming, both asserted directly:**
+
+- **The watermark never outruns the data.** The cursor is written in the same transaction
+  as the rows, so a rollback leaves it where it was. Tested twice — once with a write
+  failure, once with a network failure — including the recovery path.
+- **Realtime never advances the cursor.** A broadcast for an order newer than the cursor
+  must not move it, or every order in between is skipped forever. Asserted, along with the
+  proof that the skipped range is still pulled afterwards.
+
+**Verification results (A1 run 2026-08-28):**
+
+**A1 FAILED — and it was the blocking one.** `public.orders` carries **30 indexes and not one
+includes `updated_at`.** The nearest misses:
+
+| Index                                                           | Why it can't serve the delta                                                           |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `idx_orders_location_created_at (location_id, created_at DESC)` | Wrong column, wrong direction                                                          |
+| `idx_orders_sync (last_synced_at, sync_version)`                | Not location-leading, and `last_synced_at` is not the change clock                     |
+| `idx_orders_history_bootstrap`                                  | Partial on terminal statuses — a status transition would vanish from the cursor's view |
+
+Without an index, each 200-row page makes Postgres read **every order at the location** and
+sort it — the delta would have been _more_ expensive than the full fetch it replaces.
+
+→ Fix: [utils/supabase/migrations/sqlite_p2_orders_delta_index.sql](utils/supabase/migrations/sqlite_p2_orders_delta_index.sql)
+adds `(location_id, updated_at, id)`. **Not partial** (the delta must see every status) and
+**`CONCURRENTLY`**, which means it _cannot run inside a transaction block_ — Supabase's
+migration runner wraps files in `BEGIN/COMMIT`, so this one runs manually.
+
+**✅ Applied 2026-08-28 — STAGING ONLY.** Verified present on staging via `pg_indexes`.
+**NOT applied to production** — verified absent there (a live A2 run shows a `Seq Scan` +
+`Sort`). Applying it to prod is a prod write and is **deliberately gated on the operator**
+(no prod writes without sign-off). Until it lands on prod, delta pulls against prod fall
+back to a full scan per page.
+
+**A2 run 2026-08-28 — staging: PASS. Production: BLOCKED (index absent).**
+
+Staging run: `Index Only Scan using idx_orders_location_updated`, **no Sort node**, `Index
+Cond: location_id = …`, ~0.1 ms. Two notes:
+
+- The first sample returned **0 rows** (test location had nothing updated since the chosen
+  watermark) — the plan shape, not the cost. The live run below is the cost sample.
+- The `updated_at` OR predicate lands as a **Filter**, not part of the `Index Cond`. That
+  means the scan starts at the location's first index entry, not at the watermark — fine at
+  small history, wasteful at a location with tens of thousands of old rows. If a future live
+  run at scale shows it costing real time, express the keyset as a row-value comparison
+  `(updated_at, id) > (wm, id)` (RowCompare = a true seek) instead of the PostgREST OR form.
+
+Production live run (busiest location `5afc6641-…`, 24 h window): **`Seq Scan` on `orders` +
+`Sort` (quicksort)**, `Rows Removed by Filter: 4711`, 2.7 ms at ~4.8 k rows. This is exactly
+the A1 failure mode — it only looks cheap because the table is small today. Re-run A2 on
+prod after the index lands (operator-gated) and confirm Index Scan / no Sort.
+
+**A3 — PASS (payments), one item-path gap.** `void_payment` and `adjust_tips_v2` both touch
+the parent `orders` row (and `process_payment_v8`, `close_check`, `reopen_check`,
+`cancel_order`, `send_order_to_kitchen_v1` all do too). The A4 trigger stamps the watermark
+on any of those. Verified by function-body scan, not just regex, for the two flagged RPCs.
+
+Gap found while verifying: **`remove_order_item` does NOT bump the parent order's
+`updated_at`** (it hard-DELETEs the item and calls `recalculate_order_discount`, which only
+touches `order_items`). `add_order_item_v3`'s non-idempotent overload has the same gap.
+`update_order_item_v2` and `void_order_item` DO bump (via `calculate_order_totals_fast` /
+`increment_order_sync_version`). Impact: an item removed from a long-open order stays in the
+mirror until another order-touching op or settlement — active orders are read from Zustand
+(§4.3 ③) and settlement bumps the order, so this is **not a Phase 2/3 blocker**, but it is a
+real convergence gap for the mirror. Follow-up ticket: bump `orders.updated_at` (or call
+`increment_order_sync_version`) at the end of `remove_order_item` and the non-idempotent
+add path.
+
+**A5 — 0 tied rows in 30 days on staging** (staging is low-traffic; the `(updated_at, id)`
+tiebreak is still load-bearing — recheck on prod after the index lands).
+**A6 — PASS**: zero missing promoted columns across `orders`, `order_items`,
+`order_payments`.
+**A7 — PASS**: `order_payments` has no `updated_at`/`created_at`; the parent-touch design
+holds.
+**A8 — PASS**: `order_items` and `order_payments` FKs are **RESTRICT** — an order with items
+or payments cannot be hard-deleted, so the manifest reconcile can stay on business-day
+cadence.
+**A9 — PASS**: zero rows with `updated_at < created_at`.
+
+**Sizing (Section B, production 2026-08-28) — feeds the retention caps:**
+
+- **B1** busiest location: 42.6 orders/day → the 2000-row cap holds **~47 days** of history
+  (second busiest: 22.7/day → ~88 days).
+- **B2** avg 2.54 items/order, p95 7, max 17; avg 0.93 payments.
+- **B3** server-side ≈ 1,457 bytes/order row (with all 30 indexes) — the local mirror is
+  smaller (trimmed payload, only the indexes we build).
+- **B4** peak delta churn 55 orders/min (one burst) — a single 200-row page per 30 s cycle
+  is comfortably above peak.
+
+**A1 also exposed a schema gap the column audit missed:** `order_payments.status` (the
+`payment_status` enum) was never mapped. It is the _authoritative_ payment state — the remote
+revenue index `idx_order_payments_fees_location_period` keys on it, not on the
+`is_voided`/`is_returned`/`is_settled` booleans, which are denormalized and can disagree.
+Added, along with the settlement/refund lineage columns (`terminal_id`,
+`settlement_batch_id`, `parent_payment_id`, `transaction_id`, `split_portion_index`) that
+Phase 6 needs and that arrive free with the row. Schema bumped to v3, and a round-trip test
+now fails loudly if a descriptor ever emits a column the schema lacks — that failure mode is
+otherwise silent, because the atomic write just rolls back and leaves the mirror empty.
+
+One more find worth carrying forward: **`is_order_reportable(status, payment_status)` exists
+server-side** (used by `idx_orders_reportable`). Phase 6 analytics should call that rather
+than inventing its own definition of a countable order.
+
+**A4 PASSED, better than hoped — and then exposed a worse bug than A1.**
+
+The good news first: `update_orders_updated_at` is an **unconditional `BEFORE UPDATE FOR EACH
+ROW`** trigger calling `update_updated_at_column()`. No `WHEN`, no column list — _any_ write
+to an order bumps its watermark. `order_items` has the same. So the delta is **structurally
+safe**, not contingent on ~90 RPCs each remembering to touch `updated_at`. That is the
+strongest possible answer and it downgrades VERIFY-PAYMENT-TOUCH from a gate to a detail
+(see D2).
+
+The bad news: that trigger stamps `now()`, and **in Postgres `now()` is transaction-START
+time, not commit time.** A row's watermark is assigned when its transaction begins but only
+becomes visible when it commits. That loses rows permanently:
+
+```
+10:00:00.000  txn A begins, updates order X   -> X.updated_at = .000
+10:00:00.100  txn B begins, updates order Y   -> Y.updated_at = .100
+10:00:00.150  txn B COMMITS                     (Y visible)
+10:00:00.200  delta pull sees Y, not X. Cursor -> .100
+10:00:00.500  txn A COMMITS                     (X visible)
+10:00:01.000  delta pull: WHERE updated_at > .100
+              X is .000 — never fetched again. Gone.
+```
+
+No retry heals it: the engine correctly believes it read past that instant. The manifest
+reconcile does not help either — it detects deletions, not missed updates. This is worse than
+A1, because A1 was slow and visible while this is silent and permanent.
+
+→ Fix: `WATERMARK_LAG_MS` in [lib/db/syncEngine.ts](lib/db/syncEngine.ts). The cursor settles
+**5 s behind** the newest row seen, so any in-flight transaction has committed before the
+cursor passes its start time. Cost is re-reading the last few seconds each cycle — free,
+because upserts are idempotent and the window is tiny. Mid-backlog the exact row cursor is
+still used (nothing can hide ahead of you when you are an hour behind), and the cursor never
+regresses. A lagged boundary carries no tiebreak id, so `applyKeyset` switches to inclusive
+`gte` there — re-reading the boundary rather than skipping it.
+
+Verified as a real regression test, not a vacuous one: setting `WATERMARK_LAG_MS = 0` makes
+`"does not skip a row that commits late with an earlier timestamp"` fail.
+
+A4 also confirmed **`orders_broadcast_trigger_deferred` fires on `DELETE`**, so hard deletes
+do reach an online device via realtime — `deleteOrderFromRealtime` is a real path, and the
+manifest reconcile only has to cover the offline window.
+
+**Shadow-compare — mechanics verified 2026-08-28 (staging device, location `8835e749-…`).**
+
+On-device run with `EXPO_PUBLIC_DELTA_SYNC=1`. Device: Samsung SM-P613 (low-mid spec).
+Findings, via the dev-only `[LocalDB][shadow]` log (count + window edges):
+
+- **Cold sync**: mirror reached `2000` on a 4,058-order location — the retention cap, and
+  `oldest` (by `created_at`) sat at 2026-05-01, i.e. the newest 2,000 rows, pruned to
+  exactly cap. Retention correct.
+- **Steady state**: count pinned at 2000 across subsequent cycles; no creep, no drops.
+- **Live roll**: creating orders on the store bumped `newest` 13:15:31 → 13:17:05 while
+  `oldest` advanced (May 1 09:22 → 09:30). One mirror reading matched the server row's
+  `updated_at` **byte-for-byte** (13:15:31.887326); the next caught a new order within one
+  30 s cycle. The window rolls with live activity.
+- **The nested-transaction crash is gone**: all writes went through `dbWriteMutex`
+  (added after the first on-device run failed with `cannot start a transaction within a
+transaction`). No write errors in this run.
+
+**Notable bug fixed on the way**: expo-sqlite does not serialize `withTransactionAsync` on
+one connection. Two overlapping transactions (delta cycle + reconcile + effect re-runs)
+failed every mirror write on the first on-device run. Fix: a single FIFO `Mutex`
+(`dbWriteMutex` in [lib/db/write.ts](lib/db/write.ts)) around every transaction —
+`writeBatch`, the manifest-reconcile delete, and the station purge.
+
+**Still outstanding before integration:**
+
+- [x] **Apply the delta index migration** — **staging only** (verified via `pg_indexes`).
+      **Production is operator-gated: no prod writes without sign-off.**
+- [x] **A2 staging** — Index Only Scan on `idx_orders_location_updated`, no Sort, ~0.1 ms.
+- [ ] **A2 production** — blocked: index absent on prod → `Seq Scan` + `Sort`. Re-run after
+      the operator applies the migration (and watch whether the `updated_at` Filter should
+      become a RowCompare Index Cond).
+- [x] **Run A3–A9** — A3 PASS (payments touch the order) + one item-path gap
+      (`remove_order_item` doesn't bump the parent watermark → follow-up ticket); A5 0 ties
+      (staging); A6/A7/A8/A9 PASS. Details above.
+- [x] **VERIFY-PAYMENT-TOUCH** — `void_payment` ✅ and `adjust_tips_v2` ✅ both bump
+      `orders.updated_at` (function-body scan).
+- [x] **Section B sizing (production)** — B1–B4 recorded above; retention caps are now
+      **derived** (device measurement ran 2026-08-28 — details under Phase 1).
+- [ ] **`_business_day` is a naive UTC date** (`TODO(business-day-config)`). The real rule
+      is per-location timezone + rollover hour. Analytics (Phase 6) is the first consumer
+      that cares — wire the config before then.
+- [x] **Wire the sync loop** — [hooks/db/useDeltaSync.ts](hooks/db/useDeltaSync.ts)
+      registers the orders descriptor and pulls on a 30 s cycle behind
+      `EXPO_PUBLIC_DELTA_SYNC`.
+- [x] **Shadow-compare mechanics** — count pinned at cap, window rolls with live orders,
+      mirror `updated_at` matched the server byte-for-byte; no write errors (mutex fix).
+      Recorded above.
+- [ ] **Shadow-compare service-period soak** — leave a staging device running through a
+      full service period and confirm the same stability (count at cap, rolling, no
+      errors) before the Phase 3 flag flips.
 
 **Build** `lib/db/entities.ts` (per-entity descriptors) and `lib/db/syncEngine.ts` — the
 `(watermark, watermark_id)` keyset pull cycle of §8.2, transactional apply, resumable paging,
@@ -808,9 +1048,9 @@ inside the same transaction as the upserts — outside it, one partial failure s
 
 ---
 
-#### Phase 3 · Previous Orders *(the headline, and the selector boundary)*
+#### Phase 3 · Previous Orders _(the headline, and the selector boundary)_
 
-**Flag:** `EXPO_PUBLIC_LOCAL_PREVIOUS_ORDERS` · **Page:** [previous-orders.tsx](app/(main)/previous-orders.tsx)
+**Flag:** `EXPO_PUBLIC_LOCAL_PREVIOUS_ORDERS` · **Page:** [previous-orders.tsx](<app/(main)/previous-orders.tsx>)
 
 **Build** Repoint list, pagination, search and filters at SQL.
 `services/historyOrderFilters.ts` already models filters declaratively via
@@ -835,10 +1075,10 @@ must render from Zustand with the existing `_offlineUnsynced` badge
 
 ---
 
-#### Phase 4 · Menu *(retires two caches, fixes a P1)*
+#### Phase 4 · Menu _(retires two caches, fixes a P1)_
 
-**Flag:** `EXPO_PUBLIC_LOCAL_MENU` · **Pages:** [menu/](app/(main)/menu/),
-[order-processing.tsx](app/(main)/order-processing.tsx), kiosk ordering
+**Flag:** `EXPO_PUBLIC_LOCAL_MENU` · **Pages:** [menu/](<app/(main)/menu/>),
+[order-processing.tsx](<app/(main)/order-processing.tsx>), kiosk ordering
 
 **Build** Mirror the `get_pos_bootstrap_v1` payload into real tables. Image `file://` paths from
 `services/menuImageCache.ts` — **never base64**. `MenuStaleBanner` reads local freshness. Delete
@@ -863,21 +1103,22 @@ banner.
 **Build** Same pattern per page, one flag and one service period each. By now this is repetition,
 which is why they share a phase — but each still ships and soaks independently.
 
-| Page | Flag | Today | Watch for |
-| --- | --- | --- | --- |
-| [inventory/](app/(main)/inventory/) | `…_LOCAL_INVENTORY` | 28 `.from()`, rebuilt every launch | Stock is time-sensitive — `staleAfterMs: 60_000`, not 5 min. Drop the redundant `.from("inventory_items")` at `useInventorySync.ts:57` once delta is trusted |
-| [analytics.tsx](app/(main)/analytics.tsx) + EOD | `…_LOCAL_ANALYTICS` | 13 `.from()`, **dead offline** | **Numbers must match the server dashboard exactly** — run side by side before flipping. Past `retention_floor`, say so: *"Showing the last N orders. Older data needs a connection."* Never silently under-report revenue. EOD preview must match server settlement on **ten consecutive real close-outs**; server stays authoritative |
-| [customers-list.tsx](app/(main)/customers-list.tsx) | `…_LOCAL_CUSTOMERS` | Debounced network type-ahead | Start with `LIKE`; add FTS5 only if measurement demands it |
-| [loyalty/](app/(main)/loyalty/) | `…_LOCAL_LOYALTY` | 15 `.from()` | — |
-| Staff roster — [scheduling/](app/(main)/scheduling/), [open-shifts.tsx](app/(main)/open-shifts.tsx), [pto.tsx](app/(main)/pto.tsx) | `…_LOCAL_STAFF` | Network-only rosters | **Read-only consumers only.** `useEmployeeStore` keeps login, session and PINs. If a change starts touching `pin-login.tsx`, stop — different ticket |
-| [online-orders/](app/(main)/online-orders/) | `…_LOCAL_BOARDS` | Board refetched on entry | Double-render between the local row and the realtime row — key strictly on order id. Preserve `placed_at` business-day scoping (commit `82eb80e7`) |
-| [kds.tsx](app/(main)/kds.tsx) history | `…_LOCAL_KDS_HISTORY` | 50-ticket cap, 1 h window | Retires `KDS_DONE_TICKET_LIMIT` and `_recalledTicketIds` (the persisted, TTL-less Set flagged HIGH in `memory-state-audit.md`) |
+| Page                                                                                                                                     | Flag                  | Today                              | Watch for                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [inventory/](<app/(main)/inventory/>)                                                                                                    | `…_LOCAL_INVENTORY`   | 28 `.from()`, rebuilt every launch | Stock is time-sensitive — `staleAfterMs: 60_000`, not 5 min. Drop the redundant `.from("inventory_items")` at `useInventorySync.ts:57` once delta is trusted                                                                                                                                                                           |
+| [analytics.tsx](<app/(main)/analytics.tsx>) + EOD                                                                                        | `…_LOCAL_ANALYTICS`   | 13 `.from()`, **dead offline**     | **Numbers must match the server dashboard exactly** — run side by side before flipping. Past `retention_floor`, say so: _"Showing the last N orders. Older data needs a connection."_ Never silently under-report revenue. EOD preview must match server settlement on **ten consecutive real close-outs**; server stays authoritative |
+| [customers-list.tsx](<app/(main)/customers-list.tsx>)                                                                                    | `…_LOCAL_CUSTOMERS`   | Debounced network type-ahead       | Start with `LIKE`; add FTS5 only if measurement demands it                                                                                                                                                                                                                                                                             |
+| [loyalty/](<app/(main)/loyalty/>)                                                                                                        | `…_LOCAL_LOYALTY`     | 15 `.from()`                       | —                                                                                                                                                                                                                                                                                                                                      |
+| Staff roster — [scheduling/](<app/(main)/scheduling/>), [open-shifts.tsx](<app/(main)/open-shifts.tsx>), [pto.tsx](<app/(main)/pto.tsx>) | `…_LOCAL_STAFF`       | Network-only rosters               | **Read-only consumers only.** `useEmployeeStore` keeps login, session and PINs. If a change starts touching `pin-login.tsx`, stop — different ticket                                                                                                                                                                                   |
+| [online-orders/](<app/(main)/online-orders/>)                                                                                            | `…_LOCAL_BOARDS`      | Board refetched on entry           | Double-render between the local row and the realtime row — key strictly on order id. Preserve `placed_at` business-day scoping (commit `82eb80e7`)                                                                                                                                                                                     |
+| [kds.tsx](<app/(main)/kds.tsx>) history                                                                                                  | `…_LOCAL_KDS_HISTORY` | 50-ticket cap, 1 h window          | Retires `KDS_DONE_TICKET_LIMIT` and `_recalledTicketIds` (the persisted, TTL-less Set flagged HIGH in `memory-state-audit.md`)                                                                                                                                                                                                         |
 
 **Done when** every read page paints from disk and works offline.
 
 ---
 
 > ### ⎯ The boundary ⎯
+>
 > **Everything above is a cache. Everything below is not.**
 > Before Phase 6 starts: flip `synchronous` to `FULL`, close the drop-and-rebuild escape hatch,
 > and switch to the forward-only migration ladder — one commit, reviewed as a unit (§4.3 ②).
@@ -886,9 +1127,9 @@ which is why they share a phase — but each still ships and soaks independently
 
 ---
 
-### Track B — the write database *(needs the Identity Gate)*
+### Track B — the write database _(needs the Identity Gate)_
 
-#### Phase 6 · Stable identity *(still fully online — no behavior change)*
+#### Phase 6 · Stable identity _(still fully online — no behavior change)_
 
 **Flag:** `EXPO_PUBLIC_CLIENT_IDS` · rollback falls back to `create_order_v3`.
 
@@ -914,12 +1155,12 @@ resolving through the registry until they settle; the registry is deleted only o
 
 ---
 
-#### Phase 7 · The outbox *(first offline writes — order items only)*
+#### Phase 7 · The outbox _(first offline writes — order items only)_
 
 **Flag:** `EXPO_PUBLIC_OFFLINE_WRITES_ITEMS`
 
 **Build** The transactional outbox (§4.1, §8.1). Item add/update/remove writes local-first and
-drains. Order *creation* stays online — narrower blast radius, and creation has the most
+drains. Order _creation_ stays online — narrower blast radius, and creation has the most
 downstream fan-out. Merge rules for the item set only: add-wins union, remove-wins tombstone,
 quantity LWW.
 
@@ -1008,7 +1249,7 @@ These were right and the pivot does not touch them:
   remote, unused by the app, which is most of the schema work for hashing the PIN already done.
   Still out of scope here.
 - **Station scoping.** POS gets everything; kiosk gets the menu; KDS gets tickets. Enforced by
-  `canStore()` at the *write* boundary so an excluded device can never acquire the data. Purge on
+  `canStore()` at the _write_ boundary so an excluded device can never acquire the data. Purge on
   station change.
 - **PII purge paths — all three.** `clearCacheData()`, `reconcileEnvironmentOnBoot()` (the
   staging↔prod switch), and station change. **With one change: the outbox must be drained or
@@ -1019,7 +1260,7 @@ These were right and the pivot does not touch them:
   prune a row with `sync_status != 'synced'`** — retention may only evict data the server already
   has. During Track A every row is synced by definition, so the rule is inert until it isn't.
 - **Freshness UI.** `useLocalFreshness` + `<SyncFreshness>`, per-entity thresholds. Offline-first
-  makes this *more* important: the operator must be able to tell "saved here, not yet sent" from
+  makes this _more_ important: the operator must be able to tell "saved here, not yet sent" from
   "saved everywhere."
 - **Migrations.** Forward-only `PRAGMA user_version` ladder — **from Phase 6 onward.** Through
   Track A the DB is a pure projection, so drop-and-rebuild is legitimate and schema churn is free
@@ -1032,24 +1273,24 @@ These were right and the pivot does not touch them:
 
 ## 12. Risks
 
-| Risk | Mitigation |
-| --- | --- |
-| **The old divergence bug returns** | Its cause was identity instability (§1), removed by Phase 6 and enforced by an immutable-id trigger. Phase 6 ships and soaks *alone*, online-first, before any offline write exists |
-| **The Identity Gate is not met** | **The project stops at Phase 5 and is still a success** — that is the whole reason reads are sequenced first. No Track A work is wasted or rewritten |
-| **Track A work has to be redone for writes** | Offline-first columns ship inert from Phase 1; screens read through a selector API, not the storage layer; the id column holds the same UUID either way (§4.3) |
-| **The boundary is crossed by accident** | `synchronous = FULL` and the migration-ladder switch are one reviewed commit, gating Phase 6. Until it merges, the DB is a cache and behaves like one |
-| **Merge loses an item** | Add-wins union + no-loss property test (§10). A failing seed blocks release |
-| **A void gets undone by a concurrent add** | Remove-wins, backed by the tombstones that already exist on remote — `order_items.is_voided` / `voided_at`, which ride the delta normally (§7.4) |
-| **A hard `DELETE` leaves an orphan row locally** | Manifest reconcile on business-day rollover. Rare by construction: the app voids and deactivates, it does not hard-delete |
-| **Local schema drifts from remote** | Promoted columns keep the exact remote name; local-only columns carry a `_` prefix; money conversion has one tested helper (§7.1). A column with no prefix and no remote counterpart is a review failure |
-| **Wrong prices from re-derived menu resolution** | The menu mirrors the *resolved* `get_pos_bootstrap_v1` output, never the normalized table graph. Price resolution stays server-side, single-implementation (§7.1) |
-| **Clock skew corrupts merges** | Lamport counters decide causality; wall clock is display-only. Explicitly tested with a skewed device |
-| **Local data lost on power failure** | `synchronous = FULL`; transactional outbox; battery-pull test |
-| **Unsent orders wiped by an env switch** | Drain-or-confirm before purge (§11). This is new and it is the most likely way to lose real money |
-| **Order number collisions offline** | Decided before Phase 8: device-prefixed, or provisional-and-visibly-so |
-| **Card payment queued offline** | Structurally impossible — no offline code path exists for auth. Degraded UX states the reason plainly (§6) |
-| **Two-writer complexity lands on the on-call engineer** | Every merge rule is one row in §5, one function, one property test. If a rule cannot be expressed that way, the entity is not ready to be offline-first |
-| **PII / PIN exposure** | Unchanged from §11 |
+| Risk                                                    | Mitigation                                                                                                                                                                                               |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The old divergence bug returns**                      | Its cause was identity instability (§1), removed by Phase 6 and enforced by an immutable-id trigger. Phase 6 ships and soaks _alone_, online-first, before any offline write exists                      |
+| **The Identity Gate is not met**                        | **The project stops at Phase 5 and is still a success** — that is the whole reason reads are sequenced first. No Track A work is wasted or rewritten                                                     |
+| **Track A work has to be redone for writes**            | Offline-first columns ship inert from Phase 1; screens read through a selector API, not the storage layer; the id column holds the same UUID either way (§4.3)                                           |
+| **The boundary is crossed by accident**                 | `synchronous = FULL` and the migration-ladder switch are one reviewed commit, gating Phase 6. Until it merges, the DB is a cache and behaves like one                                                    |
+| **Merge loses an item**                                 | Add-wins union + no-loss property test (§10). A failing seed blocks release                                                                                                                              |
+| **A void gets undone by a concurrent add**              | Remove-wins, backed by the tombstones that already exist on remote — `order_items.is_voided` / `voided_at`, which ride the delta normally (§7.4)                                                         |
+| **A hard `DELETE` leaves an orphan row locally**        | Manifest reconcile on business-day rollover. Rare by construction: the app voids and deactivates, it does not hard-delete                                                                                |
+| **Local schema drifts from remote**                     | Promoted columns keep the exact remote name; local-only columns carry a `_` prefix; money conversion has one tested helper (§7.1). A column with no prefix and no remote counterpart is a review failure |
+| **Wrong prices from re-derived menu resolution**        | The menu mirrors the _resolved_ `get_pos_bootstrap_v1` output, never the normalized table graph. Price resolution stays server-side, single-implementation (§7.1)                                        |
+| **Clock skew corrupts merges**                          | Lamport counters decide causality; wall clock is display-only. Explicitly tested with a skewed device                                                                                                    |
+| **Local data lost on power failure**                    | `synchronous = FULL`; transactional outbox; battery-pull test                                                                                                                                            |
+| **Unsent orders wiped by an env switch**                | Drain-or-confirm before purge (§11). This is new and it is the most likely way to lose real money                                                                                                        |
+| **Order number collisions offline**                     | Decided before Phase 8: device-prefixed, or provisional-and-visibly-so                                                                                                                                   |
+| **Card payment queued offline**                         | Structurally impossible — no offline code path exists for auth. Degraded UX states the reason plainly (§6)                                                                                               |
+| **Two-writer complexity lands on the on-call engineer** | Every merge rule is one row in §5, one function, one property test. If a rule cannot be expressed that way, the entity is not ready to be offline-first                                                  |
+| **PII / PIN exposure**                                  | Unchanged from §11                                                                                                                                                                                       |
 
 ---
 

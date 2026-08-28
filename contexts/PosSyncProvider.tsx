@@ -1,8 +1,9 @@
 import { queryClient } from "@/contexts/TanstackProvider";
+import { useDeltaSync } from "@/hooks/db/useDeltaSync";
 import { useAutoSettlementScheduler } from "@/hooks/pos/useAutoSettlementScheduler";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
-import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
+import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { standaloneSyncQueryOptions } from "@/hooks/pos/useStandaloneSync";
@@ -10,89 +11,90 @@ import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDbSizeBytes, initLocalDb } from "@/lib/db/index";
+import { runMeasurementPass } from "@/lib/db/measure";
 import { stationKind } from "@/lib/db/policy";
 import { purgeForbiddenTables } from "@/lib/db/teardown";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import {
-    getBucketKeyCount,
-    getStorageSizeStats,
-    type StorageBucketName,
+  getBucketKeyCount,
+  getStorageSizeStats,
+  type StorageBucketName,
 } from "@/lib/storage";
 import { KEY_DB_SIZE_BYTES } from "@/lib/telemetry/keys";
 import { recordCount } from "@/lib/telemetry/registry";
 import { initLandiPrinter } from "@/native/LandiPrinter";
-import { applyRecipes } from "@/stores/applyRecipes";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
 import { syncEmployees as syncEmployeesService } from "@/services/employeeSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
 import {
-    detectAndStoreCapabilities,
-    startHeartbeat,
-    startStarPrinterHealthCheck,
-    startTerminalHealthCheck,
-    stopHeartbeat,
-    stopStarPrinterHealthCheck,
-    stopTerminalHealthCheck,
+  detectAndStoreCapabilities,
+  startHeartbeat,
+  startStarPrinterHealthCheck,
+  startTerminalHealthCheck,
+  stopHeartbeat,
+  stopStarPrinterHealthCheck,
+  stopTerminalHealthCheck,
 } from "@/services/hardware";
 import { initLocationConfigSync } from "@/services/locationConfigSync";
 import {
-    initializeOfflineSync,
-    isServiceInitialized,
-    setOfflineSyncSupabaseClient,
+  initializeOfflineSync,
+  isServiceInitialized,
+  setOfflineSyncSupabaseClient,
 } from "@/services/offlineSyncInit";
+import { drainPendingFinalizes } from "@/services/pendingFinalize";
 import {
-    startStarPrinterDiscoveryService,
-    stopStarPrinterDiscoveryService,
+  startStarPrinterDiscoveryService,
+  stopStarPrinterDiscoveryService,
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
 import { getDriver } from "@/services/printing/DriverFactory";
-import { drainPendingFinalizes } from "@/services/pendingFinalize";
+import {
+  startAtomLoopbackDetect,
+  stopAtomLoopbackDetect,
+} from "@/services/terminals/atomLoopbackDetector";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import {
+  startCastlesUsbAutoConnect,
+  stopCastlesUsbAutoConnect,
+} from "@/services/terminals/castlesUsbAutoConnect";
 import { getSharedValorService } from "@/services/terminals/valor-service";
 import {
-    startCastlesUsbAutoConnect,
-    stopCastlesUsbAutoConnect,
-} from "@/services/terminals/castlesUsbAutoConnect";
-import {
-    startValorUsbAutoConnect,
-    stopValorUsbAutoConnect,
+  startValorUsbAutoConnect,
+  stopValorUsbAutoConnect,
 } from "@/services/terminals/valorUsbAutoConnect";
 import {
-    startAtomLoopbackDetect,
-    stopAtomLoopbackDetect,
-} from "@/services/terminals/atomLoopbackDetector";
-import {
-    startTimeclockSyncProcessor,
-    stopTimeclockSyncProcessor,
+  startTimeclockSyncProcessor,
+  stopTimeclockSyncProcessor,
 } from "@/services/timeclockSyncProcessor";
+import { applyRecipes } from "@/stores/applyRecipes";
+import { menuOfflineCache } from "@/stores/menuOfflineCache";
 import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
 import {
-    setFloorPlanSupabaseClient,
-    useFloorPlanStore,
+  setFloorPlanSupabaseClient,
+  useFloorPlanStore,
 } from "@/stores/useFloorPlanStore";
-import { menuOfflineCache } from "@/stores/menuOfflineCache";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
-    setOrderStoreSupabaseClient,
-    useOrderStore,
+  setOrderStoreSupabaseClient,
+  useOrderStore,
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { setSeatingSupabaseClient } from "@/stores/useSeatingStore";
 import {
-    SyncableDiningSettings,
-    useSettingsStore,
+  SyncableDiningSettings,
+  useSettingsStore,
 } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
-import {
-  registerResumeTask,
-  registerSuspendTask,
-} from "@/lib/lifecycle/appLifecycleCoordinator";
 import { TaxRate } from "@/types/menu";
 import * as Sentry from "@sentry/react-native";
 import React, { useCallback, useEffect, useRef } from "react";
@@ -175,13 +177,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   useAutoSettlementScheduler({
     enabled: Boolean(
       supabase &&
-        selectedStore?.id &&
-        selectedStore?.merchant_id &&
-        selectedStore?.timezone &&
-        selectedStation?.payment_terminal?.id &&
-        selectedStation?.payment_terminal?.terminal_type === "castles" &&
-        (selectedStation?.payment_terminal?.auto_settle ?? false) &&
-        !isKDS,
+      selectedStore?.id &&
+      selectedStore?.merchant_id &&
+      selectedStore?.timezone &&
+      selectedStation?.payment_terminal?.id &&
+      selectedStation?.payment_terminal?.terminal_type === "castles" &&
+      (selectedStation?.payment_terminal?.auto_settle ?? false) &&
+      !isKDS,
     ),
     supabase,
   });
@@ -631,12 +633,26 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       // Re-provisioned devices (POS -> kiosk) must shed the data the new
       // station kind may not hold. No-ops on a POS.
       await purgeForbiddenTables(kind);
+      // Phase 1 measurement pass — dev-only, self-gated on
+      // EXPO_PUBLIC_DB_MEASURE=1. Seeds realistic rows, measures
+      // bytes-per-row, cleans up, logs the report (lib/db/measure.ts).
+      void runMeasurementPass();
     })();
 
     return () => {
       cancelled = true;
     };
   }, [selectedStation?.station_type]);
+
+  // Track A, Phase 2 — the delta sync loop. Gated behind
+  // EXPO_PUBLIC_DELTA_SYNC (default off). Self-gates per station kind: a KDS
+  // has no syncable entities, so this no-ops there. Runs detached — a failed
+  // background sync must never take down a screen.
+  useDeltaSync({
+    supabase,
+    locationId: selectedStore?.id ?? null,
+    station: stationKind(selectedStation?.station_type),
+  });
 
   // Watermark of the menu currently applied to the store, scoped to the
   // location it came from. Drives the version reconcile below.
@@ -689,7 +705,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => handle.cancel();
-  }, [isKDS, supabase, selectedStore?.merchant_id, selectedStore?.id, posSyncData]);
+  }, [
+    isKDS,
+    supabase,
+    selectedStore?.merchant_id,
+    selectedStore?.id,
+    posSyncData,
+  ]);
 
   // --- SERVICE CHARGE RULES SYNC --- (skip for KDS)
   useServiceChargeRulesSync({
@@ -733,9 +755,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         applied.locationId === locationId &&
         applied.version === incomingVersion
       ) {
-        console.log("[PosSyncProvider] menu version unchanged — skipping rebuild", {
-          version: incomingVersion,
-        });
+        console.log(
+          "[PosSyncProvider] menu version unchanged — skipping rebuild",
+          {
+            version: incomingVersion,
+          },
+        );
 
         // The rebuild is skipped, but a live sync DID land and confirmed the
         // menu on screen is current. `setMenuData` is normally what clears the
@@ -986,18 +1011,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // getQueryState (exact-match).
         shouldRun: () => {
           if (isKDS) return false;
-          const locationId =
-            useStoreSettingsStore.getState().selectedStore?.id;
+          const locationId = useStoreSettingsStore.getState().selectedStore?.id;
           if (!locationId) return false;
           const cached = queryClient.getQueryCache().find({
             queryKey: orderQueryKeys.active(locationId),
             exact: false,
           });
-          return Date.now() - (cached?.state.dataUpdatedAt ?? 0) > 2 * 60 * 1000;
+          return (
+            Date.now() - (cached?.state.dataUpdatedAt ?? 0) > 2 * 60 * 1000
+          );
         },
         run: () => {
-          const locationId =
-            useStoreSettingsStore.getState().selectedStore?.id;
+          const locationId = useStoreSettingsStore.getState().selectedStore?.id;
           if (!locationId) return;
           queryClient.invalidateQueries({
             queryKey: orderQueryKeys.active(locationId),

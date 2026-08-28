@@ -264,3 +264,21 @@ export function bootHydrateKeyIds(name: string): BootHydrateKeyIds {
   }
   return ids;
 }
+
+// ============================================================================
+// Delta sync engine (lib/db/syncEngine.ts) — Track A, Phase 2.
+// ============================================================================
+
+export const KEY_SYNC_CYCLE_MS = internKey("sync.cycle_ms");
+export const KEY_SYNC_PAGES = internKey("sync.pages");
+export const KEY_SYNC_ROWS = internKey("sync.rows");
+export const KEY_SYNC_ERROR = internKey("sync.error");
+/**
+ * The steady-state signal. A healthy POS on a quiet minute should be almost
+ * ALL empty cycles — that is the whole point of a delta. A low ratio of
+ * empty:total cycles means something is bumping updated_at needlessly, or a
+ * watermark is not advancing.
+ */
+export const KEY_SYNC_EMPTY_CYCLE = internKey("sync.empty_cycle");
+export const KEY_SYNC_MANIFEST_MS = internKey("sync.manifest_ms");
+export const KEY_SYNC_MANIFEST_DELETED = internKey("sync.manifest_deleted");

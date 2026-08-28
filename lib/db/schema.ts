@@ -31,7 +31,7 @@
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 3;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -76,7 +76,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   // ORDERS — column names match public.orders exactly.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS orders (
-    id                    TEXT PRIMARY KEY,
+    id                    TEXT PRIMARY KEY NOT NULL,
     location_id           TEXT NOT NULL,
     merchant_id           TEXT,
     order_number          TEXT,
@@ -165,7 +165,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   // ORDER ITEMS — column names match public.order_items exactly.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS order_items (
-    id                    TEXT PRIMARY KEY,
+    id                    TEXT PRIMARY KEY NOT NULL,
     order_id              TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     menu_item_id          TEXT,
     menu_id               TEXT,
@@ -214,11 +214,18 @@ export const SCHEMA_STATEMENTS: string[] = [
   // of their parent order rather than on their own cursor.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS order_payments (
-    id                     TEXT PRIMARY KEY,
+    id                     TEXT PRIMARY KEY NOT NULL,
     order_id               TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     location_id            TEXT,
     device_id              TEXT,
     payment_method         TEXT,
+    -- The AUTHORITATIVE payment state (payment_status enum: pending, captured,
+    -- void, refunded, partially_refunded). The is_* booleans below are
+    -- denormalized conveniences that can disagree with it — remote indexes
+    -- idx_order_payments_status and idx_order_payments_pending both key on
+    -- status, and idx_order_payments_fees_location_period computes revenue
+    -- from it. Anything deciding money reads status, not the booleans.
+    status                 TEXT,
     amount_minor           INTEGER,
     tip_amount_minor       INTEGER,
     amount_tendered_minor  INTEGER,
@@ -234,6 +241,15 @@ export const SCHEMA_STATEMENTS: string[] = [
     auth_code              TEXT,
     covers_items           TEXT,
     idempotency_key        TEXT,
+    -- Settlement / refund lineage. Needed by End of Day and refunds (Phase 6);
+    -- mirrored now because they arrive free with the row and adding them later
+    -- would mean a schema change on a database holding real data.
+    terminal_id            TEXT,
+    payment_device_id      TEXT,
+    settlement_batch_id    TEXT,
+    parent_payment_id      TEXT,
+    transaction_id         TEXT,
+    split_portion_index    INTEGER,
     initiated_at           TEXT,
     approved_at            TEXT,
     captured_at            TEXT,
@@ -241,7 +257,10 @@ export const SCHEMA_STATEMENTS: string[] = [
     voided_at              TEXT,
     payload                TEXT NOT NULL
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_op_order ON order_payments(order_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_op_order  ON order_payments(order_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_op_status ON order_payments(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_op_batch  ON order_payments(settlement_batch_id)
+     WHERE settlement_batch_id IS NOT NULL`,
 
   // ==========================================================================
   // MENU — the RESOLVED shape from get_pos_bootstrap_v1, NOT the remote table
@@ -252,7 +271,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   // resolver, server-side, forever.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS menu_categories (
-    id             TEXT PRIMARY KEY,
+    id             TEXT PRIMARY KEY NOT NULL,
     location_id    TEXT,
     merchant_id    TEXT,
     menu_id        TEXT,
@@ -268,7 +287,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_mc_loc ON menu_categories(location_id, display_order)`,
 
   `CREATE TABLE IF NOT EXISTS menu_items (
-    id               TEXT PRIMARY KEY,
+    id               TEXT PRIMARY KEY NOT NULL,
     location_id      TEXT,
     merchant_id      TEXT,
     menu_id          TEXT,
@@ -295,7 +314,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_mi_avail ON menu_items(location_id, availability)`,
 
   `CREATE TABLE IF NOT EXISTS modifier_groups (
-    id              TEXT PRIMARY KEY,
+    id              TEXT PRIMARY KEY NOT NULL,
     location_id     TEXT,
     name            TEXT,
     updated_at      TEXT,
@@ -315,7 +334,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   // current_stock is a physical quantity, not money: REAL is correct there.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS inventory_items (
-    id                  TEXT PRIMARY KEY,
+    id                  TEXT PRIMARY KEY NOT NULL,
     location_id         TEXT NOT NULL,
     vendor_id           TEXT,
     name                TEXT,
@@ -336,7 +355,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_ii_vendor ON inventory_items(vendor_id)`,
 
   `CREATE TABLE IF NOT EXISTS vendors (
-    id              TEXT PRIMARY KEY,
+    id              TEXT PRIMARY KEY NOT NULL,
     location_id     TEXT NOT NULL,
     name            TEXT,
     is_active       INTEGER NOT NULL DEFAULT 1,
@@ -350,7 +369,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   // CUSTOMERS — names match public.customers exactly.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS customers (
-    id                   TEXT PRIMARY KEY,
+    id                   TEXT PRIMARY KEY NOT NULL,
     merchant_id          TEXT,
     name                 TEXT,
     phone                TEXT,
@@ -383,7 +402,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   // to put it. See __tests__/db/schema.test.ts, which fails if this changes.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS staff (
-    location_member_id TEXT PRIMARY KEY,
+    location_member_id TEXT PRIMARY KEY NOT NULL,
     staff_profile_id   TEXT NOT NULL,
     location_id        TEXT NOT NULL,
     role_code          TEXT,

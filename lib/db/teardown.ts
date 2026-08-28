@@ -29,6 +29,7 @@
 import { destroyLocalDb, getDb, initLocalDb } from "@/lib/db/index";
 import { forbiddenTables, type StationKind } from "@/lib/db/policy";
 import type { PurgeReason } from "@/lib/db/purgeFlag";
+import { dbWriteMutex } from "@/lib/db/write";
 import {
   KEY_DB_PURGE_CACHE,
   KEY_DB_PURGE_ENV,
@@ -72,19 +73,21 @@ export async function purgeForbiddenTables(
   recordCount(KEY_DB_PURGE_STATION);
   let dropped = 0;
   try {
-    await db.withTransactionAsync(async () => {
-      for (const table of tables) {
-        // DELETE, not DROP: the schema stays intact so a device re-provisioned
-        // back to POS does not need a rebuild, and so the CREATE IF NOT EXISTS
-        // on next boot has nothing to repair.
-        await db.runAsync(`DELETE FROM ${table}`);
-        dropped += 1;
-      }
-      // sync_state rows for now-forbidden entities must go too, or the delta
-      // engine would resume from a stale watermark if the station flips back.
-      await db.runAsync(
-        `DELETE FROM sync_state WHERE entity NOT IN ('menu')`,
-      );
+    await dbWriteMutex.runExclusive(async () => {
+      await db.withTransactionAsync(async () => {
+        for (const table of tables) {
+          // DELETE, not DROP: the schema stays intact so a device re-provisioned
+          // back to POS does not need a rebuild, and so the CREATE IF NOT EXISTS
+          // on next boot has nothing to repair.
+          await db.runAsync(`DELETE FROM ${table}`);
+          dropped += 1;
+        }
+        // sync_state rows for now-forbidden entities must go too, or the delta
+        // engine would resume from a stale watermark if the station flips back.
+        await db.runAsync(
+          `DELETE FROM sync_state WHERE entity NOT IN ('menu')`,
+        );
+      });
     });
   } catch (error) {
     console.warn("[LocalDB] station purge failed:", error);
