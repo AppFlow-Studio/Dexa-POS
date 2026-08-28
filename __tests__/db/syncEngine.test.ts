@@ -585,6 +585,25 @@ describe("manifest reconcile — hard deletes", () => {
     );
     expect(row?.last_manifest_at).toBeTruthy();
   });
+
+  it("does not orphan rows beyond PostgREST's 1000-row response cap", async () => {
+    // The un-paginated manifest returned only the first ~1000 ids, and the
+    // reconcile then DELETED every local row beyond that as an "orphan".
+    // This is the exact bug that emptied a live mirror to ~2600 of ~4000.
+    server.rows = Array.from({ length: 1050 }, (_, i) =>
+      serverOrder(`o${String(i + 1).padStart(4, "0")}`, isoAt(i + 1)),
+    );
+    await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION);
+    expect(await countOrders()).toBe(1050);
+
+    const result = await reconcileManifest(
+      ENTITIES.orders,
+      supabase(),
+      LOCATION,
+    );
+    expect(result.deleted).toBe(0);
+    expect(await countOrders()).toBe(1050);
+  });
 });
 
 describe("resetCursor", () => {

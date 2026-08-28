@@ -16,7 +16,6 @@
  *     ride the delta; pullManifest covers the genuine DELETE.
  */
 import type { PostgrestFilterBuilder } from "@supabase/postgrest-js";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   registerEntityQueries,
@@ -32,6 +31,16 @@ import type { Row } from "@/lib/db/write";
  * tombstone that makes remove-wins work, and the mirror wants the truth. The
  * partial index (`WHERE is_voided IS NOT 1`) keeps them out of the hot query
  * instead.
+ *
+ * The trailing embeds + columns (order_discounts, stations, created_by_staff,
+ * online_orders, delivery_platform, metadata) mirror the Previous Orders
+ * history query in services/orderService.ts. They ride in the verbatim
+ * `payload` so the LOCAL render path (normalizeFetchedOrder in
+ * utils/orderTransformers.ts) produces IDENTICAL output to the server path:
+ * server name, station name, online identity, platform and discounts.
+ * If one side adds a field the other must too, or local rows diverge — e.g.
+ * the server column rendering "Unknown" or a raw staff id because the
+ * created_by_staff join never made it into the mirror payload.
  */
 const ORDER_SELECT = `
   id, location_id, merchant_id, order_number, display_number,
@@ -47,8 +56,13 @@ const ORDER_SELECT = `
   voided_at, void_reason, voided_by, cancelled_at, cancellation_reason,
   sent_to_kitchen_at, ready_at, completed_at,
   is_offline, reopen_count, created_at, updated_at, sync_version,
+  delivery_platform, metadata,
   order_items(*),
-  order_payments(*)
+  order_payments(*),
+  order_discounts(*),
+  stations (station_name),
+  created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name),
+  online_orders:online_orders!online_orders_order_id_fkey (order_id, provider, delivery_company)
 `;
 
 /**
@@ -322,14 +336,28 @@ export async function pullOrdersDelta(ctx: PullContext): Promise<DeltaPage> {
 export async function pullOrdersManifest(
   ctx: ManifestContext,
 ): Promise<string[]> {
-  const { data, error } = await ctx.supabase
-    .from("orders")
-    .select("id")
-    .eq("location_id", ctx.locationId)
-    .gte("created_at", ctx.since);
+  // PostgREST caps a response at 1000 rows by default. WITHOUT pagination this
+  // function silently returned only the first ~1000 ids — and the reconcile
+  // then treated every local row beyond that as an "orphan" and DELETED real
+  // history. Page through ALL ids, ordered, so the manifest is complete.
+  const ids: string[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    if (ctx.signal?.aborted) break;
+    const { data, error } = await ctx.supabase
+      .from("orders")
+      .select("id")
+      .eq("location_id", ctx.locationId)
+      .gte("created_at", ctx.since)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
 
-  if (error) throw error;
-  return (data ?? []).map((r: { id: string }) => r.id);
+    if (error) throw error;
+    const rows = data ?? [];
+    ids.push(...rows.map((r: { id: string }) => r.id));
+    if (rows.length < PAGE) break;
+  }
+  return ids;
 }
 
 export function registerOrdersDescriptor(): void {

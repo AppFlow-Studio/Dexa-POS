@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getEntity } from "@/lib/db/entities";
 import { getDb, isLocalDbReady } from "@/lib/db/index";
+import { dbWriteMutex } from "@/lib/db/mutex";
 
 export type FreshnessState =
   | "live" // revalidated < 30s ago, online — say nothing
@@ -80,10 +81,14 @@ export function useLocalFreshness(
     const db = getDb();
     if (!db) return;
     try {
-      const result = await db.getFirstAsync<SyncStateRow>(
-        `SELECT last_success_at, last_attempt_at, last_error, retention_floor, row_count
-           FROM sync_state WHERE entity = ? AND location_id = ?`,
-        [entityName, locationId],
+      // Through the shared mutex: a freshness read stepping on the connection
+      // during a mirror transaction throws "database is locked" on the write.
+      const result = await dbWriteMutex.runExclusive(() =>
+        db.getFirstAsync<SyncStateRow>(
+          `SELECT last_success_at, last_attempt_at, last_error, retention_floor, row_count
+             FROM sync_state WHERE entity = ? AND location_id = ?`,
+          [entityName, locationId],
+        ),
       );
       if (mounted.current) setRow(result ?? null);
     } catch {

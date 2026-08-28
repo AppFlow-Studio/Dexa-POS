@@ -28,10 +28,16 @@
  * Bump to force a drop-and-rebuild on next boot. Legitimate for the whole of
  * Track A: every row is refetchable from the server.
  *
+ * v6 (2026-08-28): orders payload gains the server-history embeds
+ * (created_by_staff, stations, online_orders, order_discounts) plus
+ * delivery_platform / metadata, so local Previous Orders renders identically
+ * to the server path. Existing payloads lack them, so a rebuild re-pulls every
+ * order with the new shape.
+ *
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 6;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -69,6 +75,12 @@ export const PRAGMAS = [
   "PRAGMA journal_mode = WAL",
   "PRAGMA foreign_keys = ON",
   "PRAGMA synchronous = NORMAL",
+  // Without this, SQLite's busy handler is a no-op and ANY transient lock —
+  // a checkpoint, a concurrent writer on the same connection — fails the
+  // statement instantly with "database is locked". The app has background
+  // writers (delta sync, measurement, manifest), so a 5s wait turns those
+  // transient conflicts into a delay instead of a dropped write.
+  "PRAGMA busy_timeout = 5000",
 ] as const;
 
 export const SCHEMA_STATEMENTS: string[] = [

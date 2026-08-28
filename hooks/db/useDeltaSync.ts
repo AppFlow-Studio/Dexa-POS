@@ -22,6 +22,8 @@ import { syncableEntities } from "@/lib/db/entities";
 import { getDb, isLocalDbReady } from "@/lib/db/index";
 import type { StationKind } from "@/lib/db/policy";
 import { reconcileManifest, syncEntity } from "@/lib/db/syncEngine";
+import { dbWriteMutex } from "@/lib/db/write";
+import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 
 const DELTA_SYNC_ENABLED = process.env.EXPO_PUBLIC_DELTA_SYNC === "1";
 
@@ -51,10 +53,12 @@ async function manifestDue(
   const db = getDb();
   if (!db) return false;
   try {
-    const row = await db.getFirstAsync<{ last_manifest_at: string | null }>(
-      `SELECT last_manifest_at FROM sync_state
+    const row = await dbWriteMutex.runExclusive(() =>
+      db.getFirstAsync<{ last_manifest_at: string | null }>(
+        `SELECT last_manifest_at FROM sync_state
         WHERE entity = ? AND location_id = ?`,
-      [entityName, locationId],
+        [entityName, locationId],
+      ),
     );
     if (!row?.last_manifest_at) return true; // never run before
     return (
@@ -114,40 +118,66 @@ export function useDeltaSync(opts: {
     const controller = new AbortController();
     const { signal } = controller;
 
+    // A cycle that outlives the interval (cold sync of a large window) must
+    // not overlap the next one: two concurrent cycles read/write the cursor
+    // and the DB mutex interleaves them into a slow, racy crawl. One at a time.
+    let cycleRunning = false;
     const runCycle = async (): Promise<void> => {
-      if (!(await waitForDbReady(signal))) return;
-      for (const entity of entities) {
-        await syncEntity(entity, station, supabase, locationId, { signal });
-      }
-      // Shadow-compare (Phase 2 "Done when"): dev-only log of mirror row
-      // counts + window edges, compared against the server. Count alone can't
-      // prove a roll — the edges show the window actually advanced. Never fatal.
-      if (__DEV__) {
-        const db = getDb();
-        if (!db) return;
+      if (cycleRunning) return;
+      cycleRunning = true;
+      // Surface the cold sync to the UI (release builds strip the dev logs):
+      // "Syncing order history for the first time…" needs a real in-progress
+      // signal, not a freshness heuristic.
+      useLocalDbSyncStore.getState().setSyncing(true);
+      let ran = false;
+      try {
+        if (!(await waitForDbReady(signal))) return;
+        ran = true;
         for (const entity of entities) {
-          try {
-            const row = await db.getFirstAsync<{ n: number }>(
-              `SELECT COUNT(*) AS n FROM ${entity.table} WHERE location_id = ?`,
-              [locationId],
-            );
-            const edges = await db.getFirstAsync<{
-              oldestRetained: string | null;
-              newestSeen: string | null;
-            }>(
-              `SELECT MIN(created_at) AS oldestRetained, MAX(updated_at) AS newestSeen
-                 FROM ${entity.table} WHERE location_id = ?`,
-              [locationId],
-            );
-            console.log(
-              `[LocalDB][shadow] ${entity.name} mirror=${row?.n ?? "?"}` +
-                ` oldest=${edges?.oldestRetained ?? "?"}` +
-                ` newest=${edges?.newestSeen ?? "?"}`,
-            );
-          } catch {
-            // the log must never take down the cycle
+          await syncEntity(entity, station, supabase, locationId, {
+            signal,
+          });
+        }
+        // Shadow-compare (Phase 2 "Done when"): dev-only log of mirror row
+        // counts + window edges, compared against the server. Count alone can't
+        // prove a roll — the edges show the window actually advanced. Never fatal.
+        if (__DEV__) {
+          const db = getDb();
+          if (!db) return;
+          for (const entity of entities) {
+            try {
+              const [row, edges] = await dbWriteMutex.runExclusive(async () => {
+                const countRow = await db.getFirstAsync<{ n: number }>(
+                  `SELECT COUNT(*) AS n FROM ${entity.table} WHERE location_id = ?`,
+                  [locationId],
+                );
+                const edgeRow = await db.getFirstAsync<{
+                  oldestRetained: string | null;
+                  newestSeen: string | null;
+                }>(
+                  `SELECT MIN(created_at) AS oldestRetained, MAX(updated_at) AS newestSeen
+                   FROM ${entity.table} WHERE location_id = ?`,
+                  [locationId],
+                );
+                return [countRow, edgeRow] as const;
+              });
+              console.log(
+                `[LocalDB][shadow] ${entity.name} mirror=${row?.n ?? "?"}` +
+                  ` oldest=${edges?.oldestRetained ?? "?"}` +
+                  ` newest=${edges?.newestSeen ?? "?"}`,
+              );
+            } catch {
+              // the log must never take down the cycle
+            }
           }
         }
+      } finally {
+        cycleRunning = false;
+        useLocalDbSyncStore.getState().setSyncing(false);
+        // Only a cycle that actually reached the DB (and any entity loop) counts
+        // as "completed" — a DB that never became ready must keep the first-sync
+        // banner up rather than hide it.
+        if (ran) useLocalDbSyncStore.getState().markCycleComplete();
       }
     };
 

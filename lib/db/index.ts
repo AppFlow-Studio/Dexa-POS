@@ -14,10 +14,8 @@
  */
 import * as SQLite from "expo-sqlite";
 
-import {
-  DB_PURGE_PENDING_KEY,
-  type PurgeReason,
-} from "@/lib/db/purgeFlag";
+import { dbWriteMutex } from "@/lib/db/mutex";
+import { DB_PURGE_PENDING_KEY, type PurgeReason } from "@/lib/db/purgeFlag";
 import {
   DROP_STATEMENTS,
   PRAGMAS,
@@ -25,12 +23,12 @@ import {
   SCHEMA_STATEMENTS,
   SCHEMA_VERSION,
 } from "@/lib/db/schema";
+import { getSyncString, removeSyncKey } from "@/lib/storage";
 import {
   KEY_DB_INIT_ERROR,
   KEY_DB_INIT_MS,
   KEY_DB_REBUILD,
 } from "@/lib/telemetry/keys";
-import { getSyncString, removeSyncKey } from "@/lib/storage";
 import { recordCount, recordSample } from "@/lib/telemetry/registry";
 
 export const DB_NAME = "dexa-local.db";
@@ -46,8 +44,7 @@ export const DB_NAME = "dexa-local.db";
 function consumePurgePending(): PurgeReason | null {
   try {
     const reason = getSyncString(DB_PURGE_PENDING_KEY) as
-      | PurgeReason
-      | undefined;
+      PurgeReason | undefined;
     if (!reason) return null;
     removeSyncKey(DB_PURGE_PENDING_KEY);
     return reason;
@@ -100,6 +97,20 @@ export function initLocalDb(): Promise<SQLite.SQLiteDatabase | null> {
       // which execAsync tolerates and runAsync does not.
       for (const pragma of PRAGMAS) {
         await handle.execAsync(pragma);
+      }
+
+      // Diagnostic: confirm busy_timeout actually took effect — "database is
+      // locked" failures that persist despite the pragma mean a stale bundle
+      // or a lock held longer than the timeout, and this tells them apart.
+      try {
+        const bt = await handle.getFirstAsync<{ busy_timeout: number }>(
+          "PRAGMA busy_timeout",
+        );
+        console.log(
+          `[LocalDB] open ok — busy_timeout=${bt?.busy_timeout ?? "?"}ms schema=v${SCHEMA_VERSION}`,
+        );
+      } catch {
+        // non-fatal
       }
 
       await applySchema(handle);
@@ -190,15 +201,18 @@ async function execAll(
  */
 export async function getDbSizeBytes(): Promise<number | null> {
   if (!db) return null;
+  const handle = db;
   try {
-    const pageCount = await db.getFirstAsync<{ page_count: number }>(
-      "PRAGMA page_count",
-    );
-    const pageSize = await db.getFirstAsync<{ page_size: number }>(
-      "PRAGMA page_size",
-    );
-    if (!pageCount || !pageSize) return null;
-    return pageCount.page_count * pageSize.page_size;
+    return await dbWriteMutex.runExclusive(async () => {
+      const pageCount = await handle.getFirstAsync<{ page_count: number }>(
+        "PRAGMA page_count",
+      );
+      const pageSize = await handle.getFirstAsync<{ page_size: number }>(
+        "PRAGMA page_size",
+      );
+      if (!pageCount || !pageSize) return null;
+      return pageCount.page_count * pageSize.page_size;
+    });
   } catch {
     return null;
   }
@@ -208,17 +222,20 @@ export async function getDbSizeBytes(): Promise<number | null> {
 export async function getTableRowCounts(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   if (!db) return out;
+  const handle = db;
   const { TABLES } = await import("@/lib/db/schema");
-  for (const table of TABLES) {
-    try {
-      const row = await db.getFirstAsync<{ n: number }>(
-        `SELECT COUNT(*) AS n FROM ${table}`,
-      );
-      out[table] = row?.n ?? 0;
-    } catch {
-      out[table] = -1;
+  await dbWriteMutex.runExclusive(async () => {
+    for (const table of TABLES) {
+      try {
+        const row = await handle.getFirstAsync<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM ${table}`,
+        );
+        out[table] = row?.n ?? 0;
+      } catch {
+        out[table] = -1;
+      }
     }
-  }
+  });
   return out;
 }
 

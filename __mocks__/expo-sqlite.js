@@ -69,6 +69,30 @@ function wrap(raw, name) {
       }
     },
 
+    /**
+     * Exclusive transaction — passes a txn handle whose statements run inside
+     * the BEGIN/COMMIT, mirroring expo-sqlite's `withExclusiveTransactionAsync`.
+     */
+    async withExclusiveTransactionAsync(fn) {
+      raw.exec("BEGIN");
+      try {
+        const txn = {
+          runAsync: this.runAsync.bind(this),
+          getAllAsync: this.getAllAsync.bind(this),
+          getFirstAsync: this.getFirstAsync.bind(this),
+        };
+        await fn(txn);
+        raw.exec("COMMIT");
+      } catch (error) {
+        try {
+          raw.exec("ROLLBACK");
+        } catch {
+          /* already rolled back */
+        }
+        throw error;
+      }
+    },
+
     async closeAsync() {
       try {
         raw.close();

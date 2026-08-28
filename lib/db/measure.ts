@@ -70,6 +70,9 @@ export async function measureTable(
     .map((c) => `"${c}"`)
     .join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`;
 
+  // Runs inside dbWriteMutex from runMeasurementPass(). Single-connection
+  // transaction (same reasoning as write.ts — the exclusive variant opens a
+  // second connection that lacks busy_timeout).
   await db.withTransactionAsync(async () => {
     for (const row of rows) {
       await db.runAsync(
@@ -686,10 +689,12 @@ export async function runMeasurementPass(): Promise<MirrorSizeReport | null> {
   const db = getDb();
   if (db) {
     try {
-      const real = await db.getFirstAsync<{
-        bytes: number | null;
-        n: number | null;
-      }>(`SELECT SUM(length(payload)) AS bytes, COUNT(*) AS n FROM orders`);
+      const real = await dbWriteMutex.runExclusive(() =>
+        db.getFirstAsync<{
+          bytes: number | null;
+          n: number | null;
+        }>(`SELECT SUM(length(payload)) AS bytes, COUNT(*) AS n FROM orders`),
+      );
       if (real?.n && real.n > 0 && real.bytes) {
         const perRow = Math.round(real.bytes / real.n);
         const idx = report.samples.findIndex((s) => s.table === "orders");

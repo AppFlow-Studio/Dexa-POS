@@ -159,13 +159,15 @@ export async function readCursor(
   const db = getDb();
   if (!db) return { watermark: null, watermarkId: null };
   try {
-    const row = await db.getFirstAsync<{
-      watermark: string | null;
-      watermark_id: string | null;
-    }>(
-      `SELECT watermark, watermark_id FROM sync_state
+    const row = await dbWriteMutex.runExclusive(() =>
+      db.getFirstAsync<{
+        watermark: string | null;
+        watermark_id: string | null;
+      }>(
+        `SELECT watermark, watermark_id FROM sync_state
         WHERE entity = ? AND location_id = ?`,
-      [entityName, locationId],
+        [entityName, locationId],
+      ),
     );
     return {
       watermark: row?.watermark ?? null,
@@ -183,9 +185,11 @@ export async function readRetentionFloor(
   const db = getDb();
   if (!db) return null;
   try {
-    const row = await db.getFirstAsync<{ retention_floor: string | null }>(
-      `SELECT retention_floor FROM sync_state WHERE entity = ? AND location_id = ?`,
-      [entityName, locationId],
+    const row = await dbWriteMutex.runExclusive(() =>
+      db.getFirstAsync<{ retention_floor: string | null }>(
+        `SELECT retention_floor FROM sync_state WHERE entity = ? AND location_id = ?`,
+        [entityName, locationId],
+      ),
     );
     return row?.retention_floor ?? null;
   } catch {
@@ -201,9 +205,11 @@ export async function readRetentionCap(
   const db = getDb();
   if (!db) return null;
   try {
-    const row = await db.getFirstAsync<{ retention_cap: number | null }>(
-      `SELECT retention_cap FROM sync_state WHERE entity = ? AND location_id = ?`,
-      [entityName, locationId],
+    const row = await dbWriteMutex.runExclusive(() =>
+      db.getFirstAsync<{ retention_cap: number | null }>(
+        `SELECT retention_cap FROM sync_state WHERE entity = ? AND location_id = ?`,
+        [entityName, locationId],
+      ),
     );
     return row?.retention_cap ?? null;
   } catch {
@@ -406,16 +412,21 @@ export async function reconcileManifest(
 
     // An empty manifest for a window we hold rows in is far more likely to be
     // a failed/filtered query than a genuine mass deletion. Refuse it — the
-    // cost of being wrong here is wiping real history.
+    // cost of being wrong here is wiping real history. (The un-paginated
+    // manifest used to return only ~1000 of 4000 ids; that bug is fixed in
+    // pullOrdersManifest, so a manifest SMALLER than the local window is now
+    // a genuine server-side deletion, not a capped response.)
     if (serverIds.length === 0) {
       return { deleted: 0, error: null };
     }
 
     const serverSet = new Set(serverIds);
-    const localRows = await db.getAllAsync<{ id: string }>(
-      `SELECT "${entity.primaryKey}" AS id FROM ${entity.table}
+    const localRows = await dbWriteMutex.runExclusive(() =>
+      db.getAllAsync<{ id: string }>(
+        `SELECT "${entity.primaryKey}" AS id FROM ${entity.table}
         WHERE location_id = ? AND "${entity.retention.pruneBy}" >= ?`,
-      [locationId, floor],
+        [locationId, floor],
+      ),
     );
 
     const orphans = localRows
@@ -427,6 +438,9 @@ export async function reconcileManifest(
     }
 
     await dbWriteMutex.runExclusive(async () => {
+      // Same single-connection transaction as writeBatch — see write.ts for
+      // why withExclusiveTransactionAsync is NOT used (second connection,
+      // no busy_timeout -> "database is locked").
       await db.withTransactionAsync(async () => {
         // Chunked: SQLite caps bound parameters (999 by default), and an orphan
         // list can exceed that after a long offline stretch.
@@ -457,13 +471,19 @@ async function touchManifestTimestamp(
 ): Promise<void> {
   const db = getDb();
   if (!db) return;
-  await db.runAsync(
-    `INSERT INTO sync_state (entity, location_id, last_manifest_at)
+  try {
+    await dbWriteMutex.runExclusive(() =>
+      db.runAsync(
+        `INSERT INTO sync_state (entity, location_id, last_manifest_at)
      VALUES (?, ?, ?)
      ON CONFLICT(entity, location_id) DO UPDATE SET
        last_manifest_at = excluded.last_manifest_at`,
-    [entity.name, locationId, new Date().toISOString()],
-  );
+        [entity.name, locationId, new Date().toISOString()],
+      ),
+    );
+  } catch {
+    // non-fatal bookkeeping
+  }
 }
 
 /**
@@ -478,9 +498,15 @@ export async function resetCursor(
 ): Promise<void> {
   const db = getDb();
   if (!db) return;
-  await db.runAsync(
-    `UPDATE sync_state SET watermark = NULL, watermark_id = NULL
+  try {
+    await dbWriteMutex.runExclusive(() =>
+      db.runAsync(
+        `UPDATE sync_state SET watermark = NULL, watermark_id = NULL
       WHERE entity = ? AND location_id = ?`,
-    [entityName, locationId],
-  );
+        [entityName, locationId],
+      ),
+    );
+  } catch {
+    // non-fatal
+  }
 }

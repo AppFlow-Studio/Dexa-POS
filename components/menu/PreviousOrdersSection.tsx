@@ -1,5 +1,5 @@
 import OrdersSelectDropdown, {
-    ActiveFilterPill,
+  ActiveFilterPill,
 } from "@/components/previous-orders/OrdersSelectDropdown";
 import PaginationBar from "@/components/previous-orders/PaginationBar";
 import ProviderChipRow from "@/components/previous-orders/ProviderChipRow";
@@ -7,19 +7,18 @@ import { useHistoryFilterControls } from "@/hooks/pos/useHistoryFilterControls";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 // Sort is driven by the table's column headers here (not a dropdown), so only
 // the status options are needed.
-import {
-    STATUS_OPTIONS,
-    type ChannelTab,
-    type SortKey,
-} from "@/lib/previousOrdersFilters";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { iosOnly } from "@/lib/safeAnimations";
+import {
+  STATUS_OPTIONS,
+  type ChannelTab,
+  type SortKey,
+} from "@/lib/previousOrdersFilters";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import {
-    DEFAULT_HISTORY_FILTERS,
-    historyFilterKey,
+  DEFAULT_HISTORY_FILTERS,
+  historyFilterKey,
 } from "@/services/historyOrderFilters";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -28,13 +27,13 @@ import { useFocusEffect } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    Pressable,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Pressable,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+
 import { useShallow } from "zustand/react/shallow";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 import DatePillRow, { type DatePillDef } from "./DatePillRow";
@@ -169,7 +168,7 @@ const PreviousOrdersSection = () => {
   // top of every date window (it has no backend row yet, so it bypassed the
   // date filter). It now appears here only once it syncs and a fetch/broadcast
   // surfaces it.
-  const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
+  const { previousOrders } = usePreviousOrdersStore();
   const { rawIsOnline } = useNetworkStatus();
 
   // OFFLINE ONLY: the backend is unreachable, so previousOrders can't refresh.
@@ -278,7 +277,6 @@ const PreviousOrdersSection = () => {
         usePreviousOrdersStore.setState({
           previousOrders: [],
           _orderLookup: {},
-          newOrdersCount: 0,
           _isRefreshing: false,
           _currentOffset: 0,
           _hasMore: false,
@@ -632,39 +630,6 @@ const PreviousOrdersSection = () => {
             ) : null
           }
         />
-
-        {/* New Orders Banner - Floating */}
-        {newOrdersCount > 0 && (
-          <Animated.View
-            entering={iosOnly(FadeIn.duration(200))}
-            exiting={iosOnly(FadeOut.duration(200))}
-            className="absolute top-4 left-0 right-0 items-center z-10"
-            pointerEvents="box-none"
-          >
-            <TouchableOpacity
-              onPress={() => void handleRefresh()}
-              activeOpacity={0.8}
-              className="flex-row items-center gap-2 px-4 py-2.5 rounded-full"
-              style={{
-                backgroundColor: colors.teal,
-                shadowColor: colors.teal,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 8,
-              }}
-            >
-              <RefreshCw size={s(13)} color={colors.onSolid} />
-              <Text
-                className="text-xs font-semibold"
-                style={{ color: colors.onSolid }}
-              >
-                {newOrdersCount} new order{newOrdersCount > 1 ? "s" : ""} — tap
-                to refresh
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
       </View>
 
       {/* Modals */}

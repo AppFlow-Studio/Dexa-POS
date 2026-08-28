@@ -24,6 +24,7 @@
 import { mapOrdersToBatch } from "@/lib/db/descriptors/orders";
 import { getEntity } from "@/lib/db/entities";
 import { getDb, isLocalDbReady } from "@/lib/db/index";
+import { dbWriteMutex } from "@/lib/db/mutex";
 import type { StationKind } from "@/lib/db/policy";
 import { writeBatch } from "@/lib/db/write";
 
@@ -45,7 +46,8 @@ export async function applyOrdersFromRealtime(
   locationId: string,
 ): Promise<RealtimeApplyResult> {
   if (!isLocalDbReady()) return { applied: 0, skipped: true, reason: "db" };
-  if (orders.length === 0) return { applied: 0, skipped: true, reason: "empty" };
+  if (orders.length === 0)
+    return { applied: 0, skipped: true, reason: "empty" };
 
   const entity = getEntity("orders");
   if (!entity) return { applied: 0, skipped: true, reason: "no descriptor" };
@@ -63,15 +65,59 @@ export async function applyOrdersFromRealtime(
     return { applied: 0, skipped: true, reason: "unusable payload" };
   }
 
-  const batch = mapOrdersToBatch(
-    usable as any,
-    new Date().toISOString(),
-  );
+  const batch = mapOrdersToBatch(usable as any, new Date().toISOString());
 
   // NOTE the absent watermark argument. See the module header.
   const result = await writeBatch(entity, station, locationId, batch);
 
   return { applied: result.written, skipped: !result.committed };
+}
+
+/**
+ * Realtime → mirror, NEW rows only.
+ *
+ * The LATENCY half of the mirror update: a broadcast for an order the mirror
+ * doesn't hold yet is written immediately, so the next local read (e.g.
+ * Previous Orders) sees it without waiting for the 30s delta.
+ *
+ * Deliberately does NOT overwrite rows the mirror already holds: a broadcast
+ * payload is trimmed (v3 drops many header fields and the history embeds —
+ * order_discounts, created_by_staff, stations, online_orders), so upserting it
+ * over a complete delta-fetched row would DEGRADE that payload (e.g. the
+ * server-name column going back to "Unknown"). The delta is the correctness
+ * path: it re-fetches the new row with the full embed within a cycle, and the
+ * upsert enriches it.
+ */
+export async function applyOrdersFromRealtimeIfNew(
+  orders: Array<Record<string, unknown>>,
+  station: StationKind,
+  locationId: string,
+): Promise<void> {
+  if (!isLocalDbReady()) return;
+  const usable = orders.filter(
+    (o) => typeof o.id === "string" && typeof o.updated_at === "string",
+  );
+  if (usable.length === 0) return;
+
+  const db = getDb();
+  if (!db) return;
+
+  // Only rows the mirror doesn't already hold. Checked under the shared mutex
+  // so this never races a delta write; writeBatch takes it again inside, but
+  // the runExclusive above has released it by then.
+  const missing: Array<Record<string, unknown>> = [];
+  await dbWriteMutex.runExclusive(async () => {
+    for (const o of usable) {
+      const row = await db.getFirstAsync<{ id: string }>(
+        "SELECT id FROM orders WHERE id = ?",
+        [o.id as string],
+      );
+      if (!row) missing.push(o);
+    }
+  });
+  if (missing.length === 0) return;
+
+  await applyOrdersFromRealtime(missing, station, locationId);
 }
 
 /**
@@ -93,7 +139,11 @@ export async function deleteOrderFromRealtime(
   if (!db) return false;
 
   try {
-    await db.runAsync("DELETE FROM orders WHERE id = ?", [orderId]);
+    // Through the shared mutex — a DELETE stepping on the connection during a
+    // mirror write transaction throws "database is locked".
+    await dbWriteMutex.runExclusive(() =>
+      db.runAsync("DELETE FROM orders WHERE id = ?", [orderId]),
+    );
     return true;
   } catch (error) {
     console.warn("[LocalDB] realtime delete failed:", error);

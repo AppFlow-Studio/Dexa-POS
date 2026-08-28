@@ -63,6 +63,7 @@ class FakeQuery {
   private orClause: OrClause | null = null;
   private orders: Array<{ column: string; ascending: boolean }> = [];
   private limitValue: number | null = null;
+  private rangeValue: { start: number; end: number } | null = null;
 
   constructor(
     private db: FakeSupabase,
@@ -124,6 +125,12 @@ class FakeQuery {
     return this;
   }
 
+  /** PostgREST row range — used by the paginated manifest pull. */
+  range(start: number, end: number) {
+    this.rangeValue = { start, end };
+    return this;
+  }
+
   limit(n: number) {
     this.limitValue = n;
     return this.execute();
@@ -170,6 +177,11 @@ class FakeQuery {
     }
 
     if (this.limitValue !== null) out = out.slice(0, this.limitValue);
+
+    // PostgREST range is inclusive of both ends.
+    if (this.rangeValue !== null) {
+      out = out.slice(this.rangeValue.start, this.rangeValue.end + 1);
+    }
 
     return { data: out, error: null };
   }

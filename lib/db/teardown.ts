@@ -74,6 +74,8 @@ export async function purgeForbiddenTables(
   let dropped = 0;
   try {
     await dbWriteMutex.runExclusive(async () => {
+      // Single-connection transaction (same reasoning as write.ts — the
+      // exclusive variant opens a second connection that lacks busy_timeout).
       await db.withTransactionAsync(async () => {
         for (const table of tables) {
           // DELETE, not DROP: the schema stays intact so a device re-provisioned

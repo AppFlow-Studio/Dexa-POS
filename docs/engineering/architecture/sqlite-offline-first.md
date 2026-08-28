@@ -1048,9 +1048,24 @@ inside the same transaction as the upserts — outside it, one partial failure s
 
 ---
 
-#### Phase 3 · Previous Orders _(the headline, and the selector boundary)_
+#### Phase 3 · Previous Orders _(the headline, and the selector boundary)_ — ✅ **BUILT (flag-gated, default off)**
 
 **Flag:** `EXPO_PUBLIC_LOCAL_PREVIOUS_ORDERS` · **Page:** [previous-orders.tsx](<app/(main)/previous-orders.tsx>)
+
+**Status: code complete — 114/114 local-DB tests green (10 new for the local query), `tsc --noEmit`
+clean, full suite at baseline.** Not yet run on device behind the flag; `previousOrdersOfflineCache`
+stays as fallback until proven.
+
+| Delivered                                                                                                                  | File                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| SQL emitter beside `buildHistoryOrderQuery` (one source of filter truth) + page query                                      | [lib/db/historyQuery.ts](lib/db/historyQuery.ts)                     |
+| Local-first resolution + the resolution rule (default paging local-only / filtered server-corrected / offline local+scope) | [stores/usePreviousOrdersStore.ts](stores/usePreviousOrdersStore.ts) |
+| Scope line + honest empty state when the source is the local window                                                        | [previous-orders.tsx](<app/(main)/previous-orders.tsx>)              |
+
+The local page rows are rebuilt from the mirror's verbatim `payload`s into `FetchedOrderData`
+and run through the **same** `_transformFetchedOrder` as the server path — rendering cannot
+diverge between sources. `delivery_platform` is not a promoted column, so provider/search
+filter on it read `json_extract(payload, '$.delivery_platform')`.
 
 **Window: 20,000 orders** (raised 2026-08-28) ≈ 15 months at the busiest location, ~69 MB
 of data / ~80 MB on disk worst case. **Backfill on a cap raise is automatic:**

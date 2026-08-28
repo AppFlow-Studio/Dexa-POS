@@ -22,11 +22,11 @@
  * Passing the watermark INTO this function, rather than letting the caller
  * write it afterwards, is what makes that mistake unavailable.
  */
-import { Mutex } from "async-mutex";
 import type { SQLiteDatabase } from "expo-sqlite";
 
 import type { EntityDescriptor } from "@/lib/db/entities";
 import { getDb } from "@/lib/db/index";
+import { dbWriteMutex } from "@/lib/db/mutex";
 import { canStore, type StationKind } from "@/lib/db/policy";
 import type { TableName } from "@/lib/db/schema";
 import {
@@ -40,6 +40,12 @@ import { recordCount, recordSample } from "@/lib/telemetry/registry";
 
 export type SqlValue = string | number | null;
 export type Row = Record<string, SqlValue>;
+
+/**
+ * Helpers that run INSIDE a transaction take the connection handle — the
+ * exclusive-transaction `txn` (a SQLiteDatabase subclass) is assignable here,
+ * so the same helpers serve both the plain handle and the transaction.
+ */
 
 /** Root rows plus any child-table rows that must land in the same transaction. */
 export interface EntityBatch {
@@ -72,15 +78,20 @@ const EMPTY: WriteResult = {
 };
 
 /**
- * Serializes every transaction on the single SQLite connection.
+ * Serializes every statement on the single SQLite connection.
  *
  * expo-sqlite does NOT queue `withTransactionAsync` calls: two overlapping
  * ones on the same connection fail with "cannot start a transaction within a
- * transaction". The delta engine, realtime apply, the manifest reconcile and
- * the station purge can all fire near-simultaneously (especially around effect
- * re-runs), so every transaction goes through this mutex — FIFO, never nested.
+ * transaction". The delta engine, realtime apply, the manifest reconcile, the
+ * station purge, the freshness reads and the storage monitor can all fire
+ * near-simultaneously, so EVERY statement (reads included) goes through this
+ * mutex — FIFO, never nested.
+ *
+ * Defined in lib/db/mutex.ts so lib/db/index.ts can share it without an
+ * import cycle; re-exported here so every caller keeps importing from the
+ * write boundary.
  */
-export const dbWriteMutex = new Mutex();
+export { dbWriteMutex } from "@/lib/db/mutex";
 
 /**
  * Apply a batch for one entity: upsert root + children, prune to retention,
@@ -126,7 +137,19 @@ export async function writeBatch(
 
   try {
     // The single SQLite connection cannot run two transactions at once; the
-    // mutex makes every writeBatch (delta, realtime, reconcile) FIFO.
+    // mutex makes every writeBatch (delta, realtime, reconcile) FIFO, and
+    // every read in the system goes through the SAME mutex, so nothing can
+    // step on the connection while the transaction is open.
+    //
+    // Deliberately `withTransactionAsync` (SAME connection), not
+    // `withExclusiveTransactionAsync`: expo-sqlite runs the latter on a SECOND
+    // native connection to the same file (Transaction.createAsync ->
+    // useNewConnection) that does not inherit busy_timeout, so its writes
+    // abort instantly with "database is locked" whenever the main connection
+    // has any statement in flight — the exact failure this module exists to
+    // prevent. One connection + one mutex makes a lock conflict impossible by
+    // construction. busy_timeout stays as a belt-and-suspenders for WAL
+    // checkpoints and any foreign lock, but nothing here depends on it.
     await dbWriteMutex.runExclusive(async () => {
       await db.withTransactionAsync(async () => {
         for (const row of batch.root) {
@@ -304,13 +327,15 @@ export async function recordSyncFailure(
   const db = getDb();
   if (!db) return;
   try {
-    await db.runAsync(
-      `INSERT INTO sync_state (entity, location_id, last_attempt_at, last_error)
+    await dbWriteMutex.runExclusive(() =>
+      db.runAsync(
+        `INSERT INTO sync_state (entity, location_id, last_attempt_at, last_error)
        VALUES (?, ?, ?, ?)
        ON CONFLICT(entity, location_id) DO UPDATE SET
          last_attempt_at = excluded.last_attempt_at,
          last_error      = excluded.last_error`,
-      [entity.name, locationId, new Date().toISOString(), error],
+        [entity.name, locationId, new Date().toISOString(), error],
+      ),
     );
   } catch {
     // A bookkeeping failure must not mask the sync failure it is recording.
