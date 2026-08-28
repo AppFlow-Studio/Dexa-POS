@@ -22,7 +22,10 @@
  * transform as the server path, so rendering can never diverge.
  */
 import { getEntity } from "@/lib/db/entities";
-import { getDb } from "@/lib/db/index";
+import {
+    getReadDb,
+    hasDedicatedReadConnection,
+} from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/write";
 import {
     FIRST_PARTY_ONLINE_ORDER_PROVIDERS,
@@ -47,6 +50,15 @@ export interface HistoryQuerySpec {
 export interface HistoryQueryWhere {
   where: string;
   params: SqlValue[];
+}
+
+/**
+ * Run a read on the read connection, taking `dbWriteMutex` ONLY if we had to
+ * fall back to the write handle. One place decides it, so no read path can
+ * accidentally keep the old serialized behaviour or lose the fallback's safety.
+ */
+function runOnRead<T>(fn: () => Promise<T>): Promise<T> {
+  return hasDedicatedReadConnection() ? fn() : dbWriteMutex.runExclusive(fn);
 }
 
 /** delivery_platform is not promoted — read it from the verbatim payload. */
@@ -216,6 +228,27 @@ export interface LocalHistoryResult {
 }
 
 /**
+ * The exact statements a page turn runs. Exported so the query-plan test
+ * asserts against the SQL that SHIPS — a test that rebuilt its own SELECT
+ * would keep passing after this one stopped using an index.
+ */
+export function buildHistoryPageStatements(spec: HistoryQuerySpec): {
+  pageSql: string;
+  countSql: string;
+  pageParams: SqlValue[];
+  params: SqlValue[];
+} {
+  const { where, params } = buildHistoryOrderWhere(spec);
+  const orderBy = historyOrderBySql(spec.filters);
+  return {
+    pageSql: `SELECT o.* FROM orders o WHERE ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+    countSql: `SELECT COUNT(*) AS n FROM orders o WHERE ${where}`,
+    pageParams: [...params, spec.pageSize, spec.pageIndex * spec.pageSize],
+    params,
+  };
+}
+
+/**
  * One page of history from the local mirror, plus the exact total for the
  * filter set (so "N of M" and the pager are locally honest). Child rows
  * (items/payments) ride along so the caller can rebuild FetchedOrderData.
@@ -224,23 +257,19 @@ export interface LocalHistoryResult {
 export async function queryLocalHistoryPage(
   spec: HistoryQuerySpec,
 ): Promise<LocalHistoryResult | null> {
-  const db = getDb();
+  const db = getReadDb();
   if (!db) return null;
 
-  // Serialize against the exclusive write transactions — a Phase 3 page read
-  // that steps on the connection during a mirror write throws "database is
-  // locked" (same-connection SQLITE_BUSY), which busy_timeout cannot fix.
-  return dbWriteMutex.runExclusive(async () => {
-    const { where, params } = buildHistoryOrderWhere(spec);
-    const orderBy = historyOrderBySql(spec.filters);
-
-    const pageSql = `SELECT o.* FROM orders o WHERE ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
-    const countSql = `SELECT COUNT(*) AS n FROM orders o WHERE ${where}`;
-    const pageParams = [
-      ...params,
-      spec.pageSize,
-      spec.pageIndex * spec.pageSize,
-    ];
+  // Reads take the dedicated read connection and DON'T take dbWriteMutex: the
+  // mutex is there because expo-sqlite won't serialize transactions on one
+  // connection, which is a writer constraint. Under WAL a second connection
+  // reads a consistent snapshot while a write batch is in flight, so a page
+  // turn no longer queues behind whatever the delta sync is doing. When the
+  // reader failed to open, getReadDb() returns the write handle and
+  // runOnRead() re-takes the mutex — correct either way, only slower.
+  return runOnRead(async () => {
+    const { pageSql, countSql, pageParams, params } =
+      buildHistoryPageStatements(spec);
 
     const [pageRows, countRow] = await Promise.all([
       db.getAllAsync<Record<string, SqlValue>>(pageSql, pageParams),
@@ -298,30 +327,48 @@ export async function queryLocalHistoryPage(
  * count as the total. The tab/chip counts render from the mirror with zero
  * round trips and stay correct offline. Returns null when the DB is
  * unavailable — caller falls back to the server summary fetch.
+ *
+ * Capped at `HISTORY_SUMMARY_CAP` rows, the same number and the same
+ * newest-first order the server projection uses, and reports `truncated` the
+ * same way. Uncapped, a month-wide window at the 20k retention cap would
+ * marshal every row in the window across the bridge on every refresh to
+ * produce a handful of tab counts.
  */
+export const HISTORY_SUMMARY_CAP = 5000;
+
 export async function queryLocalHistorySummaries(opts: {
   locationId: string;
   filters: HistoryOrderFilters;
   startTs: string | null;
   endTs: string | null;
-}): Promise<HistoryOrderSummary[] | null> {
-  const db = getDb();
+  /** Override the cap. Production never passes this; the test proves the cap. */
+  cap?: number;
+}): Promise<{ rows: HistoryOrderSummary[]; truncated: boolean } | null> {
+  const db = getReadDb();
   if (!db) return null;
+  const cap = opts.cap ?? HISTORY_SUMMARY_CAP;
 
-  return dbWriteMutex.runExclusive(async () => {
+  return runOnRead(async () => {
     const { where, params } = buildHistoryOrderWhere({
       locationId: opts.locationId,
       filters: { ...opts.filters, channel: "all", provider: "all" },
       startTs: opts.startTs,
       endTs: opts.endTs,
     });
+    // CAP + 1 so truncation is detected without a second COUNT pass.
     const sql = `SELECT o.id, o.created_at, o.order_type, o.order_source, o.status,
                         o.payment_status,
                         ${DELIVERY_PLATFORM_SQL} AS delivery_platform
                  FROM orders o
                  WHERE ${where}
-                 ORDER BY o.created_at DESC`;
-    return db.getAllAsync<HistoryOrderSummary>(sql, params);
+                 ORDER BY o.created_at DESC
+                 LIMIT ?`;
+    const rows = await db.getAllAsync<HistoryOrderSummary>(sql, [
+      ...params,
+      cap + 1,
+    ]);
+    const truncated = rows.length > cap;
+    return { rows: truncated ? rows.slice(0, cap) : rows, truncated };
   });
 }
 
@@ -344,11 +391,40 @@ export async function isOrdersMirrorFresh(
   locationId: string,
   startTs?: string | null,
 ): Promise<boolean> {
-  const db = getDb();
-  if (!db) return false;
+  const state = await getOrdersMirrorState(locationId);
+  if (!state?.lastSuccessAt) return false;
   const staleAfterMs = getEntity("orders")?.staleAfterMs ?? 5 * 60_000;
+  if (Date.now() - new Date(state.lastSuccessAt).getTime() >= staleAfterMs) {
+    return false;
+  }
+  // The requested window must start at or after the mirror's oldest retained
+  // row, or the local page/counts would under-report and the server must
+  // correct instead.
+  if (startTs && state.retentionFloor && state.retentionFloor > startTs) {
+    return false;
+  }
+  return true;
+}
+
+export interface OrdersMirrorState {
+  /** ISO timestamp of the last successful delta cycle, or null. */
+  lastSuccessAt: string | null;
+  /**
+   * `created_at` of the OLDEST row the mirror still retains — the honest answer
+   * to "how far back does this device go offline?". The scope line reads this
+   * rather than the match count, which says nothing about coverage.
+   */
+  retentionFloor: string | null;
+}
+
+/** The orders mirror's freshness + coverage in one read. Never throws. */
+export async function getOrdersMirrorState(
+  locationId: string,
+): Promise<OrdersMirrorState | null> {
+  const db = getReadDb();
+  if (!db) return null;
   try {
-    const row = await dbWriteMutex.runExclusive(() =>
+    const row = await runOnRead(() =>
       db.getFirstAsync<{
         last_success_at: string | null;
         retention_floor: string | null;
@@ -358,18 +434,12 @@ export async function isOrdersMirrorFresh(
         [locationId],
       ),
     );
-    if (!row?.last_success_at) return false;
-    if (Date.now() - new Date(row.last_success_at).getTime() >= staleAfterMs) {
-      return false;
-    }
-    // The requested window must start at or after the mirror's oldest retained
-    // row, or the local page/counts would under-report and the server must
-    // correct instead.
-    if (startTs && row.retention_floor && row.retention_floor > startTs) {
-      return false;
-    }
-    return true;
+    if (!row) return null;
+    return {
+      lastSuccessAt: row.last_success_at ?? null,
+      retentionFloor: row.retention_floor ?? null,
+    };
   } catch {
-    return false;
+    return null;
   }
 }

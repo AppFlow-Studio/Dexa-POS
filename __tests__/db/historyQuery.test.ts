@@ -16,12 +16,16 @@ import {
 import { ENTITIES } from "@/lib/db/entities";
 import {
     buildHistoryOrderWhere,
+    buildHistoryPageStatements,
+    HISTORY_SUMMARY_CAP,
     historyOrderBySql,
     queryLocalHistoryPage,
+    queryLocalHistorySummaries,
 } from "@/lib/db/historyQuery";
 import {
     __resetLocalDbForTests,
     destroyLocalDb,
+    getReadDb,
     initLocalDb,
 } from "@/lib/db/index";
 import { writeBatch } from "@/lib/db/write";
@@ -263,5 +267,113 @@ describe("queryLocalHistoryPage", () => {
 
     const result = await queryLocalHistoryPage(spec());
     expect(result!.orders.map((r) => r.id)).toEqual(["o2"]);
+  });
+});
+
+/**
+ * The A1 lesson, applied locally: correct results say nothing about cost, and
+ * cost is invisible until the mirror is full. The first version of this schema
+ * indexed `(location_id, created_at DESC) WHERE voided_at IS NULL` — a partial
+ * index the history query can never use, because it never mentions `voided_at`
+ * (the Voided tab exists). Every page then sorted the location's entire window.
+ * Ten green result-correctness tests did not notice.
+ */
+describe("query plan — the page must be served by an index, not a sort", () => {
+  async function plan(sql: string, params: unknown[]): Promise<string> {
+    const db = getReadDb()!;
+    const rows = await db.getAllAsync<{ detail: string }>(
+      `EXPLAIN QUERY PLAN ${sql}`,
+      params as never,
+    );
+    return rows.map((r) => r.detail).join(" | ");
+  }
+
+  beforeEach(async () => {
+    await seed([
+      serverOrder("o1", isoAt(1)),
+      serverOrder("o2", isoAt(2)),
+      serverOrder("o3", isoAt(3)),
+    ]);
+  });
+
+  it("uses idx_o_loc_created_v2 for the default page — and no temp b-tree", async () => {
+    const { pageSql, pageParams } = buildHistoryPageStatements(spec());
+    const detail = await plan(pageSql, pageParams);
+
+    expect(detail).toContain("idx_o_loc_created_v2");
+    // `(location_id, created_at DESC, id ASC)` covers the default ORDER BY
+    // term for term, so SQLite has nothing left to sort.
+    expect(detail).not.toMatch(/TEMP B-TREE/i);
+    expect(detail).not.toMatch(/SCAN orders(?!\s+USING)/i);
+  });
+
+  it("seeks the date window for the count — the count is a whole second pass", async () => {
+    // The real screen always has a resolved business-day window; that range
+    // predicate is what the count has to seek on, since it has no ORDER BY to
+    // steer the planner.
+    const { countSql, params } = buildHistoryPageStatements({
+      ...spec(),
+      startTs: isoAt(1),
+      endTs: isoAt(9),
+    });
+    const detail = await plan(countSql, params);
+
+    expect(detail).toContain("idx_o_loc_created_v2");
+    expect(detail).toMatch(/created_at>/);
+  });
+
+  it("keeps the old partial index from coming back", async () => {
+    const db = getReadDb()!;
+    const rows = await db.getAllAsync<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'orders'`,
+      [],
+    );
+    const names = rows.map((r) => r.name);
+    expect(names).toContain("idx_o_loc_created_v2");
+    expect(names).not.toContain("idx_o_loc_created");
+  });
+});
+
+describe("queryLocalHistorySummaries", () => {
+  it("returns the window's discriminators, newest first, untruncated", async () => {
+    await seed([
+      serverOrder("o1", isoAt(1)),
+      serverOrder("o2", isoAt(2)),
+    ]);
+
+    const result = await queryLocalHistorySummaries({
+      locationId: LOCATION,
+      filters: DEFAULT_HISTORY_FILTERS,
+      startTs: null,
+      endTs: null,
+    });
+
+    expect(result!.truncated).toBe(false);
+    expect(result!.rows.map((r) => r.id)).toEqual(["o2", "o1"]);
+  });
+
+  it("caps the projection and reports truncation, like the server does", async () => {
+    // The cap matters at scale — a month-wide window at the 20k retention cap
+    // would otherwise marshal every row across the bridge to produce a handful
+    // of tab counts. Proven with a tiny cap rather than 5001 seeded rows; the
+    // production value is asserted separately so it can't drift silently.
+    await seed(
+      Array.from({ length: 6 }, (_, i) => serverOrder(`o${i}`, isoAt(i + 1))),
+    );
+    expect(HISTORY_SUMMARY_CAP).toBe(5000);
+
+    const result = await queryLocalHistorySummaries({
+      locationId: LOCATION,
+      filters: DEFAULT_HISTORY_FILTERS,
+      startTs: null,
+      endTs: null,
+      cap: 3,
+    });
+
+    expect(result!.truncated).toBe(true);
+    expect(result!.rows).toHaveLength(3);
+    // Truncation keeps the NEWEST rows — the same end of the window the server
+    // projection keeps.
+    expect(result!.rows.map((r) => r.id)).toEqual(["o5", "o4", "o3"]);
   });
 });

@@ -157,8 +157,24 @@ export const SCHEMA_STATEMENTS: string[] = [
     payload               TEXT NOT NULL
   )`,
 
-  `CREATE INDEX IF NOT EXISTS idx_o_loc_created
-     ON orders(location_id, created_at DESC) WHERE voided_at IS NULL`,
+  // The Previous Orders index (Phase 3). NOT partial, and it carries the `id`
+  // tiebreak.
+  //
+  // The original was `... WHERE voided_at IS NULL`, which SQLite can only use
+  // when the query's WHERE provably implies that predicate. Previous Orders
+  // never mentions `voided_at` — it cannot, the "Voided" tab exists — so the
+  // partial index was unusable by the one query it was built for, and every
+  // page, count and summary fell back to a full sort of the location's window.
+  // Silent at 40 rows/day, expensive at the 20k retention cap.
+  //
+  // `(created_at DESC, id ASC)` matches `historyOrderBySql`'s default sort term
+  // for term, so the default page is an index scan with no temp b-tree at all.
+  // The DROP is a one-boot no-op afterwards: `CREATE IF NOT EXISTS` cannot
+  // redefine an index that already exists under the same name, so the old
+  // partial one has to go by name.
+  `DROP INDEX IF EXISTS idx_o_loc_created`,
+  `CREATE INDEX IF NOT EXISTS idx_o_loc_created_v2
+     ON orders(location_id, created_at DESC, id ASC)`,
   `CREATE INDEX IF NOT EXISTS idx_o_bizday   ON orders(location_id, _business_day)`,
   `CREATE INDEX IF NOT EXISTS idx_o_number   ON orders(location_id, order_number)`,
   `CREATE INDEX IF NOT EXISTS idx_o_phone    ON orders(location_id, customer_phone)`,

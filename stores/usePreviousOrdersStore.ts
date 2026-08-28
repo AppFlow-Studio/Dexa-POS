@@ -9,7 +9,9 @@ import {
     getCachedWindowBounds,
     setCachedWindowBounds,
 } from "@/lib/businessDayCache";
+import { onDeltaNudge } from "@/lib/db/deltaNudge";
 import {
+    getOrdersMirrorState,
     isOrdersMirrorFresh,
     queryLocalHistoryPage,
     queryLocalHistorySummaries,
@@ -419,6 +421,12 @@ interface PreviousOrdersState {
   previousOrders: PreviousOrder[];
   /** Where the displayed page came from — "server" | "local" | "offline-local". */
   _source: HistoryDataSource;
+  /**
+   * `created_at` of the oldest order this device still holds locally, from the
+   * mirror's `retention_floor`. The honest bound for the offline scope line:
+   * how far back we can answer, not how many rows matched. Null when unknown.
+   */
+  _scopeFloor: string | null;
   refunds: RefundRecord[];
   _orderLookup: Record<string, PreviousOrder>;
   /** Successful refresh timestamp (for coalescing with bootstrap + tab mount) */
@@ -687,15 +695,109 @@ async function resolveLocalHistorySummaries(opts: {
   filters: HistoryOrderFilters;
   startTs: string | null;
   endTs: string | null;
-}): Promise<HistoryOrderSummary[] | null> {
+}): Promise<{ rows: HistoryOrderSummary[]; truncated: boolean } | null> {
   if (!isLocalDbReady()) return null;
   return queryLocalHistorySummaries(opts);
 }
+
+/**
+ * Phase 3 — is the mirror provably current for this window RIGHT NOW?
+ *
+ * Two gates, cheapest first: the mirror must be fresh and cover the window
+ * (`isOrdersMirrorFresh`, zero network), and the backend must not have moved
+ * since the last server fetch (the count + newest-`updated_at` signature probe,
+ * one tiny request). Freshness alone is not proof — the mirror can lag by a
+ * delta cycle or a dropped broadcast.
+ *
+ * The probe result is cached for `MIRROR_TRUST_TTL_MS`, comfortably under the
+ * 30 s delta cycle, so a merchant paging through a filtered result set pays for
+ * at most one probe rather than one per page turn. That cache is what makes
+ * filtered paging as close to zero-network as the default page.
+ */
+const MIRROR_TRUST_TTL_MS = 15_000;
+let _mirrorTrust: {
+  locationId: string;
+  windowLabel: string;
+  until: number;
+} | null = null;
+
+export function __resetMirrorTrustForTests(): void {
+  _mirrorTrust = null;
+}
+
+async function canTrustMirror(opts: {
+  client: SupabaseClient | null;
+  locationId: string;
+  windowLabel: string;
+  startTs: string;
+  endTs: string;
+}): Promise<boolean> {
+  const { client, locationId, windowLabel, startTs, endTs } = opts;
+  if (!client) return false;
+  if (!(await isOrdersMirrorFresh(locationId, startTs))) return false;
+
+  if (
+    _mirrorTrust &&
+    _mirrorTrust.locationId === locationId &&
+    _mirrorTrust.windowLabel === windowLabel &&
+    _mirrorTrust.until > Date.now()
+  ) {
+    return true;
+  }
+
+  const cachedSig = previousOrdersOfflineCache.getSignature(locationId);
+  // No signature to compare against — we cannot prove the backend hasn't
+  // moved, so we don't claim it hasn't.
+  if (!cachedSig || cachedSig.windowLabel !== windowLabel) return false;
+
+  try {
+    const live = await withDeadline(
+      (signal) =>
+        OrderService.getHistoryWindowSignature(
+          client,
+          locationId,
+          startTs,
+          endTs,
+          signal,
+        ),
+      DEADLINES.read,
+      "getHistoryWindowSignature",
+    );
+    if (live.error || !isCacheFresh(cachedSig, live, windowLabel)) return false;
+  } catch {
+    // Probe failed — don't trust the mirror blindly.
+    return false;
+  }
+
+  _mirrorTrust = {
+    locationId,
+    windowLabel,
+    until: Date.now() + MIRROR_TRUST_TTL_MS,
+  };
+  return true;
+}
+
+/**
+ * Drop the cached "backend hasn't moved" verdict. Called wherever we learn the
+ * backend HAS moved (a fresh server fetch, a realtime-driven refresh, an
+ * explicit pull-to-refresh), so the next trust check probes again instead of
+ * riding a verdict we already know is stale.
+ */
+function invalidateMirrorTrust(): void {
+  _mirrorTrust = null;
+}
+
+// A broadcast means the backend moved, which is precisely what the cached
+// verdict claims it hasn't. Dropping it here — at module scope, once — is what
+// keeps a just-created order from being hidden behind a verdict issued
+// seconds before it existed.
+onDeltaNudge(invalidateMirrorTrust);
 
 export const usePreviousOrdersStore = create<PreviousOrdersState>(
   (set, get) => ({
     previousOrders: [],
     _source: "server",
+    _scopeFloor: null,
     refunds: [],
     _orderLookup: {},
     lastHistoryRefreshAt: null,
@@ -786,17 +888,47 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         //  - default paging → local only (zero round trips); server only when
         //    the request steps past the local window.
         //  - filtered / searched → local paints instantly, then the server
-        //    corrects (no silent miss beyond the window).
+        //    corrects UNLESS the mirror is provably current (see below).
         //  - offline → local stands.
-        const wantsServer =
+        const beyondLocalWindow =
+          !local ||
+          target >= historyPageCount(local.totalCount, HISTORY_PAGE_SIZE);
+        let wantsServer =
           !LOCAL_PREVIOUS_ORDERS_ENABLED ||
           !local ||
           !online ||
           !isDefaultHistoryFilters(activeFilters) ||
-          target >= historyPageCount(local.totalCount, HISTORY_PAGE_SIZE);
-        if (!wantsServer) return;
+          beyondLocalWindow;
 
         const client = _supabaseClient;
+
+        // A filtered page used to cost a round trip EVERY page turn, even
+        // though `refresh()` already knows how to prove the mirror is current.
+        // Same proof, same probe (cached for one delta cycle): when the mirror
+        // is fresh, covers the window, and the backend signature hasn't moved,
+        // the local result IS the server result — so paging a search is as
+        // cheap as paging the default view. Anything that reaches past the
+        // retained window still goes to the server; that is the correctness
+        // boundary and it does not move.
+        if (
+          wantsServer &&
+          LOCAL_PREVIOUS_ORDERS_ENABLED &&
+          local &&
+          online &&
+          !beyondLocalWindow &&
+          (await canTrustMirror({
+            client,
+            locationId,
+            windowLabel: (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+            startTs: _resolvedStartTs,
+            endTs: _resolvedEndTs,
+          }))
+        ) {
+          wantsServer = false;
+        }
+
+        if (!wantsServer) return;
+
         if (!client) return;
         if (!stillCurrent()) return; // the user moved on during the local query
 
@@ -1247,6 +1379,13 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           _source: isDeviceOnline() ? "local" : "offline-local",
           _isRefreshing: false,
         });
+        // How far back this device can actually answer for. The scope line
+        // shows THIS, not the match count — "the most recent 3 orders" was the
+        // count of rows matching the current filter, which says nothing about
+        // coverage and read as a claim about retention.
+        void getOrdersMirrorState(locationId).then((state) => {
+          set({ _scopeFloor: state?.retentionFloor ?? null });
+        });
         // ── Local tab counts (window-wide, no network) ───────
         // The mirror holds every order in the window, so channel / provider /
         // status tabs get exact counts immediately — and they survive offline.
@@ -1261,8 +1400,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           });
           if (summaries) {
             set({
-              windowSummaries: summaries,
-              windowSummariesTruncated: false,
+              windowSummaries: summaries.rows,
+              windowSummariesTruncated: summaries.truncated,
             });
           }
         }
@@ -1291,48 +1430,32 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       // backend moved (new order → count; payment/void/refund → updated_at),
       // fall through to the authoritative fetch so the list never shows a
       // missing or stale row on entry.
+      //
+      // `canTrustMirror` is that check, shared with `goToPage` so entry and
+      // paging can never disagree about when the mirror is authoritative.
+      // Pull-to-refresh (force) drops the cached verdict and bypasses it.
+      if (force) invalidateMirrorTrust();
       if (
         LOCAL_PREVIOUS_ORDERS_ENABLED &&
         local &&
         !force &&
         startTs &&
         endTs &&
-        (await isOrdersMirrorFresh(locationId, startTs))
+        (await canTrustMirror({
+          client,
+          locationId,
+          windowLabel: (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+          startTs,
+          endTs,
+        }))
       ) {
-        const probeWindowLabel = (get().dateWindow ?? DEFAULT_DATE_WINDOW)
-          .label;
-        const cachedSig = previousOrdersOfflineCache.getSignature(locationId);
-        let serverMoved = true;
-        if (cachedSig && cachedSig.windowLabel === probeWindowLabel) {
-          try {
-            const live = await withDeadline(
-              (signal) =>
-                OrderService.getHistoryWindowSignature(
-                  client,
-                  locationId,
-                  startTs,
-                  endTs,
-                  signal,
-                ),
-              DEADLINES.read,
-              "getHistoryWindowSignature",
-            );
-            serverMoved = Boolean(
-              live.error || !isCacheFresh(cachedSig, live, probeWindowLabel),
-            );
-          } catch {
-            // Probe failed — don't trust the mirror blindly; refetch below.
-            serverMoved = true;
-          }
-        }
-        if (!serverMoved) {
-          // Backend hasn't moved — keep the mirror rows, skip the fetch.
-          if (get()._isRefreshing) set({ _isRefreshing: false });
-          return;
-        }
-        // Backend moved (or we couldn't prove it hadn't) — fall through to the
-        // full fetch below so the screen shows the authoritative state.
+        // Backend hasn't moved — keep the mirror rows, skip the fetch.
+        if (get()._isRefreshing) set({ _isRefreshing: false });
+        return;
       }
+      // Backend moved (or we couldn't prove it hadn't) — fall through to the
+      // full fetch below so the screen shows the authoritative state.
+      invalidateMirrorTrust();
 
       // Offline: don't hit the network. Hydrate the list from the last
       // successful online fetch so the screen isn't empty. The cache is shown

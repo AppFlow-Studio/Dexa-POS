@@ -251,6 +251,19 @@ const PreviousOrdersScreen = () => {
   // list is the local mirror's window, so the scope line is shown and the
   // empty state must not read as a definitive "doesn't exist".
   const historySource = usePreviousOrdersStore((s) => s._source);
+  // How far back this device can answer offline — the mirror's retention floor,
+  // not the number of rows that happen to match the current filter.
+  const scopeFloor = usePreviousOrdersStore((s) => s._scopeFloor);
+  const scopeFloorLabel = useMemo(() => {
+    if (!scopeFloor) return null;
+    const d = new Date(scopeFloor);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }, [scopeFloor]);
 
   // Date window
   const dateWindowLabel = usePreviousOrdersStore(
@@ -904,9 +917,9 @@ const PreviousOrdersScreen = () => {
                 }}
               >
                 <Text style={{ fontSize: s(12), color: colors.muted }}>
-                  Offline — showing the most recent{" "}
-                  {totalMatchingCount != null ? totalMatchingCount : "…"} orders
-                  from this device. Older data needs a connection.
+                  {scopeFloorLabel
+                    ? `Offline — showing orders stored on this device, back to ${scopeFloorLabel}. Older data needs a connection.`
+                    : "Offline — showing orders stored on this device. Older data needs a connection."}
                 </Text>
               </View>
             )}

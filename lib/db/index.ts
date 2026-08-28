@@ -54,12 +54,37 @@ function consumePurgePending(): PurgeReason | null {
 }
 
 let db: SQLite.SQLiteDatabase | null = null;
+let readDb: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<SQLite.SQLiteDatabase | null> | null = null;
 let lastInitError: string | null = null;
 
 /** The opened handle, or null if the DB is unavailable. Never throws. */
 export function getDb(): SQLite.SQLiteDatabase | null {
   return db;
+}
+
+/**
+ * The READ handle — a second connection to the same file.
+ *
+ * `dbWriteMutex` exists because expo-sqlite does not serialize
+ * `withTransactionAsync` on ONE connection (two overlapping transactions fail
+ * every write with "cannot start a transaction within a transaction"). That is
+ * a writer problem. Routing reads through the same mutex made every screen
+ * query queue behind whatever batch the delta sync happened to be writing —
+ * which is exactly the latency Phase 3 exists to remove.
+ *
+ * Under WAL a reader on a SEPARATE connection never blocks on a writer and
+ * never sees a half-applied transaction, so read paths take this handle and
+ * skip the mutex entirely. Falls back to the write handle when the second open
+ * fails, so a read is never impossible — only, in that case, serialized.
+ */
+export function getReadDb(): SQLite.SQLiteDatabase | null {
+  return readDb ?? db;
+}
+
+/** True when reads have their own connection (i.e. they bypass the mutex). */
+export function hasDedicatedReadConnection(): boolean {
+  return readDb !== null;
 }
 
 export function isLocalDbReady(): boolean {
@@ -116,6 +141,25 @@ export function initLocalDb(): Promise<SQLite.SQLiteDatabase | null> {
       await applySchema(handle);
 
       db = handle;
+      // Reader connection — opened AFTER the schema exists so it can never see
+      // a half-built file. Best-effort: a failure here costs latency (reads
+      // fall back to the write handle and its mutex), never correctness.
+      try {
+        const reader = await SQLite.openDatabaseAsync(DB_NAME, {
+          useNewConnection: true,
+        });
+        // busy_timeout is per-connection: without it a reader that lands on a
+        // checkpoint fails instantly instead of waiting. journal_mode is a
+        // property of the FILE and is already WAL from the write handle.
+        await reader.execAsync("PRAGMA busy_timeout = 5000");
+        readDb = reader;
+      } catch (readerError) {
+        readDb = null;
+        console.warn(
+          "[LocalDB] read connection unavailable — reads will share the write handle:",
+          readerError,
+        );
+      }
       lastInitError = null;
       recordSample(KEY_DB_INIT_MS, Date.now() - started);
       return handle;
@@ -249,6 +293,13 @@ export async function getTableRowCounts(): Promise<Record<string, number>> {
  */
 export async function destroyLocalDb(): Promise<void> {
   try {
+    // The reader closes FIRST: deleting the file while a second connection
+    // still holds it fails on Android, and a purge that silently fails is the
+    // one failure mode this path exists to prevent.
+    if (readDb) {
+      await readDb.closeAsync().catch(() => {});
+      readDb = null;
+    }
     if (db) {
       await db.closeAsync();
       db = null;
@@ -257,12 +308,14 @@ export async function destroyLocalDb(): Promise<void> {
   } catch (error) {
     console.warn("[LocalDB] destroy failed:", error);
     db = null;
+    readDb = null;
   }
 }
 
-/** Test seam: drop the module-level handle without touching the file. */
+/** Test seam: drop the module-level handles without touching the file. */
 export function __resetLocalDbForTests(): void {
   db = null;
+  readDb = null;
   initPromise = null;
   lastInitError = null;
 }

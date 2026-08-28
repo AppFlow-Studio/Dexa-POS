@@ -17,6 +17,7 @@
  */
 import { useEffect } from "react";
 
+import { registerDeltaCycle } from "@/lib/db/deltaNudge";
 import { registerOrdersDescriptor } from "@/lib/db/descriptors/orders";
 import { syncableEntities } from "@/lib/db/entities";
 import { getDb, isLocalDbReady } from "@/lib/db/index";
@@ -190,6 +191,10 @@ export function useDeltaSync(opts: {
       }
     };
 
+    // Let the realtime layer ask for a pull between ticks — a just-created
+    // order otherwise waits up to a full interval to land completely.
+    registerDeltaCycle(runCycle);
+
     // First pull immediately so the mirror populates, then on the tick.
     void runCycle();
     void runReconcile();
@@ -203,6 +208,7 @@ export function useDeltaSync(opts: {
 
     return () => {
       controller.abort();
+      registerDeltaCycle(null);
       clearInterval(syncTimer);
       clearInterval(manifestTimer);
     };

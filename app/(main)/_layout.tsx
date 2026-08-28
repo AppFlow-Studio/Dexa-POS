@@ -15,6 +15,7 @@ import { useKdsOnlineOrdersBootstrap } from "@/hooks/pos/useKdsOnlineOrdersBoots
 import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { useTableSessionInit } from "@/hooks/useTableSessionInit";
+import { nudgeDeltaSync } from "@/lib/db/deltaNudge";
 import { applyOrdersFromRealtimeIfNew } from "@/lib/db/realtimeApply";
 import { setHeaderHeight } from "@/lib/headerHeight";
 import { hintNativeGc } from "@/lib/nativeMemory";
@@ -273,6 +274,14 @@ export default function MainLayout() {
         stationName: broadcastPayload.data?.order?.station_name,
       });
     }
+    // The backend moved — tell the local mirror to pull now instead of at the
+    // next 30 s tick. Deliberately BEFORE the echo check: an order created on
+    // this station is an own-echo, whose mirror write is skipped below, so the
+    // echo path is exactly the one where the row would otherwise be missing
+    // (or, from another station, present but item-less) for up to a full
+    // cycle. Debounced inside — a burst of broadcasts costs one pull.
+    nudgeDeltaSync("order-broadcast");
+
     unstable_batchedUpdates(() => {
       const t0 = performance.now();
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
