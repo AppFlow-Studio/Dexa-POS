@@ -5,12 +5,24 @@ import {
 } from "@/lib/orderDayGrouping";
 import { OrderProfile } from "@/lib/types";
 
-const makeOrder = (id: string, openedAt?: string): OrderProfile =>
-  ({
-    id,
-    opened_at: openedAt,
-    items: [],
-  }) as OrderProfile;
+/**
+ * Grouping only reads `opened_at`, but the fixture satisfies OrderProfile's
+ * required fields for real rather than casting past them: a plain `as` no
+ * longer compiles here, and `as unknown as` would silence this fixture the next
+ * time the shape changes too.
+ */
+const makeOrder = (id: string, openedAt?: string): OrderProfile => ({
+  id,
+  // `?? null`, not `undefined`: the field is nullable-but-required, and the
+  // "no timestamp" case below relies on the same `?? Date.now()` fallback the
+  // grouping applies, which null exercises identically.
+  opened_at: openedAt ?? null,
+  items: [],
+  service_location_id: null,
+  order_status: "completed",
+  check_status: "Closed",
+  paid_status: "Paid",
+});
 
 describe("orderDayGrouping", () => {
   describe("getDayLabel", () => {

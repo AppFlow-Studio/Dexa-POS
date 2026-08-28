@@ -3884,11 +3884,17 @@ interface OrderState {
   // Maps local orderId -> queued update (backend updates delayed while local changes pending)
   pendingBackendUpdates: Record<string, QueuedUpdate>;
 
-  // Sync barrier methods
-  hasPendingSyncs: (orderId: string) => boolean;
+  // Sync barrier methods.
+  //
+  // `itemIds` scopes the barrier to one fired batch (Phase 6 · S4): a
+  // dead-lettered add elsewhere on the order must not wedge this batch's
+  // catch-up send. Both implementations have taken it since S4; these
+  // declarations had not caught up, so every scoped call site was a type
+  // error while the runtime behaviour was correct.
+  hasPendingSyncs: (orderId: string, itemIds?: string[]) => boolean;
   waitForPendingSyncs: (
     orderId: string,
-    opts?: { maxMs?: number },
+    opts?: { maxMs?: number; itemIds?: string[] },
   ) => Promise<void>;
   getSyncStatus: (orderId: string) => {
     pending: number;
@@ -10068,7 +10074,10 @@ export const useOrderStore = create<OrderState>()(
 
             // Inventory depletion for ready/served
             if (status === "ready" || status === "served") {
-              const order = get().ordersById[activeOrderId];
+              // S6: the order OWING the ids, not the active one — these two
+              // post-`set` blocks were missed when the action was re-pointed
+              // at `orderId`, and referenced a name that no longer exists.
+              const order = get().ordersById[orderId];
               if (order) {
                 for (const item of order.items) {
                   if (idSet.has(item.id)) {
@@ -10080,7 +10089,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Update table session status when all items are served
             if (status === "served") {
-              const order = get().ordersById[activeOrderId];
+              const order = get().ordersById[orderId];
               if (
                 order &&
                 order.items.length > 0 &&

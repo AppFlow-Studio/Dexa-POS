@@ -1052,15 +1052,19 @@ inside the same transaction as the upserts — outside it, one partial failure s
 
 **Flag:** `EXPO_PUBLIC_LOCAL_PREVIOUS_ORDERS` · **Page:** [previous-orders.tsx](<app/(main)/previous-orders.tsx>)
 
-**Status: code complete — 114/114 local-DB tests green (10 new for the local query), `tsc --noEmit`
-clean, full suite at baseline.** Not yet run on device behind the flag; `previousOrdersOfflineCache`
-stays as fallback until proven.
+**Status: code complete — 126/126 local-DB tests green (23 new: 10 for the local query, 6 for
+the query plan + summary cap, 7 for the delta nudge), no type errors in any Phase 3 file, full
+suite at baseline (10 pre-existing suite failures, unchanged).** Not yet run on device behind
+the flag; `previousOrdersOfflineCache` stays as fallback until proven.
+
 
 | Delivered                                                                                                                  | File                                                                 |
 | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | SQL emitter beside `buildHistoryOrderQuery` (one source of filter truth) + page query                                      | [lib/db/historyQuery.ts](lib/db/historyQuery.ts)                     |
 | Local-first resolution + the resolution rule (default paging local-only / filtered server-corrected / offline local+scope) | [stores/usePreviousOrdersStore.ts](stores/usePreviousOrdersStore.ts) |
 | Scope line + honest empty state when the source is the local window                                                        | [previous-orders.tsx](<app/(main)/previous-orders.tsx>)              |
+| Dedicated read connection, so screen reads never queue behind a delta write                                                | [lib/db/index.ts](lib/db/index.ts)                                   |
+| Realtime → "pull now" nudge, so a just-created order lands in ~1.2 s instead of ≤30 s                                      | [lib/db/deltaNudge.ts](lib/db/deltaNudge.ts)                         |
 
 The local page rows are rebuilt from the mirror's verbatim `payload`s into `FetchedOrderData`
 and run through the **same** `_transformFetchedOrder` as the server path — rendering cannot
@@ -1103,6 +1107,10 @@ offline → **works**, which it does not today. Search offline hits the whole re
 one page. **Search online for an order outside the local window → returned (server fallback).**
 A refund on another station appears within one revalidation cycle.
 
+**Test the cost, not just the answer** (added by the review below, after the partial-index
+find): `EXPLAIN QUERY PLAN` on the page and the count must name the index and show no temp
+b-tree. Result-correctness tests cannot see a missing index — ten of them didn't.
+
 **Done when** entry paints with no skeleton, paging costs **zero** round trips, offline
 pagination works, and no online query can return an empty result that a server query would
 have filled.
@@ -1112,6 +1120,117 @@ must render from Zustand with the existing `_offlineUnsynced` badge
 (`usePreviousOrdersStore.ts:807`) — never from SQLite. And the false-negative trap: an online
 search that returns nothing locally must resolve against the server before showing an empty
 state.
+
+---
+
+### Phase 3 review — post-build pass, 2026-08-28
+
+Six changes after re-reading the built code. The filter-parity work held up: the `neq`/NULL
+mirroring and the shared `_transformFetchedOrder` are the two things that would have bitten
+later, and both are right. What follows is what the first pass got wrong.
+
+**① The index was Phase 3's own A1 — and the ten green tests did not notice.**
+
+The schema shipped `idx_o_loc_created ... WHERE voided_at IS NULL`. **Partial.** SQLite uses a
+partial index only when the query's WHERE provably implies its predicate, and Previous Orders
+never mentions `voided_at` — it cannot, the Voided tab exists. So the index built for this
+query was unusable **by this query**, and every page, every `COUNT(*)` and every summary fell
+back to `idx_o_updated`'s location prefix plus a full sort of the location's window. Invisible
+at 43 orders/day (B1); a full sort of 20,000 rows per page turn at the retention cap.
+
+Exactly the A1 failure mode, on the local side: correct results say nothing about cost, and
+cost is invisible until the mirror is full.
+
+→ `idx_o_loc_created_v2 (location_id, created_at DESC, id ASC)`, not partial, covering the
+default `ORDER BY` term for term — index scan, no temp b-tree. The old name is dropped
+explicitly (`CREATE IF NOT EXISTS` cannot redefine an index that already exists), and no schema
+version bump is needed because `SCHEMA_STATEMENTS` re-run on every open — a bump would have
+dropped and re-pulled 20k rows on every device to add one index.
+
+Verified as a real regression test, not a vacuous one: restoring the partial index makes the
+plan test report `SEARCH o USING INDEX idx_o_updated | USE TEMP B-TREE FOR ORDER BY` and fail.
+The test asserts against the SQL that **ships** — `buildHistoryPageStatements` is exported for
+that reason, because a test that rebuilds its own `SELECT` keeps passing after the real one
+stops using an index.
+
+**② Reads were serialized behind writes for no reason.** All three read paths took
+`dbWriteMutex`. That mutex exists because expo-sqlite will not serialize `withTransactionAsync`
+on one connection — a **writer** constraint (Phase 2's nested-transaction crash). Under WAL a
+reader on a *separate* connection never blocks on a writer and never sees a half-applied
+transaction, so a page turn was queueing behind whatever batch the delta happened to be
+writing — the exact latency this phase exists to remove.
+
+→ `getReadDb()` ([lib/db/index.ts](lib/db/index.ts)) opens a second connection
+(`useNewConnection: true`) after the schema exists; `runOnRead()` in the query module takes the
+mutex **only** when that open failed and reads share the write handle. Correct either way, only
+slower in the fallback. The reader closes before `destroyLocalDb()` deletes the file — a second
+open handle makes the delete fail on Android, and a purge that silently fails is the one
+failure mode that path exists to prevent.
+
+**③ The summary projection was unbounded.** `queryLocalHistorySummaries` selected *every* row
+in the window on every refresh to produce a handful of tab counts. Fine for "today"; a
+month-wide window at the 20k cap marshals the whole window across the bridge. Now capped at
+`HISTORY_SUMMARY_CAP = 5000` with a `truncated` flag — the same number, the same newest-first
+order and the same truncation semantics as the server projection it mirrors.
+
+**④ Filtered paging cost a round trip per page.** `refresh()` already knew how to prove the
+mirror current (freshness + the count/`updated_at` signature probe); `goToPage` did not, and
+forced the server on any non-default filter. Both now share **`canTrustMirror`**, so entry and
+paging can never disagree about when the mirror is authoritative, and its verdict is cached for
+15 s — under the 30 s delta cycle — so paging through a search costs at most one probe instead
+of one fetch per page. The correctness boundary does not move: anything reaching past the
+retained window still goes to the server.
+
+**⑤ The scope line was not honest.** It read _"showing the most recent {totalMatchingCount}
+orders"_ — but that count is *matches for the current filter in the current window*, so under a
+status filter it claimed "the most recent 3 orders" while the device held thousands. It now
+reads the mirror's `retention_floor` via `getOrdersMirrorState()`: _"showing orders stored on
+this device, back to Mar 14, 2026"_ — the promised "data through &lt;date&gt;", and the number
+that actually describes offline coverage.
+
+**⑥ A created order was not fully in the mirror for up to 30 s** _(reported from the floor,
+root-caused here)_.
+
+Two paths, one symptom. An order created on **this** station arrives as an own-echo broadcast,
+and the mirror write is deliberately skipped for echoes (`_layout.tsx`) — so nothing writes it
+locally until the next cycle. An order from **another** station *is* written by
+`applyOrdersFromRealtimeIfNew`, but from a **trimmed** broadcast payload with no `order_items`
+embed — so it renders item-less until the delta re-fetches it. Both wait on the 30 s tick.
+
+→ [lib/db/deltaNudge.ts](lib/db/deltaNudge.ts): the realtime handler says "pull now", the delta
+does the fetching. Fixed by pulling **sooner**, not by writing more from the broadcast — the
+delta is the correctness path and already knows how to fetch a complete row with its embed.
+Debounced 1.2 s, so a burst of twenty broadcasts is one pull.
+
+**With a hard 5 s max-wait, which is the part that matters.** A pure trailing debounce
+**starves** under sustained traffic: peak measured churn is 55 orders/min (B4) — broadcasts
+closer together than the debounce window — so every nudge would reschedule the last one and the
+pull would never fire. That is the 30 s wait again, with extra steps. Asserted directly: 30
+broadcasts at 1 s intervals must produce ≥ 4 pulls and < 10.
+
+The nudge also fires listeners **synchronously**, ahead of the debounced pull, and
+`usePreviousOrdersStore` registers `invalidateMirrorTrust` on it. Invalidation cannot be
+debounced: a cached "the mirror is current" verdict has to die the instant we learn the backend
+moved, or ④ would hide a just-created order behind a verdict issued seconds before it existed.
+The two halves of that are asserted as separate tests.
+
+**Deliberately not done — both are real, neither is a fast fix:**
+
+- **`useOrders(filter)` was never built.** This phase claims the selector boundary (§4.3 ③) as
+  a deliverable — "do this here, at the first page, not at the twelfth" — but `grep` finds no
+  `useOrders` and no `scopeHint` anywhere. The live-vs-settled rule still lives in ~240 lines of
+  `useMemo` in [previous-orders.tsx](<app/(main)/previous-orders.tsx>) (`offlineLiveOrders` /
+  `liveOpenById` / `historyMinusLive`). Phase 5 copies that seven times unless it moves first.
+  Moving it is a refactor of working, untested UI and wants a device run, not a fast pass.
+  **Decide before Phase 5 starts, not during.**
+- **`ilike` vs `LIKE`.** SQLite's `LIKE` is case-insensitive for **ASCII only**; Postgres
+  `ilike` is not. A search for "josé" matches online and misses offline — a filter-parity gap of
+  exactly the kind this module's header promises there are none of. No cheap fix (`LOWER` and
+  `COLLATE NOCASE` are ASCII-only too); it needs case-folded columns written at sync time, i.e.
+  a schema bump and a re-pull. File it with the Phase 4 schema work rather than alone.
+
+**Still outstanding for Phase 3** (unchanged by this pass): the on-device run behind the flag,
+and the service-period soak before `previousOrdersOfflineCache` can be deleted.
 
 ---
 
@@ -1350,6 +1469,9 @@ Two things happen on day one, though, and both are cheap:
    gap that the manifest reconcile otherwise covers.
 2. **Build the selector boundary in Phase 3**, not later (§4.3 ③). It is the single decision that
    makes reads-before-writes free rather than a partial rewrite.
+   → **This did not happen.** Phase 3 shipped without `useOrders(filter)`; the rule still lives
+   in the screen. See the Phase 3 review. The advice stands, the deadline has moved to "before
+   Phase 5 starts" — and it gets more expensive at every page, exactly as predicted here.
 
 **The Phase 5 → 6 boundary is the real decision point**, and by then it is an informed one: the
 delta engine will have shadow-compared clean for a service period, the retention caps will be

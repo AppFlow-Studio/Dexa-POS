@@ -20,6 +20,7 @@ import {
   getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
 import { DEADLINES } from "@/lib/network/deadlines";
+import type { SessionAction } from "@/lib/sessionActions";
 import type {
   KitchenEffectOutcome,
   SideEffectContext,
@@ -75,24 +76,37 @@ async function queueKitchenSend(
   );
 }
 
+/**
+ * This effect's context, with `action` narrowed to the one variant it handles.
+ *
+ * The type guard below proves the narrowing, but it cannot travel into a helper
+ * that declares a plain `SideEffectContext` — there, `action` is the whole
+ * union again and every field read is a type error. Naming the narrowed shape
+ * is what carries the guard across the call.
+ */
+type SendToKitchenContext = SideEffectContext & {
+  action: Extract<SessionAction, { type: "SEND_TO_KITCHEN" }>;
+};
+
 export async function sendToKitchenEffect(
   ctx: SideEffectContext,
 ): Promise<KitchenEffectOutcome> {
   if (ctx.action.type !== "SEND_TO_KITCHEN") return { status: "skipped" };
+  const sendCtx = ctx as SendToKitchenContext;
 
   // S3: bound the optimistic-status window for this batch. A send that
   // resolves as rejected/skipped clears the marker, so the server wins and the
   // line reads unsent again instead of staying 'sent' forever.
-  markKitchenSendInFlight(ctx.action.itemIds);
-  const outcome = await runSendToKitchenEffect(ctx);
+  markKitchenSendInFlight(sendCtx.action.itemIds);
+  const outcome = await runSendToKitchenEffect(sendCtx);
   if (outcome.status === "rejected" || outcome.status === "skipped") {
-    clearKitchenSendInFlight(ctx.action.itemIds);
+    clearKitchenSendInFlight(sendCtx.action.itemIds);
   }
   return outcome;
 }
 
 async function runSendToKitchenEffect(
-  ctx: SideEffectContext,
+  ctx: SendToKitchenContext,
 ): Promise<KitchenEffectOutcome> {
   const { itemIds, orderId } = ctx.action;
   let { dbItemIds, dbOrderId } = ctx.action;

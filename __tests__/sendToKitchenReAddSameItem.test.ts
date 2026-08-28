@@ -103,7 +103,19 @@ describe("K1 — simulation of the reported scenario (send A, re-add A, send aga
   // sendNewItemsToKitchen. Kept in sync with the source by the structural
   // assertions above; running it proves the scenario end-to-end.
   const getKitchenSentStatus = () => "sent";
-  const advance = (items: Array<{ id: string; kitchen_status?: string; quantity: number }>) =>
+  /**
+   * One cart line, as this simulation models it. `db_order_item_id` is optional
+   * and load-bearing: the batch sent to the backend is the fired lines that
+   * HAVE one, so a line type without the field made every such filter a type
+   * error while the assertions still passed.
+   */
+  type SimLine = {
+    id: string;
+    kitchen_status?: string;
+    quantity: number;
+    db_order_item_id?: string;
+  };
+  const advance = (items: SimLine[]): SimLine[] =>
     items.map((item) => {
       if (!item.kitchen_status || item.kitchen_status === "new") {
         return { ...item, kitchen_status: getKitchenSentStatus() };
@@ -147,7 +159,7 @@ describe("K1 — simulation of the reported scenario (send A, re-add A, send aga
   it("reports skipped only when the batch truly has nothing to send", () => {
     // A batch whose items all lack db ids and have no stragglers is the ONLY
     // legitimately silent case, and it now toasts.
-    const items = [{ id: "A1", kitchen_status: "sent", quantity: 1 }];
+    const items: SimLine[] = [{ id: "A1", kitchen_status: "sent", quantity: 1 }];
     const sentLocalIds = new Set<string>();
     const dbItemIds = items
       .filter((i) => sentLocalIds.has(i.id) && i.db_order_item_id)
