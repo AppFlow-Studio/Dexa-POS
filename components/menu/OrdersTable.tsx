@@ -1,4 +1,5 @@
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
+import { groupOrdersByDay } from "@/lib/orderDayGrouping";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
@@ -23,6 +24,7 @@ import {
     View,
 } from "react-native";
 import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
+import DayHeader from "../previous-orders/DayHeader";
 
 export type SortColumn = "order" | "time" | "staff" | "total" | "status";
 export type SortDirection = "asc" | "desc";
@@ -87,6 +89,12 @@ interface OrdersTableProps {
    * contradict the column header.
    */
   serverSorted?: boolean;
+  /**
+   * Insert day-separator headers between consecutive same-day runs (Today /
+   * Yesterday / "EEEE, MMMM d"). Keeps the caller's sort order — it only
+   * delimits, never re-arranges.
+   */
+  groupByDay?: boolean;
   /** Rendered after the last row — used for the pagination bar. */
   ListFooter?: React.ReactElement | null;
   /** Scrolls the body back to the top whenever this value changes — pass the
@@ -522,6 +530,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   onRefresh,
   isInitialLoading,
   serverSorted = false,
+  groupByDay = false,
   ListFooter = null,
   resetScrollKey,
 }) => {
@@ -612,41 +621,41 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
             (!serverSorted ||
               SERVER_SORTABLE_COLUMNS.has(column.key as SortColumn));
           return (
-          <TouchableOpacity
-            key={column.key}
-            onPress={() => isSortable && onSort(column.key as SortColumn)}
-            disabled={!isSortable}
-            className={`py-2 px-3 flex-row items-center gap-x-1 ${
-              column.flex || ""
-            } ${column.width || ""}`}
-            style={{
-              justifyContent:
-                column.align === "right"
-                  ? "flex-end"
-                  : column.align === "center"
-                    ? "center"
-                    : "flex-start",
-            }}
-          >
-            <Text
+            <TouchableOpacity
+              key={column.key}
+              onPress={() => isSortable && onSort(column.key as SortColumn)}
+              disabled={!isSortable}
+              className={`py-2 px-3 flex-row items-center gap-x-1 ${
+                column.flex || ""
+              } ${column.width || ""}`}
               style={{
-                fontSize: s(10),
-                fontWeight: "700",
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-                color: sortColumn === column.key ? colors.teal : colors.muted,
+                justifyContent:
+                  column.align === "right"
+                    ? "flex-end"
+                    : column.align === "center"
+                      ? "center"
+                      : "flex-start",
               }}
             >
-              {column.label}
-            </Text>
-            {isSortable &&
-              sortColumn === column.key &&
-              (sortDirection === "asc" ? (
-                <ArrowUp size={s(10)} color={colors.teal} />
-              ) : (
-                <ArrowDown size={s(10)} color={colors.teal} />
-              ))}
-          </TouchableOpacity>
+              <Text
+                style={{
+                  fontSize: s(10),
+                  fontWeight: "700",
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: sortColumn === column.key ? colors.teal : colors.muted,
+                }}
+              >
+                {column.label}
+              </Text>
+              {isSortable &&
+                sortColumn === column.key &&
+                (sortDirection === "asc" ? (
+                  <ArrowUp size={s(10)} color={colors.teal} />
+                ) : (
+                  <ArrowDown size={s(10)} color={colors.teal} />
+                ))}
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -694,9 +703,30 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
           )
         ) : (
           <>
-            {sortedOrders.map((item) => (
-              <OrderRow key={item.id} order={item} onMoreClick={onMoreClick} />
-            ))}
+            {groupByDay
+              ? groupOrdersByDay(sortedOrders).map((group, gi) => (
+                  <React.Fragment key={group.dayStart}>
+                    <DayHeader
+                      title={group.title}
+                      count={group.orders.length}
+                      first={gi === 0}
+                    />
+                    {group.orders.map((item) => (
+                      <OrderRow
+                        key={item.id}
+                        order={item}
+                        onMoreClick={onMoreClick}
+                      />
+                    ))}
+                  </React.Fragment>
+                ))
+              : sortedOrders.map((item) => (
+                  <OrderRow
+                    key={item.id}
+                    order={item}
+                    onMoreClick={onMoreClick}
+                  />
+                ))}
             {ListFooter}
           </>
         )}

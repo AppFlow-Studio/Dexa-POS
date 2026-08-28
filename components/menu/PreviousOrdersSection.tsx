@@ -7,8 +7,12 @@ import { useHistoryFilterControls } from "@/hooks/pos/useHistoryFilterControls";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 // Sort is driven by the table's column headers here (not a dropdown), so only
 // the status options are needed.
+import { useLocalFreshness } from "@/hooks/db/useLocalFreshness";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import {
+  getChannelTab,
+  getProviderKey,
+  matchesStatus,
   STATUS_OPTIONS,
   type ChannelTab,
   type SortKey,
@@ -20,9 +24,11 @@ import {
   DEFAULT_HISTORY_FILTERS,
   historyFilterKey,
 } from "@/services/historyOrderFilters";
+import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFocusEffect } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
@@ -171,6 +177,13 @@ const PreviousOrdersSection = () => {
   const { previousOrders } = usePreviousOrdersStore();
   const { rawIsOnline } = useNetworkStatus();
 
+  // Sync / offline visibility — the same contract as the full Previous Orders
+  // screen: first-sync in progress, offline, or stale. Release builds strip
+  // the dev logs, so the mirror's state has to be on screen.
+  const { isSyncing, hasCompletedCycle } = useLocalDbSyncStore();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const freshness = useLocalFreshness("orders", selectedStore?.id ?? null);
+
   // OFFLINE ONLY: the backend is unreachable, so previousOrders can't refresh.
   // Surface the device's own non-final orders (active + working set + own-station
   // open) so staff still see everything pending — including open/unpaid orders
@@ -217,6 +230,14 @@ const PreviousOrdersSection = () => {
     (s) => s.dateWindow?.label ?? "today",
   );
   const setDateWindow = usePreviousOrdersStore((s) => s.setDateWindow);
+  // Resolved business-day bounds — used to scope the offline live orders to the
+  // active date pill (they carry no server-side filtering of their own).
+  const resolvedStartTs = usePreviousOrdersStore(
+    (s) => s.dateWindow?._resolvedStartTs ?? null,
+  );
+  const resolvedEndTs = usePreviousOrdersStore(
+    (s) => s.dateWindow?._resolvedEndTs ?? null,
+  );
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
@@ -400,10 +421,38 @@ const PreviousOrdersSection = () => {
 
     if (offlineLiveOrders.length === 0) return mappedHistory;
 
+    // Offline: prepend the device's own live pending orders — but ONLY those
+    // that match the active date window + channel/status/provider filters,
+    // exactly like the server-filtered history rows. Without this, open orders
+    // were pinned to EVERY tab and date (e.g. a dine-in order appearing under
+    // the "Online" tab, or today's orders under "Yesterday").
+    const liveOrdersInScope = offlineLiveOrders.filter((o) => {
+      if (channelTab !== "all" && getChannelTab(o) !== channelTab) {
+        return false;
+      }
+      if (!matchesStatus(o, statusFilter)) return false;
+      if (channelTab === "online" && providerFilter !== "all") {
+        if (getProviderKey(o) !== providerFilter) return false;
+      }
+      if (resolvedStartTs && resolvedEndTs) {
+        // A live pending order is being worked on right now — if it has no
+        // `opened_at` yet, treat it as "now" so it belongs to today's window.
+        const t = new Date(o.opened_at ?? Date.now()).getTime();
+        if (
+          t < new Date(resolvedStartTs).getTime() ||
+          t >= new Date(resolvedEndTs).getTime()
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+    if (liveOrdersInScope.length === 0) return mappedHistory;
+
     // Offline: prepend live pending orders, deduped against history (a finalized
     // order can be in both the cache and the live store). Live copy wins.
     const liveIds = new Set<string>();
-    for (const o of offlineLiveOrders) {
+    for (const o of liveOrdersInScope) {
       liveIds.add(o.id);
       if (o.db_order_id) liveIds.add(o.db_order_id);
     }
@@ -411,8 +460,16 @@ const PreviousOrdersSection = () => {
       (o) =>
         !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id)),
     );
-    return [...offlineLiveOrders, ...historyMinusLive];
-  }, [previousOrders, offlineLiveOrders]);
+    return [...liveOrdersInScope, ...historyMinusLive];
+  }, [
+    previousOrders,
+    offlineLiveOrders,
+    channelTab,
+    statusFilter,
+    providerFilter,
+    resolvedStartTs,
+    resolvedEndTs,
+  ]);
 
   // Compute per-tab counts
   // Counts describe the WHOLE date window, not the loaded page. The tab bar
@@ -480,6 +537,86 @@ const PreviousOrdersSection = () => {
         backgroundColor: colors.screen,
       }}
     >
+      {/* Sync / offline status — mirrors the full Previous Orders screen so
+          release builds always show why the list might be partial. */}
+      {!rawIsOnline ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: s(6),
+            paddingHorizontal: s(10),
+            paddingVertical: s(6),
+            borderRadius: s(6),
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.warning,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.warning,
+              flex: 1,
+              fontWeight: "600",
+            }}
+          >
+            Offline — showing locally stored orders. New orders need a
+            connection.
+          </Text>
+        </View>
+      ) : isSyncing && !hasCompletedCycle ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: s(6),
+            paddingHorizontal: s(10),
+            paddingVertical: s(6),
+            borderRadius: s(6),
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.teal,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.teal,
+              flex: 1,
+              fontWeight: "600",
+            }}
+          >
+            Syncing order history for the first time…
+          </Text>
+        </View>
+      ) : freshness.state === "stale" ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: s(6),
+            paddingHorizontal: s(10),
+            paddingVertical: s(6),
+            borderRadius: s(6),
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.warning,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.warning,
+              flex: 1,
+              fontWeight: "600",
+            }}
+          >
+            Order history is stale — pull down to refresh.
+          </Text>
+        </View>
+      ) : null}
+
       {/* Header: Date Pills + Tabs + Search + Refresh */}
       <View
         style={{
@@ -615,6 +752,7 @@ const PreviousOrdersSection = () => {
           onRefresh={handleRefresh}
           isInitialLoading={isFetching}
           serverSorted
+          groupByDay
           ListFooter={
             filteredOrders.length > 0 ? (
               <PaginationBar

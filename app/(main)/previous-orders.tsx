@@ -1,5 +1,6 @@
 import DatePillRow, { type DatePillDef } from "@/components/menu/DatePillRow";
 import ChannelTabBar from "@/components/previous-orders/ChannelTabBar";
+import DayHeader from "@/components/previous-orders/DayHeader";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import OrdersSelectDropdown, {
   ActiveFilterPill,
@@ -17,6 +18,7 @@ import {
 import { useHistoryFilterControls } from "@/hooks/pos/useHistoryFilterControls";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { groupOrdersByDay } from "@/lib/orderDayGrouping";
 import {
   getChannelTab,
   getProviderKey,
@@ -50,7 +52,6 @@ import React, {
   useState,
 } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -547,6 +548,13 @@ const PreviousOrdersScreen = () => {
   // would silently re-scope results to the loaded page.
   const visibleOrders = allOrders;
 
+  // Day-separated groups for the list — consecutive same-day runs under
+  // "Today" / "Yesterday" / "EEEE, MMMM d" headers. Keeps the server sort.
+  const dayGroups = useMemo(
+    () => groupOrdersByDay(visibleOrders),
+    [visibleOrders],
+  );
+
   // Mutation hooks
   const closeCheckMutation = useCloseCheck();
   const reopenCheckMutation = useReopenCheck();
@@ -728,11 +736,6 @@ const PreviousOrdersScreen = () => {
               borderColor: colors.teal,
             }}
           >
-            <ActivityIndicator
-              size="small"
-              color={colors.teal}
-              style={{ marginRight: s(8) }}
-            />
             <Text
               style={{
                 fontSize: s(12),
@@ -939,9 +942,18 @@ const PreviousOrdersScreen = () => {
               </View>
             ) : (
               <>
-                {visibleOrders.map((item) => (
-                  <React.Fragment key={item.id}>
-                    {renderItem({ item })}
+                {dayGroups.map((group, gi) => (
+                  <React.Fragment key={group.dayStart}>
+                    <DayHeader
+                      title={group.title}
+                      count={group.orders.length}
+                      first={gi === 0}
+                    />
+                    {group.orders.map((item) => (
+                      <React.Fragment key={item.id}>
+                        {renderItem({ item })}
+                      </React.Fragment>
+                    ))}
                   </React.Fragment>
                 ))}
 
