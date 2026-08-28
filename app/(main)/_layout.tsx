@@ -47,7 +47,10 @@ import {
     useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import {
+  schedulePreviousOrdersRefresh,
+  usePreviousOrdersStore,
+} from "@/stores/usePreviousOrdersStore";
 import { useProfileOverlayStore } from "@/stores/useProfileOverlayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
@@ -275,7 +278,16 @@ export default function MainLayout() {
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
       const t1 = performance.now();
       recordSpan(KEY_FANOUT_ORDER_STORE_MS, t1 - t0);
-      if (suppressedEcho) return;
+      if (suppressedEcho) {
+        // Own-station echo: the order store already reconciled locally and the
+        // previous-orders + KDS handlers are intentionally skipped. But the
+        // Previous Orders list still needs to converge after a local mutation
+        // (void / close-check / reopen / payment done from that screen), which
+        // a suppressed echo would otherwise never deliver to it. Kick a
+        // debounced, mounted-gated refresh instead.
+        schedulePreviousOrdersRefresh();
+        return;
+      }
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
       const t2 = performance.now();
       recordSpan(KEY_FANOUT_PREV_ORDERS_MS, t2 - t1);

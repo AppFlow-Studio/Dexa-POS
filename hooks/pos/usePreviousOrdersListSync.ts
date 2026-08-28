@@ -17,6 +17,13 @@ export function usePreviousOrdersListSync() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
+  // Announce list mount so own-echo refreshes (schedulePreviousOrdersRefresh)
+  // only run while a Previous Orders surface is actually on screen.
+  useEffect(() => {
+    usePreviousOrdersStore.setState({ _isListMounted: true });
+    return () => usePreviousOrdersStore.setState({ _isListMounted: false });
+  }, []);
+
   // Initial bootstrap fires unconditionally at mount — the only path that
   // seeds `_orderLookup`.
   useEffect(() => {

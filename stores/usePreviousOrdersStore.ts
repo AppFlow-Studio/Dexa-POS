@@ -24,8 +24,8 @@ import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import {
-    derivePaidStatus,
     derivePaymentRefundState,
+    derivePreviousOrderPaymentStatus,
 } from "@/lib/paymentStatus";
 import { applyRefundRecovery } from "@/lib/refundRecovery";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
@@ -220,16 +220,6 @@ function buildOrderLookupMap(
   return lookup;
 }
 
-function _derivePaymentStatus(
-  profile: OrderProfile,
-): PreviousOrder["paymentStatus"] {
-  const derived = derivePaidStatus(profile);
-  if (derived === "Paid") return "Paid";
-  if (derived === "Partial") return "In Progress";
-  if (profile.paid_status === "Unpaid") return "Unpaid";
-  return "Unpaid";
-}
-
 /**
  * An "empty draft" shell: a still-open order with no line items and a zero
  * total. These are created when a station opens an order (which assigns a
@@ -301,6 +291,30 @@ const _scheduleDebouncedRefresh = () => {
     // passes force so the merchant can always force a fresh fetch.
     void usePreviousOrdersStore.getState().refreshPreviousOrders();
   }, SET_DATE_WINDOW_DEBOUNCE_MS);
+};
+
+let _ownEchoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+const OWN_ECHO_REFRESH_DEBOUNCE_MS = 800;
+
+/**
+ * Trailing-edge debounced, NON-forced Previous Orders refresh for the fan-out
+ * layer. Called when an own-station broadcast echo is suppressed — the
+ * in-memory list's broadcast patch is skipped for those, so a void / close /
+ * reopen / payment initiated from the Previous Orders screen would otherwise
+ * never reach the visible row. The refresh re-reads the mirror and (when the
+ * backend moved) the server, converging the row without a manual
+ * pull-to-refresh.
+ *
+ * No-ops unless a Previous Orders list surface is mounted, so ordering bursts
+ * on the order screen never trigger background refreshes.
+ */
+export const schedulePreviousOrdersRefresh = () => {
+  if (!usePreviousOrdersStore.getState()._isListMounted) return;
+  if (_ownEchoRefreshTimer) clearTimeout(_ownEchoRefreshTimer);
+  _ownEchoRefreshTimer = setTimeout(() => {
+    _ownEchoRefreshTimer = null;
+    void usePreviousOrdersStore.getState().refreshPreviousOrders();
+  }, OWN_ECHO_REFRESH_DEBOUNCE_MS);
 };
 
 // Global client reference
@@ -498,6 +512,10 @@ interface PreviousOrdersState {
   getRefundsForOrder: (orderId: string) => RefundRecord[];
   patchPreviousOrder: (orderId: string, patch: Partial<PreviousOrder>) => void;
   _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
+  /** True while a Previous Orders list surface (screen or section) is mounted.
+   *  Gates background refreshes so they only run when a list is on screen. */
+  _isListMounted: boolean;
+  setListMounted: (mounted: boolean) => void;
 }
 
 /** Transform a fetched DB order row into a PreviousOrder. */
@@ -540,7 +558,7 @@ function _transformFetchedOrder(
     }),
     orderId: profile.id,
     display_number: profile.display_number || `#${serialNo}`,
-    paymentStatus: _derivePaymentStatus(profile),
+    paymentStatus: derivePreviousOrderPaymentStatus(profile),
     customer: profile.customer_name || "Walk-In Customer",
     customer_phone: profile.customer_phone ?? null,
     server: profile.server_name || "Unknown",
@@ -696,6 +714,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     pageIndex: 0,
     pageCount: 0,
     _isPageLoading: false,
+    _isListMounted: false,
 
     /**
      * Load a specific page of the current filter set.
@@ -996,7 +1015,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         }),
         orderId: order.id,
         display_number: order.display_number || `#${serialNo}`,
-        paymentStatus: _derivePaymentStatus(order),
+        paymentStatus: derivePreviousOrderPaymentStatus(order),
         customer: order.customer_name || "Walk-In Customer",
         customer_phone: order.customer_phone ?? null,
         server: order.server_name || "Unknown",
@@ -1257,10 +1276,21 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       // Online + a recently-synced mirror whose retention covers the window:
       // the mirror IS the answer for ANY filter set (the delta sync revalidates
       // it every ~30s and the local query mirrors the server builder exactly),
-      // so skip the server round trip entirely — opening, tab-switching and
+      // so skip the full server round trip — opening, tab-switching and
       // date-switching become zero-network when the mirror is healthy.
       // Pull-to-refresh (force) bypasses this; a stale mirror or a window
       // reaching past the retained rows falls through to the server.
+      //
+      // A fresh mirror can still LAG the server by up to one delta cycle
+      // (~30s) or a missed/dropped broadcast — e.g. a just-created order, a
+      // payment, a void — so freshness alone is NOT proof the backend hasn't
+      // moved. Before trusting the mirror, run the same cheap signature probe
+      // the offline-cache path uses: when the backend's count + newest
+      // `updated_at` match the last server-fetched signature, nothing changed
+      // and the mirror rows stand (zero network beyond the probe). When the
+      // backend moved (new order → count; payment/void/refund → updated_at),
+      // fall through to the authoritative fetch so the list never shows a
+      // missing or stale row on entry.
       if (
         LOCAL_PREVIOUS_ORDERS_ENABLED &&
         local &&
@@ -1269,8 +1299,39 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         endTs &&
         (await isOrdersMirrorFresh(locationId, startTs))
       ) {
-        if (get()._isRefreshing) set({ _isRefreshing: false });
-        return;
+        const probeWindowLabel = (get().dateWindow ?? DEFAULT_DATE_WINDOW)
+          .label;
+        const cachedSig = previousOrdersOfflineCache.getSignature(locationId);
+        let serverMoved = true;
+        if (cachedSig && cachedSig.windowLabel === probeWindowLabel) {
+          try {
+            const live = await withDeadline(
+              (signal) =>
+                OrderService.getHistoryWindowSignature(
+                  client,
+                  locationId,
+                  startTs,
+                  endTs,
+                  signal,
+                ),
+              DEADLINES.read,
+              "getHistoryWindowSignature",
+            );
+            serverMoved = Boolean(
+              live.error || !isCacheFresh(cachedSig, live, probeWindowLabel),
+            );
+          } catch {
+            // Probe failed — don't trust the mirror blindly; refetch below.
+            serverMoved = true;
+          }
+        }
+        if (!serverMoved) {
+          // Backend hasn't moved — keep the mirror rows, skip the fetch.
+          if (get()._isRefreshing) set({ _isRefreshing: false });
+          return;
+        }
+        // Backend moved (or we couldn't prove it hadn't) — fall through to the
+        // full fetch below so the screen shows the authoritative state.
       }
 
       // Offline: don't hit the network. Hydrate the list from the last
@@ -1318,7 +1379,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       //
       // Only for the unfiltered first page: a filtered or deeper page isn't
       // what the cache holds. `force` (pull-to-refresh) always skips this.
-      if (!force && isDefaultHistoryFilters(st.filters) && st.pageIndex === 0) {
+      // Also skipped when the local mirror painted the page — the mirror rows
+      // are fresher than the offline snapshot, so overwriting them with the
+      // cache would be a regression; the full fetch below is authoritative.
+      if (
+        !local &&
+        !force &&
+        isDefaultHistoryFilters(st.filters) &&
+        st.pageIndex === 0
+      ) {
         const cached = previousOrdersOfflineCache.get(locationId);
         const cachedSig = previousOrdersOfflineCache.getSignature(locationId);
         const windowLabel = (st.dateWindow ?? DEFAULT_DATE_WINDOW).label;
@@ -2037,7 +2106,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       if (existing) {
         get().patchPreviousOrder(existing.db_order_id || existing.orderId, {
-          paymentStatus: _derivePaymentStatus(profile),
+          paymentStatus: derivePreviousOrderPaymentStatus(profile),
           refunded:
             profile.paid_status === "Refunded" ||
             (profile.order_status === "refunded" &&
@@ -2048,6 +2117,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
               !(profile.payments || []).some(
                 (p) => !p.isVoided && p.status === "captured",
               )),
+          // A void lands as a broadcast too — surface it on the row so a
+          // cross-station void shows the Voided badge without waiting for a
+          // refresh (own-station voids are covered by the debounced refresh).
+          voided: profile.order_status === "void",
           amount_paid: profile.amount_paid ?? existing.amount_paid,
           amount_due: profile.amount_due ?? existing.amount_due,
           cash_amount_due: profile.cash_amount_due ?? existing.cash_amount_due,
@@ -2086,6 +2159,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           _orderLookup: buildOrderLookupMap(previousOrders),
         };
       });
+    },
+
+    setListMounted: (mounted: boolean) => {
+      set({ _isListMounted: mounted });
     },
   }),
 );
