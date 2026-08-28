@@ -14,6 +14,7 @@ import {
     isNoEffectOperation,
     useCashDrawerStore,
 } from "@/stores/useCashDrawerStore";
+import { usePrinterStore } from "@/stores/usePrinterStore";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -34,16 +35,20 @@ export const US_DENOMINATIONS: Omit<DenominationCount, "count" | "total">[] = [
 ];
 
 /**
- * Find the drawer assigned to a station.
+ * Find the drawer assigned to a station, including its recorded host printer.
  */
 export async function findDrawerForStation(
   supabase: SupabaseClient,
   stationId: string,
   locationId: string,
-): Promise<{ id: string; name: string } | null> {
+): Promise<{ id: string; name: string; hostPrinterId: string | null } | null> {
   const { data, error } = await supabase
     .from("cash_drawers")
-    .select("id, name")
+    // select('*') — NOT an explicit host_printer_id column list. Prod may not
+    // have the column yet (staging-first migration); enumerating it would 400
+    // and break drawer hydration on prod. With '*' the field is simply absent
+    // (→ null) until the prod migration lands. Defensive by construction.
+    .select("*")
     .eq("station_id", stationId)
     .eq("location_id", locationId)
     .eq("is_active", true)
@@ -51,7 +56,94 @@ export async function findDrawerForStation(
     .maybeSingle();
 
   if (error || !data) return null;
-  return { id: data.id, name: data.name };
+  // Generated types (UTF-16, regenerated out-of-band) may still lag the
+  // column — read via a narrow cast.
+  const row = data as any;
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    hostPrinterId: (row.host_printer_id ?? null) as string | null,
+  };
+}
+
+/**
+ * Record which printer physically holds the drawer (cash_drawers.host_printer_id).
+ * Pass null to clear the binding (revert to sense-based inference). Also updates
+ * the local store so PrinterService.openCashDrawer sees it synchronously.
+ */
+// Self-adapting prod safety: the client ships (incl. via OTA) independently of
+// the host_printer_id DB migration. Reads use select('*') so they never 400;
+// the first write that hits a missing column flips this latch so we stop
+// attempting writes for the session (resets on restart, i.e. after the
+// migration lands). Replaces the need for a feature flag.
+let hostPrinterColumnUnavailable = false;
+
+function isMissingHostPrinterColumn(error: {
+  code?: string;
+  message?: string;
+}): boolean {
+  const code = error.code ?? "";
+  const msg = error.message ?? "";
+  if (code === "42703" || code === "PGRST204") return true;
+  return (
+    /host_printer_id/i.test(msg) &&
+    /column|schema cache|does not exist|could not find/i.test(msg)
+  );
+}
+
+export async function setDrawerHostPrinter(
+  supabase: SupabaseClient,
+  drawerId: string,
+  hostPrinterId: string | null,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("cash_drawers")
+    // Payload cast: host_printer_id not yet in the generated Update type.
+    .update({ host_printer_id: hostPrinterId } as never)
+    .eq("id", drawerId);
+  if (error) {
+    if (isMissingHostPrinterColumn(error)) {
+      // Migration not applied on this DB yet — latch off and stay quiet.
+      hostPrinterColumnUnavailable = true;
+      return false;
+    }
+    console.warn(
+      "[cashDrawerService] setDrawerHostPrinter failed:",
+      error.message,
+    );
+    return false;
+  }
+  // Only mirror into the store if this is the currently-active drawer.
+  if (useCashDrawerStore.getState().drawerId === drawerId) {
+    useCashDrawerStore.getState().setHostPrinterId(hostPrinterId);
+  }
+  return true;
+}
+
+/**
+ * Auto-detect and bind the drawer's host printer from persisted Star
+ * drawer-sense. Conservative: binds ONLY when exactly one active Star at the
+ * location firmware-reports a wired drawer (lastDrawerExternalDevice === true).
+ * Ambiguous (0 or >1) leaves it unbound for the installer to set via the picker.
+ */
+export async function maybeAutoBindDrawerHost(
+  supabase: SupabaseClient,
+  drawerId: string,
+  locationId: string,
+): Promise<string | null> {
+  // Skip if a prior write proved the column absent on this DB (pre-migration).
+  if (hostPrinterColumnUnavailable) return null;
+  const wired = usePrinterStore
+    .getState()
+    .printers.filter((p) => {
+      if (!p.isActive || p.locationId !== locationId) return false;
+      if (p.printerType !== "star_micronics") return false;
+      const m = (p.metadata ?? {}) as Record<string, unknown>;
+      return m.lastDrawerExternalDevice === true;
+    });
+  if (wired.length !== 1) return null;
+  const ok = await setDrawerHostPrinter(supabase, drawerId, wired[0].id);
+  return ok ? wired[0].id : null;
 }
 
 /**
@@ -330,7 +422,13 @@ export async function hydrateDrawerSession(
     return false;
   }
 
-  store.setDrawer(drawer.id, drawer.name);
+  store.setDrawer(drawer.id, drawer.name, drawer.hostPrinterId);
+
+  // Auto-bind the host printer from drawer-sense when unbound. Fire-and-forget
+  // so hydrate isn't slowed by the write; it updates the store when it resolves.
+  if (!drawer.hostPrinterId) {
+    void maybeAutoBindDrawerHost(supabase, drawer.id, locationId);
+  }
 
   // Check for active session
   const { data: session } = await supabase

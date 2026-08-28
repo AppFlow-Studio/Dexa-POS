@@ -214,13 +214,21 @@ Three screens hit this and now split into two panes:
 | --- | --- | --- |
 | Item detail | 1/3 hero band, copy scrolls under | photo + copy left, modifiers right |
 | Tip | centred column, totals pinned at foot | tip chooser left, totals + Pay right |
-| Cart | single column, totals pinned at foot | lines two-up left, totals + Checkout right |
+| Cart | single column, totals pinned at foot | lines left, totals card + Checkout right |
 
 Measured before the fix: the tip screen ran 32-47px past the viewport on every
 landscape panel with nothing scrolling, so the summary and Pay button were
 clipped; cart lines stretched to 1842px on a 1920px panel behind a 167px
 thumbnail. When adding a screen, check it at 1280x720 as well as 1920x1080 —
 the short panel is where a scaled fixed-height footer bites first.
+
+Cart and tip share the same landscape split (`LIST_PANE_FLEX = 1.45` against a
+1-flex summary pane, divider and `primaryColor06` wash on the right). The cart's
+lines go **two-up inside the left pane only when that pane still gives each line
+~430px** — on a 1280-wide panel the pane is ~700px, and two 340px lines put the
+thumbnail, qty stepper and Remove pill in each other's way, so it falls back to
+one column. An empty cart skips the split entirely: a summary of zeroes beside a
+dead Checkout button reads as broken, not as a layout.
 
 **The software keyboard is a fourth landscape squeeze.** The app runs
 `adjustResize`, so a keyboard takes roughly half a landscape kiosk's height

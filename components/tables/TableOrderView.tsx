@@ -18,6 +18,7 @@ import { useTableSession } from "@/hooks/useTableSession";
 import {
     getKitchenSentStatus,
     isItemReadyOrServed,
+    isKitchenItemUnsent,
 } from "@/lib/kitchenStatusUtils";
 import { markEnd } from "@/lib/perf";
 import { isActiveSession } from "@/lib/tableStateMachine";
@@ -65,8 +66,6 @@ import { Portal as Teleport } from "react-native-teleport";
 const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] =
   [];
 const PAID_BALANCE_TOLERANCE = 0.01;
-const isKitchenItemUnsent = (item: { kitchen_status?: string | null }) =>
-  !item.kitchen_status || item.kitchen_status === "new";
 
 const TableOrderMenuPanel = React.memo(function TableOrderMenuPanel({
   renderStage,
@@ -1005,22 +1004,33 @@ const TableOrderView = React.forwardRef<
 
       useOrderStore
         .getState()
-        .batchUpdateItemKitchenStatus(itemIds, getKitchenSentStatus());
+        .batchUpdateItemKitchenStatus(
+          activeOrder.id,
+          itemIds,
+          getKitchenSentStatus(),
+        );
       markCourseSent(activeOrder.id, course);
 
-      const result = await useTableSessionStore.getState().dispatchAction({
-        type: "SEND_TO_KITCHEN",
-        tableId: currentTableId,
-        courseNumber: course,
-        itemIds,
-        dbItemIds,
-        orderId: activeOrder.id,
-        dbOrderId: activeOrder.db_order_id,
-        forceResend,
-      });
+      const result = await useTableSessionStore.getState().dispatchAction(
+        {
+          type: "SEND_TO_KITCHEN",
+          tableId: currentTableId,
+          courseNumber: course,
+          itemIds,
+          dbItemIds,
+          orderId: activeOrder.id,
+          dbOrderId: activeOrder.db_order_id,
+          forceResend,
+        },
+        // K6: await the effect so `result` carries the REAL send outcome
+        // (sent / queued / rejected / skipped), not an optimistic "yes".
+        { awaitEffects: true },
+      );
+
+      const outcome = result.outcome?.status;
 
       if (result.success) {
-        // Set timestamps after success (non-blocking metadata)
+        // Set timestamps after confirmation (non-blocking metadata)
         if (!activeOrder.opened_at)
           useOrderStore
             .getState()
@@ -1029,6 +1039,19 @@ const TableOrderView = React.forwardRef<
           useOrderStore.getState().updateActiveOrderDetails({
             sent_to_kitchen_at: new Date().toISOString(),
           });
+
+        if (outcome === "queued") {
+          // K10: the send is queued, not confirmed — deliberately HOLD the
+          // paper ticket until the queue delivers, and tell the operator.
+          if (!silent)
+            show({
+              title: "Course send queued",
+              message: `Course ${course} is queued and will reach the kitchen when the connection recovers.`,
+              type: "warning",
+            });
+          return true;
+        }
+
         const autoPrintKitchenTickets =
           useLocationConfigStore.getState().config.printing
             .autoPrintKitchenTickets;
@@ -1072,9 +1095,16 @@ const TableOrderView = React.forwardRef<
             }
           });
         }
+        // K7: name the reason and the remedy when a live state blocks the send.
+        const sessionStatus =
+          useTableSessionStore.getState().sessions[currentTableId]?.status;
+        const isTerminalBlock =
+          sessionStatus === "paid" || sessionStatus === "cleaning";
         show({
           title: "Send Failed",
-          message: result.error || "Failed to send course to kitchen.",
+          message: isTerminalBlock
+            ? `The check is ${sessionStatus}. Reopen it to send late items to the kitchen.`
+            : result.error || "Failed to send course to kitchen.",
           type: "error",
         });
         return false;

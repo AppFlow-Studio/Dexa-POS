@@ -1,13 +1,18 @@
 import { getDeviceId } from "@/lib/deviceId";
 import {
     buildKitchenSendQueueParams,
+    clearKitchenSendInFlight,
+    clearKitchenSendInFlightIfCaughtUp,
     createKitchenSendContext,
+    isKitchenSendInFlight,
     isTerminalKitchenMutationError,
+    markKitchenSendInFlight,
     type KitchenSendContext,
 } from "@/lib/kdsSendTraceability";
 import {
     getKitchenSentStatus,
     getOrderSentStatus,
+    isKitchenItemSent,
 } from "@/lib/kitchenStatusUtils";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
@@ -722,7 +727,33 @@ type KitchenSendCommitResult =
  * Idempotent: each logical send owns stable composite/item keys. If the first
  * attempt is queued, replay reuses those keys instead of creating a new send.
  */
+/**
+ * S3 wrapper: bound the optimistic-status window. While the batch is in flight
+ * (or queued), broadcast merges keep the local kitchen_status. A send that
+ * resolves as rejected/skipped clears the marker, so the server wins and the
+ * line reads unsent again instead of staying "sent" forever.
+ */
 async function _commitKitchenSendForBatch(
+  freshOrder: OrderProfile,
+  localOrderId: string,
+  sentLocalIds: Set<string>,
+): Promise<KitchenSendCommitResult> {
+  const localItemIds = (freshOrder.items ?? [])
+    .filter((i) => sentLocalIds.has(i.id))
+    .map((i) => i.id);
+  markKitchenSendInFlight(localItemIds);
+  const result = await _commitKitchenSendForBatchInner(
+    freshOrder,
+    localOrderId,
+    sentLocalIds,
+  );
+  if (result.status === "rejected" || result.status === "skipped") {
+    clearKitchenSendInFlight(localItemIds);
+  }
+  return result;
+}
+
+async function _commitKitchenSendForBatchInner(
   freshOrder: OrderProfile,
   localOrderId: string,
   sentLocalIds: Set<string>,
@@ -2157,19 +2188,20 @@ const addItemToBackend = async (
         useOrderStore.getState().applyQueuedUpdates(resolveOrderKey());
 
         // Retroactively send to kitchen if item was fired during sync.
-        // Only send when this is the LAST item to finish — all items together
-        // in one batch produces a single KDS ticket instead of one per item.
+        // Phase 6 (S4): gate on the fired batch (this item), not the whole
+        // order — one dead-lettered add elsewhere must not wedge catch-up
+        // sends for the rest of the order's life.
         const postSyncOrder =
           useOrderStore.getState().ordersById[resolveOrderKey()];
         const postSyncItem = postSyncOrder?.items.find((i) => i.id === item.id);
         const kitchenSentStatus = getKitchenSentStatus();
-        const hasPendingSiblings = useOrderStore
+        const hasPendingBatchSyncs = useOrderStore
           .getState()
-          .hasPendingSyncs(resolveOrderKey());
+          .hasPendingSyncs(resolveOrderKey(), [item.id]);
         if (
           postSyncItem?.kitchen_status === kitchenSentStatus &&
           addResult.order_item_id &&
-          !hasPendingSiblings
+          !hasPendingBatchSyncs
         ) {
           // Reconcile quantity before kitchen send (same as regular item path)
           const localQuantity = postSyncItem.quantity;
@@ -2228,17 +2260,16 @@ const addItemToBackend = async (
             }
           }
 
-          // Collect ALL fired items for this order (not just this one)
-          const firedSyncedItems = (postSyncOrder?.items ?? []).filter(
-            (i) =>
-              i.kitchen_status === kitchenSentStatus && i.db_order_item_id,
-          );
-          const allDbItemIds = firedSyncedItems.map(
-            (i) => i.db_order_item_id!,
-          );
-          const allLocalItemIds = firedSyncedItems.map((i) => i.id);
-          const retryLocalItemIds =
-            allLocalItemIds.length > 0 ? allLocalItemIds : [item.id];
+          // Scope the retro catch-up to the item that just synced. Scanning
+          // the order for everything still at the sent status re-fires lines
+          // the main batch already sent (K3/S2): bulk_update_order_item_status_v2
+          // rewrites fire_time and moves them onto fresh KDS tickets. The item
+          // that just resolved a db id is the only one this path must catch up.
+          const allDbItemIds = addResult.order_item_id
+            ? [addResult.order_item_id]
+            : [];
+          const allLocalItemIds = [item.id];
+          const retryLocalItemIds = allLocalItemIds;
           if (__DEV__)
             console.log(
               `[addItemToBackend] Last item synced, batch-sending ${allDbItemIds.length} items to kitchen`,
@@ -2668,23 +2699,23 @@ const addItemToBackend = async (
       useOrderStore.getState().applyQueuedUpdates(resolveOrderKey());
 
       // Retroactively send to kitchen if item was fired during sync.
-      // Only send when this is the LAST item to finish — all items together
-      // in one batch produces a single KDS ticket instead of one per item.
+      // Phase 6 (S4): gate on the fired batch (this item), not the whole
+      // order — see the open-item path above.
       const postSyncOrder =
         useOrderStore.getState().ordersById[resolveOrderKey()];
       const postSyncItem = postSyncOrder?.items.find((i) => i.id === item.id);
       const kitchenSentStatus2 = getKitchenSentStatus();
-      const hasPendingSiblings2 = useOrderStore
+      const hasPendingBatchSyncs2 = useOrderStore
         .getState()
-        .hasPendingSyncs(resolveOrderKey());
+        .hasPendingSyncs(resolveOrderKey(), [item.id]);
       if (__DEV__)
         console.log(
-          `[RetroKitchen] item=${item.id} kitchen_status=${postSyncItem?.kitchen_status} expected=${kitchenSentStatus2} hasPendingSiblings=${hasPendingSiblings2} db_id=${addResult.order_item_id}`,
+          `[RetroKitchen] item=${item.id} kitchen_status=${postSyncItem?.kitchen_status} expected=${kitchenSentStatus2} hasPendingBatchSyncs=${hasPendingBatchSyncs2} db_id=${addResult.order_item_id}`,
         );
       if (
         postSyncItem?.kitchen_status === kitchenSentStatus2 &&
         addResult.order_item_id &&
-        !hasPendingSiblings2
+        !hasPendingBatchSyncs2
       ) {
         // Before sending to kitchen, reconcile quantity: the user may have
         // incremented this item while it was syncing (no db_order_item_id yet),
@@ -2751,17 +2782,14 @@ const addItemToBackend = async (
           }
         }
 
-        // Collect ALL fired items for this order (not just this one)
-        const firedSyncedItems2 = (postSyncOrder?.items ?? []).filter(
-          (i) =>
-            i.kitchen_status === kitchenSentStatus2 && i.db_order_item_id,
-        );
-        const allDbItemIds2 = firedSyncedItems2.map(
-          (i) => i.db_order_item_id!,
-        );
-        const allLocalItemIds2 = firedSyncedItems2.map((i) => i.id);
-        const retryLocalItemIds2 =
-          allLocalItemIds2.length > 0 ? allLocalItemIds2 : [item.id];
+        // Scope the retro catch-up to the item that just synced (K3/S2 — see
+        // the open-item path; re-firing every sent line moves it onto a fresh
+        // KDS ticket and resets its timer).
+        const allDbItemIds2 = addResult.order_item_id
+          ? [addResult.order_item_id]
+          : [];
+        const allLocalItemIds2 = [item.id];
+        const retryLocalItemIds2 = allLocalItemIds2;
         if (__DEV__)
           console.log(
             `[addItemToBackend] Last item synced, batch-sending ${allDbItemIds2.length} items to kitchen`,
@@ -2927,6 +2955,10 @@ const syncPaymentToBackend = async (
     forceCardPricing?: boolean; // Force card pricing for custom amount payments
     forceExplicitAmount?: boolean; // Preserve p_amount for allocation-free partial payments
     paymentJournal?: { id: string; idempotencyKey: string };
+    // K5: the explicit set of item ids this payment newly marked as sent, so
+    // the post-payment kitchen commit fires exactly these — not every line on
+    // the order that happens to be at the sent status.
+    kitchenSentLocalItemIds?: string[];
   },
   rollbackState?: PaymentRollbackState, // Previous state for reversion on failure
 ): Promise<boolean> => {
@@ -3649,13 +3681,24 @@ const syncPaymentToBackend = async (
       // Apply any queued backend updates now that payment sync is complete
       useOrderStore.getState().applyQueuedUpdates(order.id);
 
-      // Send items to kitchen if payment marked them as "sent"
+      // Send items to kitchen if payment marked them as "sent". Fires the
+      // EXPLICIT set captured by addPaymentToOrder (K5) — never a scan of the
+      // whole order at the sent status, which re-fires lines sent earlier
+      // (K3/S2) and, in 2-step mode, matched nothing so the pay-first send was
+      // silently skipped.
       const postPaymentOrder = useOrderStore.getState().ordersById[order.id];
       if (postPaymentOrder) {
+        const explicitKitchenSentIds = paymentDetails.kitchenSentLocalItemIds;
         const kitchenSentLocalIds = new Set(
-          postPaymentOrder.items
-            .filter((i) => i.kitchen_status === "sent")
-            .map((i) => i.id),
+          explicitKitchenSentIds && explicitKitchenSentIds.length > 0
+            ? explicitKitchenSentIds
+            : // Safety net for payments that did not originate from
+              // addPaymentToOrder: mode-aware, so 2-step 'preparing' is not
+              // missed and previously-sent lines are only re-fired as a last
+              // resort rather than by a hardcoded literal.
+              postPaymentOrder.items
+                .filter((i) => i.kitchen_status === getKitchenSentStatus())
+                .map((i) => i.id),
         );
 
         if (kitchenSentLocalIds.size > 0) {
@@ -4031,6 +4074,7 @@ interface OrderState {
     status: "preparing" | "ready" | "served",
   ) => void;
   batchUpdateItemKitchenStatus: (
+    orderId: string,
     itemIds: string[],
     status: "sent" | "preparing" | "ready" | "served",
   ) => void;
@@ -5462,6 +5506,15 @@ export const useOrderStore = create<OrderState>()(
                   (!item.kitchen_status || item.kitchen_status === "new"),
               );
               if (hasPendingItems) {
+                // S5: narrow the burst suppression to HEADER-ONLY broadcasts.
+                // A broadcast that carries real item-level changes — a
+                // cross-station edit, an echoed add — must still land so the
+                // cart converges instead of waiting for the debounced refresh.
+                const hasNoItemChanges = !hasItemLevelChanges(
+                  localOrder.items,
+                  backendOrder.order_items,
+                  backendOrder._broadcast_version,
+                );
                 if (!pendingItemsBlockStart[dbOrderId]) {
                   pendingItemsBlockStart[dbOrderId] = Date.now();
                 }
@@ -5475,18 +5528,23 @@ export const useOrderStore = create<OrderState>()(
                 const dynamicTimeout =
                   getPendingItemsBlockTimeout(pendingCount);
                 if (
+                  hasNoItemChanges &&
                   Date.now() - pendingItemsBlockStart[dbOrderId] <
-                  dynamicTimeout
+                    dynamicTimeout
                 ) {
                   return;
                 }
-                // Timeout — allow broadcast through, trigger full sync to reconcile
-                console.warn(
-                  "[OrderBroadcast] Pending items block timed out for order:",
-                  dbOrderId,
-                );
-                delete pendingItemsBlockStart[dbOrderId];
-                get()._debouncedOrderRefresh(dbOrderId);
+                if (hasNoItemChanges) {
+                  // Timeout — allow broadcast through, trigger full sync to reconcile
+                  console.warn(
+                    "[OrderBroadcast] Pending items block timed out for order:",
+                    dbOrderId,
+                  );
+                  delete pendingItemsBlockStart[dbOrderId];
+                  get()._debouncedOrderRefresh(dbOrderId);
+                }
+                // hasItemChanges: fall through — item updates land despite the
+                // pending-items burst.
               } else {
                 delete pendingItemsBlockStart[dbOrderId];
               }
@@ -5873,6 +5931,15 @@ export const useOrderStore = create<OrderState>()(
                                 KITCHEN_STATUS_RANK[
                                   broadcastItem.kitchen_status ?? "new"
                                 ] ?? 0;
+                              // S3: once the server catches up (broadcast rank >=
+                              // local rank), the send is confirmed — drop the
+                              // in-flight marker so a later failed send can no
+                              // longer hide behind it.
+                              clearKitchenSendInFlightIfCaughtUp(
+                                localItem.kitchen_status,
+                                broadcastItem.kitchen_status,
+                                localItem.id,
+                              );
                               // Preserve local quantity if a quantity sync is in-flight.
                               // The broadcast may arrive before updateOrderItemQuantity
                               // completes, carrying the old quantity from the DB.
@@ -5898,7 +5965,13 @@ export const useOrderStore = create<OrderState>()(
                                 ...(hasPendingQuantitySync
                                   ? { quantity: localItem.quantity }
                                   : {}),
-                                ...(localKRank > broadcastKRank
+                                // S3: preserve the local kitchen_status ONLY
+                                // while a send for this item is genuinely in
+                                // flight or queued. Otherwise the server wins —
+                                // a line the kitchen never received goes back
+                                // to reading unsent instead of 'sent' forever.
+                                ...(localKRank > broadcastKRank &&
+                                isKitchenSendInFlight(localItem.id)
                                   ? {
                                       kitchen_status: localItem.kitchen_status,
                                       item_status: localItem.item_status,
@@ -7757,12 +7830,18 @@ export const useOrderStore = create<OrderState>()(
           // ====================================================================
 
           // --- SYNC BARRIER METHODS ---
-          hasPendingSyncs: (orderId: string) => {
+          hasPendingSyncs: (orderId: string, itemIds?: string[]) => {
             const order = get().ordersById[orderId];
             if (!order) return false;
             // Phase 7D: Check sync store for pending status
             const syncStore = useSyncStatusStore.getState();
-            return order.items.some((item) => {
+            // Phase 6 (S4): when itemIds is given, only the fired batch is
+            // considered — one dead-lettered add elsewhere on the order must
+            // not wedge this batch's catch-up.
+            const items = itemIds
+              ? order.items.filter((item) => itemIds.includes(item.id))
+              : order.items;
+            return items.some((item) => {
               if (item.isDraft) return false;
               // Item still being added to backend (no db_order_item_id yet)
               if (!item.db_order_item_id) return true;
@@ -7773,7 +7852,7 @@ export const useOrderStore = create<OrderState>()(
 
           waitForPendingSyncs: async (
             orderId: string,
-            opts?: { maxMs?: number },
+            opts?: { maxMs?: number; itemIds?: string[] },
           ) => {
             // Default reduced 15s → 5s; hot-path callers pass {maxMs: 2000}.
             // The sync barrier must not freeze the UI on slow WiFi.
@@ -7781,7 +7860,14 @@ export const useOrderStore = create<OrderState>()(
             const POLL_INTERVAL_MS = 100;
             const start = Date.now();
 
-            // Wait until every non-draft item in the order has a db_order_item_id
+            // Phase 6 (S4): when itemIds is provided the barrier only waits on
+            // the batch being fired. The order-wide form stays for payment,
+            // where the whole order is the right question.
+            const itemIdFilter = opts?.itemIds
+              ? new Set(opts.itemIds)
+              : null;
+
+            // Wait until every non-draft item in scope has a db_order_item_id
             // (meaning addItemToBackend has completed for it) AND no item has a
             // pending/syncing status in useSyncStatusStore (for quantity updates etc).
             // Also awaits any promises registered via registerSyncOperation.
@@ -7791,13 +7877,18 @@ export const useOrderStore = create<OrderState>()(
 
               const syncStore = useSyncStatusStore.getState();
 
+              // Restrict the item set to the fired batch when scoped.
+              const relevantItems = itemIdFilter
+                ? order.items.filter((item) => itemIdFilter.has(item.id))
+                : order.items;
+
               // Check 1: any item missing db_order_item_id (still being added to backend)
-              const hasUnsynced = order.items.some(
+              const hasUnsynced = relevantItems.some(
                 (item) => !item.isDraft && !item.db_order_item_id,
               );
 
               // Check 2: any item with pending/syncing status (quantity updates etc)
-              const hasPendingStatus = order.items.some((item) => {
+              const hasPendingStatus = relevantItems.some((item) => {
                 if (item.isDraft) return false;
                 const status = syncStore.itemSyncStatus.get(item.id);
                 return status === "pending" || status === "syncing";
@@ -7805,7 +7896,7 @@ export const useOrderStore = create<OrderState>()(
 
               // Check 3: any registered promise still in-flight
               const registeredPromises: Promise<boolean>[] = [];
-              for (const item of order.items) {
+              for (const item of relevantItems) {
                 const p = pendingSyncOperations.get(item.id);
                 if (p) registeredPromises.push(p);
               }
@@ -8782,6 +8873,22 @@ export const useOrderStore = create<OrderState>()(
                   mergedQuantity,
                 );
               }
+              // S8: the merged-away line no longer exists in the cart — prune
+              // its coursing and seating pointers.
+              useCoursingStore
+                .getState()
+                .removeItemCourse(
+                  activeOrderId,
+                  updatedItem.id,
+                  updatedItem.db_order_item_id,
+                );
+              useSeatingStore
+                .getState()
+                .removeItemSeat(
+                  activeOrderId,
+                  updatedItem.id,
+                  updatedItem.db_order_item_id,
+                );
             }
 
             // Calculate totals SYNCHRONOUSLY
@@ -9806,7 +9913,8 @@ export const useOrderStore = create<OrderState>()(
                   status === "preparing" &&
                   (!i.kitchen_status || i.kitchen_status === "new")
                 ) {
-                  updatedItem.kitchen_status = "sent";
+                  // Mode-aware: 'sent' in 3-step, 'preparing' in 2-step (K8).
+                  updatedItem.kitchen_status = getKitchenSentStatus() as any;
                 } else if (status === "ready") {
                   updatedItem.kitchen_status = "ready";
                 } else if (status === "served") {
@@ -9877,18 +9985,20 @@ export const useOrderStore = create<OrderState>()(
             // recalculateTotals(activeOrderId);
           },
 
-          batchUpdateItemKitchenStatus: (itemIds, status) => {
-            const { activeOrderId } = get();
-            if (!activeOrderId) return;
+          batchUpdateItemKitchenStatus: (orderId, itemIds, status) => {
+            // S6: operate on the order OWING the ids, never the active order.
+            if (!orderId) return;
 
             const idSet = new Set(itemIds);
 
             set((state) => {
-              const order = state.ordersById[activeOrderId];
+              const order = state.ordersById[orderId];
               if (!order) return;
 
               for (const item of order.items) {
                 if (!idSet.has(item.id)) continue;
+                // kds-status-allow: applies the EXPLICIT status the caller passed
+                // (callers resolve the workflow-mode value via getKitchenSentStatus).
                 if (
                   status === "sent" &&
                   (!item.kitchen_status || item.kitchen_status === "new")
@@ -9906,6 +10016,7 @@ export const useOrderStore = create<OrderState>()(
                 } else if (status === "served") {
                   item.kitchen_status = "served";
                 }
+                // kds-status-allow-end
                 item.item_status =
                   status === "sent"
                     ? item.item_status
@@ -10025,12 +10136,8 @@ export const useOrderStore = create<OrderState>()(
             const itemToHandle = order.items.find((i) => i.id === itemId);
             if (!itemToHandle) return;
             // console.log('[removeItemFromActiveOrder] itemToHandle', itemToHandle);
-            // Check if item is a kitchen item (sent/ready/served) - should mark as voided, not remove
-            const isKitchenItem =
-              itemToHandle.kitchen_status === "sent" ||
-              itemToHandle.kitchen_status === "preparing" ||
-              itemToHandle.kitchen_status === "ready" ||
-              itemToHandle.kitchen_status === "served";
+            // Check if item is a kitchen item (fired in any state) - should mark as voided, not remove
+            const isKitchenItem = isKitchenItemSent(itemToHandle);
 
             let updatedItems: typeof order.items;
 
@@ -10048,6 +10155,23 @@ export const useOrderStore = create<OrderState>()(
             } else {
               // Draft/new items: remove completely
               updatedItems = order.items.filter((i) => i.id !== itemId);
+              // S8: the line no longer exists in the cart — prune its
+              // coursing and seating pointers so they can't leak for the
+              // life of the order.
+              useCoursingStore
+                .getState()
+                .removeItemCourse(
+                  activeOrderId,
+                  itemId,
+                  itemToHandle.db_order_item_id,
+                );
+              useSeatingStore
+                .getState()
+                .removeItemSeat(
+                  activeOrderId,
+                  itemId,
+                  itemToHandle.db_order_item_id,
+                );
             }
 
             // Calculate totals SYNCHRONOUSLY
@@ -10219,6 +10343,20 @@ export const useOrderStore = create<OrderState>()(
                     voided: item?.is_voided,
                   },
                 );
+              return;
+            }
+
+            // S9/S1: a fired line is immutable. The routing trigger
+            // (trg_route_items_to_kds) fires once per row — a quantity change
+            // on a sent line would never reach the KDS display. Require void +
+            // re-add so the kitchen is told what to cook.
+            if (isKitchenItemSent(item)) {
+              toastService.show({
+                title: "Item already in the kitchen",
+                message:
+                  "This item was sent to the kitchen. Void it and re-add to change the quantity.",
+                type: "warning",
+              });
               return;
             }
 
@@ -12231,7 +12369,9 @@ export const useOrderStore = create<OrderState>()(
                     ?.dual_pricing_percentage;
                 if (dualPricingPct != null && dualPricingPct > 0) {
                   const rate = dualPricingPct / 100;
-                  cashSavingsValue = round2((amount * rate) / (1 - rate));
+                  // Surcharge model: card = cash × (1 + rate), so a cash payment
+                  // of `amount` saved cash × rate vs. card (matches FALLBACK 1).
+                  cashSavingsValue = round2(amount * rate);
                 }
               }
             }
@@ -12289,7 +12429,7 @@ export const useOrderStore = create<OrderState>()(
                     pendingPaymentSeq: paymentSeq,
                     // Update kitchen and item status for items that haven't been sent yet
                     ...(shouldUpdateThisItem && {
-                      kitchen_status: "sent" as const,
+                      kitchen_status: getKitchenSentStatus() as any,
                       item_status: "Preparing" as const,
                     }),
                   };
@@ -12326,12 +12466,33 @@ export const useOrderStore = create<OrderState>()(
                   pendingPaymentSeq: paymentSeq,
                   // Update kitchen and item status for items that haven't been sent yet
                   ...(shouldUpdateThisItem && {
-                    kitchen_status: "sent" as const,
+                    kitchen_status: getKitchenSentStatus() as any,
                     item_status: "Preparing" as const,
                   }),
                 };
               });
             }
+
+            // K5: capture the explicit set of items this payment just marked
+            // sent (transitioned from unsent → sent). The post-payment kitchen
+            // commit uses exactly these ids instead of scanning the order for
+            // everything at the sent status, which re-fires lines fired earlier
+            // (K3/S2) and misses pay-first 2-step sends entirely.
+            const kitchenSentLocalItemIds: string[] = updatedItems
+              .filter((updatedItem) => {
+                const originalItem = order.items.find(
+                  (i) => i.id === updatedItem.id,
+                );
+                const wasUnsent =
+                  !originalItem?.kitchen_status ||
+                  originalItem.kitchen_status === "new";
+                return (
+                  wasUnsent &&
+                  !!updatedItem.kitchen_status &&
+                  updatedItem.kitchen_status !== "new"
+                );
+              })
+              .map((updatedItem) => updatedItem.id);
 
             // Rebuild itemsCovered from actual paidQuantity deltas (source of truth)
             // This prevents the bug where FIFO covers 2/4 but itemsCovered said 4/4
@@ -12632,6 +12793,9 @@ export const useOrderStore = create<OrderState>()(
                   id: paymentJournalId,
                   idempotencyKey: paymentJournalKey,
                 },
+                // K5: explicit set of items this payment marked sent — the
+                // post-payment commit fires exactly these.
+                kitchenSentLocalItemIds,
               },
               rollbackState, // Previous state for rollback on failure
             ).catch((err) => {
@@ -12782,12 +12946,15 @@ export const useOrderStore = create<OrderState>()(
               closed_at: order.closed_at || now,
               items: order.items.map((item) => ({
                 ...item,
+                // kds-status-allow: set membership (new/sent/preparing -> ready)
+                // when closing an order — not a workflow-mode decision.
                 kitchen_status:
                   item.kitchen_status === "new" ||
                   item.kitchen_status === "sent" ||
                   item.kitchen_status === "preparing"
                     ? ("ready" as const)
                     : item.kitchen_status || ("ready" as const),
+                // kds-status-allow-end
                 item_status:
                   item.item_status === "Preparing" ||
                   item.item_status === "preparing" ||
@@ -13954,7 +14121,11 @@ export const useOrderStore = create<OrderState>()(
               currentOrder.items.map((item) => item.id),
             );
             void (async () => {
-              await get().waitForPendingSyncs(firedOrderId);
+              // Phase 6 (S4): wait on the fired batch, not every item on the
+              // order — a dead-lettered add elsewhere must not tax this send.
+              await get().waitForPendingSyncs(firedOrderId, {
+                itemIds: [...firedItemIds],
+              });
               const sendOrder = get().ordersById[firedOrderId];
               if (sendOrder) {
                 const sendResult = await _commitKitchenSendForBatch(
@@ -13972,6 +14143,13 @@ export const useOrderStore = create<OrderState>()(
                   toastService.show({
                     title: "Kitchen send queued",
                     message: "The order will retry when the connection recovers.",
+                    type: "warning",
+                  });
+                } else if (sendResult.status === "skipped") {
+                  toastService.show({
+                    title: "Nothing was sent",
+                    message:
+                      "No items could be sent to the kitchen. If this repeats, sync the order and try again.",
                     type: "warning",
                   });
                 }
@@ -14024,56 +14202,23 @@ export const useOrderStore = create<OrderState>()(
               item_count: newItems.length,
             });
 
-            let cartToProcess = [...currentOrder.items];
-            const itemsToKeep: CartItem[] = [];
-            const mergedItemIds = new Set<string>();
-
-            // Iterate through each new item to see if it can be merged
-            for (const newItem of newItems) {
-              // Find a candidate for merging (must be already 'sent' and identical)
-              const mergeCandidate = cartToProcess.find((item) => {
-                if (item.id === newItem.id) return false; // Don't match self
-                if (item.kitchen_status !== "sent") return false; // Must be already sent
-
-                return areCartItemsMergeIdentical(activeOrderId, item, newItem);
-              });
-
-              if (mergeCandidate) {
-                // If we found a match, update its quantity in the final list
-                const existingInFinal = itemsToKeep.find(
-                  (i) => i.id === mergeCandidate.id,
-                );
-                if (existingInFinal) {
-                  existingInFinal.quantity += newItem.quantity;
-                } else {
-                  const updatedCandidate = {
-                    ...mergeCandidate,
-                    quantity: mergeCandidate.quantity + newItem.quantity,
-                  };
-                  itemsToKeep.push(updatedCandidate);
-                }
-                mergedItemIds.add(mergeCandidate.id); // Mark original as processed
-              } else {
-                // If no merge candidate, just mark this new item as 'sent' and add it
-                itemsToKeep.push({
-                  ...newItem,
-                  kitchen_status: getKitchenSentStatus(),
-                  item_status: "preparing",
-                });
+            // Keep every line: mark the unsent items as fired and advance nothing
+            // else. Fired lines are immutable — re-adding an identical item is a
+            // NEW line, never a merge into a fired one (matches
+            // addItemToActiveOrder and sendNewItemsToKitchenForOrder). The old
+            // merge loop folded a re-added line back into its already-sent
+            // sibling and then dropped it from the cart entirely, so the backend
+            // batch resolved to zero items and the send silently did nothing.
+            const finalCart = currentOrder.items.map((item) => {
+              if (!item.kitchen_status || item.kitchen_status === "new") {
+                return {
+                  ...item,
+                  kitchen_status: getKitchenSentStatus() as any,
+                  item_status: "Preparing" as const,
+                };
               }
-            }
-
-            // Add back all items that were not part of the merge logic (drafts, other sent items)
-            const finalCart = [
-              ...itemsToKeep,
-              ...cartToProcess.filter((item) => {
-                const isNew =
-                  !item.kitchen_status || item.kitchen_status === "new";
-                const wasMerged = mergedItemIds.has(item.id);
-                // Keep if it's not a new item and was not a merge target
-                return !isNew && !wasMerged;
-              }),
-            ];
+              return item;
+            });
 
             // O(1) update via ordersById
             set((state) => {
@@ -14106,8 +14251,11 @@ export const useOrderStore = create<OrderState>()(
             // Local state is already updated above - now handle backend sync.
             // Wait for any in-flight quantity updates (e.g. from incrementItemQuantity)
             // to complete before broadcasting kitchen status, so the KDS receives
-            // the correct quantity.
-            await get().waitForPendingSyncs(activeOrderId);
+            // the correct quantity. Phase 6 (S4): scoped to the fired batch —
+            // one dead-lettered add elsewhere on the order must not tax this send.
+            await get().waitForPendingSyncs(activeOrderId, {
+              itemIds: newItems.map((item) => item.id),
+            });
 
             // Re-read fresh state after the await — quantity syncs and item syncs
             // may have updated ordersById (assigned db_order_item_ids, new quantities)
@@ -14142,7 +14290,18 @@ export const useOrderStore = create<OrderState>()(
                 message: "Items will retry when the connection recovers.",
                 type: "warning",
               });
+            } else if (sendResult.status === "skipped") {
+              // A batch that resolves to zero sendable items must never be
+              // silent — the operator pressed Send and deserves an answer.
+              toastService.show({
+                title: "Nothing was sent",
+                message:
+                  "No items could be sent to the kitchen. If this repeats, sync the order and try again.",
+                type: "warning",
+              });
             }
+            // status === "rejected" is surfaced by _commitKitchenSendForBatch
+            // itself (terminal contract error with the backend hint).
           },
 
           sendNewItemsToKitchenForOrder: async (orderId: string) => {
@@ -14218,17 +14377,28 @@ export const useOrderStore = create<OrderState>()(
             // This path previously never awaited syncs and could drop an item
             // whose db id resolved a moment later — the same race that left items
             // stuck at kitchen_status='new' and absent from the KDS.
-            await get().waitForPendingSyncs(orderId);
+            // Phase 6 (S4): scoped to the fired batch.
+            await get().waitForPendingSyncs(orderId, {
+              itemIds: newItemsForPrint.map((item) => item.id),
+            });
             const sendOrder = get().ordersById[orderId];
             if (sendOrder) {
               const sentLocalIds = new Set(
                 newItemsForPrint.map((item) => item.id),
               );
-              await _commitKitchenSendForBatch(
+              const sendResult = await _commitKitchenSendForBatch(
                 sendOrder,
                 orderId,
                 sentLocalIds,
               );
+              if (sendResult.status === "skipped") {
+                toastService.show({
+                  title: "Nothing was sent",
+                  message:
+                    "No items could be sent to the kitchen. If this repeats, sync the order and try again.",
+                  type: "warning",
+                });
+              }
             }
 
             // Show toast after the state update
