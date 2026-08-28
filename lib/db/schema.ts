@@ -31,7 +31,7 @@
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -433,6 +433,7 @@ export const SCHEMA_STATEMENTS: string[] = [
     last_manifest_at TEXT,
     retention_floor  TEXT,
     row_count        INTEGER,
+    retention_cap    INTEGER,
     PRIMARY KEY (entity, location_id)
   )`,
 ];

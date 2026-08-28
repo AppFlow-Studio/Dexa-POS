@@ -12,26 +12,27 @@
  *
  * The last one is the whole design. It is asserted directly, twice.
  */
+import {
+    pullOrdersDelta,
+    pullOrdersManifest,
+    registerOrdersDescriptor,
+} from "@/lib/db/descriptors/orders";
 import { ENTITIES } from "@/lib/db/entities";
 import {
-  __resetLocalDbForTests,
-  destroyLocalDb,
-  getDb,
-  initLocalDb,
+    __resetLocalDbForTests,
+    destroyLocalDb,
+    getDb,
+    initLocalDb,
 } from "@/lib/db/index";
 import {
-  pullOrdersDelta,
-  pullOrdersManifest,
-  registerOrdersDescriptor,
-} from "@/lib/db/descriptors/orders";
-import {
-  computeLaggedCursor,
-  DEFAULT_PAGE_SIZE,
-  MAX_PAGES_PER_CYCLE,
-  readCursor,
-  reconcileManifest,
-  resetCursor,
-  syncEntity,
+    computeLaggedCursor,
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGES_PER_CYCLE,
+    readCursor,
+    readRetentionCap,
+    reconcileManifest,
+    resetCursor,
+    syncEntity,
 } from "@/lib/db/syncEngine";
 import { FakeSupabase, isoAt, serverOrder } from "./fakeSupabase";
 
@@ -123,6 +124,36 @@ describe("cold sync", () => {
     expect(JSON.parse(row!.payload).total_amount).toBe(19.99);
   });
 
+  it("backfills rows pruned under an older, smaller retention cap", async () => {
+    // 20 server orders, newest by created_at wins the prune.
+    server.rows = Array.from({ length: 20 }, (_, i) =>
+      serverOrder(`o${i + 1}`, isoAt(i + 1)),
+    );
+
+    const descriptor = ENTITIES.orders;
+    const originalCap = descriptor.retention.maxRows;
+    try {
+      // First sync under a small cap: only the newest 5 survive, and the
+      // watermark advances past the pruned ones (they can never re-fetch).
+      (descriptor.retention as { maxRows: number | null }).maxRows = 5;
+      await syncEntity(descriptor, "pos", supabase(), LOCATION);
+      expect(await countOrders()).toBe(5);
+      expect(await readRetentionCap("orders", LOCATION)).toBe(5);
+
+      // Raise the cap: the next cycle must detect it and backfill to 20.
+      (descriptor.retention as { maxRows: number | null }).maxRows = 20;
+      const result = await syncEntity(descriptor, "pos", supabase(), LOCATION);
+      expect(result.error).toBeNull();
+      expect(await countOrders()).toBe(20);
+
+      // Recorded cap matches the new value — no repeat reset next cycle.
+      expect(await readRetentionCap("orders", LOCATION)).toBe(20);
+    } finally {
+      (descriptor.retention as { maxRows: number | null }).maxRows =
+        originalCap;
+    }
+  });
+
   it("writes embedded items and payments in the same transaction", async () => {
     server.rows = [
       serverOrder("o1", isoAt(1), {
@@ -131,7 +162,12 @@ describe("cold sync", () => {
           { id: "i2", item_name: "Fries", quantity: 1, unit_price: 3.25 },
         ],
         order_payments: [
-          { id: "p1", payment_method: "cash", amount: 22.25, initiated_at: isoAt(1) },
+          {
+            id: "p1",
+            payment_method: "cash",
+            amount: 22.25,
+            initiated_at: isoAt(1),
+          },
         ],
       }),
     ];
@@ -153,7 +189,13 @@ describe("cold sync", () => {
     server.rows = [
       serverOrder("o1", isoAt(1), {
         order_items: [
-          { id: "i1", item_name: "Burger", quantity: 1, is_voided: true, voided_at: isoAt(2) },
+          {
+            id: "i1",
+            item_name: "Burger",
+            quantity: 1,
+            is_voided: true,
+            voided_at: isoAt(2),
+          },
         ],
       }),
     ];
@@ -396,7 +438,9 @@ describe("THE invariant — the watermark never outruns the data", () => {
     // A malformed server row: created_at is NOT NULL locally and the descriptor
     // passes it through unsanitized (unlike item_name, which it coalesces). The
     // batch must roll back whole, cursor included.
-    server.rows.push(serverOrder("o2", isoAt(2), { created_at: null as never }));
+    server.rows.push(
+      serverOrder("o2", isoAt(2), { created_at: null as never }),
+    );
 
     const result = await syncEntity(
       ENTITIES.orders,
@@ -413,7 +457,12 @@ describe("THE invariant — the watermark never outruns the data", () => {
 
     // And the proof it is recoverable: fix the data, re-sync, o2 arrives.
     server.rows[1] = serverOrder("o2", isoAt(2));
-    const retry = await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION);
+    const retry = await syncEntity(
+      ENTITIES.orders,
+      "pos",
+      supabase(),
+      LOCATION,
+    );
     expect(retry.error).toBeNull();
     expect(await orderIds()).toEqual(["o1", "o2"]);
   });
@@ -549,7 +598,12 @@ describe("resetCursor", () => {
     expect(await countOrders()).toBe(2);
     expect((await readCursor("orders", LOCATION)).watermark).toBeNull();
 
-    const again = await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION);
+    const again = await syncEntity(
+      ENTITIES.orders,
+      "pos",
+      supabase(),
+      LOCATION,
+    );
     expect(again.rowsWritten).toBe(2);
     expect(await countOrders()).toBe(2); // upsert, not duplicate
   });
@@ -599,7 +653,12 @@ describe("watermark lag — the late-commit skip", () => {
     await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION);
 
     server.reset();
-    const second = await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION);
+    const second = await syncEntity(
+      ENTITIES.orders,
+      "pos",
+      supabase(),
+      LOCATION,
+    );
 
     // The lag window re-reads `recent`, but `ancient` stays behind the cursor.
     expect(second.rowsWritten).toBeLessThanOrEqual(1);
@@ -632,11 +691,11 @@ describe("watermark lag — the late-commit skip", () => {
 
   it("never regresses the cursor", () => {
     const current = { watermark: isoAt(100), watermarkId: "o100" };
-    const out = computeLaggedCursor(
-      { value: isoAt(90), id: "o90" },
-      current,
-      { caughtUp: true, now: Date.parse(isoAt(95)), lagMs: 0 },
-    );
+    const out = computeLaggedCursor({ value: isoAt(90), id: "o90" }, current, {
+      caughtUp: true,
+      now: Date.parse(isoAt(95)),
+      lagMs: 0,
+    });
     expect(out.value).toBe(isoAt(100));
   });
 
@@ -681,7 +740,12 @@ describe("descriptor ↔ schema agreement", () => {
       }),
     ];
 
-    const result = await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION);
+    const result = await syncEntity(
+      ENTITIES.orders,
+      "pos",
+      supabase(),
+      LOCATION,
+    );
 
     // committed, not merely "did not throw" — a missing column shows up here.
     expect(result.error).toBeNull();
@@ -737,4 +801,3 @@ describe("descriptor query shape", () => {
     expect(server.lastSelect).toBe("id");
   });
 });
-

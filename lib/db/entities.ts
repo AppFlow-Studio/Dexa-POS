@@ -114,18 +114,23 @@ const MIN = 60_000;
  *   the REAL payload from the mirror's actual rows: **1387 B/row** over 2,000
  *   orders (plus a small promoted-column/index overhead).
  *
- * Budget is NOT binding for any table — at a conservative 50 MB mirror budget,
- * 50 MB / bytes-per-row supports orders ≈ 15k, customers ≈ 66k, inventory
- * ≈ 66k, staff ≈ 160k. The caps below are therefore WORKLOAD-derived (how far
- * back a cashier looks up a check; how many customers/inventory a location
- * realistically holds), with the measured budget as an upper bound they never
- * approach:
- *   orders 2000 ≈ 47 days at the busiest location (42.6 orders/day, B1);
- *   customers 5000, inventory 2000, staff 500 — all generously above real
- *   volume (the device synced 18 staff and ~54 menu items).
+ * Per-order footprint ≈ 3.45 KB (1387 order + 2.54×403 items + 0.93×1120
+ * payments, Section B averages). The orders cap is raised to **20,000**
+ * (2026-08-28, Phase 3 decision): ≈ 15 months of history at the busiest
+ * location (42.6 orders/day, B1) at ≈ 69 MB of data / ~80 MB on disk worst
+ * case. Completeness BEYOND the window comes from the Phase 3 server fallback
+ * (filtered/search queries resolve against Supabase when online), so this cap
+ * is the OFFLINE coverage bound, not the correctness bound. A cap RAISE
+ * auto-backfills: sync_state.retention_cap records the cap at last sync and
+ * syncEntity resets the cursor once when the configured cap exceeds it
+ * (syncEngine.ts).
+ *
+ * The rest are workload-derived and far above real volume:
+ *   customers 5000, inventory 2000, staff 500 (device synced 18 staff, ~54
+ *   menu items).
  */
 const RETENTION_CAPS = {
-  orders: 2000,
+  orders: 20000,
   customers: 5000,
   inventoryItems: 2000,
   staff: 500,

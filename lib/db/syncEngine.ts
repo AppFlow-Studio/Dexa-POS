@@ -193,6 +193,24 @@ export async function readRetentionFloor(
   }
 }
 
+/** The retention cap recorded at the last successful sync. null = never synced. */
+export async function readRetentionCap(
+  entityName: string,
+  locationId: string,
+): Promise<number | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const row = await db.getFirstAsync<{ retention_cap: number | null }>(
+      `SELECT retention_cap FROM sync_state WHERE entity = ? AND location_id = ?`,
+      [entityName, locationId],
+    );
+    return row?.retention_cap ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Pull every change for one entity since its watermark.
  *
@@ -232,6 +250,26 @@ export async function syncEntity(
   const pageSize = opts.pageSize ?? DEFAULT_PAGE_SIZE;
   const started = Date.now();
   let cursor = await readCursor(entity.name, locationId);
+
+  // A retention cap RAISE must backfill. The mirror may hold rows pruned
+  // under an older, smaller cap, and those are behind the watermark — the
+  // delta can never re-fetch them. Detect the raise locally (no server call)
+  // and reset the cursor once; writeSyncState records the new cap in the same
+  // cycle, so this fires exactly once per raise. Lowering the cap needs no
+  // reset — the prune handles it.
+  const storedCap = await readRetentionCap(entity.name, locationId);
+  const configuredCap = entity.retention.maxRows;
+  if (
+    storedCap !== null &&
+    configuredCap !== null &&
+    storedCap < configuredCap
+  ) {
+    await resetCursor(entity.name, locationId);
+    cursor = { watermark: null, watermarkId: null };
+    console.warn(
+      `[SyncEngine] ${entity.name} retention cap raised ${storedCap} -> ${configuredCap}; backfilling`,
+    );
+  }
 
   try {
     for (let page = 0; page < MAX_PAGES_PER_CYCLE; page++) {

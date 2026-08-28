@@ -746,7 +746,7 @@ ranking, which does not block Phase 2.**
 - [x] **Run the measurement pass on the lowest-spec device.** Ran 2026-08-28 on a Samsung
       SM-P613 (the fleet's low-mid tablet). Results (bytes/row incl. indexes):
       `order_items 403 · order_payments 1120 · inventory_items 795 · customers 786 ·
-    staff 328 · menu_items 1212`. **Orders' insert-diff reads 0 on a pre-populated
+staff 328 · menu_items 1212`. **Orders' insert-diff reads 0 on a pre-populated
       table** (rows reuse existing pages, so `PRAGMA page_count` doesn't move); the orders
       number is the REAL payload from the mirror's actual rows — **1387 B/row over 2,000
       orders** (second run; first run's insert-diffs for the other tables are the valid
@@ -1052,6 +1052,13 @@ inside the same transaction as the upserts — outside it, one partial failure s
 
 **Flag:** `EXPO_PUBLIC_LOCAL_PREVIOUS_ORDERS` · **Page:** [previous-orders.tsx](<app/(main)/previous-orders.tsx>)
 
+**Window: 20,000 orders** (raised 2026-08-28) ≈ 15 months at the busiest location, ~69 MB
+of data / ~80 MB on disk worst case. **Backfill on a cap raise is automatic:**
+`sync_state.retention_cap` records the cap at last sync, and `syncEntity` resets the cursor
+once when the configured cap exceeds it (no server call, fires exactly once). Completeness
+beyond the window is handled by the resolution rule below — the cap is the **offline**
+coverage bound, not the correctness bound.
+
 **Build** Repoint list, pagination, search and filters at SQL.
 `services/historyOrderFilters.ts` already models filters declaratively via
 `buildHistoryOrderQuery` — add a SQL emitter beside the PostgREST one so there stays exactly one
@@ -1062,16 +1069,34 @@ once this is proven.
 live-vs-settled rule so screens never encode it. Do this here, at the first page, not at the
 twelfth.
 
+**The resolution rule — local-first, server-corrected, never a silent miss.** `useOrders(filter)`
+returns `{ rows, source: "local" | "server" | "offline-local", scopeHint }` and applies:
+
+- **Default / recent-history paging** → local SQLite. Zero round trips (the headline win).
+- **Filtered / searched query, ONLINE** → local renders instantly (first paint), then the
+  server resolves the same query and its result **replaces** the local one. The server is
+  authoritative for correctness: a search for an order outside the 20k window still returns
+  it. No false negatives — an online search is never shown empty on the strength of local
+  data alone.
+- **Filtered / searched query, OFFLINE** → local window, with a visible scope line:
+  _"showing data through <date>; older data needs a connection"_ — never a bare empty state.
+- **Any local page that reaches the retention boundary while online** → the server's
+  corresponding page fills the gap.
+
 **Test** Enter offline → rows render with `Offline — showing data from …`. Page forward and back
 offline → **works**, which it does not today. Search offline hits the whole retained window, not
-one page. A refund on another station appears within one revalidation cycle.
+one page. **Search online for an order outside the local window → returned (server fallback).**
+A refund on another station appears within one revalidation cycle.
 
-**Done when** entry paints with no skeleton, paging costs **zero** round trips, and offline
-pagination works.
+**Done when** entry paints with no skeleton, paging costs **zero** round trips, offline
+pagination works, and no online query can return an empty result that a server query would
+have filled.
 
 **Watch for** the seam where the old bug lived: orders that exist locally but not on the server
 must render from Zustand with the existing `_offlineUnsynced` badge
-(`usePreviousOrdersStore.ts:807`) — never from SQLite.
+(`usePreviousOrdersStore.ts:807`) — never from SQLite. And the false-negative trap: an online
+search that returns nothing locally must resolve against the server before showing an empty
+state.
 
 ---
 

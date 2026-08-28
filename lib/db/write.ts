@@ -267,9 +267,10 @@ async function writeSyncState(
   await db.runAsync(
     `INSERT INTO sync_state
        (entity, location_id, watermark, watermark_id,
-        last_success_at, last_attempt_at, last_error, retention_floor, row_count)
+        last_success_at, last_attempt_at, last_error, retention_floor, row_count,
+        retention_cap)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?,
-             (SELECT COUNT(*) FROM ${entity.table} WHERE location_id = ?))
+             (SELECT COUNT(*) FROM ${entity.table} WHERE location_id = ?), ?)
      ON CONFLICT(entity, location_id) DO UPDATE SET
        watermark       = COALESCE(excluded.watermark, sync_state.watermark),
        watermark_id    = COALESCE(excluded.watermark_id, sync_state.watermark_id),
@@ -277,7 +278,8 @@ async function writeSyncState(
        last_attempt_at = excluded.last_attempt_at,
        last_error      = excluded.last_error,
        retention_floor = excluded.retention_floor,
-       row_count       = excluded.row_count`,
+       row_count       = excluded.row_count,
+       retention_cap   = excluded.retention_cap`,
     [
       entity.name,
       locationId,
@@ -288,6 +290,7 @@ async function writeSyncState(
       meta?.lastError ?? null,
       floor?.floor ?? null,
       locationId,
+      entity.retention.maxRows,
     ],
   );
 }
