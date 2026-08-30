@@ -76,13 +76,16 @@ function orderRow(id: string): Row {
   };
 }
 
+/** The menu entity's ROOT row — `menus`, not `menu_items` (schema v7). */
 function menuRow(id: string): Row {
   return {
     id,
     location_id: LOCATION,
-    name: "Burger",
-    price_minor: 950,
-    availability: 1,
+    name: "Lunch",
+    is_active: 1,
+    display_order: 0,
+    updated_at: "2026-01-01T00:00:00.000Z",
+    _ordinal: 0,
     _server_seen_at: "2026-01-01T00:00:00.000Z",
     payload: "{}",
   };
@@ -203,7 +206,7 @@ describe("station change — POS re-provisioned as a kiosk", () => {
 
     // The menu survives: a kiosk is an ordering surface and legitimately needs
     // it. Re-syncing it over dining-room WiFi for no reason would be worse.
-    expect(await countIn("menu_items")).toBe(1);
+    expect(await countIn("menus")).toBe(1);
   });
 
   it("is a no-op on a POS", async () => {
@@ -215,7 +218,7 @@ describe("station change — POS re-provisioned as a kiosk", () => {
   it("drops the menu too when the device becomes a KDS", async () => {
     await writeRows(ENTITIES.menu, "pos", LOCATION, [menuRow("m1")]);
     await purgeForbiddenTables("kds");
-    expect(await countIn("menu_items")).toBe(0);
+    expect(await countIn("menus")).toBe(0);
   });
 
   it("clears stale sync watermarks for now-forbidden entities", async () => {
@@ -240,7 +243,7 @@ describe("PII containment end to end", () => {
     await purgeForbiddenTables("kiosk");
 
     // Scan every table a kiosk may still hold for the PII we planted.
-    for (const table of ["menu_items", "menu_categories", "sync_state"]) {
+    for (const table of ["menus", "menu_items", "menu_categories", "sync_state"]) {
       const rows = await getDb()!.getAllAsync<Record<string, unknown>>(
         `SELECT * FROM ${table}`,
       );

@@ -64,14 +64,29 @@ class FakeQuery {
   private orders: Array<{ column: string; ascending: boolean }> = [];
   private limitValue: number | null = null;
   private rangeValue: { start: number; end: number } | null = null;
+  private wantsCount = false;
+  private headOnly = false;
 
   constructor(
     private db: FakeSupabase,
     private table: string,
   ) {}
 
-  select(columns = "*") {
+  /**
+   * `opts` carries PostgREST's count/head, which the cold-sync progress
+   * denominator uses (`countPending`). The count is computed from the SAME
+   * filtered set the page query would return, so a test can assert the
+   * denominator matches what the walk actually fetches — which is the whole
+   * point of counting "pending from the cursor" rather than "rows at this
+   * location".
+   */
+  select(
+    columns = "*",
+    opts: { count?: "exact" | "planned" | "estimated"; head?: boolean } = {},
+  ) {
     this.db.lastSelect = columns;
+    this.wantsCount = !!opts.count;
+    this.headOnly = !!opts.head;
     return this;
   }
 
@@ -176,11 +191,23 @@ class FakeQuery {
       });
     }
 
+    // The count is taken BEFORE limit/range, exactly as PostgREST reports it:
+    // "how many rows match", not "how many were returned".
+    const matched = out.length;
+
     if (this.limitValue !== null) out = out.slice(0, this.limitValue);
 
     // PostgREST range is inclusive of both ends.
     if (this.rangeValue !== null) {
       out = out.slice(this.rangeValue.start, this.rangeValue.end + 1);
+    }
+
+    if (this.wantsCount) {
+      return {
+        data: this.headOnly ? null : out,
+        error: null,
+        count: matched,
+      };
     }
 
     return { data: out, error: null };

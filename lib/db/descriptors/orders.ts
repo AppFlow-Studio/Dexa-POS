@@ -164,6 +164,12 @@ function toOrderRow(o: ServerOrder, seenAt: string): Row {
     // because it does not exist on remote — it is what analytics groups on.
     _sync_status: "synced",
     _business_day: businessDayOf(o.created_at),
+    // Case-folded at INGEST, because it cannot be done at query time: SQLite's
+    // LIKE, LOWER() and COLLATE NOCASE are all ASCII-only, while Postgres
+    // `ilike` folds Unicode — so "JOSÉ" matched an online search and missed an
+    // offline one. Folding in JS on the way in is the only place the two can
+    // be made to agree.
+    _search_customer_name: caseFold(o.customer_name),
     _server_seen_at: seenAt,
     payload: JSON.stringify(stripChildren(o)),
   };
@@ -360,10 +366,52 @@ export async function pullOrdersManifest(
   return ids;
 }
 
+/**
+ * How many orders the delta still has to fetch — the cold-sync progress
+ * denominator.
+ *
+ * `head: true` so no rows cross the wire, and the SAME keyset filter as
+ * `pullOrdersDelta` so the number counts exactly the rows the loop is about to
+ * walk (see EntityDescriptor.countPending for why "pending", not "total").
+ *
+ * `count: "estimated"` rather than "exact": exact is a COUNT(*) that gets
+ * slower as history grows, and this drives a progress bar. Postgres returns an
+ * exact count for a small result and the planner's estimate for a large one,
+ * which is precisely the tradeoff a percentage wants.
+ *
+ * Returns null rather than throwing on any failure — the caller degrades to a
+ * spinner, and a cosmetic count must never be able to fail a sync.
+ */
+export async function countOrdersPending(
+  ctx: Omit<PullContext, "limit">,
+): Promise<number | null> {
+  try {
+    let query = ctx.supabase
+      .from("orders")
+      .select("id", { count: "estimated", head: true })
+      .eq("location_id", ctx.locationId);
+
+    query = applyKeyset(
+      query as any,
+      "updated_at",
+      "id",
+      ctx.since,
+      ctx.sinceId,
+    );
+
+    const { count, error } = await query;
+    if (error) return null;
+    return typeof count === "number" ? count : null;
+  } catch {
+    return null;
+  }
+}
+
 export function registerOrdersDescriptor(): void {
   registerEntityQueries("orders", {
     pullDelta: pullOrdersDelta,
     pullManifest: pullOrdersManifest,
+    countPending: countOrdersPending,
   });
 }
 
@@ -373,6 +421,17 @@ export function registerOrdersDescriptor(): void {
 
 function str(v: unknown): string | null {
   return v === null || v === undefined ? null : String(v);
+}
+
+/**
+ * Unicode case fold for the local search columns. THE one implementation —
+ * `historyQuery.ts` folds the search term with the same function, and a fold
+ * applied differently on the two sides is a search that silently misses.
+ */
+export function caseFold(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v);
+  return s ? s.toLocaleLowerCase() : null;
 }
 
 /** SQLite has no boolean; null stays null so "unset" survives the round trip. */

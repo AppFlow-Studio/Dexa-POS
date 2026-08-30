@@ -130,6 +130,12 @@ export function useDeltaSync(opts: {
       // "Syncing order history for the first time…" needs a real in-progress
       // signal, not a freshness heuristic.
       useLocalDbSyncStore.getState().setSyncing(true);
+      // Progress is a COLD-SYNC affordance only. Once a cycle has completed the
+      // mirror is whole and every later cycle is one near-empty page — asking
+      // the server for a denominator on every tick, all shift, to describe a
+      // sync that finishes in one round trip would be pure waste.
+      const wantsProgress =
+        !useLocalDbSyncStore.getState().hasCompletedCycle;
       let ran = false;
       try {
         if (!(await waitForDbReady(signal))) return;
@@ -137,6 +143,9 @@ export function useDeltaSync(opts: {
         for (const entity of entities) {
           await syncEntity(entity, station, supabase, locationId, {
             signal,
+            onProgress: wantsProgress
+              ? (p) => useLocalDbSyncStore.getState().setProgress(p)
+              : undefined,
           });
         }
         // Shadow-compare (Phase 2 "Done when"): dev-only log of mirror row

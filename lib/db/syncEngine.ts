@@ -229,7 +229,24 @@ export async function syncEntity(
   station: StationKind,
   supabase: SupabaseClient,
   locationId: string,
-  opts: { pageSize?: number; lagMs?: number; signal?: AbortSignal } = {},
+  opts: {
+    pageSize?: number;
+    lagMs?: number;
+    signal?: AbortSignal;
+    /**
+     * Cold-sync progress, for the "Syncing order history…" banner.
+     *
+     * Opt-in per call rather than always on, because the denominator costs a
+     * round trip and steady state has nothing to report — one near-empty page
+     * is not a progress bar. `total` is null when the descriptor cannot count,
+     * which the UI renders as a spinner rather than a fake percentage.
+     */
+    onProgress?: (p: {
+      entity: string;
+      received: number;
+      total: number | null;
+    }) => void;
+  } = {},
 ): Promise<SyncCycleResult> {
   const result: SyncCycleResult = {
     entity: entity.name,
@@ -275,6 +292,25 @@ export async function syncEntity(
     console.warn(
       `[SyncEngine] ${entity.name} retention cap raised ${storedCap} -> ${configuredCap}; backfilling`,
     );
+  }
+
+  // The progress denominator, counted ONCE from wherever the cursor currently
+  // is. Deliberately before the loop and never inside it: re-counting per page
+  // would make the bar jitter as new orders land mid-sync, and it would spend a
+  // round trip per page to do it.
+  let received = 0;
+  let total: number | null = null;
+  if (opts.onProgress) {
+    if (entity.countPending) {
+      total = await entity.countPending({
+        supabase,
+        locationId,
+        since: cursor.watermark,
+        sinceId: cursor.watermarkId,
+        signal: opts.signal,
+      });
+    }
+    opts.onProgress({ entity: entity.name, received, total });
   }
 
   try {
@@ -346,6 +382,23 @@ export async function syncEntity(
 
       result.rowsWritten += write.written + write.childrenWritten;
       recordCount(KEY_SYNC_ROWS, write.written);
+
+      // Progress counts rows RECEIVED, not rows surviving retention: the prune
+      // caps the mirror at 20,000 while a cold sync legitimately walks every
+      // order the location has, so a bar driven by row count would stick at
+      // 100% for the rest of the backlog.
+      if (opts.onProgress) {
+        received += delta.received;
+        opts.onProgress({
+          entity: entity.name,
+          received,
+          // A count taken before the walk can be beaten by the walk itself
+          // (estimated counts, plus orders created mid-sync). Never let the
+          // denominator fall behind the numerator — a bar that reads 112% is
+          // worse than one that sits at 100% for a page.
+          total: total === null ? null : Math.max(total, received),
+        });
+      }
 
       // Advance the in-memory cursor to match what we just committed. Mid-page
       // this is the exact row cursor; on the final page it is the lagged one,

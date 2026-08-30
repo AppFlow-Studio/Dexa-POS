@@ -215,6 +215,45 @@ describe("queryLocalHistoryPage", () => {
     expect(byPhone!.orders.map((r) => r.id)).toEqual(["o1"]);
   });
 
+  /**
+   * The `ilike` vs `LIKE` gap Phase 3 recorded and deferred to Phase 4's
+   * schema work.
+   *
+   * SQLite's LIKE folds case for ASCII ONLY. Postgres `ilike` folds Unicode.
+   * So "JOSÉ" matched an online search and missed the identical offline one —
+   * a filter-parity gap of exactly the kind historyQuery.ts exists to prevent.
+   * `_search_customer_name` holds the JS-folded name written at ingest.
+   *
+   * This is a real regression test, not a vacuous one: dropping the
+   * `_search_customer_name` arm from the WHERE makes the accented cases below
+   * fail while every ASCII case keeps passing — which is precisely why the bug
+   * survived ten green tests.
+   */
+  it("matches a non-ASCII customer name case-insensitively, as ilike does", async () => {
+    await seed([
+      serverOrder("o1", isoAt(1), { customer_name: "JOSÉ RAMÍREZ" }),
+      serverOrder("o2", isoAt(2), { customer_name: "Bob Smith" }),
+      serverOrder("o3", isoAt(3), { customer_name: "Zoë Straße" }),
+    ]);
+
+    for (const [term, expected] of [
+      ["josé", ["o1"]],
+      ["JOSÉ", ["o1"]],
+      ["ramírez", ["o1"]],
+      ["zoë", ["o3"]],
+      ["STRASSE", []], // ß folds to ß, not "ss" — same as Postgres lower()
+      ["straße", ["o3"]],
+    ] as const) {
+      const page = await queryLocalHistoryPage(
+        spec({ ...DEFAULT_HISTORY_FILTERS, search: term }),
+      );
+      expect({ term, ids: page!.orders.map((r) => r.id) }).toEqual({
+        term,
+        ids: [...expected],
+      });
+    }
+  });
+
   it("searches delivery_platform through the verbatim payload", async () => {
     await seed([
       serverOrder("o1", isoAt(1), {

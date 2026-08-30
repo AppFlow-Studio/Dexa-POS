@@ -541,14 +541,40 @@ function staffRow(id: string): Row {
   };
 }
 
+/**
+ * The `menus` row the measured `menu_items` rows belong to. Seeded outside the
+ * sample so its own bytes do not skew the per-item number, and cleaned up with
+ * them.
+ */
+const MEASURE_MENU_ID = "55555555-5555-4555-8555-555555555555";
+const MEASURE_CATEGORY_ID = "66666666-6666-4666-8666-666666666666";
+
+function measureMenuRow(): Row {
+  const ts = iso(0);
+  return {
+    id: MEASURE_MENU_ID,
+    location_id: MEASURE_LOCATION,
+    merchant_id: MEASURE_MERCHANT,
+    name: "Measurement Menu",
+    is_active: 1,
+    display_order: 0,
+    created_at: ts,
+    updated_at: ts,
+    _ordinal: 0,
+    _server_seen_at: ts,
+    payload: "{}",
+  } satisfies Row;
+}
+
 function menuItemRow(id: string): Row {
   const ts = iso(0);
   return {
     id,
+    menu_id: MEASURE_MENU_ID,
+    menu_item_id: id,
+    category_id: MEASURE_CATEGORY_ID,
     location_id: MEASURE_LOCATION,
     merchant_id: MEASURE_MERCHANT,
-    menu_id: "55555555-5555-4555-8555-555555555555",
-    category_id: "66666666-6666-4666-8666-666666666666",
     name: "Grilled Atlantic Salmon",
     description:
       "Lemon-butter sauce, seasonal asparagus, herb-roasted baby potatoes",
@@ -665,6 +691,9 @@ export async function runMeasurementPass(): Promise<MirrorSizeReport | null> {
     const menuIds = Array.from({ length: FLAT_N }, (_, i) =>
       measureId(60_000 + i),
     );
+    // The parent menu, seeded outside the sample so its bytes don't skew the
+    // per-row number for items.
+    await measureTable("menus", [measureMenuRow()]);
     const menuSample = await measureTable(
       "menu_items",
       menuIds.map(menuItemRow),
@@ -677,6 +706,7 @@ export async function runMeasurementPass(): Promise<MirrorSizeReport | null> {
     await cleanupMeasurement("customers", custIds);
     await cleanupMeasurement("staff", staffIds, "location_member_id");
     await cleanupMeasurement("menu_items", menuIds);
+    await cleanupMeasurement("menus", [MEASURE_MENU_ID]);
   });
 
   report.dbSizeBytes = await getDbSizeBytes();

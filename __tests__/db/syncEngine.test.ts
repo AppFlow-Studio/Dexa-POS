@@ -820,3 +820,131 @@ describe("descriptor query shape", () => {
     expect(server.lastSelect).toBe("id");
   });
 });
+
+/**
+ * Cold-sync progress — the denominator behind the "Syncing order history… 42%"
+ * banner.
+ *
+ * The property that matters is that the percentage describes the walk the
+ * engine is ACTUALLY about to do. Counting the whole location instead of the
+ * pending remainder is the obvious shortcut and it is wrong in exactly the case
+ * that matters: a cold sync interrupted and resumed, where the bar would start
+ * partway and finish early.
+ */
+describe("progress reporting", () => {
+  function collect() {
+    const seen: Array<{ received: number; total: number | null }> = [];
+    return {
+      seen,
+      onProgress: (p: { received: number; total: number | null }) =>
+        seen.push({ received: p.received, total: p.total }),
+    };
+  }
+
+  it("counts the rows it is about to walk, and climbs to that number", async () => {
+    server.rows = Array.from({ length: 7 }, (_, i) =>
+      serverOrder(`o${i}`, isoAt(i + 1)),
+    );
+
+    const { seen, onProgress } = collect();
+    await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION, {
+      pageSize: 3,
+      onProgress,
+    });
+
+    // Opens at 0 so the bar renders immediately rather than after page 1.
+    expect(seen[0]).toEqual({ received: 0, total: 7 });
+    expect(seen[seen.length - 1]).toEqual({ received: 7, total: 7 });
+    // Monotonic — a bar that goes backwards reads as broken.
+    const received = seen.map((p) => p.received);
+    expect([...received].sort((a, b) => a - b)).toEqual(received);
+  });
+
+  /**
+   * The resume case. The engine picks up at its watermark, so the denominator
+   * must be the rows PAST the cursor — not the 6 rows the location holds.
+   */
+  it("counts from the cursor, not from the whole location", async () => {
+    server.rows = Array.from({ length: 6 }, (_, i) =>
+      serverOrder(`o${i}`, isoAt(i + 1)),
+    );
+    // A first pass leaves the cursor partway through.
+    await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION, {
+      pageSize: 2,
+      lagMs: 0,
+    });
+    server.rows.push(serverOrder("o9", isoAt(99)));
+
+    const { seen, onProgress } = collect();
+    await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION, {
+      pageSize: 2,
+      onProgress,
+    });
+
+    expect(seen[0].total).toBe(1);
+    expect(seen[seen.length - 1]).toEqual({ received: 1, total: 1 });
+  });
+
+  /**
+   * The denominator is taken once, before the walk. An estimated count — or an
+   * order created mid-sync — can leave it below what the walk actually
+   * receives, and a bar that reads 112% is worse than one that sits at 100%.
+   */
+  it("never lets the denominator fall behind the numerator", async () => {
+    server.rows = Array.from({ length: 5 }, (_, i) =>
+      serverOrder(`o${i}`, isoAt(i + 1)),
+    );
+
+    const underCounting = {
+      ...ENTITIES.orders,
+      countPending: async () => 2, // a bad estimate, on purpose
+    };
+
+    const { seen, onProgress } = collect();
+    await syncEntity(underCounting, "pos", supabase(), LOCATION, {
+      pageSize: 2,
+      onProgress,
+    });
+
+    for (const p of seen) {
+      expect(p.total).not.toBeNull();
+      expect(p.received).toBeLessThanOrEqual(p.total!);
+    }
+    expect(seen[seen.length - 1]).toEqual({ received: 5, total: 5 });
+  });
+
+  it("reports a null total when the descriptor cannot count", async () => {
+    server.rows = [serverOrder("o1", isoAt(1))];
+    const uncountable = { ...ENTITIES.orders, countPending: undefined };
+
+    const { seen, onProgress } = collect();
+    await syncEntity(uncountable, "pos", supabase(), LOCATION, { onProgress });
+
+    // Null, never 0 — the UI must show a sweep, not a stuck 0%.
+    expect(seen.every((p) => p.total === null)).toBe(true);
+    expect(seen[seen.length - 1].received).toBe(1);
+  });
+
+  /**
+   * Steady state must cost exactly what it costs today. The count is a round
+   * trip, and running it on every 30s tick all shift — to describe a sync that
+   * finishes in one page — is the kind of waste that makes a feature net
+   * negative.
+   */
+  it("costs no extra round trip when progress was not asked for", async () => {
+    server.rows = [serverOrder("o1", isoAt(1))];
+    await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION);
+    server.reset();
+
+    await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION);
+    const withoutProgress = server.requestCount;
+
+    server.reset();
+    await syncEntity(ENTITIES.orders, "pos", supabase(), LOCATION, {
+      onProgress: () => {},
+    });
+
+    expect(withoutProgress).toBe(1);
+    expect(server.requestCount).toBe(withoutProgress + 1);
+  });
+});

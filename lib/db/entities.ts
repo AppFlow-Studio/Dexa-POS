@@ -98,6 +98,22 @@ export interface EntityDescriptor {
    * any kind (there is no deleted_at anywhere in the remote schema).
    */
   pullManifest?: (ctx: ManifestContext) => Promise<string[]>;
+
+  /**
+   * How many rows the delta still has to fetch from `since` onwards — the
+   * DENOMINATOR for a cold-sync progress bar, and nothing else.
+   *
+   * Deliberately "pending from the cursor", not "rows at this location". The
+   * two differ the moment a cold sync is interrupted and resumed: the engine
+   * picks up at its watermark, so counting the whole location would leave the
+   * bar starting at 40% and finishing early. Same keyset filter as pullDelta,
+   * so the number counts exactly the rows the loop is about to walk.
+   *
+   * Optional, and a failure is not an error: no count means a spinner instead
+   * of a percentage, which is the correct degradation. It must never be able
+   * to fail a sync — progress is cosmetic, the data is not.
+   */
+  countPending?: (ctx: Omit<PullContext, "limit">) => Promise<number | null>;
 }
 
 const MIN = 60_000;
@@ -165,13 +181,33 @@ export const ENTITIES: Record<string, EntityDescriptor> = {
     // pullDelta / pullManifest attached below from descriptors/orders.ts
   },
 
+  /**
+   * The menu is a SNAPSHOT entity, not a keyset-delta one, and the difference
+   * is worth stating because it is the only place Track A departs from §8.2.
+   *
+   * `get_pos_bootstrap_v1` returns the whole resolved tree behind one opaque
+   * `version` watermark — there is no per-row change clock to page against,
+   * and there could not be: effective price and availability are resolved
+   * server-side out of five override tables, so "which rows changed" is not a
+   * question the remote schema can answer. `watermarkColumn` is therefore that
+   * envelope version rather than a column, and the whole payload is replaced
+   * in one transaction (see EntityBatch.replaceScope) whenever it moves.
+   *
+   * That also means no `pullDelta`: `syncableEntities()` skips it, so the 30 s
+   * delta loop never fetches the menu. It is written at the existing
+   * `usePosSync` seam in PosSyncProvider instead — one fetch, one cadence, no
+   * duplicated round trip. See lib/db/descriptors/menu.ts.
+   */
   menu: {
     name: "menu",
-    table: "menu_items",
+    table: "menus",
     primaryKey: "id",
-    watermarkColumn: "updated_at",
+    // The envelope's opaque version token, not a column on any table.
+    watermarkColumn: "version",
     children: [
+      "menu_bootstrap",
       "menu_categories",
+      "menu_items",
       "modifier_groups",
       "menu_item_modifier_groups",
     ],
@@ -255,7 +291,10 @@ export function syncableEntities(station: StationKind): EntityDescriptor[] {
  */
 export function registerEntityQueries(
   name: string,
-  impl: Pick<EntityDescriptor, "pullDelta" | "pullManifest">,
+  impl: Pick<
+    EntityDescriptor,
+    "pullDelta" | "pullManifest" | "countPending"
+  >,
 ): void {
   const entity = ENTITIES[name];
   if (!entity) {
@@ -266,4 +305,5 @@ export function registerEntityQueries(
   }
   if (impl.pullDelta) entity.pullDelta = impl.pullDelta;
   if (impl.pullManifest) entity.pullManifest = impl.pullManifest;
+  if (impl.countPending) entity.countPending = impl.countPending;
 }

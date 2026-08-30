@@ -24,6 +24,7 @@ import {
   DEFAULT_HISTORY_FILTERS,
   historyFilterKey,
 } from "@/services/historyOrderFilters";
+import { SyncProgressBanner } from "@/components/db/SyncProgressBanner";
 import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -566,30 +567,7 @@ const PreviousOrdersSection = () => {
           </Text>
         </View>
       ) : isSyncing && !hasCompletedCycle ? (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginBottom: s(6),
-            paddingHorizontal: s(10),
-            paddingVertical: s(6),
-            borderRadius: s(6),
-            backgroundColor: colors.card,
-            borderWidth: 1,
-            borderColor: colors.teal,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: s(11),
-              color: colors.teal,
-              flex: 1,
-              fontWeight: "600",
-            }}
-          >
-            Syncing order history for the first time…
-          </Text>
-        </View>
+        <SyncProgressBanner compact />
       ) : freshness.state === "stale" ? (
         <View
           style={{

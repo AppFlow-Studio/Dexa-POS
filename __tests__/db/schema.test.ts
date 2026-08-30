@@ -10,6 +10,7 @@ import {
   PRAGMAS,
   SCHEMA_STATEMENTS,
   SCHEMA_VERSION,
+  TABLE_CONFLICT_KEYS,
   TABLES,
 } from "@/lib/db/schema";
 
@@ -95,6 +96,46 @@ describe("schema — column naming contract", () => {
     const realColumns = DDL.match(/^\s*(\w+)\s+REAL/gm) ?? [];
     const names = realColumns.map((m) => m.trim().split(/\s+/)[0]);
     expect(names.sort()).toEqual(["current_stock", "reorder_point"]);
+  });
+});
+
+describe("schema — composite keys and the upsert conflict target", () => {
+  /**
+   * `upsertRow` in lib/db/write.ts names the conflict target explicitly, and a
+   * table with a composite PRIMARY KEY that is missing from TABLE_CONFLICT_KEYS
+   * would upsert on its first column instead. That fails as a constraint error
+   * the write boundary swallows into a rolled-back batch — which surfaces as
+   * "the mirror is empty", not as "the conflict target is wrong". This test is
+   * what turns that into a build failure.
+   */
+  it("declares a conflict target for every composite-PK table", () => {
+    for (const statement of SCHEMA_STATEMENTS) {
+      const create = /CREATE TABLE IF NOT EXISTS (\w+)/.exec(statement);
+      const inlinePk = /PRIMARY KEY\s*\(([^)]+)\)/.exec(statement);
+      if (!create || !inlinePk) continue;
+
+      const table = create[1] as (typeof TABLES)[number];
+      const declared = inlinePk[1].split(",").map((c) => c.trim());
+      expect({ table, keys: TABLE_CONFLICT_KEYS[table] }).toEqual({
+        table,
+        keys: declared,
+      });
+    }
+  });
+
+  it("keys every menu table on the location first", () => {
+    // A global menu is RESOLVED per location — same id, different effective
+    // prices. Without location_id in the key, a device that switches stores
+    // has one location's menu overwrite the other's.
+    for (const table of [
+      "menus",
+      "menu_categories",
+      "menu_items",
+      "modifier_groups",
+      "menu_item_modifier_groups",
+    ] as const) {
+      expect(TABLE_CONFLICT_KEYS[table]?.[0]).toBe("location_id");
+    }
   });
 });
 

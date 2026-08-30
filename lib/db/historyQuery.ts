@@ -21,6 +21,7 @@
  * `FetchedOrderData` from each row's `payload` + child rows and runs the SAME
  * transform as the server path, so rendering can never diverge.
  */
+import { caseFold } from "@/lib/db/descriptors/orders";
 import { getEntity } from "@/lib/db/entities";
 import {
     getReadDb,
@@ -188,13 +189,23 @@ export function buildHistoryOrderWhere(
   // ── Search ───────────────────────────────────────────────
   // ESCAPE '\' makes the escaped %/_ in the term literal (same escaping the
   // PostgREST path applies). Digits-only queries also probe phone.
+  //
+  // The customer name is matched TWICE, and the second arm is the interesting
+  // one. SQLite's LIKE folds case for ASCII only; Postgres `ilike` folds
+  // Unicode — so a search for "josé" hit online and missed offline, a
+  // filter-parity gap of exactly the kind this module's header promises there
+  // are none of. `_search_customer_name` holds the JS-folded name written at
+  // ingest (descriptors/orders.ts), matched here against the folded term. The
+  // plain `customer_name` arm stays so a row written before the column existed
+  // still matches on ASCII.
   const term = escapeSearchTerm(filters.search);
   if (term) {
     const like = `%${term}%`;
+    const foldedLike = `%${caseFold(term) ?? term}%`;
     clauses.push(
-      `(o.display_number LIKE ? ESCAPE '\\' OR o.order_number LIKE ? ESCAPE '\\' OR o.customer_name LIKE ? ESCAPE '\\' OR o.customer_phone LIKE ? ESCAPE '\\' OR ${DELIVERY_PLATFORM_SQL} LIKE ? ESCAPE '\\')`,
+      `(o.display_number LIKE ? ESCAPE '\\' OR o.order_number LIKE ? ESCAPE '\\' OR o.customer_name LIKE ? ESCAPE '\\' OR o._search_customer_name LIKE ? ESCAPE '\\' OR o.customer_phone LIKE ? ESCAPE '\\' OR ${DELIVERY_PLATFORM_SQL} LIKE ? ESCAPE '\\')`,
     );
-    params.push(like, like, like, like, like);
+    params.push(like, like, like, foldedLike, like, like);
   }
 
   // ── Empty drafts — mirror EMPTY_DRAFT_EXCLUSION_OR ───────

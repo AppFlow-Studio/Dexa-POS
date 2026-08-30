@@ -28,7 +28,7 @@ import type { EntityDescriptor } from "@/lib/db/entities";
 import { getDb } from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/mutex";
 import { canStore, type StationKind } from "@/lib/db/policy";
-import type { TableName } from "@/lib/db/schema";
+import { TABLE_CONFLICT_KEYS, type TableName } from "@/lib/db/schema";
 import {
   KEY_DB_POLICY_REJECT,
   KEY_DB_PRUNED_ROWS,
@@ -51,6 +51,23 @@ export type Row = Record<string, SqlValue>;
 export interface EntityBatch {
   root: Row[];
   children?: Partial<Record<TableName, Row[]>>;
+  /**
+   * Tables to clear FOR THIS LOCATION before the batch inserts, inside the
+   * same transaction.
+   *
+   * This is what "replaced wholesale on each sync" (the menu's retention
+   * policy) actually means. An upsert alone cannot express a DELETION: an 86'd
+   * item that was removed from the menu entirely, or a category taken off a
+   * menu, has no row in the new payload and would otherwise survive forever —
+   * a deleted item still ringing up. The row cap cannot help, because a menu
+   * is bounded by its own size, not by time.
+   *
+   * Only legitimate for an entity whose pull returns the COMPLETE set every
+   * time. A keyset-delta entity (orders) must never use it: the page is a
+   * fragment, and clearing the location would wipe the history the fragment
+   * was meant to extend.
+   */
+  replaceScope?: TableName[];
 }
 
 /** The cursor to advance, iff every row in the batch commits. */
@@ -106,11 +123,14 @@ export async function writeBatch(
   syncMeta?: { lastSuccessAt?: string; lastError?: string | null },
 ): Promise<WriteResult> {
   const childTables = Object.keys(batch.children ?? {}) as TableName[];
+  const replaceScope = batch.replaceScope ?? [];
 
-  // (1) Station policy — checked before anything touches disk, for the root
-  // AND every child table. A descriptor that fans out into a forbidden table
-  // is refused whole rather than partially applied.
-  for (const table of [entity.table, ...childTables]) {
+  // (1) Station policy — checked before anything touches disk, for the root,
+  // every child table AND every table the batch would clear. A descriptor that
+  // fans out into a forbidden table is refused whole rather than partially
+  // applied. The replace scope is included because a DELETE against a table
+  // this station may not hold is just as much a policy violation as a write.
+  for (const table of [entity.table, ...childTables, ...replaceScope]) {
     if (!canStore(station, table)) {
       recordCount(KEY_DB_POLICY_REJECT);
       console.warn(
@@ -125,8 +145,10 @@ export async function writeBatch(
     childTables.some((t) => batch.children![t]!.length);
 
   // An empty delta page still has to record "we checked, nothing changed" —
-  // that is what keeps the freshness stamp honest on a quiet minute.
-  if (!hasRows && !watermark && !syncMeta) return { ...EMPTY, committed: true };
+  // that is what keeps the freshness stamp honest on a quiet minute. A batch
+  // that only CLEARS is still real work, so the replace scope counts too.
+  if (!hasRows && replaceScope.length === 0 && !watermark && !syncMeta)
+    return { ...EMPTY, committed: true };
 
   const db = getDb();
   if (!db) return EMPTY;
@@ -152,6 +174,16 @@ export async function writeBatch(
     // checkpoints and any foreign lock, but nothing here depends on it.
     await dbWriteMutex.runExclusive(async () => {
       await db.withTransactionAsync(async () => {
+        // (0) Wholesale replace, for entities whose pull returns the complete
+        // set. Inside the transaction with the insert, so a failed sync can
+        // never leave the location holding NOTHING — an empty menu grid is
+        // precisely the P1 this phase exists to remove.
+        for (const table of replaceScope) {
+          await db.runAsync(`DELETE FROM ${table} WHERE location_id = ?`, [
+            locationId,
+          ]);
+        }
+
         for (const row of batch.root) {
           await upsertRow(db, entity.table, row);
         }
@@ -208,6 +240,12 @@ export async function writeRows(
  * but they are still taken only from the row's own keys and quoted — so a
  * malformed descriptor produces a SQL error rather than anything more
  * interesting.
+ *
+ * The conflict target is the row's FIRST column by descriptor convention,
+ * unless the table declares a composite primary key in TABLE_CONFLICT_KEYS
+ * (lib/db/schema.ts). Key columns are always excluded from the UPDATE SET:
+ * assigning a key to itself is pointless, and on `orders` it would trip the
+ * immutable-id trigger.
  */
 async function upsertRow(
   db: SQLiteDatabase,
@@ -217,18 +255,20 @@ async function upsertRow(
   const cols = Object.keys(row);
   if (cols.length === 0) return;
 
+  const keyCols = TABLE_CONFLICT_KEYS[table] ?? [cols[0]];
+  const keySet = new Set(keyCols);
+
   const quoted = cols.map((c) => `"${c}"`).join(", ");
   const placeholders = cols.map(() => "?").join(", ");
-  // The primary key is column 1 by convention in every descriptor; excluding
-  // it from the UPDATE set is what keeps the identity trigger happy.
+  const conflict = keyCols.map((c) => `"${c}"`).join(", ");
   const updates = cols
-    .slice(1)
+    .filter((c) => !keySet.has(c))
     .map((c) => `"${c}" = excluded."${c}"`)
     .join(", ");
 
   const sql = updates
     ? `INSERT INTO ${table} (${quoted}) VALUES (${placeholders})
-       ON CONFLICT("${cols[0]}") DO UPDATE SET ${updates}`
+       ON CONFLICT(${conflict}) DO UPDATE SET ${updates}`
     : `INSERT OR REPLACE INTO ${table} (${quoted}) VALUES (${placeholders})`;
 
   await db.runAsync(

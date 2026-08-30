@@ -43,6 +43,8 @@ const POLICY: Record<StationKind, ReadonlySet<TableName>> = {
     "orders",
     "order_items",
     "order_payments",
+    "menu_bootstrap",
+    "menus",
     "menu_categories",
     "menu_items",
     "modifier_groups",
@@ -54,6 +56,8 @@ const POLICY: Record<StationKind, ReadonlySet<TableName>> = {
     "sync_state",
   ]),
   kiosk: new Set<TableName>([
+    "menu_bootstrap",
+    "menus",
     "menu_categories",
     "menu_items",
     "modifier_groups",

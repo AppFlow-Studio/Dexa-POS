@@ -1214,6 +1214,36 @@ debounced: a cached "the mirror is current" verdict has to die the instant we le
 moved, or ④ would hide a just-created order behind a verdict issued seconds before it existed.
 The two halves of that are asserted as separate tests.
 
+**⑦ The cold-sync banner got a real percentage** _(added 2026-08-30)_.
+
+"Syncing order history for the first time…" was honest but unbounded — on a
+4,600-order location it sat there for minutes with no way to tell a slow sync from a stuck one.
+It now reads _"Syncing order history — 42% · 1,900 / 4,600"_ with a bar, via
+[components/db/SyncProgressBanner.tsx](components/db/SyncProgressBanner.tsx) on both Previous
+Orders and the order-entry section.
+
+Three things the denominator had to get right:
+
+- **It counts rows PENDING FROM THE CURSOR, not rows at the location.** The obvious shortcut is
+  wrong in exactly the case that matters — a cold sync interrupted and resumed picks up at its
+  watermark, so a whole-location count would start the bar partway and finish it early.
+  `EntityDescriptor.countPending` reuses the descriptor's own keyset filter, so it counts exactly
+  the rows the loop is about to walk.
+- **It is opt-in per call, and steady state does not pay for it.** The count is a round trip;
+  running it on every 30 s tick all shift, to describe a sync that finishes in one near-empty
+  page, would make the feature net negative. `useDeltaSync` passes `onProgress` only while
+  `hasCompletedCycle` is false. Asserted: with progress off the cycle costs exactly one request,
+  with it on, exactly two.
+- **Rows received, not rows stored, and the denominator can only be revised UP.** Retention prunes
+  the mirror to 20,000 while a cold sync legitimately walks every order the location has, so a bar
+  driven by row count would stick at 100% for the rest of the backlog. And `count: "estimated"`
+  can undershoot — clamping `total` to at least `received` is what stops the bar reading 112%.
+
+A null total renders an indeterminate sweep, never `0%`: "we cannot count" and "no progress" are
+different statements, and only one of them is true. No spinner either — this screen's loading
+language is a bar (`LoadingBar`, previous-orders.tsx), and a progress strip is the last place to
+break it.
+
 **Deliberately not done — both are real, neither is a fast fix:**
 
 - **`useOrders(filter)` was never built.** This phase claims the selector boundary (§4.3 ③) as
@@ -1223,21 +1253,111 @@ The two halves of that are asserted as separate tests.
   `liveOpenById` / `historyMinusLive`). Phase 5 copies that seven times unless it moves first.
   Moving it is a refactor of working, untested UI and wants a device run, not a fast pass.
   **Decide before Phase 5 starts, not during.**
-- **`ilike` vs `LIKE`.** SQLite's `LIKE` is case-insensitive for **ASCII only**; Postgres
-  `ilike` is not. A search for "josé" matches online and misses offline — a filter-parity gap of
-  exactly the kind this module's header promises there are none of. No cheap fix (`LOWER` and
-  `COLLATE NOCASE` are ASCII-only too); it needs case-folded columns written at sync time, i.e.
-  a schema bump and a re-pull. File it with the Phase 4 schema work rather than alone.
+- **`ilike` vs `LIKE`.** ✅ **CLOSED in Phase 4** (it rode that phase's schema bump, as filed).
+  SQLite's `LIKE` is case-insensitive for **ASCII only**; Postgres `ilike` is not, so a search for
+  "josé" matched online and missed offline. `LOWER` and `COLLATE NOCASE` are ASCII-only too, so
+  the fold has to happen in JS on the way in: `orders._search_customer_name` holds
+  `toLocaleLowerCase()` of the name (`caseFold()` in
+  [descriptors/orders.ts](lib/db/descriptors/orders.ts)), and the search matches it against the
+  folded term. `customer_name` keeps its own arm so an older row still matches on ASCII.
 
 **Still outstanding for Phase 3** (unchanged by this pass): the on-device run behind the flag,
 and the service-period soak before `previousOrdersOfflineCache` can be deleted.
 
 ---
 
-#### Phase 4 · Menu _(retires two caches, fixes a P1)_
+#### Phase 4 · Menu _(retires two caches, fixes a P1)_ — ✅ **BUILT (flag-gated, default off)**
 
 **Flag:** `EXPO_PUBLIC_LOCAL_MENU` · **Pages:** [menu/](<app/(main)/menu/>),
 [order-processing.tsx](<app/(main)/order-processing.tsx>), kiosk ordering
+
+**Status: code complete — 151/151 local-DB tests green (24 new), `tsc --noEmit` clean, ESLint
+clean, full suite at its known baseline (10 pre-existing suite failures / 30 tests, measured
+before and after and identical). Not yet run on device behind the flag; `menuOfflineCache` and
+`menuLibraryCache` both stay in place until the mirror has soaked.**
+
+| Delivered                                                             | File                                                                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Schema v7 — `menus` root, `menu_bootstrap` envelope, location-leading composite keys | [lib/db/schema.ts](lib/db/schema.ts)                                     |
+| Payload → rows → payload, and the image strip                         | [lib/db/descriptors/menu.ts](lib/db/descriptors/menu.ts)                 |
+| Wholesale replace inside the write transaction (`EntityBatch.replaceScope`) | [lib/db/write.ts](lib/db/write.ts)                                       |
+| Composite `ON CONFLICT` targets (`TABLE_CONFLICT_KEYS`)               | [lib/db/schema.ts](lib/db/schema.ts), [lib/db/write.ts](lib/db/write.ts) |
+| Snapshot entity semantics (no `pullDelta`, version as watermark)      | [lib/db/entities.ts](lib/db/entities.ts)                                 |
+| Boot hydrate from the mirror, MMKV as fallback; write + freshness stamp at the `usePosSync` seam | [contexts/PosSyncProvider.tsx](contexts/PosSyncProvider.tsx)             |
+| Banner reads local freshness                                          | [components/menu/MenuStaleBanner.tsx](components/menu/MenuStaleBanner.tsx) |
+| Case-folded search column (the Phase 3 `ilike` carry-over)            | [lib/db/descriptors/orders.ts](lib/db/descriptors/orders.ts), [lib/db/historyQuery.ts](lib/db/historyQuery.ts) |
+
+**Four decisions worth recording, because none of them were in the plan:**
+
+**① The menu is a SNAPSHOT entity, and it stays out of the 30 s delta loop.**
+
+Every other mirrored entity has a per-row change clock. The menu does not and cannot: effective
+price and availability are resolved server-side out of five override tables, so "which rows
+changed since X" is not a question the remote schema can answer without re-implementing price
+resolution on the device — the one thing §7 rules out forever. `get_pos_bootstrap_v1` therefore
+returns the whole tree behind one opaque `version` token, and `watermarkColumn` is that token
+rather than a column.
+
+That leaves the cadence question, and the answer is: **don't add one.** Giving the menu a
+`pullDelta` would have put a full bootstrap fetch on the 30 s tick — the exact 536–1108 ms
+payload Phase 2 exists to stop fetching — _in addition to_ the one `usePosSync` already makes.
+So the mirror is written at the existing seam in `PosSyncProvider`, where the payload has
+already arrived: one fetch, one cadence, no duplicated round trip. `syncableEntities()` filters
+on `typeof pullDelta === "function"`, so leaving it off is all it takes.
+
+**② The keys are location-leading, and a test found that the hard way.**
+
+The first cut keyed `menus` on `id` alone. It passed the round trip, the replace, the images and
+the policy — and then failed "only clears the location it is replacing", because a global
+merchant-wide menu has the **same id at every location** and is **resolved differently at each**
+(`price_levels.level_5_location_menu`). One location's write overwrote the other's row, and the
+next resync left the surviving location holding the wrong prices under the right id. Correct-
+looking data, wrong money — and invisible until someone switches stores.
+
+Same class one level down: `menu_categories.id` and `menu_items.id` are the remote **junction**
+ids, unique per (menu, category) and (category, item) but **not per menu**. A global category in
+two menus produces the same `category_items.id` twice; keying on it alone drops every menu's
+items but the last. Hence `(location_id, id)` and `(location_id, menu_id, id)`.
+
+Neither is expressible with the old upsert, which hardcoded `ON CONFLICT(cols[0])` — so
+`TABLE_CONFLICT_KEYS` now declares the target beside the DDL, and `upsertRow` excludes every key
+column from the `SET`. A schema test fails the build if a composite-PK table is missing from it,
+because the failure mode otherwise is silent: SQLite raises a constraint error, the write
+boundary swallows it into a rolled-back batch, and it surfaces as "the mirror is empty".
+
+**③ An upsert cannot express a deletion, so the batch had to grow one.**
+
+An item taken off the menu simply has no row in the next payload. Retention can't help — a menu
+is bounded by its own size, not by time, which is why its cap is `null`. So `EntityBatch` gained
+`replaceScope`: tables cleared for the location **inside the same transaction as the insert**, so
+a failed sync can never leave a location holding nothing (an empty grid being the exact P1 this
+phase removes). It is deliberately opt-in and documented as illegal for keyset-delta entities —
+a page is a fragment, and clearing the location would wipe the history the fragment extends. The
+replace scope is checked against station policy too: a `DELETE` against a table this station may
+not hold is as much a violation as a write.
+
+**④ The banner reads local freshness for its STAMP, not for its trigger.**
+
+The plan says "`MenuStaleBanner` reads local freshness" and, separately, "tight `staleAfterMs`,
+loud banner". Those two pull against each other once you wire them: `staleAfterMs` is 2 minutes
+and `usePosSync` is `staleTime: Infinity` with no polling, so a freshness-triggered banner would
+be amber on every station within two minutes of boot, permanently — and a banner that is always
+up is one nobody reads.
+
+So the trigger stays `isFromCache || isError` (the two states that genuinely mean "this may not
+be current"), and freshness supplies what it is actually good for: a **durable** stamp of the
+last live _confirmation_ — including the version-unchanged path, where nothing is rewritten but
+the server did confirm the menu — plus the honest offline case, which now says "no connection,
+last confirmed at 2:45 PM" instead of implying a sync is on its way. `syncState.lastSyncedAt` is
+an in-memory copy of whatever payload hydrated the store and on a cache boot is the snapshot's
+own age; the mirror's `sync_state` row survives a relaunch.
+
+**The revalidation gap this exposed, stated plainly.** `usePosSync` never refetches while it
+holds data. `useMenuSnoozeReconcile` polls 86 state every 60 s, so availability stays live — but
+**a price edited on the website mid-service does not reach a running POS until restart.** That
+is a pre-existing bug, not one this phase introduces, and fixing it means giving `pos_sync` a
+revalidation cadence (or a cheap version-only probe RPC, which does not exist yet). Filed rather
+than done, because it is a change to the online path and Phase 4 is about the offline one.
 
 **Build** Mirror the `get_pos_bootstrap_v1` payload into real tables. Image `file://` paths from
 `services/menuImageCache.ts` — **never base64**. `MenuStaleBanner` reads local freshness. Delete
@@ -1254,6 +1374,64 @@ are deleted.
 
 **Watch for** **prices.** A stale menu rings up yesterday's prices. Tight `staleAfterMs`, loud
 banner.
+
+**⑤ Two boot-path holes the tests found, both silent.**
+
+Neither would have crashed, which is what makes them worth recording — both leave the flag
+looking like it works while the mirror does nothing.
+
+- **The DB-open race.** `initLocalDb()` is kicked off from a *sibling* effect in the same commit,
+  so an `isLocalDbReady()` check at the top of a read or write loses the race at every cold boot:
+  the read falls back to MMKV, the write is skipped, and the mirror stays empty. Every entry point
+  now `await`s `initLocalDb()` (idempotent, shares its in-flight promise) instead of asking
+  whether it happens to be open.
+- **The flag-flip hole.** On the first boot after `EXPO_PUBLIC_LOCAL_MENU` is set, the store
+  hydrates from MMKV, the live sync returns the *same* version, and the caller takes the
+  version-unchanged skip path. Stamping freshness there and returning leaves the mirror empty
+  **forever** — the version never changes again, so the skip path is the only one that ever runs.
+  `touchMenuFreshness` now checks whether the mirror actually holds that version and writes it in
+  full when it does not.
+
+**What the tests actually assert** ([**tests**/db/menuMirror.test.ts](__tests__/db/menuMirror.test.ts),
+against a real SQL engine): the round trip is exact (`readMenuSnapshot` deep-equals the payload
+that was written — which is what makes "one transform, no drift" true rather than intended);
+source order survives a null/tied `display_order` via `_ordinal`; the read opens the database
+itself rather than assuming it is open; two locations' resolutions of the same menu id stay apart,
+each with its own price; one category in two menus keeps both appearances and both prices; a
+discontinued item disappears; an empty payload is refused rather than replacing a good snapshot;
+no base64 reaches any menu table; a kiosk may hold the menu and a KDS may not, replace scope
+included; the version lands as the watermark, the stamp advances without touching a row, and the
+mirror is rewritten in full when it holds a different version or none; the three boot reads are
+index scans with no temp b-tree; and `effective_price` promotes to exact minor units while the
+server's value survives verbatim in `payload`.
+
+Three of those are **verified as real regression tests, not vacuous ones** — each guard was
+removed and the test confirmed to fail:
+
+| Remove                                          | What fails                                     |
+| ------------------------------------------------ | ---------------------------------------------- |
+| `location_id` from the menu conflict keys       | the cross-location and composite-key cases     |
+| the `_search_customer_name` arm from the search | the accented search — every ASCII case still passes, which is exactly why the bug survived ten green tests in Phase 3 |
+| `idx_mi_menu`                                   | the query-plan case                            |
+
+**Still outstanding for Phase 4:**
+
+- [ ] **Run it on device behind the flag.** Cold boot with the radio off and confirm the grid
+      paints from SQLite (the hydrate log reports `source` and `hydrateMs` — compare against the
+      MMKV path with the flag off, which is the number that decides whether the mirror is
+      actually the better boot).
+- [ ] **The P1 reproduction:** burn every `usePosSync` retry at boot and confirm the grid paints
+      instead of "No Menu Available".
+- [ ] **Prices side by side.** A full menu rendered from the mirror against the same menu
+      rendered live — the round-trip test proves the payload survives, not that the resolved
+      prices on screen match, and this is the phase's "watch for".
+- [ ] **A service-period soak** before either MMKV cache is deleted. `menuOfflineCache` and
+      `menuLibraryCache` are both untouched, so rollback is unsetting the flag.
+- [ ] **File the price-revalidation ticket** (④ above): `pos_sync` never refetches while it holds
+      data, so a website price edit does not reach a running POS until restart.
+- [ ] **Re-derive `menu_items` bytes/row.** The Phase 1 measurement predates this schema (rows
+      now carry the whole junction entry including nested modifier groups), so the 1212 B/row
+      figure is stale. The menu is uncapped, so this is a budget input, not a cap input.
 
 ---
 

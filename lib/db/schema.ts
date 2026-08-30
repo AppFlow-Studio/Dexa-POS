@@ -34,10 +34,17 @@
  * to the server path. Existing payloads lack them, so a rebuild re-pulls every
  * order with the new shape.
  *
+ * v7 (2026-08-28, Phase 4): the menu block is rebuilt to carry the whole
+ * `get_pos_bootstrap_v1` envelope — a `menus` root, per-menu category and item
+ * junction rows under composite keys, and one `menu_bootstrap` row for the
+ * parts of the envelope that are not the tree (recipes, snoozes). Orders gain
+ * `_search_customer_name`, the case-folded column that closes the `ilike` vs
+ * `LIKE` search-parity gap Phase 3 left open.
+ *
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -51,6 +58,8 @@ export const TABLES = [
   "orders",
   "order_items",
   "order_payments",
+  "menu_bootstrap",
+  "menus",
   "menu_categories",
   "menu_items",
   "modifier_groups",
@@ -63,6 +72,34 @@ export const TABLES = [
 ] as const;
 
 export type TableName = (typeof TABLES)[number];
+
+/**
+ * Conflict target for the upsert in lib/db/write.ts, for tables whose primary
+ * key is NOT a single leading `id` column.
+ *
+ * Declared here rather than inferred, because `ON CONFLICT` has to name the
+ * exact key columns and getting it wrong is silent: SQLite raises a constraint
+ * error the write boundary swallows into a rolled-back batch, which looks like
+ * "the mirror is empty" rather than "the conflict target is wrong". A test
+ * asserts every composite-PK table in the DDL appears here.
+ *
+ * Tables absent from this map upsert on their first column, which is the
+ * primary key by descriptor convention.
+ */
+export const TABLE_CONFLICT_KEYS: Partial<Record<TableName, readonly string[]>> =
+  {
+    menus: ["location_id", "id"],
+    menu_categories: ["location_id", "menu_id", "id"],
+    menu_items: ["location_id", "menu_id", "id"],
+    modifier_groups: ["location_id", "id"],
+    menu_item_modifier_groups: [
+      "location_id",
+      "menu_item_id",
+      "modifier_group_id",
+    ],
+    menu_bootstrap: ["location_id"],
+    sync_state: ["entity", "location_id"],
+  };
 
 /**
  * PRAGMAs applied on every open, in this order.
@@ -153,6 +190,13 @@ export const SCHEMA_STATEMENTS: string[] = [
     _lamport              INTEGER NOT NULL DEFAULT 0,
     _device_id            TEXT,
     _business_day         TEXT,
+    -- Case-FOLDED customer name, written at sync time. SQLite's LIKE is
+    -- case-insensitive for ASCII only, while Postgres ilike is not — so a
+    -- search for "josé" matched online and missed offline, which is exactly
+    -- the filter-parity gap historyQuery.ts exists to prevent. LOWER() and
+    -- COLLATE NOCASE are both ASCII-only too; the fold has to happen in JS
+    -- (toLocaleLowerCase) on the way in, which is what this column holds.
+    _search_customer_name TEXT,
     _server_seen_at       TEXT NOT NULL,
     payload               TEXT NOT NULL
   )`,
@@ -297,29 +341,104 @@ export const SCHEMA_STATEMENTS: string[] = [
   // menu_item_menus. Cloning those would mean re-implementing price resolution
   // on the device — a second source of truth for what an item costs. One
   // resolver, server-side, forever.
+  //
+  // ONE DELIBERATE BEND IN THE NAMING CONTRACT, and it is worth stating
+  // plainly: `location_id` on every menu table is THE LOCATION THIS ROW WAS
+  // RESOLVED FOR, not the row's ownership location. Remotely,
+  // `menus.location_id` / `menu_items.location_id` are NULL for a global row
+  // and a UUID for a location-owned one — a different question entirely. The
+  // resolved projection is only meaningful per location, every index here is
+  // location-leading, and the retention / purge / row-count machinery in
+  // write.ts keys on `location_id`. The ownership value is preserved verbatim
+  // inside `payload`, which is what the menu store reads.
+  //
+  // KEYS. Every menu key is LOCATION-LEADING, and both halves of that are
+  // load-bearing:
+  //
+  //  - `location_id` leads because a global menu (merchant-wide, location_id
+  //    NULL remotely) is RESOLVED per location — same menu id, different
+  //    effective prices. A device that switches stores would otherwise have
+  //    one location's resolved menu overwrite the other's, and the surviving
+  //    row would carry the wrong prices under the right id.
+  //  - `menu_id` is in the category and item keys because
+  //    `menu_categories.id` and `category_items.id` are the remote JUNCTION
+  //    ids: unique per (menu, category) and per (category, item), but NOT per
+  //    menu. One global category can belong to several menus, and a
+  //    per-location-menu override (price_levels.level_5_location_menu) can
+  //    give the same item a different effective price in each. Keying on the
+  //    junction id alone collapses those into one row and silently drops
+  //    items from every menu but the last.
+  //
+  // There are deliberately NO foreign keys between these tables. The whole
+  // location is cleared and rewritten in one transaction (EntityBatch
+  // .replaceScope), so a cascade would only duplicate work the replace already
+  // does — and a composite FK on (location_id, menu_id) buys nothing but a way
+  // for a partial write to fail differently.
   // ==========================================================================
+
+  // The envelope minus the tree: version, stamp, recipes and active snoozes.
+  // One row per location. Local-only by nature — these are RPC payload fields,
+  // not columns of any remote table — so the `_` convention is waived for the
+  // whole table exactly as it is for sync_state.
+  `CREATE TABLE IF NOT EXISTS menu_bootstrap (
+    location_id                     TEXT PRIMARY KEY NOT NULL,
+    version                         TEXT,
+    synced_at                       TEXT,
+    menu_item_ingredients           TEXT NOT NULL DEFAULT '[]',
+    modifier_group_item_ingredients TEXT NOT NULL DEFAULT '[]',
+    snoozes                         TEXT NOT NULL DEFAULT '[]',
+    modifier_snoozes                TEXT NOT NULL DEFAULT '[]',
+    _server_seen_at                 TEXT NOT NULL
+  )`,
+
+  // The entity root. `payload` is the menu verbatim MINUS `categories`, which
+  // live in their own table — the same split the orders mirror uses, so a menu
+  // is never stored twice.
+  `CREATE TABLE IF NOT EXISTS menus (
+    id              TEXT NOT NULL,
+    location_id     TEXT NOT NULL,
+    merchant_id     TEXT,
+    name            TEXT,
+    description     TEXT,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    display_order   INTEGER,
+    created_at      TEXT,
+    updated_at      TEXT,
+    _ordinal        INTEGER NOT NULL DEFAULT 0,
+    _server_seen_at TEXT NOT NULL,
+    payload         TEXT NOT NULL,
+    PRIMARY KEY (location_id, id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_m_loc ON menus(location_id, _ordinal)`,
+
   `CREATE TABLE IF NOT EXISTS menu_categories (
-    id             TEXT PRIMARY KEY NOT NULL,
-    location_id    TEXT,
+    id             TEXT NOT NULL,
+    menu_id        TEXT NOT NULL,
+    category_id    TEXT NOT NULL,
+    location_id    TEXT NOT NULL,
     merchant_id    TEXT,
-    menu_id        TEXT,
     name           TEXT,
     description    TEXT,
     image          TEXT,
     display_order  INTEGER,
     is_active      INTEGER NOT NULL DEFAULT 1,
     updated_at     TEXT,
+    _ordinal       INTEGER NOT NULL DEFAULT 0,
     _server_seen_at TEXT NOT NULL,
-    payload        TEXT NOT NULL
+    payload        TEXT NOT NULL,
+    PRIMARY KEY (location_id, menu_id, id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_mc_loc ON menu_categories(location_id, display_order)`,
+  `CREATE INDEX IF NOT EXISTS idx_mc_menu
+     ON menu_categories(location_id, menu_id, _ordinal)`,
 
   `CREATE TABLE IF NOT EXISTS menu_items (
-    id               TEXT PRIMARY KEY NOT NULL,
-    location_id      TEXT,
+    id               TEXT NOT NULL,
+    menu_id          TEXT NOT NULL,
+    menu_item_id     TEXT NOT NULL,
+    category_id      TEXT NOT NULL,
+    location_id      TEXT NOT NULL,
     merchant_id      TEXT,
-    menu_id          TEXT,
-    category_id      TEXT,
     name             TEXT NOT NULL,
     description      TEXT,
     price_minor      INTEGER,
@@ -334,28 +453,50 @@ export const SCHEMA_STATEMENTS: string[] = [
     display_order    INTEGER,
     version          INTEGER,
     updated_at       TEXT,
+    _ordinal         INTEGER NOT NULL DEFAULT 0,
     _server_seen_at  TEXT NOT NULL,
-    payload          TEXT NOT NULL
+    payload          TEXT NOT NULL,
+    PRIMARY KEY (location_id, menu_id, id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_mi_loc_cat
      ON menu_items(location_id, category_id, display_order)`,
   `CREATE INDEX IF NOT EXISTS idx_mi_avail ON menu_items(location_id, availability)`,
+  // The lookup the kiosk and order entry actually make: "this menu item id,
+  // wherever it appears". Not unique — see the KEYS note above.
+  `CREATE INDEX IF NOT EXISTS idx_mi_item ON menu_items(location_id, menu_item_id)`,
+  // The reassembly read, term for term.
+  `CREATE INDEX IF NOT EXISTS idx_mi_menu
+     ON menu_items(location_id, menu_id, category_id, _ordinal)`,
 
+  // Deduplicated by group id: a modifier group's options and price_modifier
+  // are resolved per LOCATION (location_modifier_group_overrides), never per
+  // menu, so the same group is identical wherever it appears. Not used to
+  // rebuild the tree — the groups ride inside each item's payload, exactly as
+  // the server sends them — this is the queryable projection.
   `CREATE TABLE IF NOT EXISTS modifier_groups (
-    id              TEXT PRIMARY KEY NOT NULL,
-    location_id     TEXT,
+    id              TEXT NOT NULL,
+    location_id     TEXT NOT NULL,
     name            TEXT,
+    display_order   INTEGER,
+    is_required     INTEGER,
+    min_selections  INTEGER,
+    max_selections  INTEGER,
     updated_at      TEXT,
     _server_seen_at TEXT NOT NULL,
-    payload         TEXT NOT NULL
+    payload         TEXT NOT NULL,
+    PRIMARY KEY (location_id, id)
   )`,
+  `CREATE INDEX IF NOT EXISTS idx_mg_loc ON modifier_groups(location_id, display_order)`,
 
   `CREATE TABLE IF NOT EXISTS menu_item_modifier_groups (
     menu_item_id      TEXT NOT NULL,
     modifier_group_id TEXT NOT NULL,
+    location_id       TEXT NOT NULL,
     display_order     INTEGER,
-    PRIMARY KEY (menu_item_id, modifier_group_id)
+    PRIMARY KEY (location_id, menu_item_id, modifier_group_id)
   )`,
+  `CREATE INDEX IF NOT EXISTS idx_mimg_loc
+     ON menu_item_modifier_groups(location_id, menu_item_id)`,
 
   // ==========================================================================
   // INVENTORY — names match public.inventory_items / public.vendors.

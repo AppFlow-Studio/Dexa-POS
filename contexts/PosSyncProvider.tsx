@@ -10,6 +10,12 @@ import { standaloneSyncQueryOptions } from "@/hooks/pos/useStandaloneSync";
 import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+  logMenuMirrorState,
+  readMenuSnapshot,
+  touchMenuFreshness,
+  writeMenuSnapshot,
+} from "@/lib/db/descriptors/menu";
 import { getDbSizeBytes, initLocalDb } from "@/lib/db/index";
 import { runMeasurementPass } from "@/lib/db/measure";
 import { stationKind } from "@/lib/db/policy";
@@ -107,6 +113,15 @@ const DEBUG_EMPLOYEES_URL = __DEV__
   : null;
 
 /**
+ * Track A, Phase 4 — the menu mirror.
+ *
+ * When set, the last good `get_pos_bootstrap_v1` payload is written to SQLite
+ * and the boot fallback reads it from there instead of MMKV. Off: today's
+ * menuOfflineCache path, byte for byte. Rollback is unsetting this.
+ */
+const LOCAL_MENU_ENABLED = process.env.EXPO_PUBLIC_LOCAL_MENU === "1";
+
+/**
  * Component that handles POS sync logic.
  * Must be rendered inside ClerkProvider since it uses authenticated Supabase calls.
  */
@@ -117,6 +132,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     (state) => state.selectedStation,
   );
   const isKDS = selectedStation?.station_type === "kds";
+  // The station kind the menu mirror writes as. Memoized so it is a stable
+  // effect dependency rather than a new string on every render.
+  const menuStationKind = React.useMemo(
+    () => stationKind(selectedStation?.station_type),
+    [selectedStation?.station_type],
+  );
   const hasCheckedStorageSizeRef = useRef(false);
   const lastStoreSettingsRefreshRef = useRef<number>(0);
   const lastEmployeeSyncRefreshRef = useRef<number>(0);
@@ -637,12 +658,20 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       // EXPO_PUBLIC_DB_MEASURE=1. Seeds realistic rows, measures
       // bytes-per-row, cleans up, logs the report (lib/db/measure.ts).
       void runMeasurementPass();
+
+      // Census of the menu mirror, every boot. The write/read logs only fire
+      // when something happens; this one answers "is the menu cloned on this
+      // device right now?" BEFORE anyone pulls the plug to find out.
+      const locationId = selectedStore?.id;
+      if (LOCAL_MENU_ENABLED && locationId && !cancelled) {
+        await logMenuMirrorState(locationId);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [selectedStation?.station_type]);
+  }, [selectedStation?.station_type, selectedStore?.id]);
 
   // Track A, Phase 2 — the delta sync loop. Gated behind
   // EXPO_PUBLIC_DELTA_SYNC (default off). Self-gates per station kind: a KDS
@@ -774,6 +803,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           error: null,
           lastSyncedAt: posSyncData.synced_at,
         });
+
+        // The rows in the STORE are already right, but two things on disk may
+        // not be. The freshness stamp: a live sync landed and PROVED the menu
+        // current, and without recording that it would age all service on a
+        // menu nothing is wrong with. And the mirror itself: the version that
+        // matched is the one applied in memory, which on the first boot after
+        // this flag is turned on came from MMKV, not from SQLite. So this
+        // stamps when the mirror already holds the version and writes it in
+        // full when it does not.
+        if (LOCAL_MENU_ENABLED && locationId) {
+          void touchMenuFreshness(menuStationKind, locationId, posSyncData);
+        }
         return;
       }
 
@@ -782,8 +823,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       // Snapshot the last good sync so a future boot with no/bad network shows
       // this menu instead of an empty grid. Written after setMenuData so a
       // serialization problem can never block the live path.
+      //
+      // Two snapshots on purpose while Phase 4 soaks: the SQLite mirror is the
+      // one the boot path reads when the flag is on, and menuOfflineCache stays
+      // as the fallback until the mirror has run a clean week (the plan's
+      // "delete both caches after a clean week"). Writing both costs a few ms
+      // off the critical path and buys a rollback that is a flag flip.
       if (locationId) {
         menuOfflineCache.set(locationId, posSyncData);
+        if (LOCAL_MENU_ENABLED) {
+          void writeMenuSnapshot(menuStationKind, locationId, posSyncData);
+        }
       }
 
       // Re-apply recipes if available (since setMenuData might reset them)
@@ -819,39 +869,72 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       //     });
       // }
     }
-  }, [posSyncData, setMenuData, setSyncState, selectedStore?.id]);
+  }, [
+    posSyncData,
+    setMenuData,
+    setSyncState,
+    selectedStore?.id,
+    menuStationKind,
+  ]);
 
   // Boot fallback: paint the last known menu while the live sync is still in
   // flight (or after it has failed). Declared AFTER the effect above so that on
   // a commit where fresh data is already present, setMenuData has run first and
   // the `menus.length` guard below short-circuits — the snapshot can never
   // clobber a live sync.
+  //
+  // Phase 4 makes this async so it can read the SQLite mirror first, with
+  // menuOfflineCache as the fallback. The `menus.length` guard is re-checked
+  // AFTER the await for exactly that reason: an await opens a window in which
+  // the live sync can land, and hydrating a snapshot over fresh data is the one
+  // thing this effect must never do.
   useEffect(() => {
     if (isKDS) return;
     const locationId = selectedStore?.id;
     if (!locationId) return;
     if (useMenuStore.getState().menus.length > 0) return;
 
-    const cached = menuOfflineCache.get(locationId);
-    if (!cached) return;
+    let cancelled = false;
 
-    console.log(
-      "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
-      {
-        syncedAt: cached.synced_at,
-        menus: cached.menus?.length ?? 0,
-        version: cached.version ?? "(pre-versioning)",
-      },
-    );
-    setMenuData(cached, { fromCache: true });
+    void (async () => {
+      const started = Date.now();
+      let source: "sqlite" | "mmkv" = "mmkv";
 
-    // Record the snapshot's watermark so that when the live sync lands with the
-    // same version we skip the rebuild outright — the cached paint IS the
-    // current menu. Snapshots written before versioning existed have no
-    // version, so they always reconcile.
-    appliedMenuVersionRef.current = {
-      locationId,
-      version: cached.version ?? null,
+      let cached = LOCAL_MENU_ENABLED
+        ? await readMenuSnapshot(locationId)
+        : null;
+      if (cached) source = "sqlite";
+      else cached = menuOfflineCache.get(locationId);
+
+      if (cancelled) return;
+      // Re-checked after the await — see the note above.
+      if (useMenuStore.getState().menus.length > 0) return;
+      if (!cached) return;
+
+      console.log(
+        "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
+        {
+          source,
+          hydrateMs: Date.now() - started,
+          syncedAt: cached.synced_at,
+          menus: cached.menus?.length ?? 0,
+          version: cached.version ?? "(pre-versioning)",
+        },
+      );
+      setMenuData(cached, { fromCache: true });
+
+      // Record the snapshot's watermark so that when the live sync lands with
+      // the same version we skip the rebuild outright — the cached paint IS the
+      // current menu. Snapshots written before versioning existed have no
+      // version, so they always reconcile.
+      appliedMenuVersionRef.current = {
+        locationId,
+        version: cached.version ?? null,
+      };
+    })();
+
+    return () => {
+      cancelled = true;
     };
   }, [selectedStore?.id, isKDS, setMenuData, posSyncData]);
 
