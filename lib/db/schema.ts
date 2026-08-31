@@ -65,10 +65,22 @@
  * search columns the type-ahead matches on. The bare `idx_c_name` is dropped —
  * see the note on the table.
  *
+ * v11 (2026-08-31, Phase 5 · online-orders board): `orders._online_placed_at`.
+ * The Online Orders board is scoped STRICTLY by `online_orders.placed_at`,
+ * which is not a column on `orders` and was not in the mirror payload at all.
+ * Promoted (not payload-only) because it is the board's window predicate AND
+ * its sort key, and `json_extract` can be neither indexed nor seeked. The
+ * ORDER_SELECT embed grows the columns needed to pick the authoritative
+ * placement row, plus the 16 `orders` columns `normalizeFetchedOrder` reads
+ * that the payload was silently missing — the board's transform reads them, so
+ * a local card would otherwise render defaults where the server card renders
+ * values. Existing payloads lack the new columns, so a rebuild re-pulls every
+ * order.
+ *
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -224,6 +236,16 @@ export const SCHEMA_STATEMENTS: string[] = [
     -- COLLATE NOCASE are both ASCII-only too; the fold has to happen in JS
     -- (toLocaleLowerCase) on the way in, which is what this column holds.
     _search_customer_name TEXT,
+    -- online_orders.placed_at for the AUTHORITATIVE placement row, resolved
+    -- at ingest. Local-only because it is not a column on orders at all --
+    -- the board's window predicate lives on a different table, and the FK is
+    -- not unique, so "the" placed_at is the row get_online_orders_board_v1
+    -- picks with DISTINCT ON (order_id) ORDER BY updated_at DESC, id DESC.
+    -- Promoted rather than read from payload because it is the board's range
+    -- filter AND its sort key; json_extract can be neither indexed nor seeked.
+    -- NULL means "no online placement row" — which is exactly the set the
+    -- board excludes, so the partial index below is the whole board window.
+    _online_placed_at     TEXT,
     _server_seen_at       TEXT NOT NULL,
     payload               TEXT NOT NULL
   )`,
@@ -252,6 +274,19 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_o_updated  ON orders(location_id, updated_at)`,
   `CREATE INDEX IF NOT EXISTS idx_o_unsynced ON orders(_sync_status)
      WHERE _sync_status != 'synced'`,
+  // The Online Orders board window, term for term: location, then the
+  // placed_at range, then the DESC sort — an index scan with no temp b-tree.
+  //
+  // PARTIAL on purpose, and the predicate is exact rather than approximate:
+  // the board is the set of orders WITH a placement row, which at the 20k
+  // retention cap is a small fraction of the mirror. SQLite only uses a
+  // partial index when the query's WHERE SYNTACTICALLY implies the predicate
+  // (the Phase 5 analytics ③ lesson), so buildOnlineBoardWhere emits the
+  // literal `_online_placed_at IS NOT NULL` conjunct rather than relying on
+  // the range bounds to imply it.
+  `CREATE INDEX IF NOT EXISTS idx_o_online_placed
+     ON orders(location_id, _online_placed_at DESC, id DESC)
+     WHERE _online_placed_at IS NOT NULL`,
 
   // The Identity Invariant, enforced by the database rather than by review.
   // Phase 6 relies on this; creating it now costs nothing and means no code

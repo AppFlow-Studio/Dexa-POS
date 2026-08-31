@@ -42,6 +42,7 @@ const OnlineOrdersScreen = () => {
     onlineOrders,
     isLoading: isFetching,
     error: fetchError,
+    source: boardSource,
   } = useOnlineOrdersByDate(dateFilter);
 
   const focusColumn = (key: ColumnKey | null) => {
@@ -197,6 +198,31 @@ const OnlineOrdersScreen = () => {
           </Link>
         </View>
       </View>
+
+      {/* Scope line — the board is rendering from this device's mirror because
+          the server could not be reached. Said plainly rather than left to
+          look like a complete board: an operator deciding whether an order
+          arrived needs to know which question was actually answered. */}
+      {boardSource === "local" && (
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            paddingHorizontal: Math.round(12 * uiScale),
+            paddingVertical: Math.round(8 * uiScale),
+            borderRadius: Math.round(8 * uiScale),
+            marginBottom: Math.round(8 * uiScale),
+          }}
+        >
+          <Text
+            style={{ color: colors.label, fontSize: Math.round(13 * uiScale) }}
+          >
+            Offline — showing the orders this device has synced. New orders
+            will appear when the connection returns.
+          </Text>
+        </View>
+      )}
 
       {/* Error banner */}
       {fetchError && (

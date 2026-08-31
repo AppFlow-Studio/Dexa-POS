@@ -87,6 +87,16 @@ export async function applyOrdersFromRealtime(
  * server-name column going back to "Unknown"). The delta is the correctness
  * path: it re-fetches the new row with the full embed within a cycle, and the
  * upsert enriches it.
+ *
+ * v11 gives that rule a second, sharper instance: `_online_placed_at` is
+ * resolved from the `online_orders` embed, which a broadcast does not carry.
+ * So a brand-new online order lands here with a NULL placement and is NOT on
+ * the local Online Orders board until the delta enriches it — ≤30 s, or ~1.2 s
+ * through the realtime nudge (lib/db/deltaNudge.ts), and immediately when
+ * online because the board's server pass is authoritative. Overwriting an
+ * EXISTING row from here would be the harmful direction: it would take a
+ * placed order back off the board. That is why this function inserts only
+ * rows the mirror does not already hold.
  */
 export async function applyOrdersFromRealtimeIfNew(
   orders: Array<Record<string, unknown>>,

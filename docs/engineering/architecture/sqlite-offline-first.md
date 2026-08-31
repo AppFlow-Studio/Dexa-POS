@@ -1445,12 +1445,13 @@ which is why they share a phase — but each still ships and soaks independently
 | [inventory/](<app/(main)/inventory/>) — ✅ **BUILT (flag-gated, default off)**                                                            | `…_LOCAL_INVENTORY`   | 28 `.from()`, rebuilt every launch | Stock is time-sensitive — `staleAfterMs: 60_000`, not 5 min. Drop the redundant `.from("inventory_items")` at `useInventorySync.ts:57` once delta is trusted                                                                                                                                                                           |
 | [analytics.tsx](<app/(main)/analytics.tsx>) — ✅ **BUILT (flag-gated, default off)** · EOD deferred                                        | `…_LOCAL_ANALYTICS`   | 13 `.from()`, **dead offline**     | **Numbers must match the server dashboard exactly** — run side by side before flipping. Past `retention_floor`, say so: _"Showing the last N orders. Older data needs a connection."_ Never silently under-report revenue. EOD preview must match server settlement on **ten consecutive real close-outs**; server stays authoritative |
 | Customer directory — ✅ **BUILT (flag-gated, default off)**. NOT `customers-list.tsx`, which is a stub; see the build notes                | `…_LOCAL_CUSTOMERS`   | ~~Debounced network type-ahead~~ **200-row MMKV cache, filtered in JS** | Start with `LIKE`; add FTS5 only if measurement demands it                                                                                                                                                                                                                                                                             |
-| [loyalty/](<app/(main)/loyalty/>)                                                                                                        | `…_LOCAL_LOYALTY`     | 15 `.from()`                       | —                                                                                                                                                                                                                                                                                                                                      |
-| Staff roster — [scheduling/](<app/(main)/scheduling/>), [open-shifts.tsx](<app/(main)/open-shifts.tsx>), [pto.tsx](<app/(main)/pto.tsx>) | `…_LOCAL_STAFF`       | Network-only rosters               | **Read-only consumers only.** `useEmployeeStore` keeps login, session and PINs. If a change starts touching `pin-login.tsx`, stop — different ticket                                                                                                                                                                                   |
-| [online-orders/](<app/(main)/online-orders/>)                                                                                            | `…_LOCAL_BOARDS`      | Board refetched on entry           | Double-render between the local row and the realtime row — key strictly on order id. Preserve `placed_at` business-day scoping (commit `82eb80e7`)                                                                                                                                                                                     |
-| [kds.tsx](<app/(main)/kds.tsx>) history                                                                                                  | `…_LOCAL_KDS_HISTORY` | 50-ticket cap, 1 h window          | Retires `KDS_DONE_TICKET_LIMIT` and `_recalledTicketIds` (the persisted, TTL-less Set flagged HIGH in `memory-state-audit.md`)                                                                                                                                                                                                         |
+| [online-orders/](<app/(main)/online-orders/>) — ✅ **BUILT (flag-gated, default off)**                                                    | `…_LOCAL_BOARDS`      | Board refetched on entry           | Double-render between the local row and the realtime row — key strictly on order id ✅. Preserve `placed_at` business-day scoping (commit `82eb80e7`) ✅ — and note the scoping column is on `online_orders`, not `orders`, behind a **non-unique** FK; see build-note ①                                                                 |
+| [loyalty/](<app/(main)/loyalty/>) — ⛔ **DESCOPED 2026-08-31** (operator decision, not a blocker found)                                   | `…_LOCAL_LOYALTY`     | 15 `.from()`                       | —                                                                                                                                                                                                                                                                                                                                      |
+| Staff roster — [scheduling/](<app/(main)/scheduling/>), [open-shifts.tsx](<app/(main)/open-shifts.tsx>), [pto.tsx](<app/(main)/pto.tsx>) — ⛔ **DESCOPED 2026-08-31** (operator decision, not a blocker found) | `…_LOCAL_STAFF`       | Network-only rosters               | **Read-only consumers only.** `useEmployeeStore` keeps login, session and PINs. If a change starts touching `pin-login.tsx`, stop — different ticket                                                                                                                                                                                   |
+| [kds.tsx](<app/(main)/kds.tsx>) history — ⛔ **DESCOPED 2026-08-31** — built, then **reverted**; Done stays server-authoritative and shared. Reasons below | `…_LOCAL_KDS_HISTORY` | 50-ticket cap, 1 h window          | ~~Retires `KDS_DONE_TICKET_LIMIT` and `_recalledTicketIds` (the persisted, TTL-less Set flagged HIGH in `memory-state-audit.md`)~~ — **this row was wrong on both counts**: the cap is what makes Done consistent across stations, and the Set already has a TTL. See below                                                            |
 
-**Done when** every read page paints from disk and works offline.
+**Done when** every read page still in scope paints from disk and works offline. Three of the
+seven rows above are deliberately out of scope; that is a smaller Phase 5, not an unfinished one.
 
 ---
 
@@ -1589,8 +1590,42 @@ Three guards were verified as real regression tests by removing them and confirm
 - [ ] Drop the redundant `.from("inventory_items")` — still load-bearing today (it is the row
       universe, not a redundancy, so this needs the RPC to return inactive-at-location rows first).
 
-**Remaining Phase 5 pages** — EOD, loyalty, staff roster, online-orders boards, KDS history —
-are unstarted. Each still ships and soaks independently.
+**Where Phase 5 stands.** Four of the seven pages are built — inventory, analytics, the customer
+directory, the online-orders board. **Loyalty, the staff roster and KDS history are descoped**
+(2026-08-31, operator decision), and the table above is marked accordingly. EOD remains a
+separate ticket by its own design (see the analytics notes).
+
+Loyalty and the staff roster were descoped **before** any work started and for no technical
+reason — there is no blocker recorded against either, and their rows stay in the table so a later
+decision to build them starts from the same analysis rather than from scratch. KDS history is
+different: it was built, reviewed and reverted, and the reason is worth keeping.
+
+**Why KDS history was descoped, since it was built and then reverted.** The Done tab is
+**server-authoritative and shared across stations**: `get_kds_tickets_v3` returns a served round
+as `status='done'` for an hour (`v_done_retention`), so a bump on one station reaches every other
+within a poll. A local mirror keeps rounds past that hour, but only the rounds **this device
+saw** — so beyond the shared window the tab stops being the same tab on every screen. It also
+_lengthens_ an existing divergence: `mergeDoneTickets` never removes a round because the server
+stopped returning it, so a recall on station A already leaves the round in station B's Done, and
+a 24-hour local window would stretch that from an hour to a shift. Trading a consistent hour for
+an inconsistent day is the wrong trade for a kitchen. `KDS_DONE_TICKET_RETENTION_MS` (1 h) and
+`KDS_DONE_TICKET_LIMIT` (50) stand, `/kds` stays offline-disabled in `MainMenu`, and a KDS
+station still stores nothing but `sync_state`.
+
+Two things found while it was built are worth keeping:
+
+- **The plan's row for this page was wrong on both counts, and is now struck through above.** It
+  promised to retire `KDS_DONE_TICKET_LIMIT` — but that cap is part of what keeps Done the same
+  on every station, so retiring it is a cost, not a win. And it promised to retire
+  "`_recalledTicketIds` (the persisted, TTL-less Set flagged HIGH in `memory-state-audit.md`)",
+  which **already has a TTL** — `_recalledTicketAt` + `cullExpiredRecalls` +
+  `RECALLED_TICKET_TTL`, with its own test (`__tests__/kdsRecalledTtl.test.ts`). It was fixed
+  before this phase reached it, so the row was quoting a resolved audit finding.
+- **The cross-station recall gap is real and independent of any mirror.** Station B shows a
+  recalled round in Done *and* in its active columns until the hour expires. Fixing it means
+  dropping from Done any round the poll returns as active, skipping tickets under a
+  `_pendingActions` entry so a local optimistic bump is not clobbered. Separate ticket; nothing
+  in this phase depends on it.
 
 ---
 
@@ -1887,6 +1922,165 @@ the server value survives verbatim; and the directory read is an index scan with
 - [ ] **A service-period soak** before the MMKV cache is retired for reads.
 - [ ] `app/(main)/customers-list.tsx` is still a stub. Building a real customer-management page is
       a feature, not this phase — but the mirror and the query layer are now there for it.
+
+---
+
+### Phase 5 · Online Orders board — build notes, 2026-08-31
+
+**Status: code complete — 35 new tests, 265/265 local-DB tests green, `tsc --noEmit` clean,
+ESLint 0 errors on every touched file, full suite back at its known baseline (10 pre-existing
+suite failures / 30 tests; total 2105 → 2140). Not yet run on device behind the flag.**
+
+**Flag:** `EXPO_PUBLIC_LOCAL_BOARDS` · **Page:** [online-orders/](<app/(main)/online-orders/>)
+
+Like analytics, this page needed almost no new mirroring — orders, items and payments have been
+on disk since Phase 3. What it needed was one column, because the board is the first mirrored
+page whose window predicate **is not a column on the table it queries**.
+
+| Delivered                                                                     | File                                                                       |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Schema v11 — `orders._online_placed_at` + `idx_o_online_placed`               | [lib/db/schema.ts](lib/db/schema.ts)                                       |
+| The DISTINCT-ON placement resolver + the widened select list                    | [lib/db/descriptors/orders.ts](lib/db/descriptors/orders.ts)               |
+| Business-day window + the board SQL                                            | [lib/db/boardQuery.ts](lib/db/boardQuery.ts)                               |
+| Local-first, server-corrected resolution                                       | [hooks/orders/useOnlineOrdersByDate.ts](hooks/orders/useOnlineOrdersByDate.ts) |
+| The offline scope line                                                         | [online-orders/index.tsx](<app/(main)/online-orders/index.tsx>)            |
+| `/online-orders` stays live offline, gated on the same flag                     | [components/MainMenu.tsx](components/MainMenu.tsx)                         |
+
+**① THE WINDOW PREDICATE LIVES ON ANOTHER TABLE, BEHIND A NON-UNIQUE FK.**
+
+`get_online_orders_board_v1` scopes **strictly by `online_orders.placed_at`**, and the FK from
+`online_orders` to `orders` is **not unique** — the RPC's own comment says duplicate ingestion
+rows exist, which is why it deduplicates with
+
+```sql
+SELECT DISTINCT ON (oo.order_id) oo.order_id, oo.placed_at
+  FROM public.online_orders oo
+ ORDER BY oo.order_id, oo.updated_at DESC, oo.id DESC
+```
+
+Two ways to get this wrong, and the second is the interesting one.
+
+The obvious way is `joinRows[0].placed_at`. PostgREST returns an embed array in no defined order,
+so the head is the server's choice only by luck — and when it is not, the two disagree about
+which **business day** an order belongs to, which is a card on the wrong tab.
+
+The subtle way is NULL ordering. Postgres `ORDER BY x DESC` puts **NULLs FIRST**, so a placement
+row whose `updated_at` was never set OUTRANKS one that has a value. If that winner also has a
+NULL `placed_at`, the order is out of **every** window — and the correct local answer is `null`,
+not "fall back to the sibling row that does have one". `resolveOnlinePlacedAt` reproduces both
+halves and is tested against both; the JS-instinct implementation (nulls sorting last) passes
+every test except that one.
+
+It deliberately does **not** re-sort the array it reads. `resolveFetchedOrderPlatform` takes
+`joinRows[0]` for the platform badge, and quietly reordering the payload underneath it would
+change what renders on the server path too.
+
+**② THE SELECT LIST WAS A SUBSET OF `to_jsonb(o)`, AND THAT WAS A RENDER DIVERGENCE.**
+
+The RPC returns `to_jsonb(o)` — every `orders` column. `ORDER_SELECT` was a hand-written subset.
+So sixteen fields `normalizeFetchedOrder` reads resolved to their **defaults** on the local path
+and to real values on the server path, **for the same order**: `external_id`,
+`delivery_address`, the six `service_charge_*` columns, `cash_discount_applied`,
+`effective_subtotal` / `effective_tax_amount`, `payment_pricing_mode`, `split_payment_path`,
+`platform_order_number`, `created_by_user_id`, `started_preparing_at`.
+
+This is the failure mode Phase 3's ORDER_SELECT comment warns about ("if one side adds a field
+the other must too") arriving from the other direction — not a field added to one side, but a
+field neither side noticed was missing, because until now no local page read it. They arrive free
+with the row; the divergence did not. Asserted field by field rather than left to the next reader.
+
+**③ THE RESOLUTION RULE, AND THE ONE PLACE IT DEPARTS FROM PREVIOUS ORDERS.**
+
+**Local first, server-corrected.** The mirror paints before the RPC answers; the RPC replaces it
+whenever it answers; when it cannot, the local board stays and the screen says so.
+
+Previous Orders is allowed to **skip** the server entirely on a fresh mirror
+(`isOrdersMirrorFresh`). The board is not, and the reason is specific:
+**`online_orders.placed_at` can be updated by a provider without touching `orders.updated_at`**,
+and the delta only re-pulls an order when that watermark moves. A re-placed order's window could
+therefore go stale in the mirror with nothing to correct it. This is the same class as the
+`remove_order_item` gap recorded under Phase 2 — a child table changing without bumping the
+parent's clock. Losing one round trip is cheaper than a card sitting on the wrong day's tab.
+
+Four consequences handled explicitly:
+
+- **A brand-new online order is not on the local board immediately.** A realtime broadcast carries
+  no `online_orders` embed, so `applyOrdersFromRealtimeIfNew` writes it with a NULL placement. The
+  delta enriches it within a cycle (~1.2 s through `deltaNudge`), and the server pass has it
+  instantly when online. Overwriting an EXISTING row from a broadcast would be the harmful
+  direction — it would take a placed order back OFF the board — which is why that function inserts
+  only rows the mirror does not already hold.
+- **The missing-active refresh does not fire on a local selection.** It exists to re-run the RPC
+  when realtime knows about an active order the snapshot lacks. Firing it on a local selection
+  would spin the RPC every render for as long as the device is offline — precisely when it cannot
+  succeed.
+- **The local pass is a FIRST paint, not a repaint.** `serverAnsweredKeyRef` suppresses it once
+  the RPC has answered for that exact filter, so a refresh of the same tab does not flicker the
+  scope line between two results the operator cannot tell apart. It runs again only when the RPC
+  stops answering — which is what makes a tab that goes offline mid-service gain the banner
+  instead of silently keeping stale server rows.
+- **Coverage, not freshness, gates the local paint.** `boardWindowIsCovered` refuses a window
+  reaching past `retention_floor`, because a partial board that looks whole is the failure this
+  page is written to avoid. Retention measures `created_at` while the board scopes `placed_at`;
+  the direction is safe (an order is placed before its row is created), so the comparison can
+  refuse a window the mirror actually covers but never accept one it does not.
+
+**④ THE PARTIAL INDEX SAYS THE MAGIC WORDS, BEFORE IT COST ANYTHING.**
+
+`idx_o_online_placed` is `ON orders(location_id, _online_placed_at DESC, id DESC) WHERE
+_online_placed_at IS NOT NULL`. SQLite only uses a partial index when the query's WHERE clause
+**syntactically implies** the predicate — it does not reason that `>= ?` implies `IS NOT NULL`.
+So `buildBoardStatement` emits the literal conjunct, and the plan test asserts the **seek terms**
+(`location_id=?`, `_online_placed_at>?`) and the absence of a temp b-tree, not just that the
+index name appears. An index can keep its name and stop doing any work — that is what the Phase 5
+analytics ④ table found the hard way, applied here in advance.
+
+The item count reproduces `NOT COALESCE(oi.is_voided, false)`, which **INCLUDES** a NULL flag —
+the opposite of the analytics aggregate's `= 0`, which excludes it. Reproducing the RPC means
+reproducing this one too rather than standardising on the other, and both are asserted.
+
+**⑤ THE BUSINESS-DAY ARITHMETIC IS THE CLIENT'S, NOT A SECOND IMPLEMENTATION.**
+
+`resolveBoardWindow` reproduces the RPC's CASE arm for arm, but it does the arithmetic through
+`lib/businessDay.ts` — the same `getBusinessDayBounds` every other business-day surface uses, with
+`timezone` and `business_day_start_hour` read off `selectedStore`. Both bounds are converted
+independently so a DST-length day stays correct, and a custom range the RPC would `RAISE` on
+returns null so the caller falls back to the server rather than rendering a window the server
+would have refused. Note this is the CLIENT's business-day config, not the naive UTC
+`_business_day` column — `TODO(business-day-config)` remains open for the ingest-side derivation.
+
+**One entry-point change.** `MainMenu`'s `offlineAllowedRoutes` gains `/online-orders`,
+conditional on the flag for the same reason analytics' entry is: with the flag unset the page is
+one RPC and an offline tap would open an empty board under an error banner, so the documented
+rollback has to grey the tile back out.
+
+**What the tests assert**
+([**tests**/db/onlineBoardQuery.test.ts](__tests__/db/onlineBoardQuery.test.ts), against a real SQL
+engine, seeded through the real mirror write path): the placement resolver picks the newest row
+rather than the first, breaks ties on id DESC, lets a NULL `updated_at` outrank a real one and
+reports its NULL `placed_at`, and survives a malformed embed; every preset's window matches the
+RPC's bounds, yesterday abuts today exactly, the rollover hour moves the day, and an invalid
+timezone or an inverted custom range refuses rather than guessing; the query includes its start
+bound and excludes its end, scopes on `placed_at` and not `created_at`, drops an order with no
+placement and one whose authoritative placement has no `placed_at`, is location-scoped, and
+orders newest-first with an id tiebreak; every status the RPC lists renders and `cancelled` /
+`void` / `refunded` / `draft` do not; `item_count` sums non-voided quantities, counts a NULL flag,
+floors a negative quantity and is 0 rather than null; the payload and children round-trip
+verbatim including the sixteen widened columns; coverage is false before a first sync and false
+past the retention floor; and both plans seek their indexes with no temp b-tree.
+
+**Still outstanding:**
+
+- [ ] **Run it on device behind the flag**, cold, then with the radio off — from the Main Menu
+      tile, which is the entry point that was just opened.
+- [ ] **Side-by-side against the RPC** for the same location and preset, across a business-day
+      rollover — the tests prove the window arithmetic, not that a real location's
+      `business_day_start_hour` is what the client thinks it is.
+- [ ] **Confirm the scope line** by going offline mid-service and watching the board keep its
+      cards and gain the banner.
+- [ ] **Watch a brand-new online order land while offline-then-online**, to confirm the
+      realtime → delta → board path closes in a cycle rather than waiting for a full 30 s.
+- [ ] **A service-period soak** before the flag is considered for default-on.
 
 ---
 

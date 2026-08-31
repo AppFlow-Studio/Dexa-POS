@@ -41,20 +41,39 @@ import type { Row } from "@/lib/db/write";
  * If one side adds a field the other must too, or local rows diverge — e.g.
  * the server column rendering "Unknown" or a raw staff id because the
  * created_by_staff join never made it into the mirror payload.
+ *
+ * v11 closed that exact gap for the Online Orders board. `to_jsonb(o)` in
+ * `get_online_orders_board_v1` returns EVERY `orders` column, while this list
+ * was a subset — so sixteen fields `normalizeFetchedOrder` reads
+ * (external_id, delivery_address, the six service-charge columns,
+ * cash_discount_applied, effective_subtotal / effective_tax_amount,
+ * payment_pricing_mode, split_payment_path, platform_order_number,
+ * created_by_user_id, started_preparing_at) resolved to their defaults on the
+ * local path and to real values on the server path, for the same order. They
+ * arrive free with the row; the divergence did not.
+ *
+ * The `online_orders` embed gains `id`, `placed_at` and `updated_at` because
+ * the FK is NOT unique and the board picks ONE authoritative placement row —
+ * see resolveOnlinePlacedAt.
  */
 const ORDER_SELECT = `
-  id, location_id, merchant_id, order_number, display_number,
+  id, location_id, merchant_id, order_number, display_number, external_id,
   order_type, order_source, status, payment_status, check_status,
-  customer_id, customer_name, customer_phone, customer_email,
+  customer_id, customer_name, customer_phone, customer_email, delivery_address,
   table_number, seat_number, session_id,
-  assigned_server_id, created_by_staff_id, station_id, device_id,
+  assigned_server_id, created_by_staff_id, created_by_user_id,
+  station_id, device_id,
   subtotal, tax_amount, total_amount, discount_amount, service_charge,
+  service_charge_name, service_charge_rate, service_charge_applies_on,
+  service_charge_rule_id, service_charge_is_manual, service_charge_is_taxable,
   tip_amount, amount_due, amount_paid,
   card_subtotal, card_tax_amount, card_total,
   cash_subtotal, cash_tax_amount, cash_total, cash_amount_due,
-  cash_discount_amount, effective_total,
+  cash_discount_amount, cash_discount_applied,
+  effective_subtotal, effective_tax_amount, effective_total,
+  payment_pricing_mode, split_payment_path, platform_order_number,
   voided_at, void_reason, voided_by, cancelled_at, cancellation_reason,
-  sent_to_kitchen_at, ready_at, completed_at,
+  sent_to_kitchen_at, started_preparing_at, ready_at, completed_at,
   is_offline, reopen_count, created_at, updated_at, sync_version,
   delivery_platform, metadata,
   order_items(*),
@@ -62,7 +81,7 @@ const ORDER_SELECT = `
   order_discounts(*),
   stations (station_name),
   created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name),
-  online_orders:online_orders!online_orders_order_id_fkey (order_id, provider, delivery_company)
+  online_orders:online_orders!online_orders_order_id_fkey (id, order_id, provider, delivery_company, placed_at, updated_at)
 `;
 
 /**
@@ -170,9 +189,79 @@ function toOrderRow(o: ServerOrder, seenAt: string): Row {
     // offline one. Folding in JS on the way in is the only place the two can
     // be made to agree.
     _search_customer_name: caseFold(o.customer_name),
+    // The Online Orders board's window predicate and sort key. Derived at
+    // ingest for the same reason _business_day is: it does not exist on
+    // `orders` at all.
+    _online_placed_at: resolveOnlinePlacedAt(o.online_orders),
     _server_seen_at: seenAt,
     payload: JSON.stringify(stripChildren(o)),
   };
+}
+
+/** One `online_orders` row as the mirror embed returns it. */
+export interface OnlinePlacementRow {
+  id?: string | null;
+  placed_at?: string | null;
+  updated_at?: string | null;
+}
+
+/**
+ * The AUTHORITATIVE placement row's `placed_at`, matching
+ * `get_online_orders_board_v1` exactly:
+ *
+ *   SELECT DISTINCT ON (oo.order_id) oo.placed_at
+ *     ORDER BY oo.order_id, oo.updated_at DESC, oo.id DESC
+ *
+ * Two things make this worth a function rather than `rows[0].placed_at`.
+ *
+ * FIRST, the FK is not unique — the RPC's own comment says duplicate ingestion
+ * rows exist, which is why it deduplicates at all. PostgREST returns an embed
+ * array in no defined order, so taking the first element would pick a
+ * different row than the server picks whenever there is more than one, and the
+ * two would disagree about which business day an order belongs to.
+ *
+ * SECOND, "newest wins" has to reproduce the server's NULL handling. Postgres
+ * `ORDER BY x DESC` puts NULLs FIRST, so a placement row with a NULL
+ * `updated_at` outranks one with a value — and if that winner also has a NULL
+ * `placed_at`, the order is OUT of every window rather than falling back to
+ * the sibling row. Returning null here is therefore a real answer, not a
+ * missing one, and the board excludes exactly what the RPC excludes.
+ *
+ * Deliberately does NOT reorder the array it reads: `resolveFetchedOrderPlatform`
+ * takes `joinRows[0]` for the platform badge, and quietly re-sorting the
+ * payload underneath it would change what renders on both the local AND the
+ * server path.
+ */
+export function resolveOnlinePlacedAt(value: unknown): string | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+
+  let best: OnlinePlacementRow | null = null;
+  for (const raw of value as OnlinePlacementRow[]) {
+    if (!raw || typeof raw !== "object") continue;
+    if (best === null || outranks(raw, best)) best = raw;
+  }
+  return best?.placed_at ?? null;
+}
+
+/** Postgres `ORDER BY updated_at DESC, id DESC` — NULLs sort FIRST on DESC. */
+function outranks(a: OnlinePlacementRow, b: OnlinePlacementRow): boolean {
+  const byUpdated = compareDescNullsFirst(a.updated_at, b.updated_at);
+  if (byUpdated !== 0) return byUpdated < 0;
+  return compareDescNullsFirst(a.id, b.id) < 0;
+}
+
+/** Negative when `a` sorts before `b` under DESC with NULLs first. */
+function compareDescNullsFirst(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): number {
+  const aNull = a === null || a === undefined;
+  const bNull = b === null || b === undefined;
+  if (aNull && bNull) return 0;
+  if (aNull) return -1;
+  if (bNull) return 1;
+  if (a === b) return 0;
+  return a > b ? -1 : 1;
 }
 
 function toItemRow(item: Record<string, unknown>, orderId: string): Row {

@@ -34,6 +34,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
  */
 const LOCAL_ANALYTICS_ENABLED = process.env.EXPO_PUBLIC_LOCAL_ANALYTICS === "1";
 
+/**
+ * Same conditional-entry-point rule as analytics, for the same reason. With
+ * the boards flag unset the Online Orders screen is one RPC and nothing else,
+ * so an offline tap would open an empty board with an error banner. With it
+ * set the board paints from the mirror and says so.
+ *
+ * `/kds` stays offline-disabled. Its Done tab is server-authoritative for an
+ * hour and shared across stations by construction, and the active columns are
+ * the live RPC — there is nothing on this device that could honestly fill
+ * either while the radio is off.
+ */
+const LOCAL_BOARDS_ENABLED = process.env.EXPO_PUBLIC_LOCAL_BOARDS === "1";
+
 interface MenuCardProps {
   icon: React.ReactNode;
   title: string;
@@ -217,6 +230,7 @@ const MainMenu: React.FC = () => {
     "/inventory",
     "/menu",
     ...(LOCAL_ANALYTICS_ENABLED ? ["/analytics"] : []),
+    ...(LOCAL_BOARDS_ENABLED ? ["/online-orders"] : []),
   ]);
 
   const handleLockedAccess = (route: string) => {
