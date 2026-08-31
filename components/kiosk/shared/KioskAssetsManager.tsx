@@ -21,9 +21,13 @@ import {
 
 const TEAL = "#0D9488";
 const MAX_PER_GROUP = 5;
-// Kept in sync with MAX_VIDEO_SIZE_BYTES in the website's cdn-upload edge
-// function. Small enough to base64 in one shot without spiking tablet memory.
+// Kept in sync with MAX_VIDEO_SIZE_BYTES in the website's cdn-upload edge function.
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
+
+// Videos are streamed straight to the edge function (see uploadVideoToCdn), which
+// needs the function URL + anon key directly rather than going through supabase-js.
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY;
 
 /** Array-backed media groups on the kiosk profile → their DB columns. */
 type GroupKey =
@@ -386,18 +390,46 @@ export function KioskAssetsManager({
     return asset.uri;
   };
 
+  // Videos stream straight to the edge function as raw bytes (no base64), so the
+  // tablet never materializes a ~27MB string and the worker never holds several
+  // copies at once — the base64-in-JSON path exceeded the edge function's memory
+  // limit on real-world clips.
   const uploadVideoToCdn = async (
     uri: string,
     label: string,
   ): Promise<string> => {
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return invokeCdnUpload(
-      base64,
-      `kiosk_${label}_${Date.now()}.mp4`,
-      "video/mp4",
+    if (!selectedStore) throw new Error("No store selected.");
+    if (!SUPABASE_URL) throw new Error("Supabase URL is not configured.");
+    const token = await getToken();
+    const result = await FileSystem.uploadAsync(
+      `${SUPABASE_URL}/functions/v1/cdn-upload`,
+      uri,
+      {
+        httpMethod: "POST",
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+          apikey: SUPABASE_ANON_KEY ?? "",
+          Authorization: `Bearer ${token}`,
+          "x-cdn-scope": "merchant",
+          "x-cdn-merchant-id": selectedStore.merchant_id,
+          "x-cdn-category": "kiosk",
+          "x-cdn-file-name": `kiosk_${label}_${Date.now()}.mp4`,
+          "x-cdn-content-type": "video/mp4",
+        },
+      },
     );
+    if (result.status < 200 || result.status >= 300) {
+      let message = "Upload failed";
+      try {
+        message = JSON.parse(result.body)?.error ?? message;
+      } catch {
+        // Non-JSON error body — keep the default message.
+      }
+      throw new Error(message);
+    }
+    const data = JSON.parse(result.body);
+    if (!data?.cdnUrl) throw new Error("Upload returned no URL.");
+    return data.cdnUrl as string;
   };
 
   const replaceVideo = async (key: VideoKey) => {
