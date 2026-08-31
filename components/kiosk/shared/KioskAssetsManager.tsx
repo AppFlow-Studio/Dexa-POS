@@ -3,8 +3,10 @@ import { toastService } from "@/lib/toastService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { useAuth } from "@clerk/clerk-expo";
+import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import { ImagePlus, Plus, RefreshCw, Trash2, X } from "lucide-react-native";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { Film, ImagePlus, Plus, RefreshCw, Trash2, X } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,6 +21,9 @@ import {
 
 const TEAL = "#0D9488";
 const MAX_PER_GROUP = 5;
+// Kept in sync with MAX_VIDEO_SIZE_BYTES in the website's cdn-upload edge
+// function. Small enough to base64 in one shot without spiking tablet memory.
+const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
 
 /** Array-backed media groups on the kiosk profile → their DB columns. */
 type GroupKey =
@@ -27,13 +32,76 @@ type GroupKey =
   | "orderBannerImagesVertical"
   | "orderBannerImagesHorizontal";
 
-const COLUMN: Record<GroupKey | "logoUrl", string> = {
+/** Single-value idle video slots (one per orientation) → their DB columns. */
+type VideoKey = "idleVideoVertical" | "idleVideoHorizontal";
+
+const COLUMN: Record<GroupKey | VideoKey | "logoUrl", string> = {
   logoUrl: "logo_url",
   idleImagesVertical: "idle_images_vertical",
   idleImagesHorizontal: "idle_images_horizontal",
   orderBannerImagesVertical: "order_banner_images_vertical",
   orderBannerImagesHorizontal: "order_banner_images_horizontal",
+  idleVideoVertical: "idle_video_vertical",
+  idleVideoHorizontal: "idle_video_horizontal",
 };
+
+const VIDEO_SLOTS: {
+  key: VideoKey;
+  title: string;
+  sub: string;
+  ratioLabel: string;
+  aspect: [number, number];
+}[] = [
+  {
+    key: "idleVideoVertical",
+    title: "Idle video · Vertical",
+    sub: "Plays after the portrait idle images, muted and looping.",
+    ratioLabel: "9:16",
+    aspect: [9, 16],
+  },
+  {
+    key: "idleVideoHorizontal",
+    title: "Idle video · Horizontal",
+    sub: "Plays after the landscape idle images, muted and looping.",
+    ratioLabel: "16:9",
+    aspect: [16, 9],
+  },
+];
+
+const VIDEO_PREVIEW_H = 110;
+const videoPreviewWidth = (aspect: [number, number]) =>
+  Math.max(48, Math.round((VIDEO_PREVIEW_H * aspect[0]) / aspect[1]));
+
+/**
+ * Muted, looping preview of a slot's video — a faithful `contentFit="cover"`
+ * center-crop of what the kiosk renders. Keyed by uri at the call site so a new
+ * player is created when the source swaps (local pick -> uploaded CDN url).
+ */
+function VideoSlotPreview({
+  uri,
+  width,
+  height,
+}: {
+  uri: string;
+  width: number;
+  height: number;
+}) {
+  const player = useVideoPlayer({ uri }, (p) => {
+    // loop=true for a continuous settings preview, unlike KioskMediaCarousel
+    // which uses loop=false to advance to the next idle slide on playToEnd.
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+  return (
+    <VideoView
+      player={player}
+      style={{ width, height }}
+      contentFit="cover"
+      nativeControls={false}
+    />
+  );
+}
 
 const GROUPS: {
   key: GroupKey;
@@ -78,11 +146,11 @@ const thumbWidth = (aspect: [number, number]) =>
 
 /**
  * On-device kiosk asset management — mirrors the website's kiosk-profile Assets
- * panel. Manages the logo plus the placement-scoped idle-screen and in-order
- * banner image sets (vertical + horizontal). Images are picked from the device,
- * pushed to the CDN via the shared `cdn-upload` edge function, and their URLs
- * written straight into the `kiosk_profiles` array columns. Video stays web-only
- * (it replaces the idle carousel, and isn't managed here).
+ * panel. Manages the logo, the placement-scoped idle-screen and in-order banner
+ * image sets (vertical + horizontal), and the single idle video per orientation.
+ * Media is picked from the device, pushed to the CDN via the shared `cdn-upload`
+ * edge function, and its URL written straight into the `kiosk_profiles` columns
+ * (array columns for images, text columns for the idle videos).
  */
 export function KioskAssetsManager({
   config,
@@ -102,7 +170,11 @@ export function KioskAssetsManager({
     orderBannerImagesVertical: config.orderBannerImagesVertical,
     orderBannerImagesHorizontal: config.orderBannerImagesHorizontal,
   });
-  // Which slot is mid-upload, e.g. "logo" or a GroupKey — drives spinners.
+  const [videos, setVideos] = useState<Record<VideoKey, string | null>>({
+    idleVideoVertical: config.idleVideoVertical,
+    idleVideoHorizontal: config.idleVideoHorizontal,
+  });
+  // Which slot is mid-upload, e.g. "logo", a GroupKey, or a VideoKey — drives spinners.
   const [busy, setBusy] = useState<string | null>(null);
 
   // Re-sync from a background config refresh, but never mid-upload.
@@ -114,6 +186,10 @@ export function KioskAssetsManager({
       idleImagesHorizontal: config.idleImagesHorizontal,
       orderBannerImagesVertical: config.orderBannerImagesVertical,
       orderBannerImagesHorizontal: config.orderBannerImagesHorizontal,
+    });
+    setVideos({
+      idleVideoVertical: config.idleVideoVertical,
+      idleVideoHorizontal: config.idleVideoHorizontal,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
@@ -140,9 +216,13 @@ export function KioskAssetsManager({
     return result.assets[0].base64;
   };
 
-  const uploadToCdn = async (
-    base64: string,
-    label: string,
+  // Single entry point to the shared cdn-upload edge function. All kiosk media
+  // (logo, images, videos) lives under the "kiosk" category — matching the web
+  // dashboard — so callers vary only the file name and content type.
+  const invokeCdnUpload = async (
+    fileBase64: string,
+    fileName: string,
+    contentType: string,
   ): Promise<string> => {
     if (!selectedStore) throw new Error("No store selected.");
     const token = await getToken();
@@ -150,10 +230,10 @@ export function KioskAssetsManager({
       body: {
         scope: "merchant",
         merchantId: selectedStore.merchant_id,
-        category: "kiosk-images",
-        fileName: `kiosk_${label}_${Date.now()}.jpg`,
-        fileBase64: base64,
-        contentType: "image/jpeg",
+        category: "kiosk",
+        fileName,
+        fileBase64,
+        contentType,
       },
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -161,6 +241,9 @@ export function KioskAssetsManager({
       throw error ?? new Error("Upload returned no URL.");
     return data.cdnUrl as string;
   };
+
+  const uploadToCdn = (base64: string, label: string): Promise<string> =>
+    invokeCdnUpload(base64, `kiosk_${label}_${Date.now()}.jpg`, "image/jpeg");
 
   const persist = async (column: string, value: unknown) => {
     const { error } = await supabase
@@ -256,6 +339,101 @@ export function KioskAssetsManager({
     } catch {
       toastService.show({
         title: "Couldn't remove image",
+        message: "Please try again.",
+        type: "error",
+      });
+    }
+  };
+
+  // ── Idle videos ──
+  const pickVideo = async (): Promise<string | null> => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Allow photo access to add kiosk videos.");
+      return null;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: false,
+      quality: 1,
+    });
+    if (result.canceled || !result.assets[0]?.uri) return null;
+    const asset = result.assets[0];
+    // The CDN only accepts MP4; reject other containers before reading bytes.
+    if (asset.mimeType && asset.mimeType !== "video/mp4") {
+      toastService.show({
+        title: "Use an MP4 video",
+        message: "Only MP4 (H.264) videos are supported.",
+        type: "warning",
+      });
+      return null;
+    }
+    // Cap size before base64-reading the file so we never materialize a huge
+    // string on the tablet. Fall back to a filesystem stat if the asset omits it.
+    let size = asset.fileSize ?? 0;
+    if (!size) {
+      const info = await FileSystem.getInfoAsync(asset.uri);
+      size = info.exists ? (info.size ?? 0) : 0;
+    }
+    if (size > MAX_VIDEO_BYTES) {
+      toastService.show({
+        title: "Video too large",
+        message: "Choose an MP4 up to 20MB.",
+        type: "warning",
+      });
+      return null;
+    }
+    return asset.uri;
+  };
+
+  const uploadVideoToCdn = async (
+    uri: string,
+    label: string,
+  ): Promise<string> => {
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return invokeCdnUpload(
+      base64,
+      `kiosk_${label}_${Date.now()}.mp4`,
+      "video/mp4",
+    );
+  };
+
+  const replaceVideo = async (key: VideoKey) => {
+    if (busy) return;
+    const uri = await pickVideo();
+    if (!uri) return;
+    setBusy(key);
+    try {
+      const url = await uploadVideoToCdn(uri, key);
+      await persist(COLUMN[key], url);
+      setVideos((v) => ({ ...v, [key]: url }));
+      onRefreshKioskConfig?.();
+      toastService.show({
+        title: "Video updated",
+        message: "Saved to this kiosk profile.",
+        type: "success",
+      });
+    } catch (err) {
+      toastService.show({
+        title: "Upload failed",
+        message: err instanceof Error ? err.message : "Could not upload video.",
+        type: "error",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeVideo = async (key: VideoKey) => {
+    setVideos((v) => ({ ...v, [key]: null })); // optimistic
+    try {
+      await persist(COLUMN[key], null);
+      onRefreshKioskConfig?.();
+    } catch {
+      toastService.show({
+        title: "Couldn't remove video",
         message: "Please try again.",
         type: "error",
       });
@@ -389,8 +567,73 @@ export function KioskAssetsManager({
         );
       })}
 
+      {/* Idle videos (one per orientation) */}
+      {VIDEO_SLOTS.map((slot) => {
+        const uri = videos[slot.key];
+        const uploading = busy === slot.key;
+        const w = videoPreviewWidth(slot.aspect);
+        return (
+          <View key={slot.key}>
+            <View className="flex-row items-center gap-2 mb-0.5">
+              <Text className="text-xs font-semibold text-gray-500">
+                {slot.title}
+              </Text>
+              <View className="px-1.5 py-0.5 rounded bg-gray-100">
+                <Text className="text-[10px] font-bold text-gray-500">
+                  {slot.ratioLabel}
+                </Text>
+              </View>
+            </View>
+            <Text className="text-[11px] text-gray-400 mb-2">{slot.sub}</Text>
+
+            <View className="flex-row items-center gap-3">
+              <View
+                className="rounded-lg overflow-hidden border border-gray-200 bg-black items-center justify-center"
+                style={{ width: w, height: VIDEO_PREVIEW_H }}
+              >
+                {uri ? (
+                  <VideoSlotPreview
+                    key={uri}
+                    uri={uri}
+                    width={w}
+                    height={VIDEO_PREVIEW_H}
+                  />
+                ) : (
+                  <Film size={20} color="#9CA3AF" />
+                )}
+              </View>
+              <TouchableOpacity
+                onPress={() => replaceVideo(slot.key)}
+                disabled={uploading}
+                activeOpacity={0.85}
+                className="flex-row items-center px-3.5 py-2.5 rounded-xl border border-teal-300 bg-teal-50"
+              >
+                {uploading ? (
+                  <ActivityIndicator size="small" color={TEAL} />
+                ) : (
+                  <RefreshCw size={15} color={TEAL} />
+                )}
+                <Text className="text-sm font-bold text-teal-700 ml-1.5">
+                  {uri ? "Replace" : "Add video"}
+                </Text>
+              </TouchableOpacity>
+              {uri ? (
+                <TouchableOpacity
+                  onPress={() => removeVideo(slot.key)}
+                  activeOpacity={0.85}
+                  className="w-10 h-10 rounded-xl border border-gray-200 bg-white items-center justify-center"
+                >
+                  <Trash2 size={16} color="#DC2626" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+
       <Text className="text-[11px] text-gray-400">
-        Videos and other advanced media are managed on the web dashboard.
+        Idle videos are MP4, up to 20MB, and loop after the idle images. Longer or
+        higher-resolution media is best managed on the web dashboard.
       </Text>
     </View>
   );
