@@ -262,12 +262,39 @@ export const ENTITIES: Record<string, EntityDescriptor> = {
     staleAfterMs: 1 * MIN,
   },
 
+  /**
+   * Customers is a SNAPSHOT entity, and unlike the menu and inventory the
+   * reason is not a server-side resolution — it is a nullable column.
+   *
+   * `public.customers.updated_at` is `string | null`. A keyset delta needs a
+   * watermark that is both totally ordered and never null: `.gte(col, since)`
+   * silently drops every NULL row, so a customer whose `updated_at` was never
+   * set would be invisible to the mirror forever, and ordering by it is
+   * unstable. That is the same fact that kept `table_sessions` out of the
+   * analytics mirror (Phase 5 · analytics ⑤); the difference is that customers
+   * is small enough to replace wholesale, and `table_sessions` is not.
+   *
+   * So no `pullDelta`: `syncableEntities()` skips it and the 30 s loop never
+   * fetches customers. It is written at the existing `fetchAndCacheCustomers`
+   * seam in services/customer.ts — one fetch, one cadence, no duplicated round
+   * trip. Same shape as the menu and inventory, reached from a third
+   * direction. See lib/db/descriptors/customers.ts.
+   */
   customers: {
     name: "customers",
     table: "customers",
     primaryKey: "id",
-    watermarkColumn: "updated_at",
+    // The moment the directory was confirmed. There is no usable per-row
+    // change clock — see the note above.
+    watermarkColumn: "_server_seen_at",
     stations: POS_ONLY,
+    // CAPPED, and this is the one snapshot entity where a cap is coherent.
+    // The menu and inventory are uncapped because their pull returns the
+    // COMPLETE set and pruning would delete rows the payload still contains.
+    // Customers is different: the fetch is explicitly a TOP-N by
+    // `last_order_date`, so the payload is already a bounded window rather
+    // than the whole directory, and the cap is simply that window's size.
+    // The two numbers must agree — see CUSTOMER_FETCH_LIMIT.
     retention: {
       maxRows: RETENTION_CAPS.customers,
       maxAgeDays: null,

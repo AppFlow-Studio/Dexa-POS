@@ -56,10 +56,19 @@
  * re-pulls every order with the new shape. `order_payments` also gains
  * `idx_op_loc_initiated`, the index the analytics payments scan keys on.
  *
+ * v10 (2026-08-31, Phase 5 · customers): `customers` stops being a
+ * storage-policy placeholder and becomes a real snapshot. It gains
+ * `location_id` (the location the row was MIRRORED for — the same deliberate
+ * bend the menu documents, since remote `customers` is merchant-scoped and has
+ * no location at all), a composite `(location_id, id)` key, `_ordinal` to
+ * preserve the server's ordering, promoted `address`, and the three folded
+ * search columns the type-ahead matches on. The bare `idx_c_name` is dropped —
+ * see the note on the table.
+ *
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -115,6 +124,7 @@ export const TABLE_CONFLICT_KEYS: Partial<Record<TableName, readonly string[]>> 
     menu_bootstrap: ["location_id"],
     inventory_items: ["location_id", "id"],
     vendors: ["location_id", "id"],
+    customers: ["location_id", "id"],
     sync_state: ["entity", "location_id"],
   };
 
@@ -593,14 +603,41 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_v_ord ON vendors(location_id, _ordinal)`,
 
   // ==========================================================================
-  // CUSTOMERS — names match public.customers exactly.
+  // CUSTOMERS — names match public.customers exactly, with ONE bend.
+  //
+  // `location_id` IS NOT A REMOTE COLUMN. Remote `customers` is scoped to a
+  // MERCHANT and has no location at all. It is added here because the whole
+  // write boundary — `pruneToRetention`, `writeSyncState`'s floor and row
+  // count, `replaceScope`'s clear, the purge, the dev shadow-compare — is
+  // written against `WHERE location_id = ?`, and every other mirrored table
+  // has one. The alternative was teaching write.ts about a second scope
+  // column, which would touch the transaction path all four existing entities
+  // depend on to save one column on one table. So it means "the location this
+  // row was mirrored FOR", exactly as the menu's does, and a device serving
+  // two locations of one merchant holds the directory twice. That is bounded
+  // (5,000 rows x ~786 B ~= 3.9 MB) and a device is location-bound in practice.
+  //
+  // `updated_at` IS NULLABLE ON REMOTE, which is why this is a SNAPSHOT entity
+  // and not a keyset delta — the same fact that kept `table_sessions` out of
+  // the analytics mirror. A cursor on a column that can be NULL either skips
+  // those rows forever or orders unstably; there is no third option.
+  //
+  // THE SEARCH COLUMNS. `_search_name` and `_search_address` are case-FOLDED
+  // in JS at ingest for the reason `orders._search_customer_name` documents:
+  // SQLite's LIKE, LOWER() and COLLATE NOCASE are all ASCII-only while the
+  // JS `.toLowerCase().includes()` these screens do today is not, so "José"
+  // matched in the old client-side filter and would have missed in SQL.
+  // `_search_phone` is digits-only, matching the `replace(/\D/g,"")` the
+  // waitlist normalizes with, so "(555) 123" and "555123" find the same row.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS customers (
-    id                   TEXT PRIMARY KEY NOT NULL,
+    id                   TEXT NOT NULL,
+    location_id          TEXT NOT NULL,
     merchant_id          TEXT,
     name                 TEXT,
     phone                TEXT,
     email                TEXT,
+    address              TEXT,
     is_active            INTEGER,
     vip_level            TEXT,
     total_orders         INTEGER,
@@ -611,11 +648,26 @@ export const SCHEMA_STATEMENTS: string[] = [
     last_visit           TEXT,
     created_at           TEXT,
     updated_at           TEXT,
+    _ordinal             INTEGER NOT NULL DEFAULT 0,
+    _search_name         TEXT,
+    _search_phone        TEXT,
+    _search_address      TEXT,
     _server_seen_at      TEXT NOT NULL,
-    payload              TEXT NOT NULL
+    payload              TEXT NOT NULL,
+    PRIMARY KEY (location_id, id)
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_c_phone ON customers(phone)`,
-  `CREATE INDEX IF NOT EXISTS idx_c_name  ON customers(name)`,
+  // The directory read: the server's own ordering, preserved.
+  `CREATE INDEX IF NOT EXISTS idx_c_loc_ord ON customers(location_id, _ordinal)`,
+  // For EXACT / prefix phone lookups (findOrCreateCustomer, resolveCustomerId).
+  // It does NOT serve the type-ahead: that is a `%contains%` match, and no
+  // b-tree can serve a leading wildcard. At the 5,000-row cap the type-ahead is
+  // a scan of one location's directory, which is what "start with LIKE" means
+  // in the plan; FTS5 is the escalation if measurement ever demands it.
+  `CREATE INDEX IF NOT EXISTS idx_c_loc_phone ON customers(location_id, _search_phone)`,
+  // `idx_c_name` is deliberately NOT recreated. A bare b-tree on `name` cannot
+  // serve `LIKE '%q%'`, so it only ever cost writes.
+  `DROP INDEX IF EXISTS idx_c_phone`,
+  `DROP INDEX IF EXISTS idx_c_name`,
 
   // ==========================================================================
   // STAFF — a JOIN of location_members x staff_profiles.

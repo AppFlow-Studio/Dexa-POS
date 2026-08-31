@@ -1444,7 +1444,7 @@ which is why they share a phase — but each still ships and soaks independently
 | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [inventory/](<app/(main)/inventory/>) — ✅ **BUILT (flag-gated, default off)**                                                            | `…_LOCAL_INVENTORY`   | 28 `.from()`, rebuilt every launch | Stock is time-sensitive — `staleAfterMs: 60_000`, not 5 min. Drop the redundant `.from("inventory_items")` at `useInventorySync.ts:57` once delta is trusted                                                                                                                                                                           |
 | [analytics.tsx](<app/(main)/analytics.tsx>) — ✅ **BUILT (flag-gated, default off)** · EOD deferred                                        | `…_LOCAL_ANALYTICS`   | 13 `.from()`, **dead offline**     | **Numbers must match the server dashboard exactly** — run side by side before flipping. Past `retention_floor`, say so: _"Showing the last N orders. Older data needs a connection."_ Never silently under-report revenue. EOD preview must match server settlement on **ten consecutive real close-outs**; server stays authoritative |
-| [customers-list.tsx](<app/(main)/customers-list.tsx>)                                                                                    | `…_LOCAL_CUSTOMERS`   | Debounced network type-ahead       | Start with `LIKE`; add FTS5 only if measurement demands it                                                                                                                                                                                                                                                                             |
+| Customer directory — ✅ **BUILT (flag-gated, default off)**. NOT `customers-list.tsx`, which is a stub; see the build notes                | `…_LOCAL_CUSTOMERS`   | ~~Debounced network type-ahead~~ **200-row MMKV cache, filtered in JS** | Start with `LIKE`; add FTS5 only if measurement demands it                                                                                                                                                                                                                                                                             |
 | [loyalty/](<app/(main)/loyalty/>)                                                                                                        | `…_LOCAL_LOYALTY`     | 15 `.from()`                       | —                                                                                                                                                                                                                                                                                                                                      |
 | Staff roster — [scheduling/](<app/(main)/scheduling/>), [open-shifts.tsx](<app/(main)/open-shifts.tsx>), [pto.tsx](<app/(main)/pto.tsx>) | `…_LOCAL_STAFF`       | Network-only rosters               | **Read-only consumers only.** `useEmployeeStore` keeps login, session and PINs. If a change starts touching `pin-login.tsx`, stop — different ticket                                                                                                                                                                                   |
 | [online-orders/](<app/(main)/online-orders/>)                                                                                            | `…_LOCAL_BOARDS`      | Board refetched on entry           | Double-render between the local row and the realtime row — key strictly on order id. Preserve `placed_at` business-day scoping (commit `82eb80e7`)                                                                                                                                                                                     |
@@ -1589,8 +1589,8 @@ Three guards were verified as real regression tests by removing them and confirm
 - [ ] Drop the redundant `.from("inventory_items")` — still load-bearing today (it is the row
       universe, not a redundancy, so this needs the RPC to return inactive-at-location rows first).
 
-**Remaining Phase 5 pages** — EOD, customers, loyalty, staff roster, online-orders boards,
-KDS history — are unstarted. Each still ships and soaks independently.
+**Remaining Phase 5 pages** — EOD, loyalty, staff roster, online-orders boards, KDS history —
+are unstarted. Each still ships and soaks independently.
 
 ---
 
@@ -1740,6 +1740,153 @@ back.
       the dashboard's `TabId` union but absent from `TABS`), so two queries — one an unbounded
       merchant-wide select — run on every online load and feed nothing. The local path returns
       null, matching what renders. Deleting the fetch is an online-path change left out of scope.
+
+---
+
+### Phase 5 · Customers — build notes, 2026-08-31
+
+**Status: code complete — 25 new tests, 231/231 local-DB tests green, `tsc --noEmit` clean,
+ESLint 0 errors on every touched file, full suite back at its known baseline (10 pre-existing
+suite failures / 30 tests; total 2080 → 2105). Not yet run on device behind the flag.**
+
+**THE PLAN'S ROW FOR THIS PAGE WAS WRONG IN BOTH COLUMNS, and finding that out changed the
+work.** `customers-list.tsx` is a twelve-line stub that renders the string "customers-list" —
+there is no page to convert. And the "Today" column said "debounced network type-ahead", which
+does not exist anywhere: `fetchAndCacheCustomers` pulls `.limit(200)` ordered by
+`last_order_date` into MMKV, and the four screens that need to find a person — the bill's
+CustomerSheet, the waitlist form, the reservations panel, the host station's form — each filter
+THAT ARRAY in JS.
+
+So the defect this phase actually fixes is not an offline gap. **A customer who last visited a
+few months ago at a busy location cannot be found at all — with or without a connection.** The
+type-ahead is not a network search that degrades offline; it is a client-side scan of a
+truncated list that is equally truncated online. Offline coverage is the second benefit.
+
+| Delivered                                                                        | File                                                                        |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Schema v10 — `location_id`, composite key, `_ordinal`, promoted `address`, three folded search columns | [lib/db/schema.ts](lib/db/schema.ts)                  |
+| Snapshot semantics (no `pullDelta`), and why the cap is coherent here             | [lib/db/entities.ts](lib/db/entities.ts)                                     |
+| The mapper, the wholesale replace, the raw round trip                             | [lib/db/descriptors/customers.ts](lib/db/descriptors/customers.ts)           |
+| The superset search, top-customers, freshness                                     | [lib/db/customersQuery.ts](lib/db/customersQuery.ts)                         |
+| Mirror write at the existing fetch seam + the offline-pending merge               | [services/customer.ts](services/customer.ts)                                 |
+| One debounced hook, shared by every consumer                                      | [hooks/customers/useCustomerDirectory.ts](hooks/customers/useCustomerDirectory.ts) |
+| FlashList directory + the three consumer conversions                              | [CustomerSheet.tsx](components/bill/CustomerSheet.tsx) · [WaitlistBottomSheet.tsx](components/tables/WaitlistBottomSheet.tsx) · [ReservationsPanel.tsx](components/panels/ReservationsPanel.tsx) |
+
+**Six decisions worth recording.**
+
+**① THE QUERY IS A SUPERSET FILTER, AND THE PER-SCREEN FILTERS STAY IN JS.**
+
+This is what kept the change small. The four screens match on different fields with different
+rules — the sheet includes address, the waitlist normalizes phones to digits and demands three
+of them, the reservations panel matches raw phone text. Moving those into SQL would have meant
+four SQL predicates kept in step with four JS ones by hand, which is the divergence
+`historyQuery.ts` exists to prevent, multiplied by four.
+
+So `searchLocalCustomers` narrows the directory to a SUPERSET of what any screen could match
+(name, phone, address) and each screen runs its OWN unchanged filter over the result. Per-screen
+semantics are untouched — provably, because that code was not edited. The only thing that
+changes is the size of the pool: the whole directory instead of the most recent 200.
+
+**② IT IS A SNAPSHOT BECAUSE `updated_at` IS NULLABLE — the third distinct reason so far.**
+
+The menu is a snapshot because price resolution is server-side; inventory because stock
+resolution is; customers because `public.customers.updated_at` is `string | null`. A keyset
+cursor on a nullable column is not a cursor: `.gte(col, since)` drops every NULL row silently,
+so a customer whose `updated_at` was never written would be invisible to the mirror forever.
+That is exactly the fact that kept `table_sessions` out of the analytics mirror one section
+above; the difference is that a customer directory is small enough to replace wholesale and a
+session history is not.
+
+**③ `location_id` ON A MERCHANT-SCOPED TABLE — the bend, and why it beat the alternative.**
+
+Remote `customers` has no location at all. The local table gets one anyway, meaning "the
+location this row was mirrored for", exactly as the menu's does. The alternative was teaching
+`write.ts` about a second scope column — but `pruneToRetention`, `writeSyncState`'s floor and
+row count, `replaceScope`'s clear, the purge and the dev shadow-compare are ALL written against
+`WHERE location_id = ?`, and `sync_state`'s primary key is `(entity, location_id)`. Generalizing
+that to save one column on one table would have touched the transaction path all four existing
+entities depend on. The cost of the bend is that a device serving two locations of one merchant
+holds the directory twice — bounded at ~3.9 MB, and a device is location-bound in practice.
+
+**④ THE CAP IS COHERENT HERE, WHICH IT WAS NOT FOR THE MENU OR INVENTORY.**
+
+Both of those had their caps REMOVED, because a wholesale replace cannot coexist with row
+pruning: the pull returns the complete set, so pruning deletes rows the payload still contains.
+Customers is different, and the difference is worth stating precisely: **the fetch is itself a
+top-N**, so the payload is already a bounded window rather than the whole directory, and the
+retention cap is simply that window's size. The two numbers must be equal or the mirror either
+prunes rows the payload holds or claims coverage it never fetched — so a test asserts
+`CUSTOMER_FETCH_LIMIT === retention.maxRows` rather than a comment asking for it.
+
+**⑤ OFFLINE-PENDING CUSTOMERS ARE MERGED OVER THE MIRROR, and this is a correctness rule.**
+
+`services/customer.ts` already had a working MMKV offline create/link queue, which this phase
+does not touch — it is Track B's problem and it works. But a customer created offline exists
+ONLY in that queue until it syncs. Reading the directory from the mirror alone would mean the
+customer an operator just created vanishes from the list they created it in. They are merged
+unconditionally rather than filtered by the query, because there are at most a handful and the
+caller's own filter narrows them correctly anyway.
+
+The MMKV cache also stays as the fallback path, and deliberately keeps its 200-row footprint:
+it is no longer trying to be the directory, so writing 5,000 rows through it on every fetch
+would pay the serialization cost twice for a list nothing reads while the mirror is healthy.
+
+**⑥ FLASHLIST WHERE THE LIST IS UNBOUNDED — AND NOWHERE ELSE.**
+
+CustomerSheet's `SectionList` became a `FlashList`, which needed the A/B/C grouping FLATTENED
+into one array of headers and rows told apart by `getItemType` — FlashList has no sections, and
+that is its own recommended shape for sectioned data: the two cell kinds recycle into separate
+pools, so a header can never be reused as a customer row (the classic wrong-height flicker when
+sections are faked with a single item type). The grouping logic itself is unchanged.
+
+The waitlist and reservations suggestion dropdowns were left as plain `.map()` calls **on
+purpose**: both are `.slice(0, 4)`. Virtualizing four rows costs more than it saves, and
+applying FlashList everywhere the word "customer" appears would have been cargo cult.
+
+**Five guards were verified as real regression tests by breaking them:**
+
+| Change                                                | What fails                                                       |
+| ----------------------------------------------------- | ---------------------------------------------------------------- |
+| drop the digits guard on the phone LIKE arm            | every name/address search — an empty digit string matches all     |
+| stop escaping LIKE metacharacters                      | the literal `%` / `_` case                                        |
+| fold the search columns at query time instead of ingest | the non-ASCII name case                                          |
+| drop `replaceScope`                                    | both deletion cases                                               |
+| drop `location_id` from the conflict target            | the whole suite — the constraint error rolls back every batch     |
+
+The escaping case is worth calling out: the FIRST version of it searched `"100%"` against
+`"100% Beef"` and `"Bob"`, and it PASSED with the escaping removed — `%100%%` still excludes a
+row with no "100" in it, so the test discriminated nothing. It now uses fixtures where failing
+to escape genuinely widens the match (`"%B"` matching `"Bob"`, `"a_c"` matching `"abc"`).
+
+**What the tests assert**
+([**tests**/db/customersMirror.test.ts](__tests__/db/customersMirror.test.ts), against a real SQL
+engine): the server rows round-trip unchanged and in the server's order; a NULL `updated_at`
+does not lose a row; one malformed payload does not empty the directory; a merged-away customer
+disappears; an empty payload is refused rather than replacing a good directory; a replace clears
+only its own location; two locations' rows for the same customer id stay apart; search matches
+non-ASCII names case-insensitively, phones however they are punctuated, and addresses; a name
+query does not fall through to the phone arm; LIKE metacharacters are literal; a query under two
+characters returns the directory; search is location-scoped and capped; the server's NULLS-FIRST
+ordering is preserved rather than re-derived; top-customers ranks across the whole directory and
+excludes zero-order customers; the fetch limit equals the retention cap; a kiosk and a KDS may
+not hold the directory; freshness and row count land; money promotes to exact minor units while
+the server value survives verbatim; and the directory read is an index scan with no temp b-tree.
+
+**Still outstanding for customers:**
+
+- [ ] **Run it on device behind the flag** — open the bill's customer sheet with the radio off
+      and confirm the directory paints from SQLite (the write log reports row counts and `ms`).
+- [ ] **Confirm the offline-create merge on a real tablet**: go offline, create a customer, and
+      confirm they appear in the sheet's list immediately and survive the reconnect without
+      duplicating.
+- [ ] **Find someone who is NOT in the most recent 200** — the whole point. Needs a location with
+      a real directory; the fixture proves the mechanism, not the coverage.
+- [ ] **Measure the type-ahead at 5,000 rows.** The plan says "start with `LIKE`; add FTS5 only
+      if measurement demands it" — the measurement has not been taken. A `%contains%` match
+      cannot use a b-tree, so this is a scan of one location's directory per keystroke-batch.
+- [ ] **A service-period soak** before the MMKV cache is retired for reads.
+- [ ] `app/(main)/customers-list.tsx` is still a stub. Building a real customer-management page is
+      a feature, not this phase — but the mirror and the query layer are now there for it.
 
 ---
 

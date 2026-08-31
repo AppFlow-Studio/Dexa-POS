@@ -188,8 +188,8 @@ describe("station change — POS re-provisioned as a kiosk", () => {
     await writeRows(ENTITIES.orders, "pos", LOCATION, [orderRow("o1")]);
     await writeRows(ENTITIES.menu, "pos", LOCATION, [menuRow("m1")]);
     await getDb()!.runAsync(
-      `INSERT INTO customers (id, name, phone, _server_seen_at, payload)
-       VALUES ('c1', 'Jane Doe', '+15551234567', '2026-01-01', '{}')`,
+      `INSERT INTO customers (id, location_id, name, phone, _server_seen_at, payload)
+       VALUES ('c1', '${LOCATION}', 'Jane Doe', '+15551234567', '2026-01-01', '{}')`,
     );
     await getDb()!.runAsync(
       `INSERT INTO staff (location_member_id, staff_profile_id, location_id,
