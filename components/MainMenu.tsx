@@ -191,12 +191,17 @@ const MainMenu: React.FC = () => {
   //   docs/engineering/architecture/sqlite-offline-first.md). Reads work
   //   offline; the writes inside the section guard themselves and surface an
   //   "You're offline" alert.
+  // - Menu Management renders from useMenuStore, which PosSyncProvider hydrates
+  //   from the Phase 4 menu mirror at boot. Its writes are not offline-aware,
+  //   but they fail safely — optimistic edits roll back and deletes go
+  //   server-first — so the worst case is a generic error toast, not divergence.
   const offlineAllowedRoutes = new Set([
     "/order-processing",
     "/tables",
     "/settings",
     "/previous-orders",
     "/inventory",
+    "/menu",
   ]);
 
   const handleLockedAccess = (route: string) => {
