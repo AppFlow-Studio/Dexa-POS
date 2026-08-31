@@ -142,13 +142,16 @@ const MIN = 60_000;
  * (syncEngine.ts).
  *
  * The rest are workload-derived and far above real volume:
- *   customers 5000, inventory 2000, staff 500 (device synced 18 staff, ~54
- *   menu items).
+ *   customers 5000, staff 500 (device synced 18 staff, ~54 menu items).
+ *
+ * Inventory's derived cap of 2,000 was REMOVED in Phase 5 rather than tuned: a
+ * wholesale-replace entity cannot be row-capped at all without the mirror
+ * permanently disagreeing with the server about which items exist. See the
+ * inventory descriptor below.
  */
 const RETENTION_CAPS = {
   orders: 20000,
   customers: 5000,
-  inventoryItems: 2000,
   staff: 500,
 } as const;
 
@@ -219,18 +222,42 @@ export const ENTITIES: Record<string, EntityDescriptor> = {
     staleAfterMs: 2 * MIN,
   },
 
+  /**
+   * Inventory is a SNAPSHOT entity, for the same reason the menu is — and the
+   * reason is easy to miss here, because `inventory_items` DOES carry an
+   * `updated_at` and a keyset delta against it would run happily.
+   *
+   * It would also be wrong. Stock quantity resolves out of
+   * `location_inventory_stock`, and effective cost and reorder point out of
+   * `location_inventory_overrides`, both per location;
+   * `get_pos_inventory_sync` is what joins them. A delta on `inventory_items`
+   * would mirror the merchant-level row and silently miss every per-location
+   * resolution — the catalog would look right and report the wrong stock.
+   *
+   * So no `pullDelta`: `syncableEntities()` skips it and the 30 s loop never
+   * fetches inventory. It is written at the existing sync seam in
+   * app/(main)/inventory/_layout.tsx instead, where the payload has already
+   * arrived — one fetch, one cadence, no duplicated round trip. See
+   * lib/db/descriptors/inventory.ts.
+   */
   inventory: {
     name: "inventory",
     table: "inventory_items",
     primaryKey: "id",
-    watermarkColumn: "updated_at",
+    // The moment the catalog was confirmed. There is no version token and no
+    // per-row change clock to page against — see the note above.
+    watermarkColumn: "_server_seen_at",
     children: ["vendors"],
     stations: POS_ONLY,
-    retention: {
-      maxRows: RETENTION_CAPS.inventoryItems,
-      maxAgeDays: null,
-      pruneBy: "updated_at",
-    },
+    // UNCAPPED, and the change from the plan's derived 2,000 is deliberate.
+    // A row cap and a wholesale replace cannot coexist: the pull returns the
+    // COMPLETE catalog every time, so pruning it would delete rows the payload
+    // still contains and leave the mirror permanently disagreeing with the
+    // server about which items exist. The menu reached the same conclusion for
+    // the same reason — a replaced entity is bounded by its own size, not by
+    // time. 2,000 items at ~795 B/row is ~1.6 MB even if a location ever got
+    // there, so the cap was never the binding constraint anyway.
+    retention: { maxRows: null, maxAgeDays: null, pruneBy: "updated_at" },
     // Stock is the most time-sensitive thing we mirror — 60s, not 5 minutes.
     staleAfterMs: 1 * MIN,
   },

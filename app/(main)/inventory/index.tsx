@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { useInventoryWriteGate } from '@/hooks/inventory/useInventoryWriteGate'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { InventoryItem } from '@/lib/types'
@@ -491,6 +492,9 @@ const InventoryScreen = () => {
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
+  // Reads work offline from the mirror; writes do not. See Phase 5 in
+  // docs/engineering/architecture/sqlite-offline-first.md.
+  const { canWrite, blockedReason, runGuarded } = useInventoryWriteGate()
 
   useEffect(() => {
     if (selectedStore?.id) {
@@ -526,11 +530,13 @@ const InventoryScreen = () => {
   ) => {
     if (!selectedStore?.id) return alert('No store selected')
 
-    if (id) {
-      await updateInventoryItem(id, data, selectedStore.id)
-    } else {
-      await addInventoryItem(data, selectedStore.id)
-    }
+    // Guarded because the modal does not surface a rejection: offline, the
+    // store refuses the write and the form would otherwise just close.
+    await runGuarded(() =>
+      id
+        ? updateInventoryItem(id, data, selectedStore.id)
+        : addInventoryItem(data, selectedStore.id)
+    )
   }
 
   return (
@@ -654,13 +660,17 @@ const InventoryScreen = () => {
 
         <TouchableOpacity
           onPress={() => addItemSheetRef.current?.expand()}
+          disabled={!canWrite}
+          accessibilityState={{ disabled: !canWrite }}
+          accessibilityHint={blockedReason ?? undefined}
           style={{
             height: s(40),
             width: s(40),
             borderRadius: s(8),
             backgroundColor: colors.teal + '20',
             justifyContent: 'center',
-            alignItems: 'center'
+            alignItems: 'center',
+            opacity: canWrite ? 1 : 0.4
           }}
         >
           <Plus size={s(18)} color={colors.teal} />
@@ -796,7 +806,9 @@ const InventoryScreen = () => {
         isOpen={isDeleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={() => {
-          if (selectedItem) deleteInventoryItem(selectedItem.id)
+          if (selectedItem) {
+            void runGuarded(() => deleteInventoryItem(selectedItem.id))
+          }
           setDeleteConfirmOpen(false)
         }}
         title='Delete Item'

@@ -183,14 +183,20 @@ const MainMenu: React.FC = () => {
   // instead of navigating, so this tile carries no route.
   const [isClockInOutOpen, setClockInOutOpen] = useState(false);
 
-  // Previous Orders is allowed offline: it falls back to the last
-  // successfully-fetched snapshot (previousOrdersOfflineCache) instead of going
-  // blank, so the tile stays usable without a connection.
+  // Routes that render from a local cache instead of going blank without a
+  // connection, so their tiles stay usable offline:
+  // - Previous Orders falls back to the last successfully-fetched snapshot
+  //   (previousOrdersOfflineCache).
+  // - Inventory paints its catalog from the SQLite mirror (Phase 5 in
+  //   docs/engineering/architecture/sqlite-offline-first.md). Reads work
+  //   offline; the writes inside the section guard themselves and surface an
+  //   "You're offline" alert.
   const offlineAllowedRoutes = new Set([
     "/order-processing",
     "/tables",
     "/settings",
     "/previous-orders",
+    "/inventory",
   ]);
 
   const handleLockedAccess = (route: string) => {

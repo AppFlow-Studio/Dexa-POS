@@ -1442,7 +1442,7 @@ which is why they share a phase — but each still ships and soaks independently
 
 | Page                                                                                                                                     | Flag                  | Today                              | Watch for                                                                                                                                                                                                                                                                                                                              |
 | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [inventory/](<app/(main)/inventory/>)                                                                                                    | `…_LOCAL_INVENTORY`   | 28 `.from()`, rebuilt every launch | Stock is time-sensitive — `staleAfterMs: 60_000`, not 5 min. Drop the redundant `.from("inventory_items")` at `useInventorySync.ts:57` once delta is trusted                                                                                                                                                                           |
+| [inventory/](<app/(main)/inventory/>) — ✅ **BUILT (flag-gated, default off)**                                                            | `…_LOCAL_INVENTORY`   | 28 `.from()`, rebuilt every launch | Stock is time-sensitive — `staleAfterMs: 60_000`, not 5 min. Drop the redundant `.from("inventory_items")` at `useInventorySync.ts:57` once delta is trusted                                                                                                                                                                           |
 | [analytics.tsx](<app/(main)/analytics.tsx>) + EOD                                                                                        | `…_LOCAL_ANALYTICS`   | 13 `.from()`, **dead offline**     | **Numbers must match the server dashboard exactly** — run side by side before flipping. Past `retention_floor`, say so: _"Showing the last N orders. Older data needs a connection."_ Never silently under-report revenue. EOD preview must match server settlement on **ten consecutive real close-outs**; server stays authoritative |
 | [customers-list.tsx](<app/(main)/customers-list.tsx>)                                                                                    | `…_LOCAL_CUSTOMERS`   | Debounced network type-ahead       | Start with `LIKE`; add FTS5 only if measurement demands it                                                                                                                                                                                                                                                                             |
 | [loyalty/](<app/(main)/loyalty/>)                                                                                                        | `…_LOCAL_LOYALTY`     | 15 `.from()`                       | —                                                                                                                                                                                                                                                                                                                                      |
@@ -1451,6 +1451,146 @@ which is why they share a phase — but each still ships and soaks independently
 | [kds.tsx](<app/(main)/kds.tsx>) history                                                                                                  | `…_LOCAL_KDS_HISTORY` | 50-ticket cap, 1 h window          | Retires `KDS_DONE_TICKET_LIMIT` and `_recalledTicketIds` (the persisted, TTL-less Set flagged HIGH in `memory-state-audit.md`)                                                                                                                                                                                                         |
 
 **Done when** every read page paints from disk and works offline.
+
+---
+
+### Phase 5 · Inventory — build notes, 2026-08-30
+
+**Status: code complete — 204/204 local-DB and gate tests green (45 new), `tsc --noEmit` clean,
+ESLint clean on every touched file, full suite at its known baseline (10 pre-existing suite
+failures / 30 tests, measured before and after and identical). Not yet run on device behind the
+flag.**
+
+| Delivered                                                                          | File                                                                                     |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Schema v8 — `_ordinal` and location-leading composite keys on `inventory_items` / `vendors` | [lib/db/schema.ts](lib/db/schema.ts)                                                     |
+| The ONE sync transform, shared by the live path, the store and the mirror           | [lib/inventory/inventorySyncPayload.ts](lib/inventory/inventorySyncPayload.ts)            |
+| Raw rows → rows → raw rows, and the wholesale replace                               | [lib/db/descriptors/inventory.ts](lib/db/descriptors/inventory.ts)                        |
+| Snapshot entity semantics (no `pullDelta`, uncapped retention)                      | [lib/db/entities.ts](lib/db/entities.ts)                                                  |
+| Entry hydrate from the mirror + write at the existing sync seam                     | [app/(main)/inventory/\_layout.tsx](<app/(main)/inventory/_layout.tsx>)                   |
+| Banner reads local freshness and states that writes are unavailable                 | [components/inventory/InventoryStaleBanner.tsx](components/inventory/InventoryStaleBanner.tsx) |
+| The offline write gate — one choke point in the store                               | [stores/useInventoryStore.ts](stores/useInventoryStore.ts)                                |
+| Button-level gate so the refusal precedes the work                                  | [hooks/inventory/useInventoryWriteGate.ts](hooks/inventory/useInventoryWriteGate.ts)      |
+
+**Five decisions worth recording.**
+
+**① WRITES STAY ONLINE-ONLY, and this is the phase's headline policy, not a limitation.**
+
+Inventory is the first mirrored section that has writes on it, so Track A's read/write boundary
+stops being theoretical here. Every one of the 15 mutating actions is refused while the device is
+offline. Two reasons, and the second is the one that settles it:
+
+- Identity is minted server-side (`add_order_item`-style RPCs, plain table inserts), which is
+  exactly the instability §1 blames for the last local-first attempt being reverted.
+- **Stock movements are not idempotent.** A queued "received 12 cases" replayed after a reconnect
+  double-counts, and unlike a duplicated order there is no receipt anyone will ever compare it
+  against. Silently wrong inventory is worse than a blocked button.
+
+Offline stock counts and receiving are the thing staff will actually ask for, and they belong in
+**Track B (Phase 7+)** where the outbox can make them safe. Filed, not built.
+
+The gate is enforced at **one choke point in the store**, for the same reason `lib/db/write.ts`
+checks station policy at one: a call site that forgets is then impossible rather than merely
+unlikely — there are ~20 of them across 10 screens. `useInventoryWriteGate` disables the primary
+controls so the refusal arrives before a purchase order is filled in, which is the actual UX
+change; the writes already failed offline, just late and with the wrong reason.
+
+**It refuses by THROWING, and that detail is load-bearing.** The purchase-order screens are built
+around `await action(); showSuccess()` with a `catch`. A gate that returned quietly would slot in
+above that and produce a green "Payment logged" for a payment that never happened — strictly
+worse than the raw network error it replaced. Throwing leaves every existing handler behaving as
+it does today and only improves the reason.
+
+**Nothing in the UI writes the mirror.** It is only ever written from a server payload, so it
+cannot drift from the server while Track A owns it, and rollback is unsetting the flag.
+
+**② Inventory is a SNAPSHOT entity, and `updated_at` is the trap.**
+
+`inventory_items` carries an `updated_at`, so a keyset delta would run happily — and mirror the
+wrong thing. Stock resolves out of `location_inventory_stock`, and effective cost and reorder
+point out of `location_inventory_overrides`, both per location; `get_pos_inventory_sync` is what
+joins them. A delta would clone the merchant-level row and miss every per-location resolution: a
+catalog that looks right and reports the wrong stock, which is worse than one that is visibly
+missing. Re-implementing the resolution on-device is the second-source-of-truth §7 rules out
+forever.
+
+So there is no `pullDelta`, `syncableEntities()` skips it, and the mirror is written at the
+existing `useInventorySync` seam in the section layout — one fetch, one cadence, no duplicated
+round trip. Same shape as the menu, reached from a different direction.
+
+**③ The mirror stores the RAW WIRE ROWS, not a mapped catalog.**
+
+`payload` holds `{rpc, row}` per item and the selected vendor row per vendor, and the read
+rebuilds those inputs and runs `mapInventorySyncPayload` — the same function the live sync runs.
+That turns "offline shows what online shows" into "the inputs round-trip", which is a property a
+test asserts rather than an intention two mapping copies have to keep agreeing on.
+
+It also found an existing duplication: that mapping was written twice, character for character,
+in `useInventorySync` and `useInventoryStore.fetchInventoryItems`, so the catalog could resolve
+differently depending on which path happened to populate it. Both now call the shared function.
+
+**④ The keys are location-leading, applied from the Phase 4 lesson rather than after it.**
+
+Stock and cost are resolved per location, so the same item id means different numbers at
+different stores. Today's selects filter on `location_id`, so only location-owned rows arrive and
+a single-column key would *happen* to work — which is precisely what silently broke on `menus`
+when a device switched stores. `PRIMARY KEY (location_id, id)` on both tables, registered in
+`TABLE_CONFLICT_KEYS`, and a test that fails if two locations' resolutions of one item collapse.
+
+**⑤ The retention cap was REMOVED, not tuned.**
+
+The plan derived 2,000 rows for inventory from the Phase 1 measurement. That is incompatible with
+a wholesale replace: the pull returns the complete catalog every time, so pruning would delete
+rows the payload still contains and leave the mirror permanently disagreeing with the server
+about which items exist. `maxRows: null`, exactly as the menu concluded — a replaced entity is
+bounded by its own size, not by time. At ~795 B/row even 2,000 items is ~1.6 MB, so the cap was
+never the binding constraint.
+
+**One online-path change, stated plainly.** `useInventorySync` gains `refetchOnMount: "always"`.
+With `staleTime: Infinity` and no polling, the catalog was a session-long cache — open Inventory
+an hour into service and you were reading boot-time stock, and the 60 s `staleAfterMs` would have
+made the freshness stamp permanently meaningless (the Phase 4 ④ trap). Refetching on entry is the
+smallest cadence that makes the numbers current where someone is actually looking at them. It is
+a change to the ONLINE path, which Phase 4 deliberately deferred for the menu; it is taken here
+because "stock is time-sensitive" is this page's stated watch-for and the fix is one line scoped
+to one query.
+
+**What the tests assert** ([**tests**/db/inventoryMirror.test.ts](__tests__/db/inventoryMirror.test.ts)
+and [**tests**/inventory/inventoryWriteGate.test.ts](__tests__/inventory/inventoryWriteGate.test.ts),
+against a real SQL engine): the raw round trip is exact; the mirror maps through the same function
+as the live path; RPC-resolved items stay ahead of direct-only ones; an RPC row with no direct row
+is dropped and a direct row with no RPC row survives unresolved; a discontinued item and a removed
+vendor both disappear; an empty payload is refused rather than replacing a good catalog; a replace
+clears only its own location; two locations' resolutions of one item stay apart; a kiosk and a KDS
+may not hold the catalog, replace scope included; cost promotes to exact minor units while the
+server value survives verbatim; the promoted `current_stock` is the per-location resolved number
+the screen shows; the catalog is uncapped; the stamp and watermark land; both reads are index scans
+with no temp b-tree; the read opens the database itself rather than assuming it is open; all 15
+mutations are refused offline, refused *before* Supabase is touched, and refused by throwing; and
+the sale-driven stock decrement is deliberately NOT gated.
+
+Three guards were verified as real regression tests by removing them and confirming failure:
+
+| Remove                                    | What fails                                                    |
+| ----------------------------------------- | ------------------------------------------------------------- |
+| `location_id` from the inventory conflict keys | the whole suite — the constraint error rolls back every batch |
+| `replaceScope`                            | both deletion cases and the policy-scope case                 |
+| `idx_ii_ord`                              | the query-plan case                                           |
+
+**Still outstanding for inventory:**
+
+- [ ] **Run it on device behind the flag.** Cold-enter the section with the radio off and confirm
+      the catalog paints from SQLite (the read log reports item/vendor counts and `ms`).
+- [ ] **Stock side by side.** The mirror against the same catalog rendered live — the round-trip
+      test proves the inputs survive, not that the resolved stock on screen matches.
+- [ ] **Confirm the write gate on a real tablet**, including the mid-tap race: go offline with a
+      PO detail screen open and confirm the failure reads "You're offline", not "Success".
+- [ ] **A service-period soak** before anything is deleted.
+- [ ] Drop the redundant `.from("inventory_items")` — still load-bearing today (it is the row
+      universe, not a redundancy, so this needs the RPC to return inactive-at-location rows first).
+
+**Remaining Phase 5 pages** — analytics + EOD, customers, loyalty, staff roster, online-orders
+boards, KDS history — are unstarted. Each still ships and soaks independently.
 
 ---
 

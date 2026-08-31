@@ -41,10 +41,16 @@
  * `_search_customer_name`, the case-folded column that closes the `ilike` vs
  * `LIKE` search-parity gap Phase 3 left open.
  *
+ * v8 (2026-08-30, Phase 5): `inventory_items` and `vendors` become a real
+ * snapshot rather than storage-policy placeholders — each row keeps its
+ * position in `_ordinal` and its raw wire rows in `payload`, so the mirror
+ * rebuilds the sync inputs and runs the SAME mapping the live path runs.
+ * `inventory_items` gains `_ordinal`; both gain their ordering index.
+ *
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -98,6 +104,8 @@ export const TABLE_CONFLICT_KEYS: Partial<Record<TableName, readonly string[]>> 
       "modifier_group_id",
     ],
     menu_bootstrap: ["location_id"],
+    inventory_items: ["location_id", "id"],
+    vendors: ["location_id", "id"],
     sync_state: ["entity", "location_id"],
   };
 
@@ -501,9 +509,25 @@ export const SCHEMA_STATEMENTS: string[] = [
   // ==========================================================================
   // INVENTORY — names match public.inventory_items / public.vendors.
   // current_stock is a physical quantity, not money: REAL is correct there.
+  //
+  // `payload` holds the RAW WIRE ROWS, not a mapped item: `{rpc, row}` for an
+  // inventory item and the selected vendor row for a vendor. The read rebuilds
+  // those inputs and runs the SAME mapping the live sync runs
+  // (lib/inventory/inventorySyncPayload.ts), so a catalog rendered from disk
+  // cannot diverge from one rendered from the network. Promoted columns exist
+  // for SQL to filter and sort on; nothing displayed is read from them.
+  //
+  // KEYS are LOCATION-LEADING for the reason Phase 4 learned the hard way on
+  // `menus`: stock, cost and reorder point are RESOLVED PER LOCATION out of
+  // location_inventory_stock / location_inventory_overrides, so the same item
+  // id means different numbers at different stores. Today's selects filter on
+  // `location_id`, so only location-owned rows arrive and a single-column key
+  // would happen to work — but "happens to work" is exactly what silently
+  // broke when a device switched stores last time. Correct-looking data with
+  // the wrong stock is invisible until someone counts a shelf.
   // ==========================================================================
   `CREATE TABLE IF NOT EXISTS inventory_items (
-    id                  TEXT PRIMARY KEY NOT NULL,
+    id                  TEXT NOT NULL,
     location_id         TEXT NOT NULL,
     vendor_id           TEXT,
     name                TEXT,
@@ -516,23 +540,32 @@ export const SCHEMA_STATEMENTS: string[] = [
     is_active           INTEGER NOT NULL DEFAULT 1,
     created_at          TEXT,
     updated_at          TEXT,
+    -- Position in the array the live sync produced. updated_at is nullable
+    -- and can tie, so it cannot order the catalog reproducibly; this can.
+    _ordinal            INTEGER NOT NULL DEFAULT 0,
     _server_seen_at     TEXT NOT NULL,
-    payload             TEXT NOT NULL
+    payload             TEXT NOT NULL,
+    PRIMARY KEY (location_id, id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ii_loc    ON inventory_items(location_id, is_active)`,
   `CREATE INDEX IF NOT EXISTS idx_ii_low    ON inventory_items(location_id, current_stock)`,
-  `CREATE INDEX IF NOT EXISTS idx_ii_vendor ON inventory_items(vendor_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_ii_vendor ON inventory_items(location_id, vendor_id)`,
+  // The reassembly read, term for term — an index scan with no temp b-tree.
+  `CREATE INDEX IF NOT EXISTS idx_ii_ord    ON inventory_items(location_id, _ordinal)`,
 
   `CREATE TABLE IF NOT EXISTS vendors (
-    id              TEXT PRIMARY KEY NOT NULL,
+    id              TEXT NOT NULL,
     location_id     TEXT NOT NULL,
     name            TEXT,
     is_active       INTEGER NOT NULL DEFAULT 1,
     updated_at      TEXT,
+    _ordinal        INTEGER NOT NULL DEFAULT 0,
     _server_seen_at TEXT NOT NULL,
-    payload         TEXT NOT NULL
+    payload         TEXT NOT NULL,
+    PRIMARY KEY (location_id, id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_v_loc ON vendors(location_id, is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_v_ord ON vendors(location_id, _ordinal)`,
 
   // ==========================================================================
   // CUSTOMERS — names match public.customers exactly.
