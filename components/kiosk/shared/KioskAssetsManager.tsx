@@ -82,6 +82,21 @@ const VIDEO_PREVIEW_H = 110;
 const videoPreviewWidth = (aspect: [number, number]) =>
   Math.max(48, Math.round((VIDEO_PREVIEW_H * aspect[0]) / aspect[1]));
 
+/** Full, readable description of any thrown value — native modules throw errors
+ * with a `code`, plain strings, or opaque objects; surface whatever we can. */
+function describeError(err: unknown): string {
+  if (err instanceof Error) {
+    const code = (err as { code?: string | number }).code;
+    return `${err.name}: ${err.message}${code != null ? ` (code ${code})` : ""}`;
+  }
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 /**
  * Muted, looping preview of a slot's video — a faithful `contentFit="cover"`
  * center-crop of what the kiosk renders. Keyed by uri at the call site so a new
@@ -420,13 +435,13 @@ export function KioskAssetsManager({
       },
     );
     if (result.status < 200 || result.status >= 300) {
-      let message = "Upload failed";
+      let detail = result.body?.slice(0, 300) || "no response body";
       try {
-        message = JSON.parse(result.body)?.error ?? message;
+        detail = JSON.parse(result.body)?.error ?? detail;
       } catch {
-        // Non-JSON error body — keep the default message.
+        // Non-JSON error body — keep the raw (truncated) body.
       }
-      throw new Error(message);
+      throw new Error(`HTTP ${result.status}: ${detail}`);
     }
     const data = JSON.parse(result.body);
     if (!data?.cdnUrl) throw new Error("Upload returned no URL.");
@@ -439,31 +454,45 @@ export function KioskAssetsManager({
     if (!uri) return;
     setBusy(key);
     setVideoProgress(0);
+    // Tracks which step is running so an error names the failing stage.
+    let stage = "compress";
     try {
-      // Transcode to a compact, fast-start (moov-at-front) H.264 MP4. Picked/
-      // exported clips usually put the moov atom at the END, which makes
-      // expo-video sit on a black frame until nearly the whole file downloads —
-      // fast-start lets playback begin immediately on both the preview and the
-      // idle screen. Audio is stripped since the kiosk always plays muted.
+      // Re-encode to a fast-start (moov-at-front) 1080p H.264 MP4 on the device.
+      // Source clips are often 4K / High-profile / Level 5.2 — beyond the POS
+      // decoder — and put moov at the END (black frame until fully downloaded).
+      // Re-encoding on-device yields a stream this hardware can decode, while
+      // capping at 1080p keeps it HD/sharp (not the blurry low-res `auto` default)
+      // and a ~6 Mbps bitrate stays under the 20MB cap for short loops. Audio is
+      // stripped (the kiosk is always muted).
       const compressed = await VideoCompressor.compress(
         uri,
-        { compressionMethod: "auto", stripAudio: true, progressDivider: 10 },
+        {
+          compressionMethod: "manual",
+          maxSize: 1920, // long side -> 1080p (downscales 4K, never upscales)
+          bitrate: 6_000_000,
+          minimumFileSizeForCompress: 0, // always re-encode, even a small 4K clip
+          stripAudio: true,
+          progressDivider: 10,
+        },
         (p) => setVideoProgress(p),
       );
       setVideoProgress(null); // compression done → uploading (indeterminate)
 
+      stage = "size check";
       const info = await FileSystem.getInfoAsync(compressed);
       const size = info.exists ? (info.size ?? 0) : 0;
       if (size > MAX_VIDEO_BYTES) {
         toastService.show({
           title: "Video still too large",
-          message: "Even after compression it's over 20MB. Use a shorter clip.",
+          message: `Even after compression it's ${(size / 1024 / 1024).toFixed(1)}MB (max 20MB). Use a shorter clip.`,
           type: "warning",
         });
         return;
       }
 
+      stage = "upload";
       const url = await uploadVideoToCdn(compressed, key);
+      stage = "save";
       await persist(COLUMN[key], url);
       setVideos((v) => ({ ...v, [key]: url }));
       onRefreshKioskConfig?.();
@@ -473,9 +502,13 @@ export function KioskAssetsManager({
         type: "success",
       });
     } catch (err) {
+      const detail = describeError(err);
+      // Log for adb/Sentry, and show the FULL message in an alert (toasts truncate).
+      console.error(`[kiosk-video] ${stage} failed:`, err);
+      Alert.alert(`Video ${stage} failed`, detail);
       toastService.show({
-        title: "Upload failed",
-        message: err instanceof Error ? err.message : "Could not process video.",
+        title: `Video ${stage} failed`,
+        message: detail,
         type: "error",
       });
     } finally {
