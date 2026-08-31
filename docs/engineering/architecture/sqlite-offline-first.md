@@ -1443,7 +1443,7 @@ which is why they share a phase — but each still ships and soaks independently
 | Page                                                                                                                                     | Flag                  | Today                              | Watch for                                                                                                                                                                                                                                                                                                                              |
 | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [inventory/](<app/(main)/inventory/>) — ✅ **BUILT (flag-gated, default off)**                                                            | `…_LOCAL_INVENTORY`   | 28 `.from()`, rebuilt every launch | Stock is time-sensitive — `staleAfterMs: 60_000`, not 5 min. Drop the redundant `.from("inventory_items")` at `useInventorySync.ts:57` once delta is trusted                                                                                                                                                                           |
-| [analytics.tsx](<app/(main)/analytics.tsx>) + EOD                                                                                        | `…_LOCAL_ANALYTICS`   | 13 `.from()`, **dead offline**     | **Numbers must match the server dashboard exactly** — run side by side before flipping. Past `retention_floor`, say so: _"Showing the last N orders. Older data needs a connection."_ Never silently under-report revenue. EOD preview must match server settlement on **ten consecutive real close-outs**; server stays authoritative |
+| [analytics.tsx](<app/(main)/analytics.tsx>) — ✅ **BUILT (flag-gated, default off)** · EOD deferred                                        | `…_LOCAL_ANALYTICS`   | 13 `.from()`, **dead offline**     | **Numbers must match the server dashboard exactly** — run side by side before flipping. Past `retention_floor`, say so: _"Showing the last N orders. Older data needs a connection."_ Never silently under-report revenue. EOD preview must match server settlement on **ten consecutive real close-outs**; server stays authoritative |
 | [customers-list.tsx](<app/(main)/customers-list.tsx>)                                                                                    | `…_LOCAL_CUSTOMERS`   | Debounced network type-ahead       | Start with `LIKE`; add FTS5 only if measurement demands it                                                                                                                                                                                                                                                                             |
 | [loyalty/](<app/(main)/loyalty/>)                                                                                                        | `…_LOCAL_LOYALTY`     | 15 `.from()`                       | —                                                                                                                                                                                                                                                                                                                                      |
 | Staff roster — [scheduling/](<app/(main)/scheduling/>), [open-shifts.tsx](<app/(main)/open-shifts.tsx>), [pto.tsx](<app/(main)/pto.tsx>) | `…_LOCAL_STAFF`       | Network-only rosters               | **Read-only consumers only.** `useEmployeeStore` keeps login, session and PINs. If a change starts touching `pin-login.tsx`, stop — different ticket                                                                                                                                                                                   |
@@ -1589,8 +1589,157 @@ Three guards were verified as real regression tests by removing them and confirm
 - [ ] Drop the redundant `.from("inventory_items")` — still load-bearing today (it is the row
       universe, not a redundancy, so this needs the RPC to return inactive-at-location rows first).
 
-**Remaining Phase 5 pages** — analytics + EOD, customers, loyalty, staff roster, online-orders
-boards, KDS history — are unstarted. Each still ships and soaks independently.
+**Remaining Phase 5 pages** — EOD, customers, loyalty, staff roster, online-orders boards,
+KDS history — are unstarted. Each still ships and soaks independently.
+
+---
+
+### Phase 5 · Analytics — build notes, 2026-08-31
+
+**Status: code complete — 22 new tests, 206/206 local-DB tests green, `tsc --noEmit` clean,
+ESLint clean on every touched file (0 errors), full suite at its known baseline (10 pre-existing
+suite failures / 30 tests, measured by stashing the change and re-running: identical before and
+after; total tests 2058 → 2080). Not yet run on device behind the flag, and the side-by-side
+against the server dashboard has not been done.**
+
+**The reason this page was cheap: it needed almost no new mirroring.** Orders, `order_items` and
+`order_payments` have been on disk since Phase 3, and 11 of the page's 13 `.from()` calls read
+nothing else. This phase is therefore mostly a SQL emitter plus the honesty machinery around
+what it cannot answer — no new entity, no new delta, no change to the sync loop.
+
+| Delivered                                                                       | File                                                                             |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Schema v9 — `order_payments.total_amount_minor`, `order_items.price_paid_minor`, `idx_op_loc_initiated` | [lib/db/schema.ts](lib/db/schema.ts)                       |
+| Both promoted columns mapped on the way in                                       | [lib/db/descriptors/orders.ts](lib/db/descriptors/orders.ts)                      |
+| The server path's reductions, extracted as pure functions                        | [lib/analytics/summarize.ts](lib/analytics/summarize.ts)                          |
+| The SQL aggregate — orders, payments, items, customers, staff                    | [lib/db/analyticsQuery.ts](lib/db/analyticsQuery.ts)                              |
+| Flag branch, retention-floor fallback, sessions top-up, staff-name resolution     | [stores/useAnalyticsStore.ts](stores/useAnalyticsStore.ts)                        |
+| Null-sessions stat cards + the coverage banner                                    | [app/(main)/analytics/analytics-dashboard.tsx](<app/(main)/analytics/analytics-dashboard.tsx>) |
+| The Main Menu tile stays live offline, gated on the same flag                     | [components/MainMenu.tsx](components/MainMenu.tsx)                               |
+
+**Six decisions worth recording.**
+
+**① "NUMBERS MUST MATCH THE SERVER DASHBOARD EXACTLY" IS NOW A TEST, NOT A SQUINT.**
+
+This is the phase's headline and the reason for the one refactor it contains. The plan's
+acceptance bar was "run side by side before flipping" — a manual check, done once, by whoever
+remembers. It cannot be done at all while the server's reduce lives inside an async store action
+that takes a Supabase client, because there is no way to reach it from a test.
+
+So the reductions moved out of `fetchData` into `lib/analytics/summarize.ts` as pure functions of
+their rows. The server path still calls them and behaves identically; the local path does not
+call them at all — it computes in SQL, which is the whole point of mirroring. What the split buys
+is that BOTH implementations are now reachable from one test with one fixture, and the parity
+case asserts they agree. That is the same move inventory's ③ made with `mapInventorySyncPayload`,
+reached from the opposite direction: inventory made the mirror share the mapping, analytics makes
+the two mappings testable against each other.
+
+The manual side-by-side is still owed before the flag flips. It is now a confirmation rather than
+the only evidence.
+
+**② THE TWO SEMANTIC TRAPS ARE PostgREST NULLs AND FALSY-VS-NULLISH, and only one is intuitive.**
+
+`.not('status','in','("draft")')` and `.eq('is_voided', false)` both evaluate to NULL for a NULL
+column and therefore EXCLUDE the row. SQLite's three-valued logic agrees exactly, so `!= 'draft'`
+and `= 0` are already faithful — the trap is the form a reader reaches for instinctively,
+`is_voided IS NOT 1`, which reads as "not voided" in English and silently MATCHES NULL rows. A
+test pins it: the same fixture counted three ways, where `IS NOT 1` alone returns 2 rows and the
+correct predicates return 1.
+
+The second trap is that the server reduce is inconsistent with itself about zero:
+`total_amount || amount` in the by-method sum, `total_amount ?? (amount + tip)` in the line item.
+A payment with a total of exactly 0 therefore behaves differently in the two, and both behaviours
+are reproduced — `NULLIF(x, 0)` for the `||` sites, plain `COALESCE` for the `??` ones. Preserved
+rather than fixed, for the reason ⑥ gives.
+
+**③ THE PARTIAL INDEX ONLY WORKS IF THE PREDICATE SAYS THE MAGIC WORDS.**
+
+`idx_oi_order` is `ON order_items(order_id) WHERE is_voided IS NOT 1`. SQLite will only use a
+partial index when the query's WHERE clause SYNTACTICALLY implies the index predicate — it does
+not reason that `= 0` implies `IS NOT 1`. Written the faithful way and nothing else, the Top
+Items plan is `SEARCH o USING idx_o_loc_created_v2 | SCAN oi`: a full scan of every order item in
+the mirror, ~50k rows at the 20k-order retention cap, to produce a 15-row list.
+
+The fix is `oi.is_voided IS NOT 1 AND oi.is_voided = 0` — the first conjunct unlocks the index,
+the second is the exact server semantics, and together they select precisely what `= 0` selects.
+That last clause is asserted rather than assumed: a test counts the same rows both ways. This is
+the same class of bug as the Phase 3 `idx_o_loc_created` partial index that its own query could
+not use, found this time by reading the plan instead of by a slow page.
+
+**④ THE FOUR GUARDS WERE VERIFIED BY BREAKING THEM.**
+
+| Change                                          | What fails                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------- |
+| `<= ?` → `< ?` on the end bound                  | the inclusive-bound case                                      |
+| `oi.is_voided = 0` → `IS NOT 1`                  | the NULL-flag case                                            |
+| add `(status IS NULL OR …)` to the draft filter  | the NULL-status case                                          |
+| drop `initiated_at` from `idx_op_loc_initiated`  | the payments plan case                                        |
+| drop the `IS NOT 1` conjunct from the items pred | the Top Items plan case                                       |
+
+The last two are worth calling out: the FIRST version of the plan test asserted only that the
+index NAME appeared, and it passed when the index lost the column that makes it useful. An index
+can keep its name and stop working. The assertions now name the seek terms.
+
+**⑤ SESSIONS ARE THE ONE HOLE, AND IT IS A SCHEMA FACT, NOT AN OMISSION.**
+
+`table_sessions.updated_at` is NULLABLE, so it has no usable keyset watermark — mirroring it
+would mean a new entity with a broken cursor, which is a different and larger piece of work than
+this phase. So the three Overview session cards read from the network when there is one, and
+render "—" with "needs a connection" when there is not. Not 0: a zero there reads as "nobody sat
+down today", which is a wrong answer rather than a missing one. That distinction is the same rule
+as the retention banner and it is the only rule this page really has.
+
+**⑥ TWO SERVER-PATH QUIRKS ARE REPRODUCED RATHER THAN FIXED, DELIBERATELY.**
+
+`PAYMENT_APPROVED_STATUSES` is `['approved', 'settled', 'captured']` and only `captured` is a
+real member of the remote `payment_status` enum — the other two match nothing, and have not since
+whenever the enum last changed. Likewise the falsy/nullish inconsistency in ②. Both are
+preserved, because a local path that quietly corrects the server shows a merchant two different
+totals for the same day, which is worse than one consistent wrong total. They are now named
+constants read by BOTH paths, so the fix — when someone decides to make it — lands on both at
+once with the parity test to prove it.
+
+**One entry-point change, stated plainly.** `MainMenu`'s `offlineAllowedRoutes` gains
+`/analytics`, so the tile is no longer greyed out without a connection — otherwise everything
+above is unreachable in the state it was built for. Unlike the other entries in that set, this
+one is CONDITIONAL on `EXPO_PUBLIC_LOCAL_ANALYTICS`: with the flag unset the page is still 13
+network queries and would paint nothing, so the documented rollback (unset the flag) has to grey
+the tile back out rather than leave a dead entry point behind. The page is read-only, so unlike
+inventory there is no write gate to build alongside it.
+
+**What the tests assert**
+([**tests**/db/analyticsQuery.test.ts](__tests__/db/analyticsQuery.test.ts), against a real SQL
+engine, seeded through the real mirror write path): the SQL aggregate equals the server reduce
+over one shared fixture, summary by summary; drafts and NULL-status orders are excluded; the end
+bound is inclusive (unlike Previous Orders'); every summary is location-scoped; payments scope on
+their own `initiated_at` and ignore the parent order's `created_at`; card and cash split with
+per-side tips; voided and returned payments count as refunds and never as captured; a
+non-captured status is excluded; a 0 `total_amount` falls back to `amount` in the sum but stays 0
+in the line item; the card list is newest-captured-first; voided AND NULL-flagged items are both
+excluded; only paid orders' items count; a 0 quantity counts as 1; a 0 subtotal falls back to the
+v9 `price_paid_minor`; both lists cap at 15; customers key on id, then name, then email; staff
+prefer `assigned_server_id`; cents sum exactly where the float reduce drifts to
+0.30000000000000004; payments seek on both index columns; Top Items drives from the orders window
+and seeks items per order; and the read returns null when the DB is closed so the caller can fall
+back.
+
+**Still outstanding for analytics:**
+
+- [ ] **The side-by-side.** Same location, same range, local vs server, on a tablet — the parity
+      test proves the two implementations agree on one fixture, not that the fixture resembles a
+      real service period.
+- [ ] **Run it on device behind the flag**, cold, with the radio off — from the Main Menu tile,
+      which is the path that was just opened and the one an operator will actually take.
+- [ ] **Confirm the coverage banner** by requesting a range older than `retention_floor` while
+      offline, and confirm the same range ONLINE falls back to the server instead.
+- [ ] **A service-period soak.**
+- [ ] **EOD is NOT in this phase.** It is the harder half of the original table row — server stays
+      authoritative, the preview must match settlement on ten consecutive real close-outs — and it
+      shares nothing with the dashboard's aggregate but the mirror underneath it. Separate ticket.
+- [ ] The loyalty summary is fetched by the server path and rendered by nothing (`loyalty` is in
+      the dashboard's `TabId` union but absent from `TABS`), so two queries — one an unbounded
+      merchant-wide select — run on every online load and feed nothing. The local path returns
+      null, matching what renders. Deleting the fetch is an online-path change left out of scope.
 
 ---
 

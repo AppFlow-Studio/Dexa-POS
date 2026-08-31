@@ -47,10 +47,19 @@
  * rebuilds the sync inputs and runs the SAME mapping the live path runs.
  * `inventory_items` gains `_ordinal`; both gain their ordering index.
  *
+ * v9 (2026-08-31, Phase 5 · analytics): two money columns are PROMOTED that
+ * were previously payload-only — `order_payments.total_amount_minor` and
+ * `order_items.price_paid_minor`. Both are required by the analytics
+ * aggregate, and neither can be read out of `payload`: `json_extract` on a
+ * JSON number yields a REAL, and putting currency through a float is exactly
+ * what §7.1 forbids. Existing rows have no value for either, so a rebuild
+ * re-pulls every order with the new shape. `order_payments` also gains
+ * `idx_op_loc_initiated`, the index the analytics payments scan keys on.
+ *
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -257,6 +266,11 @@ export const SCHEMA_STATEMENTS: string[] = [
     unit_price_minor            INTEGER,
     subtotal_minor              INTEGER,
     tax_amount_minor            INTEGER,
+    -- Promoted for the analytics top-items aggregate ONLY, which reads
+    -- "subtotal || price_paid" — remote subtotal is NOT NULL, so this is the
+    -- fallback for a legitimately $0 subtotal. Payload-only would mean
+    -- json_extract, which returns a REAL. See SCHEMA_VERSION v9.
+    price_paid_minor            INTEGER,
     cash_unit_price_minor       INTEGER,
     cash_subtotal_minor         INTEGER,
     cash_tax_amount_minor       INTEGER,
@@ -308,6 +322,11 @@ export const SCHEMA_STATEMENTS: string[] = [
     status                 TEXT,
     amount_minor           INTEGER,
     tip_amount_minor       INTEGER,
+    -- amount + tip as the SERVER computed it. Promoted in v9 because every
+    -- analytics payment total reads total_amount and falls back to amount;
+    -- recomputing amount+tip locally would be a second source of truth for
+    -- what was actually collected.
+    total_amount_minor     INTEGER,
     amount_tendered_minor  INTEGER,
     change_given_minor     INTEGER,
     dual_pricing_fee_minor INTEGER,
@@ -339,6 +358,12 @@ export const SCHEMA_STATEMENTS: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_op_order  ON order_payments(order_id)`,
   `CREATE INDEX IF NOT EXISTS idx_op_status ON order_payments(status)`,
+  // Analytics scans payments by (location, initiated_at) window — the same
+  // filter the server dashboard uses — INDEPENDENTLY of the parent order's
+  // created_at. Without this the payments summary is a full table scan of
+  // every payment the mirror holds at the 20k-order retention cap.
+  `CREATE INDEX IF NOT EXISTS idx_op_loc_initiated
+     ON order_payments(location_id, initiated_at)`,
   `CREATE INDEX IF NOT EXISTS idx_op_batch  ON order_payments(settlement_batch_id)
      WHERE settlement_batch_id IS NOT NULL`,
 
