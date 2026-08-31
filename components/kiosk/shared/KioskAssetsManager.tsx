@@ -7,6 +7,7 @@ import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { Film, ImagePlus, Plus, RefreshCw, Trash2, X } from "lucide-react-native";
+import { Video as VideoCompressor } from "react-native-compressor";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,8 +22,13 @@ import {
 
 const TEAL = "#0D9488";
 const MAX_PER_GROUP = 5;
-// Kept in sync with MAX_VIDEO_SIZE_BYTES in the website's cdn-upload edge function.
+// Upload cap for the COMPRESSED output (kept in sync with MAX_VIDEO_SIZE_BYTES in
+// the website's cdn-upload edge function).
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
+// Sanity cap on the picked ORIGINAL before we spend time compressing it. The
+// output is normalized to a much smaller fast-start MP4, so the source can be
+// larger than the upload cap.
+const MAX_SOURCE_VIDEO_BYTES = 200 * 1024 * 1024;
 
 // Videos are streamed straight to the edge function (see uploadVideoToCdn), which
 // needs the function URL + anon key directly rather than going through supabase-js.
@@ -180,6 +186,9 @@ export function KioskAssetsManager({
   });
   // Which slot is mid-upload, e.g. "logo", a GroupKey, or a VideoKey — drives spinners.
   const [busy, setBusy] = useState<string | null>(null);
+  // Video compression progress (0..1) for the active video slot; null once
+  // compression finishes and we're uploading (indeterminate) or idle.
+  const [videoProgress, setVideoProgress] = useState<number | null>(null);
 
   // Re-sync from a background config refresh, but never mid-upload.
   useEffect(() => {
@@ -363,26 +372,18 @@ export function KioskAssetsManager({
     });
     if (result.canceled || !result.assets[0]?.uri) return null;
     const asset = result.assets[0];
-    // The CDN only accepts MP4; reject other containers before reading bytes.
-    if (asset.mimeType && asset.mimeType !== "video/mp4") {
-      toastService.show({
-        title: "Use an MP4 video",
-        message: "Only MP4 (H.264) videos are supported.",
-        type: "warning",
-      });
-      return null;
-    }
-    // Cap size before base64-reading the file so we never materialize a huge
-    // string on the tablet. Fall back to a filesystem stat if the asset omits it.
+    // Any container is fine here — compression below transcodes to a fast-start
+    // MP4 regardless of the source format. Only guard against an absurdly large
+    // original so we don't burn minutes transcoding a huge file.
     let size = asset.fileSize ?? 0;
     if (!size) {
       const info = await FileSystem.getInfoAsync(asset.uri);
       size = info.exists ? (info.size ?? 0) : 0;
     }
-    if (size > MAX_VIDEO_BYTES) {
+    if (size > MAX_SOURCE_VIDEO_BYTES) {
       toastService.show({
         title: "Video too large",
-        message: "Choose an MP4 up to 20MB.",
+        message: "That clip is very large — pick a shorter one.",
         type: "warning",
       });
       return null;
@@ -437,8 +438,32 @@ export function KioskAssetsManager({
     const uri = await pickVideo();
     if (!uri) return;
     setBusy(key);
+    setVideoProgress(0);
     try {
-      const url = await uploadVideoToCdn(uri, key);
+      // Transcode to a compact, fast-start (moov-at-front) H.264 MP4. Picked/
+      // exported clips usually put the moov atom at the END, which makes
+      // expo-video sit on a black frame until nearly the whole file downloads —
+      // fast-start lets playback begin immediately on both the preview and the
+      // idle screen. Audio is stripped since the kiosk always plays muted.
+      const compressed = await VideoCompressor.compress(
+        uri,
+        { compressionMethod: "auto", stripAudio: true, progressDivider: 10 },
+        (p) => setVideoProgress(p),
+      );
+      setVideoProgress(null); // compression done → uploading (indeterminate)
+
+      const info = await FileSystem.getInfoAsync(compressed);
+      const size = info.exists ? (info.size ?? 0) : 0;
+      if (size > MAX_VIDEO_BYTES) {
+        toastService.show({
+          title: "Video still too large",
+          message: "Even after compression it's over 20MB. Use a shorter clip.",
+          type: "warning",
+        });
+        return;
+      }
+
+      const url = await uploadVideoToCdn(compressed, key);
       await persist(COLUMN[key], url);
       setVideos((v) => ({ ...v, [key]: url }));
       onRefreshKioskConfig?.();
@@ -450,11 +475,12 @@ export function KioskAssetsManager({
     } catch (err) {
       toastService.show({
         title: "Upload failed",
-        message: err instanceof Error ? err.message : "Could not upload video.",
+        message: err instanceof Error ? err.message : "Could not process video.",
         type: "error",
       });
     } finally {
       setBusy(null);
+      setVideoProgress(null);
     }
   };
 
@@ -646,7 +672,13 @@ export function KioskAssetsManager({
                   <RefreshCw size={15} color={TEAL} />
                 )}
                 <Text className="text-sm font-bold text-teal-700 ml-1.5">
-                  {uri ? "Replace" : "Add video"}
+                  {uploading
+                    ? videoProgress !== null
+                      ? `Processing ${Math.round(videoProgress * 100)}%`
+                      : "Uploading…"
+                    : uri
+                      ? "Replace"
+                      : "Add video"}
                 </Text>
               </TouchableOpacity>
               {uri ? (
