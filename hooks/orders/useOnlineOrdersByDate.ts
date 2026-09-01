@@ -1,16 +1,16 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
-  boardWindowIsCovered,
-  queryLocalOnlineBoard,
-  resolveBoardWindow,
-  type BoardWindow,
+    boardWindowIsCovered,
+    queryLocalOnlineBoard,
+    resolveBoardWindow,
+    type BoardWindow,
 } from "@/lib/db/boardQuery";
 import { isLocalDbReady } from "@/lib/db/index";
 import {
-  assembleOnlineOrderBoard,
-  getMissingActiveOnlineOrderIds,
-  reconcileOnlineOrderSnapshot,
-  type OnlineOrderBoardSelection,
+    assembleOnlineOrderBoard,
+    getMissingActiveOnlineOrderIds,
+    reconcileOnlineOrderSnapshot,
+    type OnlineOrderBoardSelection,
 } from "@/lib/onlineOrderBoard";
 import type { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
@@ -18,9 +18,9 @@ import { useOnlineOrders } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
-  normalizeFetchedOrder,
-  transformBroadcastToOrder,
-  type FetchedOrderData,
+    normalizeFetchedOrder,
+    transformBroadcastToOrder,
+    type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -95,7 +95,10 @@ async function resolveLocalBoard(
     } as unknown as FetchedOrderData;
 
     const normalized = normalizeFetchedOrder(fetched);
-    const order = transformBroadcastToOrder(normalized, normalized.station_name);
+    const order = transformBroadcastToOrder(
+      normalized,
+      normalized.station_name,
+    );
     order._broadcastItemCount = row.itemCount;
     orders.push(order);
 
@@ -379,9 +382,7 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
   ]);
 
   const hasSelection = selectionState?.key === filterKey;
-  const selections = hasSelection
-    ? selectionState.rows
-    : EMPTY_SELECTIONS;
+  const selections = hasSelection ? selectionState.rows : EMPTY_SELECTIONS;
   const source: OnlineBoardSource = hasSelection
     ? selectionState.source
     : "none";
