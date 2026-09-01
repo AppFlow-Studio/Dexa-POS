@@ -18,7 +18,7 @@ import {
 import { useHistoryFilterControls } from "@/hooks/pos/useHistoryFilterControls";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { groupOrdersByDay } from "@/lib/orderDayGrouping";
+import { dayKeyOf, groupOrdersByDay } from "@/lib/orderDayGrouping";
 import {
   getChannelTab,
   getProviderKey,
@@ -55,14 +55,13 @@ import React, {
 import {
   KeyboardAvoidingView,
   Platform,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -73,6 +72,27 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useShallow } from "zustand/react/shallow";
+
+// A day header and an order row are recycled into separate FlashList cell
+// pools (see `getItemType` below), so one flattened, typed array can carry
+// both without either recycling into the other's layout.
+type PrevOrdersListItem =
+  | { kind: "header"; dayStart: number; title: string; count: number; first: boolean }
+  | { kind: "row"; order: OrderProfile };
+
+// FlashList's keyExtractor keys rows off `order.id` — a duplicate id crashes
+// the recycler's cell-key uniqueness invariant (surfaces as RecyclerListView's
+// "Encountered two children with the same key, #N_rlv_c" warning). `allOrders`
+// merges two independently-updating sources (live store + cached/mirrored
+// history) below, so this is a defensive backstop, not a primary dedupe pass.
+function dedupeOrdersById(orders: OrderProfile[]): OrderProfile[] {
+  const seen = new Set<string>();
+  return orders.filter((o) => {
+    if (seen.has(o.id)) return false;
+    seen.add(o.id);
+    return true;
+  });
+}
 
 // ─── Skeleton Loading ───────────────────────────────────────
 const SkeletonBar = ({
@@ -209,7 +229,7 @@ const PreviousOrdersScreen = () => {
 
   // Scroll position is per-page: landing on page 2 halfway down would look like
   // the list simply grew. Reset to the top whenever the page changes.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlashList<PrevOrdersListItem>>(null);
 
   // ─── Filter, count & pagination state ───
   // Owned by the store and applied SERVER-side; shared with the menu's Previous
@@ -252,19 +272,6 @@ const PreviousOrdersScreen = () => {
   // list is the local mirror's window, so the scope line is shown and the
   // empty state must not read as a definitive "doesn't exist".
   const historySource = usePreviousOrdersStore((s) => s._source);
-  // How far back this device can answer offline — the mirror's retention floor,
-  // not the number of rows that happen to match the current filter.
-  const scopeFloor = usePreviousOrdersStore((s) => s._scopeFloor);
-  const scopeFloorLabel = useMemo(() => {
-    if (!scopeFloor) return null;
-    const d = new Date(scopeFloor);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }, [scopeFloor]);
 
   // Date window
   const dateWindowLabel = usePreviousOrdersStore(
@@ -406,7 +413,7 @@ const PreviousOrdersScreen = () => {
   useEffect(() => {
     // Smooth scroll to the top on page turns — the dim overlay masks the swap,
     // and an animated scroll avoids the jarring instant jump between pages.
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    scrollRef.current?.scrollToOffset({ offset: 0, animated: true });
     // An expanded row from the previous page has no meaning on this one.
     setExpandedOrderId(null);
   }, [pageIndex]);
@@ -417,7 +424,7 @@ const PreviousOrdersScreen = () => {
   // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
   // pending orders) is prepended so open/unpaid offline orders show too.
   const allOrders: OrderProfile[] = useMemo(() => {
-    const mappedHistory: OrderProfile[] = previousOrders.map((po) => {
+    const rawMappedHistory: OrderProfile[] = previousOrders.map((po) => {
       const mapped = {
         id: po.orderId,
         db_order_id: po.db_order_id,
@@ -502,6 +509,7 @@ const PreviousOrdersScreen = () => {
         session_id: live.session_id ?? mapped.session_id,
       };
     });
+    const mappedHistory = dedupeOrdersById(rawMappedHistory);
 
     if (offlineLiveOrders.length === 0) return mappedHistory;
 
@@ -544,7 +552,42 @@ const PreviousOrdersScreen = () => {
       (o) =>
         !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id)),
     );
-    return [...liveOrdersInScope, ...historyMinusLive];
+
+    // Blanket-prepending live orders ahead of history (as opposed to
+    // inserting each one at its own day) only holds together for a
+    // single-day window. Under a multi-day window (Last 7 Days / custom
+    // range) a live order can sit on a different calendar day than the
+    // orders immediately after it — e.g. a check left open since Thursday.
+    // `groupOrdersByDay` only merges CONSECUTIVE same-day runs, so that
+    // stray day fragments the "real" run for the same day further down into
+    // a second header sharing the same key (`header-${dayStart}`), which is
+    // exactly what the RecyclerListView "same key" warning was catching.
+    // Insert each live order at its own day instead: next to that day's
+    // existing run when history already has one, so it still leads that
+    // day's rows, or in date-sorted position when it doesn't.
+    const merged = [...historyMinusLive];
+    const liveByDay = new Map<number, OrderProfile[]>();
+    for (const o of liveOrdersInScope) {
+      const day = dayKeyOf(o.opened_at ?? Date.now());
+      const bucket = liveByDay.get(day);
+      if (bucket) bucket.push(o);
+      else liveByDay.set(day, [o]);
+    }
+    for (const [day, orders] of liveByDay) {
+      const runStart = merged.findIndex(
+        (o) => dayKeyOf(o.opened_at ?? Date.now()) === day,
+      );
+      if (runStart !== -1) {
+        merged.splice(runStart, 0, ...orders);
+        continue;
+      }
+      let insertAt = merged.findIndex(
+        (o) => dayKeyOf(o.opened_at ?? Date.now()) < day,
+      );
+      if (insertAt === -1) insertAt = merged.length;
+      merged.splice(insertAt, 0, ...orders);
+    }
+    return merged;
   }, [
     previousOrders,
     offlineLiveOrders,
@@ -568,6 +611,45 @@ const PreviousOrdersScreen = () => {
     () => groupOrdersByDay(visibleOrders),
     [visibleOrders],
   );
+
+  // Flattened header+row array for FlashList — it recycles cells from one
+  // flat `data`, so the day groupings from the ScrollView era (a header View
+  // followed by a manual .map of rows) get interleaved into a single list here.
+  const listItems = useMemo<PrevOrdersListItem[]>(() => {
+    const items: PrevOrdersListItem[] = [];
+    dayGroups.forEach((group, gi) => {
+      items.push({
+        kind: "header",
+        dayStart: group.dayStart,
+        title: group.title,
+        count: group.orders.length,
+        first: gi === 0,
+      });
+      for (const order of group.orders) {
+        items.push({ kind: "row", order });
+      }
+    });
+    if (__DEV__) {
+      const seen = new Map<string, PrevOrdersListItem>();
+      for (const item of items) {
+        const key = item.kind === "header" ? `header-${item.dayStart}` : item.order.id;
+        const prior = seen.get(key);
+        if (prior) {
+          console.error(
+            "[PreviousOrders] DUPLICATE listItems KEY:",
+            key,
+            "\nfirst:",
+            JSON.stringify(prior),
+            "\nduplicate:",
+            JSON.stringify(item),
+          );
+        } else {
+          seen.set(key, item);
+        }
+      }
+    }
+    return items;
+  }, [dayGroups]);
 
   // Mutation hooks
   const closeCheckMutation = useCloseCheck();
@@ -661,8 +743,8 @@ const PreviousOrdersScreen = () => {
   );
 
   // ─── FlashList render ───────────────────────────────────
-  const renderItem = useCallback(
-    ({ item }: { item: OrderProfile }) => {
+  const renderOrderRow = useCallback(
+    (item: OrderProfile) => {
       const canContinue =
         item.paid_status !== "Paid" &&
         item.order_status !== "refunded" &&
@@ -699,6 +781,30 @@ const PreviousOrdersScreen = () => {
       handleVoidOrder,
       handleContinue,
     ],
+  );
+
+  // Dispatches each flattened item to a day header or an order row. Headers
+  // and rows get separate `getItemType` pools below so FlashList never
+  // recycles a header's cell into a row's (or vice versa).
+  const renderListItem = useCallback(
+    ({ item }: { item: PrevOrdersListItem }) =>
+      item.kind === "header" ? (
+        <DayHeader title={item.title} count={item.count} first={item.first} />
+      ) : (
+        renderOrderRow(item.order)
+      ),
+    [renderOrderRow],
+  );
+
+  const getItemType = useCallback(
+    (item: PrevOrdersListItem) => item.kind,
+    [],
+  );
+
+  const keyExtractor = useCallback(
+    (item: PrevOrdersListItem) =>
+      item.kind === "header" ? `header-${item.dayStart}` : item.order.id,
+    [],
   );
 
   return (
@@ -864,93 +970,66 @@ const PreviousOrdersScreen = () => {
             backgroundColor: colors.panel,
           }}
         >
-          {/* One page of rows in a plain ScrollView — no virtualization.
-              At 50 rows per page the whole page is cheap to mount, and
-              rendering every row outright avoids the recycling artefacts that
-              a list of expandable rows is prone to (a recycled cell keeping the
-              previous row's expanded height). Paging, not scrolling, is how the
-              merchant moves through the result set. */}
-          <ScrollView
+          {/* One page of rows, recycled through FlashList. Headers and rows
+              are separate cell pools (`getItemType`) so a recycled cell never
+              inherits the other kind's layout; `order.id` keying plus
+              PreviousOrderRow's own memo comparator (keyed off order.id) means
+              a cell landing on a different order always re-renders its content
+              before paint. Paging, not scrolling, is how the merchant moves
+              through the result set — a page tops out at 50 rows. */}
+          <FlashList
             ref={scrollRef}
+            style={{ flex: 1 }}
+            data={listItems}
+            renderItem={renderListItem}
+            keyExtractor={keyExtractor}
+            getItemType={getItemType}
+            estimatedItemSize={64}
+            extraData={expandedOrderId}
             contentContainerStyle={{
               paddingBottom: s(16),
               backgroundColor: colors.panel,
-              flexGrow: 1,
             }}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={handleRefresh}
-                tintColor={colors.teal}
-                colors={[colors.teal]}
-              />
-            }
-          >
-            {historySource === "offline-local" && (
-              <View
-                style={{
-                  paddingHorizontal: s(16),
-                  paddingVertical: s(8),
-                  backgroundColor: colors.panel,
-                }}
-              >
-                <Text style={{ fontSize: s(12), color: colors.muted }}>
-                  {scopeFloorLabel
-                    ? `Offline — showing orders stored on this device, back to ${scopeFloorLabel}. Older data needs a connection.`
-                    : "Offline — showing orders stored on this device. Older data needs a connection."}
-                </Text>
-              </View>
-            )}
-            {isInitialLoading && visibleOrders.length === 0 ? (
-              <View style={{ paddingTop: s(4) }}>
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonRow key={i} />
-                ))}
-              </View>
-            ) : visibleOrders.length === 0 ? (
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingVertical: s(64),
-                }}
-              >
-                <Text style={{ fontSize: s(20), color: colors.muted }}>
-                  No orders found
-                </Text>
-                <Text
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            ListEmptyComponent={
+              isInitialLoading && visibleOrders.length === 0 ? (
+                <View style={{ paddingTop: s(4) }}>
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <SkeletonRow key={i} />
+                  ))}
+                </View>
+              ) : (
+                <View
                   style={{
-                    fontSize: s(14),
-                    color: colors.muted,
-                    marginTop: s(8),
+                    flex: 1,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: s(64),
                   }}
                 >
-                  {historySource === "offline-local"
-                    ? "No orders in the local window. Older data needs a connection."
-                    : "Try adjusting your filters or search"}
-                </Text>
-              </View>
-            ) : (
-              <>
-                {dayGroups.map((group, gi) => (
-                  <React.Fragment key={group.dayStart}>
-                    <DayHeader
-                      title={group.title}
-                      count={group.orders.length}
-                      first={gi === 0}
-                    />
-                    {group.orders.map((item) => (
-                      <React.Fragment key={item.id}>
-                        {renderItem({ item })}
-                      </React.Fragment>
-                    ))}
-                  </React.Fragment>
-                ))}
-
-                {/* Pager sits at the end of the rows, so it's reached by
-                    scrolling to the bottom of the page rather than occupying
-                    fixed space above the fold. */}
+                  <Text style={{ fontSize: s(20), color: colors.muted }}>
+                    No orders found
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(14),
+                      color: colors.muted,
+                      marginTop: s(8),
+                    }}
+                  >
+                    {historySource === "offline-local"
+                      ? "No orders in the local window. Older data needs a connection."
+                      : "Try adjusting your filters or search"}
+                  </Text>
+                </View>
+              )
+            }
+            // Pager sits at the end of the rows, so it's reached by scrolling
+            // to the bottom of the page rather than occupying fixed space
+            // above the fold. Omitted while empty/loading, same as before.
+            ListFooterComponent={
+              listItems.length > 0 ? (
                 <PaginationBar
                   pageIndex={pageIndex}
                   pageCount={pageCount}
@@ -961,9 +1040,9 @@ const PreviousOrdersScreen = () => {
                   onPrev={handlePrevPage}
                   onNext={handleNextPage}
                 />
-              </>
-            )}
-          </ScrollView>
+              ) : null
+            }
+          />
 
           {/* Dim the page while the next one loads, so the outgoing rows stay
               in place instead of the list flashing empty between pages. */}

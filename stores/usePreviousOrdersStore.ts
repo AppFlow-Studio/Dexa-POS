@@ -893,12 +893,20 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         const beyondLocalWindow =
           !local ||
           target >= historyPageCount(local.totalCount, HISTORY_PAGE_SIZE);
+        // Offline gates the whole thing off, same as refreshPreviousOrders:
+        // there's no network to correct from, so the local page stands even
+        // when it's stale, empty, or past the mirror's window. Without this
+        // gate, `!online` used to be OR'd in as its own reason to want the
+        // server — which did the opposite of "offline → local stands" below:
+        // it forced a round trip that had no network to complete on, so the
+        // await never resolved and `_isPageLoading` stayed true (dim overlay
+        // stuck) even though the local rows had already painted.
         let wantsServer =
-          !LOCAL_PREVIOUS_ORDERS_ENABLED ||
-          !local ||
-          !online ||
-          !isDefaultHistoryFilters(activeFilters) ||
-          beyondLocalWindow;
+          online &&
+          (!LOCAL_PREVIOUS_ORDERS_ENABLED ||
+            !local ||
+            !isDefaultHistoryFilters(activeFilters) ||
+            beyondLocalWindow);
 
         const client = _supabaseClient;
 
@@ -932,19 +940,29 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         if (!client) return;
         if (!stillCurrent()) return; // the user moved on during the local query
 
-        const { data, error, totalCount } =
-          await OrderService.getFilteredHistoryPage(client, {
-            locationId,
-            filters: activeFilters,
-            limit: HISTORY_PAGE_SIZE,
-            offset: target * HISTORY_PAGE_SIZE,
-            startTs: _resolvedStartTs,
-            endTs: _resolvedEndTs,
-            // Re-count on page moves: a refund or void elsewhere can change the
-            // total while the merchant is paging, and a stale total would let
-            // them step past the end.
-            withCount: true,
-          });
+        // NetInfo says reachable, but reachable isn't fast — bound the round
+        // trip so a degraded connection can't hang the page-turn overlay
+        // forever. A DeadlineExceededError propagates to goToPage's outer
+        // catch, which logs and falls through to `finally` — same outcome as
+        // a normal fetch error: the already-painted local page just stands.
+        const { data, error, totalCount } = await withDeadline(
+          (signal) =>
+            OrderService.getFilteredHistoryPage(client, {
+              locationId,
+              filters: activeFilters,
+              limit: HISTORY_PAGE_SIZE,
+              offset: target * HISTORY_PAGE_SIZE,
+              startTs: _resolvedStartTs,
+              endTs: _resolvedEndTs,
+              // Re-count on page moves: a refund or void elsewhere can change the
+              // total while the merchant is paging, and a stale total would let
+              // them step past the end.
+              withCount: true,
+              signal,
+            }),
+          DEADLINES.read,
+          "getFilteredHistoryPage",
+        );
 
         if (error || !data) {
           console.error("[PreviousOrders] page fetch failed:", error);
