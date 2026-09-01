@@ -1,9 +1,10 @@
+import { SyncProgressBanner } from "@/components/db/SyncProgressBanner";
 import DatePillRow, { type DatePillDef } from "@/components/menu/DatePillRow";
 import ChannelTabBar from "@/components/previous-orders/ChannelTabBar";
 import DayHeader from "@/components/previous-orders/DayHeader";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import OrdersSelectDropdown, {
-  ActiveFilterPill,
+    ActiveFilterPill,
 } from "@/components/previous-orders/OrdersSelectDropdown";
 import PaginationBar from "@/components/previous-orders/PaginationBar";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
@@ -11,65 +12,67 @@ import ProviderChipRow from "@/components/previous-orders/ProviderChipRow";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { useLocalFreshness } from "@/hooks/db/useLocalFreshness";
 import {
-  useCloseCheck,
-  useReopenCheck,
-  useVoidOrder,
+    useCloseCheck,
+    useReopenCheck,
+    useVoidOrder,
 } from "@/hooks/orders/useOrderActions";
 import { useHistoryFilterControls } from "@/hooks/pos/useHistoryFilterControls";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { dayKeyOf, groupOrdersByDay } from "@/lib/orderDayGrouping";
 import {
-  getChannelTab,
-  getProviderKey,
-  matchesStatus,
-  SORT_OPTIONS,
-  STATUS_OPTIONS,
+    getChannelTab,
+    getProviderKey,
+    matchesStatus,
+    SORT_OPTIONS,
+    STATUS_OPTIONS,
 } from "@/lib/previousOrdersFilters";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import {
-  DEFAULT_HISTORY_FILTERS,
-  historyFilterKey,
+    DEFAULT_HISTORY_FILTERS,
+    historyFilterKey,
 } from "@/services/historyOrderFilters";
-import { SyncProgressBanner } from "@/components/db/SyncProgressBanner";
 import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 import {
-  calculateOrderTotalsForOrder,
-  useOrderStore,
+    calculateOrderTotalsForOrder,
+    useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import {
+    resolveBusinessDayConfig,
+    usePreviousOrdersStore,
+} from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Search } from "lucide-react-native";
 
+import { FlashList } from "@shopify/flash-list";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    useWindowDimensions,
+    View,
 } from "react-native";
-import { FlashList } from "@shopify/flash-list";
 import Animated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
+    cancelAnimation,
+    Easing,
+    useAnimatedStyle,
+    useSharedValue,
+    withRepeat,
+    withSequence,
+    withTiming,
 } from "react-native-reanimated";
 import { useShallow } from "zustand/react/shallow";
 
@@ -77,7 +80,13 @@ import { useShallow } from "zustand/react/shallow";
 // pools (see `getItemType` below), so one flattened, typed array can carry
 // both without either recycling into the other's layout.
 type PrevOrdersListItem =
-  | { kind: "header"; dayStart: number; title: string; count: number; first: boolean }
+  | {
+      kind: "header";
+      dayStart: number;
+      title: string;
+      count: number;
+      first: boolean;
+    }
   | { kind: "row"; order: OrderProfile };
 
 // FlashList's keyExtractor keys rows off `order.id` — a duplicate id crashes
@@ -223,6 +232,15 @@ const PreviousOrdersScreen = () => {
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] =
     useState<OrderProfile | null>(null);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+
+  // Business-day config drives BOTH the date-window filter and the day headers:
+  // headers must bucket orders by the same merchant-timezone + rollover hour,
+  // or an after-midnight order in yesterday's business day would render under
+  // a "Today" header.
+  const dayGroupingConfig = useMemo(
+    () => resolveBusinessDayConfig(),
+    [selectedStore?.timezone, selectedStore?.business_day_start_hour],
+  );
 
   // Expand/collapse state
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -424,6 +442,7 @@ const PreviousOrdersScreen = () => {
   // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
   // pending orders) is prepended so open/unpaid offline orders show too.
   const allOrders: OrderProfile[] = useMemo(() => {
+    const config = dayGroupingConfig;
     const rawMappedHistory: OrderProfile[] = previousOrders.map((po) => {
       const mapped = {
         id: po.orderId,
@@ -568,21 +587,21 @@ const PreviousOrdersScreen = () => {
     const merged = [...historyMinusLive];
     const liveByDay = new Map<number, OrderProfile[]>();
     for (const o of liveOrdersInScope) {
-      const day = dayKeyOf(o.opened_at ?? Date.now());
+      const day = dayKeyOf(o.opened_at ?? Date.now(), config);
       const bucket = liveByDay.get(day);
       if (bucket) bucket.push(o);
       else liveByDay.set(day, [o]);
     }
     for (const [day, orders] of liveByDay) {
       const runStart = merged.findIndex(
-        (o) => dayKeyOf(o.opened_at ?? Date.now()) === day,
+        (o) => dayKeyOf(o.opened_at ?? Date.now(), config) === day,
       );
       if (runStart !== -1) {
         merged.splice(runStart, 0, ...orders);
         continue;
       }
       let insertAt = merged.findIndex(
-        (o) => dayKeyOf(o.opened_at ?? Date.now()) < day,
+        (o) => dayKeyOf(o.opened_at ?? Date.now(), config) < day,
       );
       if (insertAt === -1) insertAt = merged.length;
       merged.splice(insertAt, 0, ...orders);
@@ -598,6 +617,7 @@ const PreviousOrdersScreen = () => {
     providerFilter,
     resolvedStartTs,
     resolvedEndTs,
+    dayGroupingConfig,
   ]);
 
   // The server already applied every filter and the sort — render as-is.
@@ -608,8 +628,8 @@ const PreviousOrdersScreen = () => {
   // Day-separated groups for the list — consecutive same-day runs under
   // "Today" / "Yesterday" / "EEEE, MMMM d" headers. Keeps the server sort.
   const dayGroups = useMemo(
-    () => groupOrdersByDay(visibleOrders),
-    [visibleOrders],
+    () => groupOrdersByDay(visibleOrders, dayGroupingConfig),
+    [visibleOrders, dayGroupingConfig],
   );
 
   // Flattened header+row array for FlashList — it recycles cells from one
@@ -632,7 +652,8 @@ const PreviousOrdersScreen = () => {
     if (__DEV__) {
       const seen = new Map<string, PrevOrdersListItem>();
       for (const item of items) {
-        const key = item.kind === "header" ? `header-${item.dayStart}` : item.order.id;
+        const key =
+          item.kind === "header" ? `header-${item.dayStart}` : item.order.id;
         const prior = seen.get(key);
         if (prior) {
           console.error(
@@ -796,10 +817,7 @@ const PreviousOrdersScreen = () => {
     [renderOrderRow],
   );
 
-  const getItemType = useCallback(
-    (item: PrevOrdersListItem) => item.kind,
-    [],
-  );
+  const getItemType = useCallback((item: PrevOrdersListItem) => item.kind, []);
 
   const keyExtractor = useCallback(
     (item: PrevOrdersListItem) =>

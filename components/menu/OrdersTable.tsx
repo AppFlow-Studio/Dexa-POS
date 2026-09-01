@@ -1,3 +1,4 @@
+import type { BusinessDayConfig } from "@/lib/businessDay";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { groupOrdersByDay } from "@/lib/orderDayGrouping";
 import { isOnlineOrderSource } from "@/lib/orderSource";
@@ -95,6 +96,12 @@ interface OrdersTableProps {
    * delimits, never re-arranges.
    */
   groupByDay?: boolean;
+  /**
+   * Business-day config (merchant timezone + rollover hour) used to bucket the
+   * day headers the same way the date-window filter does. When omitted, headers
+   * fall back to device-local calendar days.
+   */
+  dayGroupingConfig?: BusinessDayConfig | null;
   /** Rendered after the last row — used for the pagination bar. */
   ListFooter?: React.ReactElement | null;
   /** Scrolls the body back to the top whenever this value changes — pass the
@@ -531,6 +538,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   isInitialLoading,
   serverSorted = false,
   groupByDay = false,
+  dayGroupingConfig = null,
   ListFooter = null,
   resetScrollKey,
 }) => {
@@ -704,22 +712,24 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         ) : (
           <>
             {groupByDay
-              ? groupOrdersByDay(sortedOrders).map((group, gi) => (
-                  <React.Fragment key={group.dayStart}>
-                    <DayHeader
-                      title={group.title}
-                      count={group.orders.length}
-                      first={gi === 0}
-                    />
-                    {group.orders.map((item) => (
-                      <OrderRow
-                        key={item.id}
-                        order={item}
-                        onMoreClick={onMoreClick}
+              ? groupOrdersByDay(sortedOrders, dayGroupingConfig).map(
+                  (group, gi) => (
+                    <React.Fragment key={group.dayStart}>
+                      <DayHeader
+                        title={group.title}
+                        count={group.orders.length}
+                        first={gi === 0}
                       />
-                    ))}
-                  </React.Fragment>
-                ))
+                      {group.orders.map((item) => (
+                        <OrderRow
+                          key={item.id}
+                          order={item}
+                          onMoreClick={onMoreClick}
+                        />
+                      ))}
+                    </React.Fragment>
+                  ),
+                )
               : sortedOrders.map((item) => (
                   <OrderRow
                     key={item.id}

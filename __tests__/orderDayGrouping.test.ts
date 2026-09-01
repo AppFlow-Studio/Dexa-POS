@@ -1,9 +1,14 @@
 import {
+    getCurrentBusinessDay,
+    type BusinessDayConfig,
+} from "@/lib/businessDay";
+import {
     dayKeyOf,
     getDayLabel,
     groupOrdersByDay,
 } from "@/lib/orderDayGrouping";
 import { OrderProfile } from "@/lib/types";
+import { DateTime } from "luxon";
 
 /**
  * Grouping only reads `opened_at`, but the fixture satisfies OrderProfile's
@@ -102,6 +107,86 @@ describe("orderDayGrouping", () => {
 
     it("returns an empty array for no orders", () => {
       expect(groupOrdersByDay([])).toEqual([]);
+    });
+  });
+
+  describe("with a business-day config", () => {
+    const CONFIG: BusinessDayConfig = {
+      timezone: "America/New_York",
+      rolloverHour: 4,
+    };
+
+    it("labels an after-midnight pre-rollover order as Yesterday", () => {
+      // Anchored to the CURRENT business day's rollover so the assertion holds
+      // whenever the suite runs: 1h BEFORE the rollover (e.g. 3am with a 4am
+      // rollover) is still yesterday's business day; 1h after it is today's.
+      const businessToday = getCurrentBusinessDay(CONFIG);
+      const lateNight = DateTime.fromISO(businessToday, {
+        zone: CONFIG.timezone,
+      })
+        .plus({ hours: CONFIG.rolloverHour - 1 })
+        .toUTC()
+        .toISO()!;
+      const morning = DateTime.fromISO(businessToday, {
+        zone: CONFIG.timezone,
+      })
+        .plus({ hours: CONFIG.rolloverHour + 1 })
+        .toUTC()
+        .toISO()!;
+
+      expect(getDayLabel(lateNight, CONFIG)).toBe("Yesterday");
+      expect(getDayLabel(morning, CONFIG)).toBe("Today");
+      expect(dayKeyOf(lateNight, CONFIG)).not.toBe(dayKeyOf(morning, CONFIG));
+    });
+
+    it("merges pre-rollover and previous-evening orders into one group", () => {
+      const businessToday = getCurrentBusinessDay(CONFIG);
+      // 1h before today's rollover (yesterday's business day) and the prior
+      // calendar day's afternoon (same business day) land in one "Yesterday"
+      // run.
+      const lateNight = DateTime.fromISO(businessToday, {
+        zone: CONFIG.timezone,
+      })
+        .plus({ hours: CONFIG.rolloverHour - 1 })
+        .toUTC()
+        .toISO()!;
+      const yesterdayAfternoon = DateTime.fromISO(businessToday, {
+        zone: CONFIG.timezone,
+      })
+        .minus({ days: 1 })
+        .plus({ hours: 6 })
+        .toUTC()
+        .toISO()!;
+
+      const groups = groupOrdersByDay(
+        [makeOrder("a", lateNight), makeOrder("b", yesterdayAfternoon)],
+        CONFIG,
+      );
+      expect(groups).toHaveLength(1);
+      expect(groups[0].title).toBe("Yesterday");
+      expect(groups[0].orders.map((o) => o.id)).toEqual(["a", "b"]);
+    });
+
+    it("splits yesterday's and today's business days across the rollover", () => {
+      const businessToday = getCurrentBusinessDay(CONFIG);
+      const lateNight = DateTime.fromISO(businessToday, {
+        zone: CONFIG.timezone,
+      })
+        .plus({ hours: CONFIG.rolloverHour - 1 })
+        .toUTC()
+        .toISO()!;
+      const morning = DateTime.fromISO(businessToday, {
+        zone: CONFIG.timezone,
+      })
+        .plus({ hours: CONFIG.rolloverHour + 1 })
+        .toUTC()
+        .toISO()!;
+
+      const groups = groupOrdersByDay(
+        [makeOrder("late", lateNight), makeOrder("early", morning)],
+        CONFIG,
+      );
+      expect(groups.map((g) => g.title)).toEqual(["Yesterday", "Today"]);
     });
   });
 });

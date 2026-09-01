@@ -1,5 +1,5 @@
 import OrdersSelectDropdown, {
-  ActiveFilterPill,
+    ActiveFilterPill,
 } from "@/components/previous-orders/OrdersSelectDropdown";
 import PaginationBar from "@/components/previous-orders/PaginationBar";
 import ProviderChipRow from "@/components/previous-orders/ProviderChipRow";
@@ -7,38 +7,41 @@ import { useHistoryFilterControls } from "@/hooks/pos/useHistoryFilterControls";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 // Sort is driven by the table's column headers here (not a dropdown), so only
 // the status options are needed.
+import { SyncProgressBanner } from "@/components/db/SyncProgressBanner";
 import { useLocalFreshness } from "@/hooks/db/useLocalFreshness";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import {
-  getChannelTab,
-  getProviderKey,
-  matchesStatus,
-  STATUS_OPTIONS,
-  type ChannelTab,
-  type SortKey,
+    getChannelTab,
+    getProviderKey,
+    matchesStatus,
+    STATUS_OPTIONS,
+    type ChannelTab,
+    type SortKey,
 } from "@/lib/previousOrdersFilters";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import {
-  DEFAULT_HISTORY_FILTERS,
-  historyFilterKey,
+    DEFAULT_HISTORY_FILTERS,
+    historyFilterKey,
 } from "@/services/historyOrderFilters";
-import { SyncProgressBanner } from "@/components/db/SyncProgressBanner";
 import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import {
+    resolveBusinessDayConfig,
+    usePreviousOrdersStore,
+} from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFocusEffect } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  Pressable,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Pressable,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 import { useShallow } from "zustand/react/shallow";
@@ -184,6 +187,12 @@ const PreviousOrdersSection = () => {
   const { isSyncing, hasCompletedCycle } = useLocalDbSyncStore();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const freshness = useLocalFreshness("orders", selectedStore?.id ?? null);
+  // Business-day config for the day headers — same semantics as the date-window
+  // filter, so after-midnight pre-rollover orders stay under "Yesterday".
+  const dayGroupingConfig = useMemo(
+    () => resolveBusinessDayConfig(),
+    [selectedStore?.timezone, selectedStore?.business_day_start_hour],
+  );
 
   // OFFLINE ONLY: the backend is unreachable, so previousOrders can't refresh.
   // Surface the device's own non-final orders (active + working set + own-station
@@ -731,6 +740,7 @@ const PreviousOrdersSection = () => {
           isInitialLoading={isFetching}
           serverSorted
           groupByDay
+          dayGroupingConfig={dayGroupingConfig}
           ListFooter={
             filteredOrders.length > 0 ? (
               <PaginationBar
