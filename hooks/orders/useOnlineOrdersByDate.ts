@@ -224,10 +224,20 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
     /**
      * Paint the window from the mirror. Returns true when it painted.
      *
+     * `sourceLabel` is what the painted board should be labelled with:
+     *   - "local" only when the SERVER could not answer — the screen's
+     *     "Offline" scope line is keyed on exactly that.
+     *   - "none" for the FIRST paint while the RPC is still in flight. The
+     *     mirror is fast and the RPC is authoritative; labelling the first
+     *     paint "local" flashed the Offline banner for a split second on
+     *     every entry, before the online response landed.
+     *
      * The mirror is an accelerator, never a dependency: a failure here costs a
      * paint and nothing else, so everything is swallowed.
      */
-    const paintFromMirror = async (): Promise<boolean> => {
+    const paintFromMirror = async (
+      sourceLabel: OnlineBoardSource = "local",
+    ): Promise<boolean> => {
       if (!LOCAL_BOARDS_ENABLED || !timezone) return false;
       try {
         const window = resolveBoardWindow(
@@ -243,7 +253,7 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
         setSelectionState({
           key: filterKey,
           rows: local.selections,
-          source: "local",
+          source: sourceLabel,
         });
         return true;
       } catch (caught) {
@@ -265,8 +275,21 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
       paintedLocally: boolean,
       message: string,
     ): Promise<void> => {
-      if (paintedLocally) return;
       serverAnsweredKeyRef.current = null;
+      if (paintedLocally) {
+        // The board on screen came from the mirror as a neutral first paint;
+        // the server could not answer, so it is genuinely stuck on local data.
+        // Re-label it "local" so the Offline scope line appears — otherwise it
+        // would silently look current.
+        if (isCurrent()) {
+          setSelectionState((prev) =>
+            prev && prev.key === filterKey
+              ? { ...prev, source: "local" }
+              : prev,
+          );
+        }
+        return;
+      }
       if (await paintFromMirror()) return;
       if (isCurrent()) setError(message);
     };
@@ -276,10 +299,13 @@ export function useOnlineOrdersByDate(filter: OnlineOrderDateFilter): {
       // Skipped when the RPC has already answered for this exact filter: the
       // rows on screen are then the authoritative ones and repainting from
       // disk would only downgrade them.
+      // First paint from the mirror stays neutral ("none"): the Offline scope
+      // line only belongs on screen once the server has actually failed, not
+      // while the RPC is still answering.
       const paintedLocally =
         serverAnsweredKeyRef.current === filterKey
           ? false
-          : await paintFromMirror();
+          : await paintFromMirror("none");
 
       // ── Server correction ────────────────────────────────────────
       try {
