@@ -1,6 +1,7 @@
 import MenuForm from "@/components/menu/MenuForm";
 import { MenuScopeLoadingScreen } from "@/components/menu/MenuScopeLoadingScreen";
 import { useToast } from "@/contexts/ToastContext";
+import { useMenuWriteGate, MENU_OFFLINE_REASON } from "@/hooks/menu/useMenuWriteGate";
 import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
@@ -23,6 +24,7 @@ const EditMenuScreen: React.FC = () => {
   const { show } = useToast();
   const { isSingleLocation, isLoading: isSingleLocationLoading } =
     useIsSingleLocation();
+  const { canWrite } = useMenuWriteGate();
   const [isSaving, setIsSaving] = useState(false);
   const setMenuTab = useMenuManagementSearchStore((s) => s.setActiveTab);
 
@@ -47,6 +49,14 @@ const EditMenuScreen: React.FC = () => {
 
   const handleSubmit = async (data: any): Promise<boolean> => {
     if (!existing) return false;
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: "warning",
+      });
+      return false;
+    }
     setIsSaving(true);
     try {
       // Update in backend
@@ -155,6 +165,14 @@ const EditMenuScreen: React.FC = () => {
 
   const handleDelete = async () => {
     if (!existing) return;
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: "warning",
+      });
+      return;
+    }
 
     try {
       setIsSaving(true);
@@ -208,6 +226,7 @@ const EditMenuScreen: React.FC = () => {
         initialData={existing}
         onSubmit={handleSubmit}
         isSaving={isSaving}
+        disabled={!canWrite}
         title="Edit Menu"
         submitButtonLabel="Save Changes"
         onDelete={handleDelete}

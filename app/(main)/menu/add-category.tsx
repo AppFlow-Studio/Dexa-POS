@@ -1,5 +1,6 @@
 import CategoryForm from "@/components/menu/CategoryForm";
 import { useToast } from "@/contexts/ToastContext";
+import { useMenuWriteGate, MENU_OFFLINE_REASON } from "@/hooks/menu/useMenuWriteGate";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -15,9 +16,18 @@ const AddCategoryScreen: React.FC = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
+  const { canWrite } = useMenuWriteGate();
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async (data: any): Promise<boolean> => {
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: "warning",
+      });
+      return false;
+    }
     setIsSaving(true);
     try {
       // Validate store selection
@@ -116,6 +126,7 @@ const AddCategoryScreen: React.FC = () => {
       <CategoryForm
         onSubmit={handleSubmit}
         isSaving={isSaving}
+        disabled={!canWrite}
         title="Add New Category"
         submitButtonLabel="Create Category"
       />

@@ -5,6 +5,7 @@ import { ModifierStockToggle } from "@/components/menu/ModifierStockToggle";
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
+import { useMenuWriteGate, MENU_OFFLINE_REASON } from "@/hooks/menu/useMenuWriteGate";
 import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
@@ -65,6 +66,7 @@ const EditModifierScreen: React.FC = () => {
   const { show } = useToast();
   const { isSingleLocation, isLoading: isSingleLocationLoading } =
     useIsSingleLocation();
+  const { canWrite } = useMenuWriteGate();
 
   const existing = useMemo(() => modifierGroups.find((m) => m.id === id), [id, modifierGroups]);
 
@@ -130,10 +132,20 @@ const EditModifierScreen: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => { if (!validateForm()) return; setShowConfirm(true); };
+  const handleSave = () => {
+    if (!canWrite) {
+      show({ title: "You're offline", message: MENU_OFFLINE_REASON, type: "warning" });
+      return;
+    }
+    if (!validateForm()) return; setShowConfirm(true);
+  };
 
   const confirmSave = async () => {
     if (!existing) return;
+    if (!canWrite) {
+      show({ title: "You're offline", message: MENU_OFFLINE_REASON, type: "warning" });
+      return;
+    }
     setIsSaving(true);
     setShowConfirm(false);
     try {
@@ -284,11 +296,19 @@ const EditModifierScreen: React.FC = () => {
   };
 
   const handleDelete = () => {
+    if (!canWrite) {
+      show({ title: "You're offline", message: MENU_OFFLINE_REASON, type: "warning" });
+      return;
+    }
     setShowDeleteDialog(true);
   };
 
   const confirmDelete = async () => {
     if (!existing) return;
+    if (!canWrite) {
+      show({ title: "You're offline", message: MENU_OFFLINE_REASON, type: "warning" });
+      return;
+    }
     setIsSaving(true);
     try {
       const { error } = await MenuService.deleteModifierGroup(supabase, existing.id);
@@ -388,15 +408,16 @@ const EditModifierScreen: React.FC = () => {
             <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={handleDelete}
-            style={{ paddingHorizontal: s(12), paddingVertical: s(6), borderRadius: s(8), backgroundColor: colors.danger + "15", borderWidth: 1, borderColor: colors.danger + "30" }}
+            onPress={canWrite ? handleDelete : undefined}
+            disabled={!canWrite}
+            style={{ paddingHorizontal: s(12), paddingVertical: s(6), borderRadius: s(8), backgroundColor: colors.danger + "15", borderWidth: 1, borderColor: colors.danger + "30", opacity: canWrite ? 1 : 0.4 }}
           >
-            <Trash2 size={s(14)} color={colors.danger} />
+            <Trash2 size={s(14)} color={canWrite ? colors.danger : colors.muted} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
-            style={{ flexDirection: "row", alignItems: "center", gap: s(6), paddingHorizontal: s(14), paddingVertical: s(6), borderRadius: s(8), backgroundColor: colors.teal, opacity: isSaving ? 0.7 : 1 }}
+            onPress={canWrite ? handleSave : undefined}
+            disabled={isSaving || !canWrite}
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6), paddingHorizontal: s(14), paddingVertical: s(6), borderRadius: s(8), backgroundColor: colors.teal, opacity: isSaving ? 0.7 : canWrite ? 1 : 0.4 }}
           >
             {isSaving ? (
               <ActivityIndicator size="small" color={colors.onSolid} />

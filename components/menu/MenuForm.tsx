@@ -46,6 +46,8 @@ export interface MenuFormProps {
   title: string;
   submitButtonLabel: string;
   onDelete?: () => void;
+  /** Disable all mutating actions (save / delete) — e.g. while offline. */
+  disabled?: boolean;
 }
 
 const getImageSource = (image: string | undefined) => {
@@ -65,6 +67,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
   title,
   submitButtonLabel,
   onDelete,
+  disabled = false,
 }) => {
   const categories = useMenuStore((s) => s.categories);
   const getItemsInCategory = useMenuStore((s) => s.getItemsInCategory);
@@ -267,7 +270,8 @@ const MenuForm: React.FC<MenuFormProps> = ({
           </TouchableOpacity>
           {initialData && onDelete && (
             <TouchableOpacity
-              onPress={() => setShowDeleteDialog(true)}
+              onPress={disabled ? undefined : () => setShowDeleteDialog(true)}
+              disabled={disabled}
               style={{
                 paddingHorizontal: s(12),
                 paddingVertical: s(6),
@@ -275,14 +279,15 @@ const MenuForm: React.FC<MenuFormProps> = ({
                 backgroundColor: colors.danger + "15",
                 borderWidth: 1,
                 borderColor: colors.danger + "30",
+                opacity: disabled ? 0.4 : 1,
               }}
             >
-              <Trash2 size={s(14)} color={colors.danger} />
+              <Trash2 size={s(14)} color={disabled ? colors.muted : colors.danger} />
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
+            onPress={disabled ? undefined : handleSave}
+            disabled={isSaving || disabled}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -291,13 +296,13 @@ const MenuForm: React.FC<MenuFormProps> = ({
               paddingVertical: s(6),
               borderRadius: s(8),
               backgroundColor: colors.teal,
-              opacity: isSaving ? 0.7 : 1,
+              opacity: isSaving ? 0.7 : disabled ? 0.4 : 1,
             }}
           >
             {isSaving ? (
               <ActivityIndicator size="small" color={colors.onSolid} />
             ) : (
-              <Check size={s(14)} color={colors.onSolid} />
+              <Check size={s(14)} color={disabled ? colors.onSolid + "99" : colors.onSolid} />
             )}
             <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.onSolid }}>
               {isSaving ? "Saving..." : "Save Changes"}

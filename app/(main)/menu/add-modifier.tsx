@@ -2,6 +2,7 @@ import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { useMenuWriteGate, MENU_OFFLINE_REASON } from "@/hooks/menu/useMenuWriteGate";
 import { ModifierOption } from "@/lib/types";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -51,6 +52,7 @@ const AddModifierScreen: React.FC = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
+  const { canWrite } = useMenuWriteGate();
 
   const [formData, setFormData] = useState<ModifierFormData>({
     name: "",
@@ -96,6 +98,10 @@ const AddModifierScreen: React.FC = () => {
   };
 
   const handleSave = () => {
+    if (!canWrite) {
+      show({ title: "You're offline", message: MENU_OFFLINE_REASON, type: "warning" });
+      return;
+    }
     if (!validateForm()) return;
     setShowConfirmation(true);
   };
@@ -106,6 +112,11 @@ const AddModifierScreen: React.FC = () => {
     setIsSaving(true);
     setShowConfirmation(false);
     try {
+      if (!canWrite) {
+        show({ title: "You're offline", message: MENU_OFFLINE_REASON, type: "warning" });
+        setIsSaving(false);
+        return;
+      }
       if (!selectedStore) {
         Alert.alert("Error", "No store selected. Please select a store first.");
         setIsSaving(false);
@@ -235,9 +246,9 @@ const AddModifierScreen: React.FC = () => {
             <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
-            style={{ flexDirection: "row", alignItems: "center", gap: s(6), paddingHorizontal: s(14), paddingVertical: s(6), borderRadius: s(8), backgroundColor: colors.teal, opacity: isSaving ? 0.7 : 1 }}
+            onPress={canWrite ? handleSave : undefined}
+            disabled={isSaving || !canWrite}
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6), paddingHorizontal: s(14), paddingVertical: s(6), borderRadius: s(8), backgroundColor: colors.teal, opacity: isSaving ? 0.7 : canWrite ? 1 : 0.4 }}
           >
             {isSaving ? (
               <ActivityIndicator size="small" color={colors.onSolid} />

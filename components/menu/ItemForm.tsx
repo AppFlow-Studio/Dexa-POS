@@ -80,6 +80,8 @@ interface ItemFormProps {
   title: string
   submitButtonLabel: string
   onDelete?: () => void
+  /** Disable all mutating actions (save / delete) — e.g. while offline. */
+  disabled?: boolean
 }
 
 const MEAL_OPTIONS: MenuItemType['meal'][number][] = [
@@ -105,7 +107,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
   isSaving,
   title,
   submitButtonLabel,
-  onDelete
+  onDelete,
+  disabled = false
 }) => {
   const categories = useMenuStore(s => s.categories)
   const modifierGroups = useMenuStore(s => s.modifierGroups)
@@ -648,22 +651,24 @@ const ItemForm: React.FC<ItemFormProps> = ({
           </TouchableOpacity>
           {initialData && onDelete && (
             <TouchableOpacity
-              onPress={() => setShowDeleteDialog(true)}
+              onPress={disabled ? undefined : () => setShowDeleteDialog(true)}
+              disabled={disabled}
               style={{
                 paddingHorizontal: s(12),
                 paddingVertical: s(6),
                 borderRadius: s(8),
                 backgroundColor: colors.danger + '15',
                 borderWidth: 1,
-                borderColor: colors.danger + '30'
+                borderColor: colors.danger + '30',
+                opacity: disabled ? 0.4 : 1
               }}
             >
-              <Trash2 size={s(14)} color={colors.danger} />
+              <Trash2 size={s(14)} color={disabled ? colors.muted : colors.danger} />
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
+            onPress={disabled ? undefined : handleSave}
+            disabled={isSaving || disabled}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -672,7 +677,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
               paddingVertical: s(6),
               borderRadius: s(8),
               backgroundColor: colors.teal,
-              opacity: isSaving ? 0.7 : 1
+              opacity: isSaving ? 0.7 : disabled ? 0.4 : 1
             }}
           >
             {isSaving ? (

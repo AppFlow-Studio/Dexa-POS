@@ -25,6 +25,7 @@ const EditMenuItemScreen: React.FC = () => {
   const router = useRouter()
   const { isSingleLocation, isLoading: isSingleLocationLoading } =
     useIsSingleLocation()
+  const { canWrite } = useMenuWriteGate()
   const [isSaving, setIsSaving] = useState(false)
 
   const itemToEdit = menuItems.find(item => item.id === itemId)
@@ -64,6 +65,14 @@ const EditMenuItemScreen: React.FC = () => {
   const handleSubmit = async (
     data: Omit<MenuItemType, 'id'>
   ): Promise<boolean> => {
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: 'warning'
+      })
+      return false
+    }
     setIsSaving(true)
     try {
       // Upload image to CDN if a new image was picked (base64 string)
@@ -265,6 +274,14 @@ const EditMenuItemScreen: React.FC = () => {
   }
 
   const handleDelete = async () => {
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: 'warning'
+      })
+      return
+    }
     try {
       setIsSaving(true)
       const { error } = await MenuService.deleteMenuItem(supabase, itemId)
@@ -302,6 +319,7 @@ const EditMenuItemScreen: React.FC = () => {
         initialData={itemToEdit}
         onSubmit={handleSubmit}
         isSaving={isSaving}
+        disabled={!canWrite}
         title='Edit Menu Item'
         submitButtonLabel='Save Changes'
         onDelete={handleDelete}

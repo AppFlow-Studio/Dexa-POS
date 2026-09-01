@@ -41,6 +41,7 @@ interface DraggableMenuItemProps {
   ) => void
   onItemSnooze: (item: MenuItemType) => void
   isEditable: boolean
+  canWrite: boolean
   itemCount: number
   columnCount: number
   dragPreview: { fromIndex: number; toIndex: number } | null
@@ -160,6 +161,7 @@ const DraggableMenuItem = React.memo(
     onItemPriceEdit,
     onItemSnooze,
     isEditable,
+    canWrite,
     itemCount,
     columnCount,
     dragPreview,
@@ -189,6 +191,7 @@ const DraggableMenuItem = React.memo(
     }
 
     const panGesture = Gesture.Pan()
+      .enabled(canWrite)
       .activateAfterLongPress(120)
       .activeOffsetX([-8, 8])
       .activeOffsetY([-8, 8])
@@ -305,7 +308,11 @@ const DraggableMenuItem = React.memo(
         }
       >
         <TouchableOpacity
-          onPress={() => onItemPriceEdit(item, categoryId, menuId)}
+          onPress={
+            canWrite
+              ? () => onItemPriceEdit(item, categoryId, menuId)
+              : undefined
+          }
           style={[
             baseStyles.card,
             {
@@ -389,7 +396,8 @@ const DraggableMenuItem = React.memo(
         {/* Quick 86 / out-of-stock action (bottom-right). Own touchable so it
             doesn't trigger the card's edit press. */}
         <TouchableOpacity
-          onPress={() => onItemSnooze(item)}
+          onPress={canWrite ? () => onItemSnooze(item) : undefined}
+          disabled={!canWrite}
           hitSlop={6}
           style={[
             baseStyles.snoozeButton,
@@ -397,7 +405,8 @@ const DraggableMenuItem = React.memo(
               backgroundColor: isSnoozed
                 ? colors.danger
                 : colors.danger + '18',
-              borderColor: colors.danger + '35'
+              borderColor: colors.danger + '35',
+              opacity: canWrite ? 1 : 0.4
             }
           ]}
         >

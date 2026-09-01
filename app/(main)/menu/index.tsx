@@ -17,6 +17,7 @@ import OutOfStockSheet, {
 } from '@/components/menu/OutOfStockSheet'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { useToast } from '@/contexts/ToastContext'
+import { useMenuWriteGate, MENU_OFFLINE_REASON } from '@/hooks/menu/useMenuWriteGate'
 import { useIsSingleLocation } from '@/hooks/pos/useIsSingleLocation'
 import { useOnlineMenu } from '@/hooks/pos/useOnlineMenu'
 import { useTriggerPosSync } from '@/hooks/pos/usePosSync'
@@ -53,7 +54,8 @@ import {
   MapPin,
   Pencil,
   Power,
-  Trash2
+  Trash2,
+  WifiOff
 } from 'lucide-react-native'
 import { Image as ExpoImage } from 'expo-image'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -172,6 +174,7 @@ interface DraggableMenuProps {
     toIndex: number
   ) => void
   isEditable: boolean
+  canWrite: boolean
   menuCount: number
   dragPreview: { fromIndex: number; toIndex: number } | null
   onDragPreviewChange: (fromIndex: number, toIndex: number) => void
@@ -259,6 +262,7 @@ const DraggableMenu = React.memo(
     onItemPriceEdit,
     onItemSnooze,
     isEditable,
+    canWrite,
     onReorderItems,
     menuCount,
     dragPreview,
@@ -295,6 +299,7 @@ const DraggableMenu = React.memo(
     }
 
     const panGesture = Gesture.Pan()
+      .enabled(canWrite)
       .activateAfterLongPress(80)
       .activeOffsetY([-4, 4])
       .onStart(() => {
@@ -583,6 +588,7 @@ const DraggableMenu = React.memo(
               onItemSnooze={onItemSnooze}
               onReorderItems={onReorderItems}
               itemCount={menuCategories.length}
+              canWrite={canWrite}
               dragPreview={categoryDragPreview}
               onDragPreviewChange={(fromIndex, toIndex) =>
                 setCategoryDragPreview({ fromIndex, toIndex })
@@ -640,6 +646,7 @@ const DraggableMenuCategory = React.memo(
     onItemPriceEdit,
     onItemSnooze,
     isEditable,
+    canWrite,
     onReorderItems,
     itemCount,
     dragPreview,
@@ -690,6 +697,7 @@ const DraggableMenuCategory = React.memo(
     }, [itemGridWidth])
 
     const panGesture = Gesture.Pan()
+      .enabled(canWrite)
       .activateAfterLongPress(120)
       .activeOffsetY([-8, 8])
       .onStart(() => {
@@ -900,6 +908,7 @@ const DraggableMenuCategory = React.memo(
                     onItemPriceEdit={onItemPriceEdit}
                     onItemSnooze={onItemSnooze}
                     isEditable={isEditable}
+                    canWrite={canWrite}
                     itemCount={items.length}
                     columnCount={itemColumnCount}
                     dragPreview={itemDragPreview}
@@ -945,6 +954,10 @@ const MenuPage: React.FC = () => {
   const supabase = useSupabaseClient()
   const { activeTab, searchQuery } = useMenuLayout()
   const triggerPosSync = useTriggerPosSync()
+  // Menu management reads come from the local cache and work offline; menu
+  // WRITES (add / edit / delete / reorder / toggles) hit Supabase directly and
+  // do not — gate them all behind the offline write gate.
+  const { canWrite, blockedReason } = useMenuWriteGate()
 
   // Keep-alive tabs: mount each panel lazily on first visit, then keep it
   // mounted and just toggle visibility. Switching between already-visited tabs
@@ -1225,6 +1238,16 @@ const MenuPage: React.FC = () => {
 
   const confirmDeleteItem = useCallback(async () => {
     if (!itemToDelete) return
+    if (!canWrite) {
+      showToast({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: 'warning'
+      })
+      setShowDeleteModal(false)
+      setItemToDelete(null)
+      return
+    }
 
     // Delete from backend first
     const { success, error } = await MenuService.deleteMenuItem(
@@ -1245,7 +1268,7 @@ const MenuPage: React.FC = () => {
     deleteMenuItem(itemToDelete.id)
     setShowDeleteModal(false)
     setItemToDelete(null)
-  }, [itemToDelete, supabase, deleteMenuItem, showToast])
+  }, [itemToDelete, supabase, deleteMenuItem, showToast, canWrite])
 
   const handleCategoryActive = useCallback(
     async (id: string) => {
@@ -1374,7 +1397,10 @@ const MenuPage: React.FC = () => {
   const outOfStockChip =
     outOfStockCount > 0 ? (
       <TouchableOpacity
-        onPress={() => outOfStockRef.current?.open()}
+        onPress={
+          canWrite ? () => outOfStockRef.current?.open() : undefined
+        }
+        disabled={!canWrite}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
@@ -1384,7 +1410,8 @@ const MenuPage: React.FC = () => {
           borderRadius: s(8),
           backgroundColor: colors.danger + '18',
           borderWidth: 1,
-          borderColor: colors.danger + '35'
+          borderColor: colors.danger + '35',
+          opacity: canWrite ? 1 : 0.4
         }}
       >
         <Ban size={s(13)} color={colors.danger} />
@@ -1655,6 +1682,7 @@ const MenuPage: React.FC = () => {
         title={`Menus (${menus.length})`}
         onAddPress={handleAddMenu}
         addButtonLabel='Add Menu'
+        disabled={!canWrite}
         onRefresh={handleRefreshMenu}
         isRefreshing={isRefreshing}
         rightSlot={outOfStockChip}
@@ -1696,7 +1724,8 @@ const MenuPage: React.FC = () => {
               onItemPriceEdit={handleMenuItemEdit}
               onItemSnooze={handleSnooze}
               onReorderItems={handleReorderCategoryItems}
-              isEditable={isEntityEditable(menu.location_id, menu.name)}
+              isEditable={canWrite && isEntityEditable(menu.location_id, menu.name)}
+              canWrite={canWrite}
               menuCount={menus.length}
               dragPreview={menuDragPreview}
               onDragPreviewChange={(fromIndex, toIndex) => {
@@ -1750,7 +1779,8 @@ const MenuPage: React.FC = () => {
                   onItemPriceEdit={handleMenuItemEdit}
                   onItemSnooze={handleSnooze}
                   onReorderItems={handleReorderCategoryItems}
-                  isEditable={isEntityEditable(menu.location_id, menu.name)}
+                  isEditable={canWrite && isEntityEditable(menu.location_id, menu.name)}
+                  canWrite={canWrite}
                   menuCount={menus.length}
                   dragPreview={menuDragPreview}
                   onDragPreviewChange={(fromIndex, toIndex) => {
@@ -1784,6 +1814,7 @@ const MenuPage: React.FC = () => {
         title={`Categories (${(Array.isArray(storeCategories) ? storeCategories : []).length})`}
         onAddPress={handleAddCategory}
         addButtonLabel='Add Category'
+        disabled={!canWrite}
         onRefresh={handleRefreshMenu}
         isRefreshing={isRefreshing}
         rightSlot={outOfStockChip}
@@ -1906,25 +1937,25 @@ const MenuPage: React.FC = () => {
                 >
                   <TouchableOpacity
                     onPress={() => handleCategoryActive(categoryName?.id)}
-                    disabled={!editable}
+                    disabled={!editable || !canWrite}
                     style={{
                       padding: 6,
                       backgroundColor: colors.teal + '18',
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: colors.teal + '35',
-                      opacity: editable ? 1 : 0.4
+                      opacity: editable && canWrite ? 1 : 0.4
                     }}
                   >
                     {categoryName.isActive ? (
                       <Eye
                         size={14}
-                        color={editable ? colors.success : colors.muted}
+                        color={editable && canWrite ? colors.success : colors.muted}
                       />
                     ) : (
                       <EyeOff
                         size={14}
-                        color={editable ? colors.danger : colors.muted}
+                        color={editable && canWrite ? colors.danger : colors.muted}
                       />
                     )}
                   </TouchableOpacity>
@@ -1935,19 +1966,19 @@ const MenuPage: React.FC = () => {
                       )
                       if (cat) router.push(`/menu/edit-category?id=${cat.id}`)
                     }}
-                    disabled={!editable}
+                    disabled={!editable || !canWrite}
                     style={{
                       padding: 6,
                       backgroundColor: colors.teal + '18',
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: colors.teal + '35',
-                      opacity: editable ? 1 : 0.4
+                      opacity: editable && canWrite ? 1 : 0.4
                     }}
                   >
                     <Pencil
                       size={14}
-                      color={editable ? colors.label : colors.muted}
+                      color={editable && canWrite ? colors.label : colors.muted}
                     />
                   </TouchableOpacity>
                 </View>
@@ -2082,14 +2113,14 @@ const MenuPage: React.FC = () => {
                             >
                               <TouchableOpacity
                                 onPress={() => handleSnooze(item)}
-                                disabled={!selectedStore?.id}
+                                disabled={!selectedStore?.id || !canWrite}
                                 style={{
                                   padding: 6,
                                   backgroundColor: colors.danger + '18',
                                   borderRadius: 6,
                                   borderWidth: 1,
                                   borderColor: colors.danger + '35',
-                                  opacity: selectedStore?.id ? 1 : 0.4
+                                  opacity: selectedStore?.id && canWrite ? 1 : 0.4
                                 }}
                               >
                                 <Ban size={16} color={colors.danger} />
@@ -2098,14 +2129,14 @@ const MenuPage: React.FC = () => {
                                 onPress={() =>
                                   handleToggleAvailability(item.id)
                                 }
-                                disabled={!availEditable}
+                                disabled={!availEditable || !canWrite}
                                 style={{
                                   padding: 6,
                                   backgroundColor: colors.teal + '18',
                                   borderRadius: 6,
                                   borderWidth: 1,
                                   borderColor: colors.teal + '35',
-                                  opacity: availEditable ? 1 : 0.4
+                                  opacity: availEditable && canWrite ? 1 : 0.4
                                 }}
                               >
                                 {item.availability !== false ? (
@@ -2116,19 +2147,19 @@ const MenuPage: React.FC = () => {
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => handleEditItem(item)}
-                                disabled={!editable}
+                                disabled={!editable || !canWrite}
                                 style={{
                                   padding: 6,
                                   backgroundColor: colors.teal + '18',
                                   borderRadius: 6,
                                   borderWidth: 1,
                                   borderColor: colors.teal + '35',
-                                  opacity: editable ? 1 : 0.4
+                                  opacity: editable && canWrite ? 1 : 0.4
                                 }}
                               >
                                 <Pencil
                                   size={16}
-                                  color={editable ? colors.teal : colors.muted}
+                                  color={editable && canWrite ? colors.teal : colors.muted}
                                 />
                               </TouchableOpacity>
                             </View>
@@ -2177,9 +2208,9 @@ const MenuPage: React.FC = () => {
             <MenuItemGridCard
               key={item.id}
               item={item}
-              editable={isEntityEditable(item.location_id, item.name)}
-              availEditable={canEditAvailabilityAndPrice(item.location_id)}
-              canSnooze={!!selectedStore?.id}
+              editable={canWrite && isEntityEditable(item.location_id, item.name)}
+              availEditable={canWrite && canEditAvailabilityAndPrice(item.location_id)}
+              canSnooze={canWrite && !!selectedStore?.id}
               onSnooze={handleSnooze}
               onToggleAvailability={handleToggleAvailability}
               onEdit={handleEditItem}
@@ -2189,6 +2220,7 @@ const MenuPage: React.FC = () => {
       )
     },
     [
+      canWrite,
       isEntityEditable,
       canEditAvailabilityAndPrice,
       selectedStore?.id,
@@ -2210,6 +2242,7 @@ const MenuPage: React.FC = () => {
         title={`Menu Items (${filteredItems.length})`}
         onAddPress={handleAddItem}
         addButtonLabel='Add Item'
+        disabled={!canWrite}
         onRefresh={handleRefreshMenu}
         isRefreshing={isRefreshing}
         rightSlot={outOfStockChip}
@@ -2252,6 +2285,7 @@ const MenuPage: React.FC = () => {
         title={`Modifier Groups (${uniqueModifierGroups.length})`}
         onAddPress={() => router.push('/menu/add-modifier')}
         addButtonLabel='Add Modifier'
+        disabled={!canWrite}
         onRefresh={handleRefreshMenu}
         isRefreshing={isRefreshing}
         rightSlot={outOfStockChip}
@@ -2268,7 +2302,7 @@ const MenuPage: React.FC = () => {
         initialNumToRender={5}
         activationDistance={10}
         onDragEnd={({ from, to }) => {
-          if (from !== to) {
+          if (from !== to && canWrite) {
             handleReorderModifierGroups(from, to)
           }
         }}
@@ -2321,14 +2355,15 @@ const MenuPage: React.FC = () => {
                     }}
                   >
                     <TouchableOpacity
-                      onLongPress={drag}
+                      onLongPress={canWrite ? drag : undefined}
                       delayLongPress={120}
                       style={{
                         padding: 4,
                         borderRadius: 8,
                         backgroundColor: colors.panel,
                         borderWidth: 1,
-                        borderColor: colors.border
+                        borderColor: colors.border,
+                        opacity: canWrite ? 1 : 0.4
                       }}
                     >
                       <GripVertical size={13} color={colors.muted} />
@@ -2474,17 +2509,21 @@ const MenuPage: React.FC = () => {
                     )}
                     {allOptionIds.length > 0 && (
                       <TouchableOpacity
-                        onPress={() =>
-                          snoozeSheetRef.current?.open({
-                            kind: 'modifier-group',
-                            id: modifierGroup.id,
-                            name: modifierGroup.name,
-                            optionIds: allOptionIds,
-                            snoozedUntil: groupOutOfStock
-                              ? SNOOZE_INFINITY
-                              : null
-                          })
+                        onPress={
+                          canWrite
+                            ? () =>
+                                snoozeSheetRef.current?.open({
+                                  kind: 'modifier-group',
+                                  id: modifierGroup.id,
+                                  name: modifierGroup.name,
+                                  optionIds: allOptionIds,
+                                  snoozedUntil: groupOutOfStock
+                                    ? SNOOZE_INFINITY
+                                    : null
+                                })
+                            : undefined
                         }
+                        disabled={!canWrite}
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
@@ -2498,7 +2537,8 @@ const MenuPage: React.FC = () => {
                           borderWidth: 1,
                           borderColor: groupOutOfStock
                             ? colors.danger + '35'
-                            : colors.border
+                            : colors.border,
+                          opacity: canWrite ? 1 : 0.4
                         }}
                       >
                         <Ban size={12} color={colors.danger} />
@@ -2515,26 +2555,26 @@ const MenuPage: React.FC = () => {
                     )}
                     <TouchableOpacity
                       onPress={
-                        editable
+                        editable && canWrite
                           ? () =>
                               router.push(
                                 `/menu/edit-modifier?id=${modifierGroup.id}`
                               )
                           : undefined
                       }
-                      disabled={!editable}
+                      disabled={!editable || !canWrite}
                       style={{
                         padding: 6,
                         backgroundColor: colors.panel,
                         borderRadius: 8,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        opacity: editable ? 1 : 0.4
+                        opacity: editable && canWrite ? 1 : 0.4
                       }}
                     >
                       <Pencil
                         size={14}
-                        color={editable ? colors.label : colors.muted}
+                        color={editable && canWrite ? colors.label : colors.muted}
                       />
                     </TouchableOpacity>
                   </View>
@@ -2602,14 +2642,18 @@ const MenuPage: React.FC = () => {
                           {/* Timed 86 flow (per-location override, works on
                               global modifiers) — same snooze sheet as items. */}
                           <TouchableOpacity
-                            onPress={() =>
-                              snoozeSheetRef.current?.open({
-                                kind: 'modifier-option',
-                                id: option.id,
-                                name: option.name,
-                                snoozedUntil: option.snoozedUntil
-                              })
+                            onPress={
+                              canWrite
+                                ? () =>
+                                    snoozeSheetRef.current?.open({
+                                      kind: 'modifier-option',
+                                      id: option.id,
+                                      name: option.name,
+                                      snoozedUntil: option.snoozedUntil
+                                    })
+                                : undefined
                             }
+                            disabled={!canWrite}
                             hitSlop={6}
                             style={{
                               padding: 4,
@@ -2618,7 +2662,8 @@ const MenuPage: React.FC = () => {
                                 ? colors.danger
                                 : colors.danger + '18',
                               borderWidth: 1,
-                              borderColor: colors.danger + '35'
+                              borderColor: colors.danger + '35',
+                              opacity: canWrite ? 1 : 0.4
                             }}
                           >
                             <Ban
@@ -3062,12 +3107,14 @@ const MenuPage: React.FC = () => {
                   )}
                   <TouchableOpacity
                     onPress={
-                      category.location_id === selectedStore?.id
+                      canWrite && category.location_id === selectedStore?.id
                         ? () =>
                             router.push(`/menu/edit-category?id=${category.id}`)
                         : undefined
                     }
-                    disabled={category.location_id !== selectedStore?.id}
+                    disabled={
+                      !canWrite || category.location_id !== selectedStore?.id
+                    }
                     style={{
                       alignSelf: 'flex-start',
                       paddingHorizontal: 12,
@@ -3077,7 +3124,9 @@ const MenuPage: React.FC = () => {
                       borderWidth: 1,
                       borderColor: colors.teal + '50',
                       opacity:
-                        category.location_id === selectedStore?.id ? 1 : 0.4
+                        canWrite && category.location_id === selectedStore?.id
+                          ? 1
+                          : 0.4
                     }}
                   >
                     <Text
@@ -3119,6 +3168,37 @@ const MenuPage: React.FC = () => {
 
   return (
     <View className='flex-1 bg-screen'>
+      {!canWrite && (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: s(8),
+            marginHorizontal: s(10),
+            marginTop: s(10),
+            paddingHorizontal: s(12),
+            paddingVertical: s(8),
+            borderRadius: s(8),
+            backgroundColor: colors.danger + '12',
+            borderWidth: 1,
+            borderColor: colors.danger + '30'
+          }}
+          accessibilityRole='alert'
+          accessibilityLabel={blockedReason ?? MENU_OFFLINE_REASON}
+        >
+          <WifiOff size={s(14)} color={colors.danger} />
+          <Text
+            style={{
+              fontSize: s(12),
+              fontWeight: '600',
+              color: colors.danger,
+              flex: 1
+            }}
+          >
+            {MENU_OFFLINE_REASON}
+          </Text>
+        </View>
+      )}
       {TAB_KEYS.map(tab =>
         // Render if it's the active tab (immediately, no one-frame gap) or if it
         // was previously visited (kept alive for instant return).

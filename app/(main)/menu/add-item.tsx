@@ -1,5 +1,6 @@
 import ItemForm from '@/components/menu/ItemForm'
 import { useToast } from '@/contexts/ToastContext'
+import { useMenuWriteGate, MENU_OFFLINE_REASON } from '@/hooks/menu/useMenuWriteGate'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { MenuItemType } from '@/lib/types'
 import { MenuService } from '@/services/menuService'
@@ -18,11 +19,20 @@ const AddMenuItemScreen: React.FC = () => {
   const { getToken } = useAuth()
   const { show } = useToast()
   const router = useRouter()
+  const { canWrite } = useMenuWriteGate()
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSubmit = async (
     data: Omit<MenuItemType, 'id'>
   ): Promise<boolean> => {
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: 'warning'
+      })
+      return false
+    }
     setIsSaving(true)
     try {
       // Validate store selection
@@ -187,6 +197,7 @@ const AddMenuItemScreen: React.FC = () => {
       <ItemForm
         onSubmit={handleSubmit}
         isSaving={isSaving}
+        disabled={!canWrite}
         title='Add New Menu Item'
         submitButtonLabel='Save Item'
       />

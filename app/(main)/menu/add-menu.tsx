@@ -1,5 +1,6 @@
 import MenuForm from "@/components/menu/MenuForm";
 import { useToast } from "@/contexts/ToastContext";
+import { useMenuWriteGate, MENU_OFFLINE_REASON } from "@/hooks/menu/useMenuWriteGate";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -14,9 +15,18 @@ const AddMenuScreen: React.FC = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const { show } = useToast();
   const supabase = useSupabaseClient();
+  const { canWrite } = useMenuWriteGate();
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async (data: any): Promise<boolean> => {
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: "warning",
+      });
+      return false;
+    }
     setIsSaving(true);
     try {
       // Validate store selection
@@ -103,6 +113,7 @@ const AddMenuScreen: React.FC = () => {
       <MenuForm
         onSubmit={handleSubmit}
         isSaving={isSaving}
+        disabled={!canWrite}
         title="Create New Menu"
         submitButtonLabel="Create Menu"
       />
