@@ -1,38 +1,37 @@
 import ScheduleFormSheet from "@/components/menu/ScheduleFormSheet";
 import ScheduleManager from "@/components/menu/ScheduleManager";
 import AppNoticeModal from "@/components/ui/AppNoticeModal";
+import BottomSheet from "@/components/ui/bottomSheet";
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { colors } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
 import { Menu, Schedule } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
-import BottomSheet from "@/components/ui/bottomSheet";
 import { router } from "expo-router";
 import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Save,
-  Trash2,
-  Utensils,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    Save,
+    Trash2,
+    Utensils
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Image,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 export interface MenuFormProps {
@@ -40,7 +39,7 @@ export interface MenuFormProps {
   onSubmit: (
     data: Omit<Menu, "id" | "createdAt" | "updatedAt" | "categories"> & {
       categories: string[];
-    }
+    },
   ) => Promise<boolean>;
   isSaving: boolean;
   title: string;
@@ -52,7 +51,7 @@ export interface MenuFormProps {
 
 const getImageSource = (image: string | undefined) => {
   if (!image) return undefined;
-  if (image.includes('://')) return { uri: image };
+  if (image.includes("://")) return { uri: image };
   if (image.length > 200) return { uri: `data:image/jpeg;base64,${image}` };
   if (MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP]) {
     return MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP];
@@ -77,18 +76,18 @@ const MenuForm: React.FC<MenuFormProps> = ({
 
   const [name, setName] = useState(initialData?.name || "");
   const [description, setDescription] = useState(
-    initialData?.description || ""
+    initialData?.description || "",
   );
   const [isActive, setIsActive] = useState(initialData?.isActive ?? true);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     initialData?.categories
       ? initialData.categories.map((c: any) =>
-          typeof c === "string" ? c : c.name
+          typeof c === "string" ? c : c.name,
         )
-      : []
+      : [],
   );
   const [schedules, setSchedules] = useState<Schedule[]>(
-    initialData?.schedules || []
+    initialData?.schedules || [],
   );
 
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
@@ -102,7 +101,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const hasSavedRef = useRef(false);
   const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
-    hasChanges && !hasSavedRef.current
+    hasChanges && !hasSavedRef.current,
   );
 
   const scheduleSheetRef = useRef<BottomSheet>(null);
@@ -137,7 +136,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
           descChanged ||
           activeChanged ||
           catsChanged ||
-          schedulesChanged
+          schedulesChanged,
       );
     } else {
       setHasChanges(isNewAndChanged);
@@ -149,14 +148,14 @@ const MenuForm: React.FC<MenuFormProps> = ({
       categories
         .filter((cat) => cat.isActive)
         .sort((a, b) => a.order - b.order),
-    [categories]
+    [categories],
   );
 
   const toggleCategorySelection = (categoryName: string) => {
     setSelectedCategories((prev) =>
       prev.includes(categoryName)
         ? prev.filter((n) => n !== categoryName)
-        : [...prev, categoryName]
+        : [...prev, categoryName],
     );
   };
 
@@ -164,7 +163,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
     setExpandedCategories((prev) =>
       prev.includes(categoryName)
         ? prev.filter((n) => n !== categoryName)
-        : [...prev, categoryName]
+        : [...prev, categoryName],
     );
   };
 
@@ -248,11 +247,15 @@ const MenuForm: React.FC<MenuFormProps> = ({
           backgroundColor: colors.panel,
         }}
       >
-        <Text style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}>
+        <Text
+          style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
+        >
           {title}
         </Text>
 
-        <View style={{ flexDirection: "row", gap: s(10), alignItems: "center" }}>
+        <View
+          style={{ flexDirection: "row", gap: s(10), alignItems: "center" }}
+        >
           <TouchableOpacity
             onPress={() => router.back()}
             style={{
@@ -264,7 +267,13 @@ const MenuForm: React.FC<MenuFormProps> = ({
               borderColor: colors.border,
             }}
           >
-            <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}>
+            <Text
+              style={{
+                fontSize: s(12),
+                fontWeight: "600",
+                color: colors.label,
+              }}
+            >
               Cancel
             </Text>
           </TouchableOpacity>
@@ -282,7 +291,10 @@ const MenuForm: React.FC<MenuFormProps> = ({
                 opacity: disabled ? 0.4 : 1,
               }}
             >
-              <Trash2 size={s(14)} color={disabled ? colors.muted : colors.danger} />
+              <Trash2
+                size={s(14)}
+                color={disabled ? colors.muted : colors.danger}
+              />
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -302,9 +314,18 @@ const MenuForm: React.FC<MenuFormProps> = ({
             {isSaving ? (
               <ActivityIndicator size="small" color={colors.onSolid} />
             ) : (
-              <Check size={s(14)} color={disabled ? colors.onSolid + "99" : colors.onSolid} />
+              <Check
+                size={s(14)}
+                color={disabled ? colors.onSolid + "99" : colors.onSolid}
+              />
             )}
-            <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.onSolid }}>
+            <Text
+              style={{
+                fontSize: s(12),
+                fontWeight: "600",
+                color: colors.onSolid,
+              }}
+            >
               {isSaving ? "Saving..." : "Save Changes"}
             </Text>
           </TouchableOpacity>
@@ -322,328 +343,93 @@ const MenuForm: React.FC<MenuFormProps> = ({
             contentContainerStyle={{ padding: s(16), gap: s(16) }}
             showsVerticalScrollIndicator={false}
           >
-          {/* Name & Description */}
-          <View
-            style={{
-              backgroundColor: colors.card + "cc",
-              borderRadius: s(12),
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: s(14),
-              gap: s(12),
-            }}
-          >
-            <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Basic Info
-            </Text>
-
-            <View style={{ gap: s(6) }}>
-              <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}>
-                Menu Name *
-              </Text>
-              <TextInput
+            {/* Name & Description */}
+            <View
+              style={{
+                backgroundColor: colors.card + "cc",
+                borderRadius: s(12),
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: s(14),
+                gap: s(12),
+              }}
+            >
+              <Text
                 style={{
-                  backgroundColor: colors.screen,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: s(8),
-                  paddingHorizontal: s(12),
-                  paddingVertical: s(10),
-                  fontSize: s(13),
-                  color: colors.heading,
-                }}
-                placeholder="e.g., Lunch Menu, Dinner Specials"
-                placeholderTextColor={colors.muted}
-                value={name}
-                onChangeText={setName}
-              />
-            </View>
-
-            <View style={{ gap: s(6) }}>
-              <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}>
-                Description
-                <Text style={{ color: colors.muted }}> (Optional)</Text>
-              </Text>
-              <TextInput
-                style={{
-                  backgroundColor: colors.screen,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: s(8),
-                  paddingHorizontal: s(12),
-                  paddingVertical: s(10),
-                  fontSize: s(13),
-                  color: colors.heading,
-                  height: s(72),
-                  textAlignVertical: "top",
-                }}
-                placeholder="Describe this menu..."
-                placeholderTextColor={colors.muted}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
-          </View>
-
-          {/* Availability Toggle */}
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderRadius: s(12),
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: s(14),
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Availability
-              </Text>
-              <TouchableOpacity
-                onPress={() => setIsActive(!isActive)}
-                style={{
-                  width: s(44),
-                  height: s(24),
-                  borderRadius: s(12),
-                  backgroundColor: isActive ? colors.teal : colors.card,
-                  borderWidth: 1,
-                  borderColor: isActive ? colors.teal : colors.border,
-                  justifyContent: "center",
-                  paddingHorizontal: s(2),
+                  fontSize: s(11),
+                  fontWeight: "600",
+                  color: colors.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
                 }}
               >
-                <View
-                  style={{
-                    width: s(20),
-                    height: s(20),
-                    borderRadius: s(10),
-                    backgroundColor: colors.onSolid,
-                    alignSelf: isActive ? "flex-end" : "flex-start",
-                  }}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Schedules */}
-          <View
-            style={{
-              backgroundColor: colors.card + "cc",
-              borderRadius: s(12),
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: s(14),
-              gap: s(12),
-            }}
-          >
-            <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Schedules
-            </Text>
-            <ScheduleManager
-              value={schedules}
-              onChange={setSchedules}
-              onAdd={() => openScheduleSheet()}
-              onEdit={(rule, idx) => openScheduleSheet(rule, idx)}
-            />
-          </View>
-
-          {/* Categories */}
-          <View
-            style={{
-              backgroundColor: colors.card + "cc",
-              borderRadius: s(12),
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: s(14),
-              gap: s(12),
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Categories
+                Basic Info
               </Text>
-              <Text style={{ fontSize: s(11), color: colors.muted }}>
-                {selectedCategories.length} of {availableCategories.length} selected
-              </Text>
-            </View>
 
-            {availableCategories.length === 0 ? (
-              <View
-                style={{
-                  backgroundColor: colors.panel,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: s(10),
-                  padding: s(20),
-                  alignItems: "center",
-                  gap: s(10),
-                }}
-              >
-                <Utensils size={s(24)} color={colors.muted} />
-                <Text style={{ fontSize: s(12), color: colors.muted, textAlign: "center" }}>
-                  No categories available.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => router.push("/menu/add-category")}
+              <View style={{ gap: s(6) }}>
+                <Text
                   style={{
-                    paddingHorizontal: s(14),
-                    paddingVertical: s(6),
-                    borderRadius: s(8),
-                    backgroundColor: colors.teal + "20",
-                    borderWidth: 1,
-                    borderColor: colors.teal + "50",
+                    fontSize: s(12),
+                    fontWeight: "600",
+                    color: colors.label,
                   }}
                 >
-                  <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}>
-                    Create Category
-                  </Text>
-                </TouchableOpacity>
+                  Menu Name *
+                </Text>
+                <TextInput
+                  style={{
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    fontSize: s(13),
+                    color: colors.heading,
+                  }}
+                  placeholder="e.g., Lunch Menu, Dinner Specials"
+                  placeholderTextColor={colors.muted}
+                  value={name}
+                  onChangeText={setName}
+                />
               </View>
-            ) : (
+
               <View style={{ gap: s(6) }}>
-                {availableCategories.map((category) => {
-                  const isSelected = selectedCategories.includes(category.name);
-                  const isExpanded = expandedCategories.includes(category.name);
-                  const categoryItems = getItemsInCategory(category.name);
-
-                  return (
-                    <View
-                      key={category.id}
-                      style={{
-                        backgroundColor: isSelected ? colors.teal + "08" : colors.panel,
-                        borderRadius: s(10),
-                        borderWidth: 1,
-                        borderColor: isSelected ? colors.teal + "40" : colors.border,
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <TouchableOpacity
-                          onPress={() => toggleCategorySelection(category.name)}
-                          style={{ flex: 1, padding: s(12) }}
-                        >
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                            <View style={{ flex: 1, gap: s(4) }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
-                                <Text style={{ fontSize: s(13), fontWeight: "600", color: colors.heading }}>
-                                  {category.name}
-                                </Text>
-                                <View
-                                  style={{
-                                    backgroundColor: isSelected ? colors.teal + "20" : colors.card,
-                                    borderRadius: s(10),
-                                    paddingHorizontal: s(6),
-                                    paddingVertical: s(2),
-                                  }}
-                                >
-                                  <Text style={{ fontSize: s(10), fontWeight: "600", color: isSelected ? colors.teal : colors.muted }}>
-                                    {categoryItems.length}
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
-
-                            <View
-                              style={{
-                                width: s(22),
-                                height: s(22),
-                                borderRadius: s(11),
-                                borderWidth: s(2),
-                                borderColor: isSelected ? colors.teal : colors.border,
-                                backgroundColor: isSelected ? colors.teal : "transparent",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              {isSelected && <Check size={s(12)} color={colors.onSolid} />}
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-
-                        {categoryItems.length > 0 && (
-                          <TouchableOpacity
-                            onPress={() => toggleCategoryExpansion(category.name)}
-                            style={{ paddingHorizontal: s(12), paddingVertical: s(12) }}
-                          >
-                            {isExpanded ? (
-                              <ChevronUp size={s(18)} color={colors.label} />
-                            ) : (
-                              <ChevronDown size={s(18)} color={colors.label} />
-                            )}
-                          </TouchableOpacity>
-                        )}
-                      </View>
-
-                      {isExpanded && categoryItems.length > 0 && (
-                        <View style={{ paddingHorizontal: s(12), paddingBottom: s(12), gap: s(8) }}>
-                          {categoryItems.map((item, index) => (
-                            <View
-                              key={index}
-                              style={{
-                                backgroundColor: colors.card,
-                                borderWidth: 1,
-                                borderColor: colors.border,
-                                paddingHorizontal: s(10),
-                                paddingVertical: s(8),
-                                borderRadius: s(8),
-                                flexDirection: "row",
-                                alignItems: "center",
-                                gap: s(8),
-                              }}
-                            >
-                              <View
-                                style={{
-                                  width: s(32),
-                                  height: s(32),
-                                  borderRadius: s(6),
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                  overflow: "hidden",
-                                }}
-                              >
-                                {getImageSource(item.image) ? (
-                                  <Image
-                                    source={getImageSource(item.image)}
-                                    style={{ width: "100%", height: "100%" }}
-                                    resizeMode="cover"
-                                  />
-                                ) : (
-                                  <View
-                                    style={{
-                                      flex: 1,
-                                      backgroundColor: colors.panel,
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                    }}
-                                  >
-                                    <Utensils color={colors.muted} size={s(14)} />
-                                  </View>
-                                )}
-                              </View>
-                              <View style={{ flex: 1, gap: s(2) }}>
-                                <Text style={{ fontSize: s(12), color: colors.heading, fontWeight: "500" }} numberOfLines={1}>
-                                  {item.name}
-                                </Text>
-                                <Text style={{ fontSize: s(11), color: colors.label }}>
-                                  ${item.price.toFixed(2)}
-                                </Text>
-                              </View>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                    </View>
-                  );
-                })}
+                <Text
+                  style={{
+                    fontSize: s(12),
+                    fontWeight: "600",
+                    color: colors.label,
+                  }}
+                >
+                  Description
+                  <Text style={{ color: colors.muted }}> (Optional)</Text>
+                </Text>
+                <TextInput
+                  style={{
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    fontSize: s(13),
+                    color: colors.heading,
+                    height: s(72),
+                    textAlignVertical: "top",
+                  }}
+                  placeholder="Describe this menu..."
+                  placeholderTextColor={colors.muted}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
               </View>
-            )}
-          </View>
+            </View>
 
-          {/* Preview Summary */}
-          {selectedCategories.length > 0 && (
+            {/* Availability Toggle */}
             <View
               style={{
                 backgroundColor: colors.card,
@@ -651,73 +437,482 @@ const MenuForm: React.FC<MenuFormProps> = ({
                 borderWidth: 1,
                 borderColor: colors.border,
                 padding: s(14),
-                gap: s(10),
               }}
             >
-              <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Preview · {totalItems} items
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    fontWeight: "600",
+                    color: colors.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Availability
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setIsActive(!isActive)}
+                  style={{
+                    width: s(44),
+                    height: s(24),
+                    borderRadius: s(12),
+                    backgroundColor: isActive ? colors.teal : colors.card,
+                    borderWidth: 1,
+                    borderColor: isActive ? colors.teal : colors.border,
+                    justifyContent: "center",
+                    paddingHorizontal: s(2),
+                  }}
+                >
+                  <View
+                    style={{
+                      width: s(20),
+                      height: s(20),
+                      borderRadius: s(10),
+                      backgroundColor: colors.onSolid,
+                      alignSelf: isActive ? "flex-end" : "flex-start",
+                    }}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Schedules */}
+            <View
+              style={{
+                backgroundColor: colors.card + "cc",
+                borderRadius: s(12),
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: s(14),
+                gap: s(12),
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(11),
+                  fontWeight: "600",
+                  color: colors.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
+                Schedules
               </Text>
-              {Object.entries(previewItems).map(([categoryName, items]) => (
-                <View key={categoryName} style={{ gap: s(6) }}>
-                  <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}>
-                    {categoryName}
-                    <Text style={{ color: colors.muted, fontWeight: "400" }}> ({items.length})</Text>
+              <ScheduleManager
+                value={schedules}
+                onChange={setSchedules}
+                onAdd={() => openScheduleSheet()}
+                onEdit={(rule, idx) => openScheduleSheet(rule, idx)}
+              />
+            </View>
+
+            {/* Categories */}
+            <View
+              style={{
+                backgroundColor: colors.card + "cc",
+                borderRadius: s(12),
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: s(14),
+                gap: s(12),
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    fontWeight: "600",
+                    color: colors.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Categories
+                </Text>
+                <Text style={{ fontSize: s(11), color: colors.muted }}>
+                  {selectedCategories.length} of {availableCategories.length}{" "}
+                  selected
+                </Text>
+              </View>
+
+              {availableCategories.length === 0 ? (
+                <View
+                  style={{
+                    backgroundColor: colors.panel,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: s(10),
+                    padding: s(20),
+                    alignItems: "center",
+                    gap: s(10),
+                  }}
+                >
+                  <Utensils size={s(24)} color={colors.muted} />
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      color: colors.muted,
+                      textAlign: "center",
+                    }}
+                  >
+                    No categories available.
                   </Text>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: s(6) }}>
-                    {items.slice(0, 6).map((item, index) => (
+                  <TouchableOpacity
+                    onPress={() => router.push("/menu/add-category")}
+                    style={{
+                      paddingHorizontal: s(14),
+                      paddingVertical: s(6),
+                      borderRadius: s(8),
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        fontWeight: "600",
+                        color: colors.teal,
+                      }}
+                    >
+                      Create Category
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ gap: s(6) }}>
+                  {availableCategories.map((category) => {
+                    const isSelected = selectedCategories.includes(
+                      category.name,
+                    );
+                    const isExpanded = expandedCategories.includes(
+                      category.name,
+                    );
+                    const categoryItems = getItemsInCategory(category.name);
+
+                    return (
                       <View
-                        key={index}
+                        key={category.id}
                         style={{
-                          width: s(70),
-                          height: s(70),
-                          backgroundColor: colors.card,
+                          backgroundColor: isSelected
+                            ? colors.teal + "08"
+                            : colors.panel,
+                          borderRadius: s(10),
                           borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: s(8),
-                          overflow: "hidden",
+                          borderColor: isSelected
+                            ? colors.teal + "40"
+                            : colors.border,
                         }}
                       >
-                        {getImageSource(item.image) ? (
-                          <Image
-                            source={getImageSource(item.image)}
-                            style={{ width: "100%", height: "100%" }}
-                            resizeMode="cover"
-                          />
-                        ) : (
+                        <View
+                          style={{ flexDirection: "row", alignItems: "center" }}
+                        >
+                          <TouchableOpacity
+                            onPress={() =>
+                              toggleCategorySelection(category.name)
+                            }
+                            style={{ flex: 1, padding: s(12) }}
+                          >
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <View style={{ flex: 1, gap: s(4) }}>
+                                <View
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    gap: s(8),
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      fontSize: s(13),
+                                      fontWeight: "600",
+                                      color: colors.heading,
+                                    }}
+                                  >
+                                    {category.name}
+                                  </Text>
+                                  <View
+                                    style={{
+                                      backgroundColor: isSelected
+                                        ? colors.teal + "20"
+                                        : colors.card,
+                                      borderRadius: s(10),
+                                      paddingHorizontal: s(6),
+                                      paddingVertical: s(2),
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: s(10),
+                                        fontWeight: "600",
+                                        color: isSelected
+                                          ? colors.teal
+                                          : colors.muted,
+                                      }}
+                                    >
+                                      {categoryItems.length}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+
+                              <View
+                                style={{
+                                  width: s(22),
+                                  height: s(22),
+                                  borderRadius: s(11),
+                                  borderWidth: s(2),
+                                  borderColor: isSelected
+                                    ? colors.teal
+                                    : colors.border,
+                                  backgroundColor: isSelected
+                                    ? colors.teal
+                                    : "transparent",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {isSelected && (
+                                  <Check size={s(12)} color={colors.onSolid} />
+                                )}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+
+                          {categoryItems.length > 0 && (
+                            <TouchableOpacity
+                              onPress={() =>
+                                toggleCategoryExpansion(category.name)
+                              }
+                              style={{
+                                paddingHorizontal: s(12),
+                                paddingVertical: s(12),
+                              }}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp size={s(18)} color={colors.label} />
+                              ) : (
+                                <ChevronDown
+                                  size={s(18)}
+                                  color={colors.label}
+                                />
+                              )}
+                            </TouchableOpacity>
+                          )}
+                        </View>
+
+                        {isExpanded && categoryItems.length > 0 && (
                           <View
                             style={{
-                              flex: 1,
-                              backgroundColor: colors.panel,
-                              alignItems: "center",
-                              justifyContent: "center",
+                              paddingHorizontal: s(12),
+                              paddingBottom: s(12),
+                              gap: s(8),
                             }}
                           >
-                            <Utensils size={s(16)} color={colors.muted} />
+                            {categoryItems.map((item, index) => (
+                              <View
+                                key={index}
+                                style={{
+                                  backgroundColor: colors.card,
+                                  borderWidth: 1,
+                                  borderColor: colors.border,
+                                  paddingHorizontal: s(10),
+                                  paddingVertical: s(8),
+                                  borderRadius: s(8),
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: s(8),
+                                }}
+                              >
+                                <View
+                                  style={{
+                                    width: s(32),
+                                    height: s(32),
+                                    borderRadius: s(6),
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  {getImageSource(item.image) ? (
+                                    <Image
+                                      source={getImageSource(item.image)}
+                                      style={{ width: "100%", height: "100%" }}
+                                      resizeMode="cover"
+                                    />
+                                  ) : (
+                                    <View
+                                      style={{
+                                        flex: 1,
+                                        backgroundColor: colors.panel,
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                      }}
+                                    >
+                                      <Utensils
+                                        color={colors.muted}
+                                        size={s(14)}
+                                      />
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={{ flex: 1, gap: s(2) }}>
+                                  <Text
+                                    style={{
+                                      fontSize: s(12),
+                                      color: colors.heading,
+                                      fontWeight: "500",
+                                    }}
+                                    numberOfLines={1}
+                                  >
+                                    {item.name}
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      fontSize: s(11),
+                                      color: colors.label,
+                                    }}
+                                  >
+                                    ${item.price.toFixed(2)}
+                                  </Text>
+                                </View>
+                              </View>
+                            ))}
                           </View>
                         )}
                       </View>
-                    ))}
-                    {items.length > 6 && (
-                      <View
-                        style={{
-                          width: s(70),
-                          height: s(70),
-                          backgroundColor: colors.panel,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: s(8),
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.muted }}>+{items.length - 6}</Text>
-                      </View>
-                    )}
-                  </View>
+                    );
+                  })}
                 </View>
-              ))}
+              )}
             </View>
-          )}
+
+            {/* Preview Summary */}
+            {selectedCategories.length > 0 && (
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: s(12),
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: s(14),
+                  gap: s(10),
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    fontWeight: "600",
+                    color: colors.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Preview · {totalItems} items
+                </Text>
+                {Object.entries(previewItems).map(([categoryName, items]) => (
+                  <View key={categoryName} style={{ gap: s(6) }}>
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        fontWeight: "600",
+                        color: colors.teal,
+                      }}
+                    >
+                      {categoryName}
+                      <Text style={{ color: colors.muted, fontWeight: "400" }}>
+                        {" "}
+                        ({items.length})
+                      </Text>
+                    </Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: s(6),
+                      }}
+                    >
+                      {items.slice(0, 6).map((item, index) => (
+                        <View
+                          key={index}
+                          style={{
+                            width: s(70),
+                            height: s(70),
+                            backgroundColor: colors.card,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: s(8),
+                            overflow: "hidden",
+                          }}
+                        >
+                          {getImageSource(item.image) ? (
+                            <Image
+                              source={getImageSource(item.image)}
+                              style={{ width: "100%", height: "100%" }}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <View
+                              style={{
+                                flex: 1,
+                                backgroundColor: colors.panel,
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Utensils size={s(16)} color={colors.muted} />
+                            </View>
+                          )}
+                        </View>
+                      ))}
+                      {items.length > 6 && (
+                        <View
+                          style={{
+                            width: s(70),
+                            height: s(70),
+                            backgroundColor: colors.panel,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: s(8),
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(12),
+                              fontWeight: "600",
+                              color: colors.muted,
+                            }}
+                          >
+                            +{items.length - 6}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
           </ScrollView>
 
           {/* Right: Summary Panel */}
@@ -732,13 +927,27 @@ const MenuForm: React.FC<MenuFormProps> = ({
               overflow: "hidden",
             }}
           >
-            <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}>
+            <Text
+              style={{
+                fontSize: s(13),
+                fontWeight: "700",
+                color: colors.heading,
+              }}
+            >
               Summary
             </Text>
 
             {/* Selected Categories */}
             <View style={{ gap: s(8) }}>
-              <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              <Text
+                style={{
+                  fontSize: s(11),
+                  fontWeight: "600",
+                  color: colors.muted,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
                 Selected Categories
               </Text>
               <ScrollView
@@ -747,7 +956,9 @@ const MenuForm: React.FC<MenuFormProps> = ({
                 showsVerticalScrollIndicator={false}
               >
                 {selectedCategories.length === 0 ? (
-                  <Text style={{ fontSize: s(12), color: colors.muted }}>No categories selected</Text>
+                  <Text style={{ fontSize: s(12), color: colors.muted }}>
+                    No categories selected
+                  </Text>
                 ) : (
                   selectedCategories.map((catName) => (
                     <View
@@ -759,7 +970,9 @@ const MenuForm: React.FC<MenuFormProps> = ({
                         paddingVertical: s(4),
                       }}
                     >
-                      <Text style={{ fontSize: s(11), color: colors.label }}>{catName}</Text>
+                      <Text style={{ fontSize: s(11), color: colors.label }}>
+                        {catName}
+                      </Text>
                     </View>
                   ))
                 )}
@@ -772,28 +985,64 @@ const MenuForm: React.FC<MenuFormProps> = ({
             {/* Stats */}
             <View style={{ gap: s(12) }}>
               <View style={{ gap: s(4) }}>
-                <Text style={{ fontSize: s(11), color: colors.muted, fontWeight: "500" }}>
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    color: colors.muted,
+                    fontWeight: "500",
+                  }}
+                >
                   Categories Selected:
                 </Text>
-                <Text style={{ fontSize: s(16), fontWeight: "700", color: colors.heading }}>
+                <Text
+                  style={{
+                    fontSize: s(16),
+                    fontWeight: "700",
+                    color: colors.heading,
+                  }}
+                >
                   {selectedCategories.length}
                 </Text>
               </View>
 
               <View style={{ gap: s(4) }}>
-                <Text style={{ fontSize: s(11), color: colors.muted, fontWeight: "500" }}>
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    color: colors.muted,
+                    fontWeight: "500",
+                  }}
+                >
                   Total Items:
                 </Text>
-                <Text style={{ fontSize: s(16), fontWeight: "700", color: colors.teal }}>
+                <Text
+                  style={{
+                    fontSize: s(16),
+                    fontWeight: "700",
+                    color: colors.teal,
+                  }}
+                >
                   {totalItems}
                 </Text>
               </View>
 
               <View style={{ gap: s(4) }}>
-                <Text style={{ fontSize: s(11), color: colors.muted, fontWeight: "500" }}>
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    color: colors.muted,
+                    fontWeight: "500",
+                  }}
+                >
                   Schedules:
                 </Text>
-                <Text style={{ fontSize: s(16), fontWeight: "700", color: colors.label }}>
+                <Text
+                  style={{
+                    fontSize: s(16),
+                    fontWeight: "700",
+                    color: colors.label,
+                  }}
+                >
                   {schedules.length}
                 </Text>
               </View>
@@ -802,10 +1051,22 @@ const MenuForm: React.FC<MenuFormProps> = ({
             {/* Menu Status */}
             {name.trim() && (
               <View style={{ gap: s(4) }}>
-                <Text style={{ fontSize: s(11), color: colors.muted, fontWeight: "500" }}>
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    color: colors.muted,
+                    fontWeight: "500",
+                  }}
+                >
                   Menu Status:
                 </Text>
-                <Text style={{ fontSize: s(13), fontWeight: "600", color: isActive ? colors.teal : colors.danger }}>
+                <Text
+                  style={{
+                    fontSize: s(13),
+                    fontWeight: "600",
+                    color: isActive ? colors.teal : colors.danger,
+                  }}
+                >
                   {isActive ? "Active" : "Inactive"}
                 </Text>
               </View>
@@ -860,11 +1121,28 @@ const MenuForm: React.FC<MenuFormProps> = ({
               >
                 <Save size={26} color={colors.teal} strokeWidth={2} />
               </View>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.heading, marginBottom: 6, textAlign: "center" }}>
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "800",
+                  color: colors.heading,
+                  marginBottom: 6,
+                  textAlign: "center",
+                }}
+              >
                 {initialData ? "Save Changes?" : "Create Menu?"}
               </Text>
-              <Text style={{ fontSize: 13, color: colors.label, textAlign: "center", lineHeight: 19 }}>
-                {initialData ? "Save changes to" : "Create"} &quot;{name}&quot; with {selectedCategories.length} {selectedCategories.length === 1 ? "category" : "categories"}
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: colors.label,
+                  textAlign: "center",
+                  lineHeight: 19,
+                }}
+              >
+                {initialData ? "Save changes to" : "Create"} &quot;{name}&quot;
+                with {selectedCategories.length}{" "}
+                {selectedCategories.length === 1 ? "category" : "categories"}
               </Text>
             </View>
 
@@ -886,7 +1164,13 @@ const MenuForm: React.FC<MenuFormProps> = ({
                   opacity: isSaving ? 0.7 : 1,
                 }}
               >
-                <Text style={{ fontSize: 14, color: colors.onSolid, fontWeight: "700" }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: colors.onSolid,
+                    fontWeight: "700",
+                  }}
+                >
                   {isSaving ? "Saving..." : initialData ? "Save" : "Create"}
                 </Text>
               </TouchableOpacity>
@@ -902,7 +1186,15 @@ const MenuForm: React.FC<MenuFormProps> = ({
                   alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 14, color: colors.label, fontWeight: "700" }}>Cancel</Text>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: colors.label,
+                    fontWeight: "700",
+                  }}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -1,7 +1,11 @@
 import CategoryForm from "@/components/menu/CategoryForm";
+import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import { MenuScopeLoadingScreen } from "@/components/menu/MenuScopeLoadingScreen";
 import { useToast } from "@/contexts/ToastContext";
-import { useMenuWriteGate, MENU_OFFLINE_REASON } from "@/hooks/menu/useMenuWriteGate";
+import {
+    MENU_OFFLINE_REASON,
+    useMenuWriteGate,
+} from "@/hooks/menu/useMenuWriteGate";
 import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
@@ -9,7 +13,6 @@ import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchSt
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
-import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -32,7 +35,7 @@ const EditCategoryScreen: React.FC = () => {
 
   const existing = useMemo(
     () => categories.find((c) => c.id === id),
-    [id, categories]
+    [id, categories],
   );
 
   const initialItems = useMemo(() => {
@@ -42,8 +45,8 @@ const EditCategoryScreen: React.FC = () => {
         const cats = Array.isArray(item.category)
           ? item.category
           : item.category
-          ? [item.category]
-          : [];
+            ? [item.category]
+            : [];
         return cats.includes(existing.name);
       })
       .map((i) => i.id);
@@ -57,7 +60,7 @@ const EditCategoryScreen: React.FC = () => {
     "Category debug:",
     existing?.id,
     existing?.location_id,
-    selectedStore?.id
+    selectedStore?.id,
   );
   // Single-location merchants edit the global category directly; multi-location
   // keeps the read-only wall for global categories.
@@ -65,10 +68,10 @@ const EditCategoryScreen: React.FC = () => {
     return <MenuScopeLoadingScreen />;
   }
   if (existing && isGlobalCategory && !isSingleLocation) {
-    return <GlobalItemScreen type="Category" />
+    return <GlobalItemScreen type="Category" />;
   }
   if (existing && !isGlobalCategory && !isLocalCategory) {
-    return <GlobalItemScreen type="Category" />
+    return <GlobalItemScreen type="Category" />;
   }
 
   const handleSubmit = async (data: any): Promise<boolean> => {
@@ -90,7 +93,7 @@ const EditCategoryScreen: React.FC = () => {
         {
           name: data.name,
           isActive: data.isActive,
-        }
+        },
       );
 
       if (error) {
@@ -118,15 +121,15 @@ const EditCategoryScreen: React.FC = () => {
           const cats = Array.isArray(item.category)
             ? item.category
             : item.category
-            ? [item.category]
-            : [];
+              ? [item.category]
+              : [];
           return cats.includes(existing.name);
         })
         .map((i) => i.id);
 
       // Remove items that are no longer selected
       const removedItems = beforeItemIds.filter(
-        (itemId) => !selectedItemIds.includes(itemId)
+        (itemId) => !selectedItemIds.includes(itemId),
       );
       for (const itemId of removedItems) {
         await MenuService.removeItemFromCategory(supabase, existing.id, itemId);
@@ -135,7 +138,7 @@ const EditCategoryScreen: React.FC = () => {
 
       // Add items that are newly selected
       const addedItems = selectedItemIds.filter(
-        (itemId) => !beforeItemIds.includes(itemId)
+        (itemId) => !beforeItemIds.includes(itemId),
       );
       for (const itemId of addedItems) {
         await MenuService.addItemToCategory(supabase, {

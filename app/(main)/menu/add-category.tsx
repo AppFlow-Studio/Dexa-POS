@@ -1,11 +1,14 @@
 import CategoryForm from "@/components/menu/CategoryForm";
 import { useToast } from "@/contexts/ToastContext";
-import { useMenuWriteGate, MENU_OFFLINE_REASON } from "@/hooks/menu/useMenuWriteGate";
+import {
+    MENU_OFFLINE_REASON,
+    useMenuWriteGate,
+} from "@/hooks/menu/useMenuWriteGate";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { colors } from "@/lib/theme";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import { Alert, View } from "react-native";
 
@@ -52,7 +55,7 @@ const AddCategoryScreen: React.FC = () => {
           description: data.description || "",
           displayOrder: newOrder,
           isActive: data.isActive,
-        }
+        },
       );
 
       if (error) {

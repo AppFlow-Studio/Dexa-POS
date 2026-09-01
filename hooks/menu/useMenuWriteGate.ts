@@ -16,8 +16,8 @@
 import { useSyncExternalStore } from "react";
 
 import {
-  getRawIsOnline,
-  subscribeOnlineStatus,
+    getRawIsOnline,
+    subscribeOnlineStatus,
 } from "@/services/offlineSyncService";
 
 export interface MenuWriteGate {
