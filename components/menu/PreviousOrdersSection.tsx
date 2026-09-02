@@ -35,14 +35,23 @@ import {
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFocusEffect } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Pressable,
     Text,
     TextInput,
     TouchableOpacity,
+    useWindowDimensions,
     View,
 } from "react-native";
+import Animated, {
+    cancelAnimation,
+    Easing,
+    useAnimatedStyle,
+    useSharedValue,
+    withRepeat,
+    withTiming,
+} from "react-native-reanimated";
 
 import { useShallow } from "zustand/react/shallow";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
@@ -169,6 +178,48 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 };
 
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
+
+// ─── Indeterminate loading bar ─────────────────────────────
+// A thin bar that sweeps across the top of the list on ANY load — page turns,
+// refreshes, filter/date switches, local or server. Deliberately not a
+// spinner: no spinning circle anywhere in the loading UX.
+const LoadingBar = () => {
+  const { width } = useWindowDimensions();
+  const translateX = useSharedValue(-width);
+  useEffect(() => {
+    translateX.value = withRepeat(
+      withTiming(width, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(translateX);
+  }, [translateX, width]);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+  return (
+    <View
+      style={{
+        flex: 1,
+        overflow: "hidden",
+        backgroundColor: colors.border,
+        borderRadius: 2,
+      }}
+    >
+      <Animated.View
+        style={[
+          {
+            width: Math.max(width * 0.35, 160),
+            height: "100%",
+            borderRadius: 2,
+            backgroundColor: colors.teal,
+          },
+          animatedStyle,
+        ]}
+      />
+    </View>
+  );
+};
 
 const PreviousOrdersSection = () => {
   // Previous Orders is server-fetched ONLY — it renders exactly what
@@ -725,6 +776,24 @@ const PreviousOrdersSection = () => {
           backgroundColor: colors.screen,
         }}
       >
+        {/* Sweeping load indicator — rides the top edge of the list on ANY
+            load (initial/filter/date fetch, pull-refresh, or page turn) as an
+            overlay so it never shifts the rows. */}
+        {(isFetching || isRefreshing || isPageLoading) && (
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: s(3),
+              zIndex: 10,
+            }}
+          >
+            <LoadingBar />
+          </View>
+        )}
+
         {/* Orders Table - one server-sorted page at a time; the pager rides in
             the list footer so it's reached by scrolling to the bottom of the
             rows. resetScrollKey snaps the body back to the top on page turn. */}
