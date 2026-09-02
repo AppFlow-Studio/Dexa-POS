@@ -862,7 +862,8 @@ const CustomerSheet: React.FC = () => {
                         editable={viewMode !== "edit"}
                         placeholder="(555) 555-5555"
                         maxLength={14}
-                        keyboardType="phone-pad"
+                        keyboardType="number-pad"
+                        inputMode="numeric"
                         placeholderTextColor={colors.muted}
                         style={{
                           backgroundColor:
