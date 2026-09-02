@@ -264,75 +264,106 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             Log.d(TAG, "VectorPrinter: calling startPrint() (needsCut=$needsCut)")
             vp.startPrint(object : OnPrintListener {
                 override fun onSuccess() {
-                    // Thread audit: if this logs "main", the post-print cut/close
-                    // (incl. cutLatch.await up to 3s) and warmCashBox() run on the
-                    // UI thread — the prime suspect for the on-device touch freeze.
-                    // Confirm here before offloading this body to printExecutor.
-                    Log.d(TAG, "VectorPrinter onSuccess on thread=${Thread.currentThread().name}")
-                    Log.d(TAG, "VectorPrinter: print completed successfully")
-                    try { vp.closeDevice() } catch (_: Exception) {}
-
-                    try {
-                        try { simplePrinter.closeDevice() } catch (_: Exception) {}
-                        simplePrinter.openDevice(0)
-
-                        if (needsCut && supportsCutter) {
-                            try {
-                                simplePrinter.cutPaper()
-                                // cutPaper() only BUFFERS the cut command on the simple
-                                // Printer. Without a startPrint() the buffer is dropped
-                                // when closeDevice() runs — which is why receipts never
-                                // physically cut on the C20Pro. Fire startPrint() and
-                                // wait for the listener before continuing so the cut
-                                // actually executes on hardware.
-                                val cutLatch = java.util.concurrent.CountDownLatch(1)
-                                simplePrinter.startPrint(object : OnPrintListener {
-                                    override fun onSuccess() {
-                                        Log.d(TAG, "VectorPrinter: paper cut after print")
-                                        cutLatch.countDown()
-                                    }
-                                    override fun onFail(errorCode: Int) {
-                                        Log.w(
-                                            TAG,
-                                            "Cut startPrint failed (0x${errorCode.toString(16)}) — disabling cutter"
-                                        )
-                                        supportsCutter = false
-                                        cutLatch.countDown()
-                                    }
-                                })
-                                // Bounded wait so a stuck cutter can't hang the print
-                                // queue forever — 3s is plenty for a paper-cut motor.
-                                cutLatch.await(3, java.util.concurrent.TimeUnit.SECONDS)
-                            } catch (cutEx: Exception) {
-                                Log.w(TAG, "cutPaper() failed — disabling: ${cutEx.message}")
-                                supportsCutter = false
-                            }
-                        }
-                        simplePrinter.closeDevice()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Post-print feed/cut failed: ${e.message}")
-                    }
-                    warmCashBox()
-                    promise.resolve(true)
+                    // The SDK delivers this callback on the MAIN/UI thread
+                    // (confirmed via logcat: "onSuccess on thread=main"). The
+                    // post-print cut/close chain hits the OmniDriver over AIDL and
+                    // blocks for seconds — cutLatch.await is bounded at 3s, plus the
+                    // close/open + warmCashBox IPC — which froze ALL touch input
+                    // until it finished (the reported P1). Hand the teardown to
+                    // printExecutor so the UI thread is released the instant
+                    // printing ends. printExecutor is idle here (the print task
+                    // returned right after startPrint), so this runs immediately
+                    // and cannot deadlock.
+                    Log.d(TAG, "VectorPrinter onSuccess on thread=${Thread.currentThread().name} — offloading teardown")
+                    printExecutor.execute { finishVectorPrint(vp, simplePrinter, needsCut, promise) }
                 }
 
                 override fun onFail(errorCode: Int) {
-                    Log.e(TAG, "VectorPrinter onFail on thread=${Thread.currentThread().name}")
-                    Log.e(TAG, "VectorPrinter: print failed (0x${errorCode.toString(16)})")
-                    try {
-                        vp.closeDevice()
-                        vp.openDevice(0)
-                        resetVectorFormatCache()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "VectorPrinter reset failed: ${e.message}")
-                    }
-                    promise.reject("PRINT_FAILED", "Print failed (error: 0x${errorCode.toString(16)})")
+                    Log.e(TAG, "VectorPrinter onFail on thread=${Thread.currentThread().name} — offloading teardown")
+                    printExecutor.execute { failVectorPrint(vp, errorCode, promise) }
                 }
             })
         } catch (e: Exception) {
             Log.w(TAG, "VectorPrinter path failed, falling back to simple Printer: ${e.message}")
             printWithSimple(simplePrinter, nodes, promise)
         }
+    }
+
+    /**
+     * Post-print teardown for the VectorPrinter path: paper cut, device close,
+     * cash-box warm-up, and promise resolution. Invoked on printExecutor (NOT the
+     * SDK's main-thread OnPrintListener callback) so the bounded cut wait and the
+     * AIDL close/warm IPC never block the UI thread. See onSuccess above.
+     */
+    private fun finishVectorPrint(
+        vp: VectorPrinter,
+        simplePrinter: Printer,
+        needsCut: Boolean,
+        promise: Promise
+    ) {
+        Log.d(TAG, "finishVectorPrint on thread=${Thread.currentThread().name} — print completed")
+        try { vp.closeDevice() } catch (_: Exception) {}
+
+        try {
+            try { simplePrinter.closeDevice() } catch (_: Exception) {}
+            simplePrinter.openDevice(0)
+
+            if (needsCut && supportsCutter) {
+                try {
+                    simplePrinter.cutPaper()
+                    // cutPaper() only BUFFERS the cut command on the simple
+                    // Printer. Without a startPrint() the buffer is dropped
+                    // when closeDevice() runs — which is why receipts never
+                    // physically cut on the C20Pro. Fire startPrint() and
+                    // wait for the listener before continuing so the cut
+                    // actually executes on hardware.
+                    val cutLatch = java.util.concurrent.CountDownLatch(1)
+                    simplePrinter.startPrint(object : OnPrintListener {
+                        override fun onSuccess() {
+                            Log.d(TAG, "VectorPrinter: paper cut after print")
+                            cutLatch.countDown()
+                        }
+                        override fun onFail(errorCode: Int) {
+                            Log.w(
+                                TAG,
+                                "Cut startPrint failed (0x${errorCode.toString(16)}) — disabling cutter"
+                            )
+                            supportsCutter = false
+                            cutLatch.countDown()
+                        }
+                    })
+                    // Bounded wait so a stuck cutter can't hang the print
+                    // queue forever — 3s is plenty for a paper-cut motor.
+                    // Now runs on printExecutor, so this wait no longer freezes UI.
+                    cutLatch.await(3, java.util.concurrent.TimeUnit.SECONDS)
+                } catch (cutEx: Exception) {
+                    Log.w(TAG, "cutPaper() failed — disabling: ${cutEx.message}")
+                    supportsCutter = false
+                }
+            }
+            simplePrinter.closeDevice()
+        } catch (e: Exception) {
+            Log.w(TAG, "Post-print feed/cut failed: ${e.message}")
+        }
+        warmCashBox()
+        promise.resolve(true)
+    }
+
+    /**
+     * Failure teardown for the VectorPrinter path — device reset + promise
+     * rejection. Invoked on printExecutor for the same reason as
+     * finishVectorPrint (the OnPrintListener fires on the main thread).
+     */
+    private fun failVectorPrint(vp: VectorPrinter, errorCode: Int, promise: Promise) {
+        Log.e(TAG, "VectorPrinter: print failed (0x${errorCode.toString(16)})")
+        try {
+            vp.closeDevice()
+            vp.openDevice(0)
+            resetVectorFormatCache()
+        } catch (e: Exception) {
+            Log.w(TAG, "VectorPrinter reset failed: ${e.message}")
+        }
+        promise.reject("PRINT_FAILED", "Print failed (error: 0x${errorCode.toString(16)})")
     }
 
     private fun renderNodeVector(vp: VectorPrinter, simplePrinter: Printer, node: JSONObject) {
@@ -509,24 +540,31 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         Log.d(TAG, "SimplePrinter: calling startPrint()")
         p.startPrint(object : OnPrintListener {
             override fun onSuccess() {
-                Log.d(TAG, "SimplePrinter: print completed successfully")
-                warmCashBox()
-                promise.resolve(true)
+                // OnPrintListener fires on the main thread — offload the drawer
+                // warm-up IPC + resolve so the UI thread isn't held. See the
+                // VectorPrinter path (finishVectorPrint) for the full rationale.
+                Log.d(TAG, "SimplePrinter onSuccess on thread=${Thread.currentThread().name} — offloading teardown")
+                printExecutor.execute {
+                    warmCashBox()
+                    promise.resolve(true)
+                }
             }
 
             override fun onFail(errorCode: Int) {
-                Log.e(TAG, "SimplePrinter: print failed (0x${errorCode.toString(16)})")
-                try {
-                    printer?.closeDevice()
-                    printer?.openDevice(0)
-                    lastAppliedSize = -1
-                    lastAppliedScale = -1
-                } catch (e: Exception) {
-                    Log.w(TAG, "Printer reset failed, marking uninitialized: ${e.message}")
-                    isInitialized = false
-                    printer = null
+                Log.e(TAG, "SimplePrinter onFail on thread=${Thread.currentThread().name} — offloading teardown")
+                printExecutor.execute {
+                    try {
+                        printer?.closeDevice()
+                        printer?.openDevice(0)
+                        lastAppliedSize = -1
+                        lastAppliedScale = -1
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Printer reset failed, marking uninitialized: ${e.message}")
+                        isInitialized = false
+                        printer = null
+                    }
+                    promise.reject("PRINT_FAILED", "Print failed (error: 0x${errorCode.toString(16)})")
                 }
-                promise.reject("PRINT_FAILED", "Print failed (error: 0x${errorCode.toString(16)})")
             }
         })
     }
