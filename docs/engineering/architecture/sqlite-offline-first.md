@@ -1,8 +1,10 @@
 # SQLite Offline-First — Execution Plan
 
-**Status:** Ready to execute. The **read track ships with no server dependency**; the write track
-is gated on one server-side precondition (§0). Nothing implemented.
-**Revised:** 2026-08-28 · branch `sqlite-integration` · Expo SDK 53 / RN 0.79.6
+**Status:** Track A (Phases 1–5, the read database) is **code-complete and flag-gated off** —
+see §14 for what this branch closes out with and what is still open before any flag flips on in
+production. Track B (Phases 6–9, offline writes) is **not started**; it needs the Identity Gate
+(§0) and is deliberately out of scope for this branch.
+**Revised:** 2026-09-01 · branch `sqlite-integration` · Expo SDK 53 / RN 0.79.6
 **Supersedes:** `sqlite-local-first-read-model.md` (2026-08-25 and 2026-08-28 revisions). Both
 earlier drafts were built on a read-only mirror and an explicit "the mirror never accepts an
 unconfirmed write" rule. **That rule is deleted.** The local database is now the write target
@@ -1006,9 +1008,17 @@ failed every mirror write on the first on-device run. Fix: a single FIFO `Mutex`
       `orders.updated_at` (function-body scan).
 - [x] **Section B sizing (production)** — B1–B4 recorded above; retention caps are now
       **derived** (device measurement ran 2026-08-28 — details under Phase 1).
-- [ ] **`_business_day` is a naive UTC date** (`TODO(business-day-config)`). The real rule
-      is per-location timezone + rollover hour. Analytics (Phase 6) is the first consumer
-      that cares — wire the config before then.
+- [ ] **`_business_day` is still a naive UTC date** (`lib/db/descriptors/orders.ts:543`,
+      `TODO(business-day-config)`). The real rule is per-location timezone + rollover hour.
+      **2026-09-01: the same rule was wired for the *display* path** —
+      `lib/orderDayGrouping.ts` and Previous Orders' day headers/grouping now read the
+      business-day config directly (`739447dd`) — **but the SQLite ingest-side column was
+      not touched.** So there are now two business-day derivations in the codebase: one
+      correct (display) and one naive (ingest), and they can disagree at the rollover
+      boundary. Point the ingest-side derivation at the same config Previous Orders uses,
+      then delete the naive version — don't let a third implementation appear. Analytics
+      (Phase 5, shipped) is already a consumer of the naive column and should be re-checked
+      once this is fixed.
 - [x] **Wire the sync loop** — [hooks/db/useDeltaSync.ts](hooks/db/useDeltaSync.ts)
       registers the orders descriptor and pulls on a 30 s cycle behind
       `EXPO_PUBLIC_DELTA_SYNC`.
@@ -1264,6 +1274,15 @@ break it.
 **Still outstanding for Phase 3** (unchanged by this pass): the on-device run behind the flag,
 and the service-period soak before `previousOrdersOfflineCache` can be deleted.
 
+**Added 2026-09-01, outside the original plan:** `previous-orders.tsx` and
+`usePreviousOrdersStore` were reworked to render through `FlashList` and to deduplicate rows
+(`696e2c4d`) — a rendering/perf change on top of the existing `useMemo`-based selector logic
+described above, not a replacement for it. **`useOrders(filter)` still does not exist.** This
+pass added more surface to the same file the selector boundary was supposed to prevent growing —
+exactly the cost §4.3 ③ and §13 warned would compound "at every page." Building the selector
+boundary is now a refactor of more code than it would have been in August, and it still has not
+been done at any of the five Phase 5 pages either.
+
 ---
 
 #### Phase 4 · Menu _(retires two caches, fixes a P1)_ — ✅ **BUILT (flag-gated, default off)**
@@ -1392,6 +1411,25 @@ looking like it works while the mirror does nothing.
   `touchMenuFreshness` now checks whether the mirror actually holds that version and writes it in
   full when it does not.
 
+**⑥ The write gate landed after this section was first written — added 2026-09-01.**
+
+Menu reads come from the mirror; menu **writes** (add/edit/delete/reorder item, category, menu,
+modifier) still go straight to Supabase via `MenuService` and have no offline path. Same shape as
+inventory's gate (§ Phase 5 · Inventory ①), same reasoning: identity is minted server-side, so
+queuing a create/edit here would reproduce the instability §1 is about. `useMenuWriteGate()`
+(`hooks/menu/useMenuWriteGate.ts`) returns `{ canWrite, blockedReason }` off `rawIsOnline` —
+deliberately the raw signal, not the quality-adjusted one, so a slow connection doesn't lock the
+screen. Every menu-management screen (`add`/`edit-item`, `-category`, `-menu`, `-modifier`, plus
+`menu/index.tsx`'s inline actions) disables its write controls and surfaces
+`MENU_OFFLINE_REASON` ("You're offline. Menu changes need a connection.") before the operator
+fills in a form, not after a failed submit. Nothing here writes the mirror — same as inventory,
+the mirror is only ever written from a server payload.
+
+**Not yet done:** no test file for the gate itself (`useInventoryWriteGate` has coverage under
+Phase 5; `useMenuWriteGate` does not yet), and it hasn't been exercised on a real tablet
+mid-tap-offline the way the inventory gate's outstanding item calls for. Fold into the Phase 4
+device pass below.
+
 **What the tests actually assert** ([**tests**/db/menuMirror.test.ts](__tests__/db/menuMirror.test.ts),
 against a real SQL engine): the round trip is exact (`readMenuSnapshot` deep-equals the payload
 that was written — which is what makes "one transform, no drift" true rather than intended);
@@ -1432,6 +1470,8 @@ removed and the test confirmed to fail:
 - [ ] **Re-derive `menu_items` bytes/row.** The Phase 1 measurement predates this schema (rows
       now carry the whole junction entry including nested modifier groups), so the 1212 B/row
       figure is stale. The menu is uncapped, so this is a budget input, not a cap input.
+- [ ] **Test coverage + device pass for the write gate (⑥).** No test file yet; confirm the
+      mid-tap race on a real tablet the same way inventory's gate calls for.
 
 ---
 
@@ -2048,6 +2088,10 @@ independently so a DST-length day stays correct, and a custom range the RPC woul
 returns null so the caller falls back to the server rather than rendering a window the server
 would have refused. Note this is the CLIENT's business-day config, not the naive UTC
 `_business_day` column — `TODO(business-day-config)` remains open for the ingest-side derivation.
+**2026-09-01 update:** the online-orders board window resolution still uses this client-side
+config path (unaffected), but note that `739447dd` separately wired the *same* config into
+Previous Orders' display grouping — see the Phase 1 outstanding-items note above for why the
+ingest-side `_business_day` column is now the one piece left on the naive rule.
 
 **One entry-point change.** `MainMenu`'s `offlineAllowedRoutes` gains `/online-orders`,
 conditional on the flag for the same reason analytics' entry is: with the flag unset the page is
@@ -2069,6 +2113,14 @@ floors a negative quantity and is 0 rather than null; the payload and children r
 verbatim including the sixteen widened columns; coverage is false before a first sync and false
 past the retention floor; and both plans seek their indexes with no temp b-tree.
 
+**⑥ The first-paint source label was refined after this section was first written — added
+2026-09-01.** `paintFromMirror` originally always labelled its paint `"local"`, which flashed the
+"Offline" scope line for a split second on every entry — the mirror paints fast and the RPC is
+still in flight, not failed. It now takes a `sourceLabel` argument: the very first paint (before
+the RPC has answered) is neutral (`"none"`), and only gets re-labelled `"local"` once the RPC has
+genuinely failed to answer for that filter (`hooks/orders/useOnlineOrdersByDate.ts`). Same
+local-first-server-corrected rule as ③ above; this closes a UX flicker in it, not a new rule.
+
 **Still outstanding:**
 
 - [ ] **Run it on device behind the flag**, cold, then with the radio off — from the Main Menu
@@ -2077,7 +2129,8 @@ past the retention floor; and both plans seek their indexes with no temp b-tree.
       rollover — the tests prove the window arithmetic, not that a real location's
       `business_day_start_hour` is what the client thinks it is.
 - [ ] **Confirm the scope line** by going offline mid-service and watching the board keep its
-      cards and gain the banner.
+      cards and gain the banner — including the ⑥ refinement: confirm the banner no longer
+      flashes on a normal, connected entry.
 - [ ] **Watch a brand-new online order land while offline-then-online**, to confirm the
       realtime → delta → board path closes in a cycle rather than waiting for a full 30 s.
 - [ ] **A service-period soak** before the flag is considered for default-on.
@@ -2290,3 +2343,78 @@ If Track B does go ahead, **Phase 6 is still worth shipping alone** — it delet
 most bug-prone machinery in the repo and makes the previous failure mode unrepresentable, while
 the app stays online-first and behaviorally identical. Only Phase 7 actually turns on offline
 writes, and by then everything underneath it has run in production for months.
+
+---
+
+## 14. Session review — 2026-09-01, pausing `sqlite-integration` here
+
+Work on this branch is pausing at the end of Track A. This section is the pickup point for
+whoever resumes it — what the branch's last leg added beyond what §§ 9–13 already describe, and
+the concrete list of what is still open. Everything below is **additive** to the phase sections
+above; where a claim here disagrees with an older paragraph elsewhere in this document, this
+section is the current one.
+
+### What this branch ships, end to end
+
+All of Track A (Phases 1–5, §9) is code-complete: schema + delta engine (Phases 1–2), Previous
+Orders (Phase 3), Menu (Phase 4), and four of Phase 5's five in-scope pages — Inventory,
+Analytics, the Customer directory, and the Online Orders board (Loyalty, staff roster and KDS
+history stayed descoped, per the operator decision recorded there). **Every flag stays default
+off** (`EXPO_PUBLIC_LOCAL_*`, `EXPO_PUBLIC_DELTA_SYNC`) — nothing here changes production
+behavior until someone flips one. Track B (Phases 6–9, offline writes) has not been started and
+is not implied by anything on this branch; it still needs the Identity Gate (§0) as a server
+precondition.
+
+The last commits on the branch, past what the phase sections above were written against, were
+smaller follow-ups rather than new phases:
+
+- **Menu offline write gate** (`7009ab14`) — `useMenuWriteGate()`, mirroring the Phase 5
+  inventory write gate. Recorded under Phase 4 ⑥ above.
+- **Online-orders first-paint source label** (`d12508db`) — fixed the "Offline" banner flashing
+  on a normal, connected entry. Recorded under the Online Orders board notes ⑥ above.
+- **Previous Orders FlashList + dedup** (`696e2c4d`) — a rendering/perf pass over the existing
+  Phase 3 screen, not a new capability. Recorded under Phase 3's outstanding-items note above.
+- **Business-day config wired into order-day grouping** (`739447dd`) — fixed the *display* path
+  (`lib/orderDayGrouping.ts`, Previous Orders' day headers) to use per-location timezone +
+  rollover hour instead of an ad hoc rule. **This is easy to mistake for closing
+  `TODO(business-day-config)` — it does not.** That TODO is about the SQLite ingest-side
+  `_business_day` column (`lib/db/descriptors/orders.ts:543`), which is still naive UTC and was
+  not touched. Two call-sites now compute "business day" two different ways; see the Phase 1 and
+  Online Orders notes above for the detail.
+
+### The open list, consolidated
+
+Everything here already has a `- [ ]` somewhere above; this is just the one place to read them
+without walking every phase section.
+
+1. **No phase has run on a real device behind its flag yet.** Phases 1–5 are all "code complete,
+   not yet run on device" or "not yet run behind the flag." Before any flag defaults on, each
+   page needs its own cold-boot / airplane-mode / service-period pass — the per-phase sections
+   above each list what that pass should check.
+2. **The selector boundary (`useOrders(filter)`, §4.3 ③) was never built**, at any of Phase 3's
+   or Phase 5's five pages. It is the one piece of debt that compounds with every additional
+   page built against the current pattern instead of it — including the FlashList pass above.
+   Decide whether to build it now (cheaper the sooner it happens) or accept the cost is sunk.
+3. **`_business_day` ingest-side derivation is still naive UTC** and now visibly inconsistent
+   with the display-side business-day config (`739447dd`). Point
+   `lib/db/descriptors/orders.ts:543` at the same config `lib/orderDayGrouping.ts` and the
+   online-orders board window already use, then delete the naive version.
+4. **Menu offline write gate has no test coverage yet** (Phase 4 ⑥) and hasn't had the mid-tap
+   offline race confirmed on a tablet, unlike its inventory counterpart.
+5. **The `boot.persist_parse_ms.*` ranking (Phase 1) was never captured** — low priority, does
+   not block anything, but is the input that would tell a future session whether the MMKV
+   persistence work is worth doing at all.
+6. **The two server tickets from §13 are still unfiled as far as this document shows**:
+   `create_order_v4` / `add_order_item_v5` (the Identity Gate, blocks all of Track B) and
+   `deleted_at` / `sync_tombstones` (closes the hard-delete gap; not a blocker). Filing them now
+   costs nothing and lets them land in parallel with whatever comes next.
+7. **Track B (Phases 6–9) is entirely unstarted**, by design — see §13 for why stopping at
+   Phase 5 is a complete product on its own, not a partial one.
+
+### Recommended next session
+
+In rough priority order: (a) pick one Phase 5 page and run its device pass, since none has one
+yet and every other open item is easier to reason about once real numbers exist; (b) fix the
+`_business_day` ingest/display split (#3 above) while it is still a two-line pointer change and
+not a third implementation; (c) decide on the selector boundary (#2) before adding a sixth page's
+worth of `useMemo` logic to the pile.
