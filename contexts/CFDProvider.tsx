@@ -46,6 +46,7 @@ import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useLoyaltyStore } from '@/stores/useLoyaltyStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
+import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useSeatingStore } from '@/stores/useSeatingStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -217,6 +218,10 @@ export function CFDProvider ({ children }: { children: React.ReactNode }) {
 function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const controllerRef = useRef<CFDController | null>(null)
   const pathname = usePathname()
+  // Table orders are opened via an always-on overlay (TableOrderOverlay),
+  // not real navigation — pathname alone can't tell the CFD a table's order
+  // is open (see lib/cfdRouting.ts).
+  const tableOverlayOpen = usePendingTableOverlay(s => !!s.openTableId)
 
   // Status states
   const [serverStatus, setServerStatus] = useState<CFDServerStatus>('disabled')
@@ -1223,7 +1228,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
     // A "Sales Screen" indicates the cashier is actively taking or editing an order.
     // Shared with the builtin (WebView) sync effect — see `lib/cfdRouting.ts`.
-    const isSalesScreen = isCFDSalesPathname(pathname)
+    const isSalesScreen = isCFDSalesPathname(pathname, tableOverlayOpen)
 
     // We show order data IF:
     // 1. We are in an active transaction state (Tip Selection, Payment, etc.)
@@ -1524,6 +1529,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activePaymentMethod,
     baseAmountOverride,
     pathname, // Essential for responding to screen changes
+    tableOverlayOpen,
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
     paymentActiveSplit,
@@ -1595,7 +1601,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
       // Shared helper — see lib/cfdRouting.ts. Floor-plan / waitlist /
       // edit-layout / clean-table are NOT sales context.
-      const isSalesScreen = isCFDSalesPathname(pathname)
+      const isSalesScreen = isCFDSalesPathname(pathname, tableOverlayOpen)
 
       // A sale just finished (Done/Skip) but the operator hasn't closed the
       // payment sheet yet. Stay idle and clear the latch once they actually
@@ -1942,6 +1948,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     paymentView,
     baseAmountOverride,
     pathname,
+    tableOverlayOpen,
     selectedStore?.name,
     selectedStore?.code,
     organizationLogoUrl,
@@ -2806,7 +2813,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // the next tick. Without this, the CFD would keep showing the previous
   // screen for up to ~4s after the operator's already moved on.
   useEffect(() => {
-    if (isCFDSalesPathname(pathname)) return
+    if (isCFDSalesPathname(pathname, tableOverlayOpen)) return
     const stuck = activeScreenStateRef.current
     if (
       stuck === 'approved' ||
@@ -2818,7 +2825,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       frozenTotalsRef.current = null
       setActiveScreenState(null)
     }
-  }, [pathname, clearResultAutoIdleTimer, clearLoyaltyTimer])
+  }, [pathname, tableOverlayOpen, clearResultAutoIdleTimer, clearLoyaltyTimer])
 
   // Loyalty screens (prompt + confirmation) are now MANUAL-ONLY: no auto-idle
   // timer. The customer must press Skip / submit a phone, or the operator
