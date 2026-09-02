@@ -15,18 +15,20 @@ import { useKdsOnlineOrdersBootstrap } from "@/hooks/pos/useKdsOnlineOrdersBoots
 import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { useTableSessionInit } from "@/hooks/useTableSessionInit";
+import { nudgeDeltaSync } from "@/lib/db/deltaNudge";
+import { applyOrdersFromRealtimeIfNew } from "@/lib/db/realtimeApply";
 import { setHeaderHeight } from "@/lib/headerHeight";
 import { hintNativeGc } from "@/lib/nativeMemory";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import {
-  KEY_FANOUT_KDS_MS,
-  KEY_FANOUT_ORDER_STORE_MS,
-  KEY_FANOUT_PREV_ORDERS_MS,
+    KEY_FANOUT_KDS_MS,
+    KEY_FANOUT_ORDER_STORE_MS,
+    KEY_FANOUT_PREV_ORDERS_MS,
 } from "@/lib/telemetry/keys";
 import {
-  noteBroadcastFanoutEnd,
-  recordSpan,
-  setCurrentRoute,
+    noteBroadcastFanoutEnd,
+    recordSpan,
+    setCurrentRoute,
 } from "@/lib/telemetry/registry";
 import { colors, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -36,17 +38,20 @@ import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import {
-  selectIsOpen as selectModifierOpen,
-  useModifierSidebarStore,
+    selectIsOpen as selectModifierOpen,
+    useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import {
-  getOrderStoreSupabaseClient,
-  shouldSuppressOwnEchoBroadcast,
-  useOrderStore,
+    getOrderStoreSupabaseClient,
+    shouldSuppressOwnEchoBroadcast,
+    useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import {
+  schedulePreviousOrdersRefresh,
+  usePreviousOrdersStore,
+} from "@/stores/usePreviousOrdersStore";
 import { useProfileOverlayStore } from "@/stores/useProfileOverlayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
@@ -56,13 +61,13 @@ import { Redirect, Slot, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
-  ActivityIndicator,
-  InteractionManager,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  unstable_batchedUpdates,
-  View,
+    ActivityIndicator,
+    InteractionManager,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    unstable_batchedUpdates,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -269,12 +274,29 @@ export default function MainLayout() {
         stationName: broadcastPayload.data?.order?.station_name,
       });
     }
+    // The backend moved — tell the local mirror to pull now instead of at the
+    // next 30 s tick. Deliberately BEFORE the echo check: an order created on
+    // this station is an own-echo, whose mirror write is skipped below, so the
+    // echo path is exactly the one where the row would otherwise be missing
+    // (or, from another station, present but item-less) for up to a full
+    // cycle. Debounced inside — a burst of broadcasts costs one pull.
+    nudgeDeltaSync("order-broadcast");
+
     unstable_batchedUpdates(() => {
       const t0 = performance.now();
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
       const t1 = performance.now();
       recordSpan(KEY_FANOUT_ORDER_STORE_MS, t1 - t0);
-      if (suppressedEcho) return;
+      if (suppressedEcho) {
+        // Own-station echo: the order store already reconciled locally and the
+        // previous-orders + KDS handlers are intentionally skipped. But the
+        // Previous Orders list still needs to converge after a local mutation
+        // (void / close-check / reopen / payment done from that screen), which
+        // a suppressed echo would otherwise never deliver to it. Kick a
+        // debounced, mounted-gated refresh instead.
+        schedulePreviousOrdersRefresh();
+        return;
+      }
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
       const t2 = performance.now();
       recordSpan(KEY_FANOUT_PREV_ORDERS_MS, t2 - t1);
@@ -286,6 +308,25 @@ export default function MainLayout() {
       recordSpan(KEY_FANOUT_KDS_MS, performance.now() - t2);
     });
     noteBroadcastFanoutEnd();
+
+    // Realtime → local mirror (latency path): write NEW orders into the mirror
+    // immediately so the next local read sees them without waiting for the 30s
+    // delta. Broadcast payloads are trimmed (v3 drops fields/embeds), so only
+    // rows the mirror doesn't already hold are written — a complete delta row
+    // is never overwritten by a partial broadcast; the delta enriches new rows
+    // within a cycle. Own echoes are skipped (the delta covers them).
+    if (!suppressedEcho && broadcastPayload.operation !== "DELETE") {
+      const order = broadcastPayload.data?.order;
+      const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+      if (order && locationId) {
+        void applyOrdersFromRealtimeIfNew(
+          [order as unknown as Record<string, unknown>],
+          "pos",
+          locationId,
+        );
+      }
+    }
+
     if (broadcastPayload.operation === "INSERT") {
       const src = broadcastPayload.data?.order?.order_source;
       if (src && src !== "pos" && src !== "in_store") {

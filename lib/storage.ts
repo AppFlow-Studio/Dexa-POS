@@ -19,6 +19,9 @@ import { Platform } from "react-native";
 import { createMMKV } from "react-native-mmkv";
 import type { PersistStorage, StorageValue } from "zustand/middleware";
 import { StateStorage } from "zustand/middleware";
+// Constants-only leaf (imports nothing) — safe on the module-load boot path
+// that reconcileEnvironmentOnBoot() runs on.
+import { DB_PURGE_PENDING_KEY } from "@/lib/db/purgeFlag";
 import {
   computeEnvSignature,
   ENV_SIGNATURE_KEY,
@@ -26,7 +29,11 @@ import {
 } from "@/lib/envSignature";
 // Wave-0 telemetry. Leaf modules (registry imports only react-native-mmkv;
 // keys imports only registry) — no cycle back into lib/storage.
-import { KEY_FLUSH_ALL_MS, persistKeyIds } from "@/lib/telemetry/keys";
+import {
+  bootHydrateKeyIds,
+  KEY_FLUSH_ALL_MS,
+  persistKeyIds,
+} from "@/lib/telemetry/keys";
 import {
   noteFlushAllEnd,
   noteStringifyEnd,
@@ -204,6 +211,18 @@ function reconcileEnvironmentOnBoot(): EnvReconcileResult {
 
   // clearAll() above removed the old signature from general storage — re-stamp.
   storage.set(ENV_SIGNATURE_KEY, current);
+
+  // The local SQLite DB carries customer names, phones and emails from the
+  // PREVIOUS environment. Deleting the file is async and this function runs
+  // synchronously at module load, so record the intent instead — initLocalDb()
+  // honours it before it opens anything, which is race-free and survives a
+  // crash in between. Written after clearAll() for the same reason the
+  // signature re-stamp is.
+  try {
+    syncStorage.set(DB_PURGE_PENDING_KEY, "env_switch");
+  } catch (e) {
+    console.error("[EnvGuard] Failed to flag local DB purge:", e);
+  }
 
   return (lastEnvReconcile = { switched: true, from: stored, to: current });
 }
@@ -437,9 +456,21 @@ export function createLazyPersistStorage<S>(): PersistStorage<S> {
     getItem: (name: string): StorageValue<S> | null => {
       const str = storage.getString(name);
       if (!str) return null;
+      // Boot-hydration measurement (SQLite Track A, Phase 1). This is the
+      // synchronous JSON.parse that every persisted store pays on the cold
+      // start path — 31 keys, largest first. The ranking these counters
+      // produce is what decides whether, and in what order, any store is
+      // worth moving to rows in a later phase. Measure before moving: a 2 KB
+      // settings blob is not worth a migration no matter how tidy it would be.
+      const ids = bootHydrateKeyIds(name);
+      recordCount(ids.bytes, str.length);
+      const parseStart = performance.now();
       try {
-        return JSON.parse(str) as StorageValue<S>;
+        const parsed = JSON.parse(str) as StorageValue<S>;
+        recordSample(ids.parseMs, performance.now() - parseStart);
+        return parsed;
       } catch {
+        recordSample(ids.parseMs, performance.now() - parseStart);
         return null;
       }
     },
@@ -780,6 +811,17 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
     }
   } catch (error) {
     errors.push(`Failed to clear offline fallback caches: ${error}`);
+  }
+
+  // The local SQLite DB is operational cache data too, and it carries PII
+  // (customer names, phones, emails). Flag it for destruction on next open —
+  // the same race-free mechanism the env switch uses — and let the caller
+  // trigger the immediate async delete via purgeLocalDbNow() if it can await.
+  try {
+    syncStorage.set(DB_PURGE_PENDING_KEY, "cache_clear");
+    clearedKeys.push(DB_PURGE_PENDING_KEY);
+  } catch (error) {
+    errors.push(`Failed to flag local DB purge: ${error}`);
   }
 
   return { clearedKeys, errors };

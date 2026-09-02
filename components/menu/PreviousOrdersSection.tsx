@@ -7,13 +7,17 @@ import { useHistoryFilterControls } from "@/hooks/pos/useHistoryFilterControls";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 // Sort is driven by the table's column headers here (not a dropdown), so only
 // the status options are needed.
+import { SyncProgressBanner } from "@/components/db/SyncProgressBanner";
+import { useLocalFreshness } from "@/hooks/db/useLocalFreshness";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import {
+    getChannelTab,
+    getProviderKey,
+    matchesStatus,
     STATUS_OPTIONS,
     type ChannelTab,
     type SortKey,
 } from "@/lib/previousOrdersFilters";
-import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -21,9 +25,14 @@ import {
     DEFAULT_HISTORY_FILTERS,
     historyFilterKey,
 } from "@/services/historyOrderFilters";
+import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import {
+    resolveBusinessDayConfig,
+    usePreviousOrdersStore,
+} from "@/stores/usePreviousOrdersStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFocusEffect } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
@@ -34,7 +43,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+
 import { useShallow } from "zustand/react/shallow";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 import DatePillRow, { type DatePillDef } from "./DatePillRow";
@@ -169,8 +178,21 @@ const PreviousOrdersSection = () => {
   // top of every date window (it has no backend row yet, so it bypassed the
   // date filter). It now appears here only once it syncs and a fetch/broadcast
   // surfaces it.
-  const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
+  const { previousOrders } = usePreviousOrdersStore();
   const { rawIsOnline } = useNetworkStatus();
+
+  // Sync / offline visibility — the same contract as the full Previous Orders
+  // screen: first-sync in progress, offline, or stale. Release builds strip
+  // the dev logs, so the mirror's state has to be on screen.
+  const { isSyncing, hasCompletedCycle } = useLocalDbSyncStore();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const freshness = useLocalFreshness("orders", selectedStore?.id ?? null);
+  // Business-day config for the day headers — same semantics as the date-window
+  // filter, so after-midnight pre-rollover orders stay under "Yesterday".
+  const dayGroupingConfig = useMemo(
+    () => resolveBusinessDayConfig(),
+    [selectedStore?.timezone, selectedStore?.business_day_start_hour],
+  );
 
   // OFFLINE ONLY: the backend is unreachable, so previousOrders can't refresh.
   // Surface the device's own non-final orders (active + working set + own-station
@@ -218,6 +240,14 @@ const PreviousOrdersSection = () => {
     (s) => s.dateWindow?.label ?? "today",
   );
   const setDateWindow = usePreviousOrdersStore((s) => s.setDateWindow);
+  // Resolved business-day bounds — used to scope the offline live orders to the
+  // active date pill (they carry no server-side filtering of their own).
+  const resolvedStartTs = usePreviousOrdersStore(
+    (s) => s.dateWindow?._resolvedStartTs ?? null,
+  );
+  const resolvedEndTs = usePreviousOrdersStore(
+    (s) => s.dateWindow?._resolvedEndTs ?? null,
+  );
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
@@ -278,7 +308,6 @@ const PreviousOrdersSection = () => {
         usePreviousOrdersStore.setState({
           previousOrders: [],
           _orderLookup: {},
-          newOrdersCount: 0,
           _isRefreshing: false,
           _currentOffset: 0,
           _hasMore: false,
@@ -402,10 +431,38 @@ const PreviousOrdersSection = () => {
 
     if (offlineLiveOrders.length === 0) return mappedHistory;
 
+    // Offline: prepend the device's own live pending orders — but ONLY those
+    // that match the active date window + channel/status/provider filters,
+    // exactly like the server-filtered history rows. Without this, open orders
+    // were pinned to EVERY tab and date (e.g. a dine-in order appearing under
+    // the "Online" tab, or today's orders under "Yesterday").
+    const liveOrdersInScope = offlineLiveOrders.filter((o) => {
+      if (channelTab !== "all" && getChannelTab(o) !== channelTab) {
+        return false;
+      }
+      if (!matchesStatus(o, statusFilter)) return false;
+      if (channelTab === "online" && providerFilter !== "all") {
+        if (getProviderKey(o) !== providerFilter) return false;
+      }
+      if (resolvedStartTs && resolvedEndTs) {
+        // A live pending order is being worked on right now — if it has no
+        // `opened_at` yet, treat it as "now" so it belongs to today's window.
+        const t = new Date(o.opened_at ?? Date.now()).getTime();
+        if (
+          t < new Date(resolvedStartTs).getTime() ||
+          t >= new Date(resolvedEndTs).getTime()
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+    if (liveOrdersInScope.length === 0) return mappedHistory;
+
     // Offline: prepend live pending orders, deduped against history (a finalized
     // order can be in both the cache and the live store). Live copy wins.
     const liveIds = new Set<string>();
-    for (const o of offlineLiveOrders) {
+    for (const o of liveOrdersInScope) {
       liveIds.add(o.id);
       if (o.db_order_id) liveIds.add(o.db_order_id);
     }
@@ -413,8 +470,16 @@ const PreviousOrdersSection = () => {
       (o) =>
         !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id)),
     );
-    return [...offlineLiveOrders, ...historyMinusLive];
-  }, [previousOrders, offlineLiveOrders]);
+    return [...liveOrdersInScope, ...historyMinusLive];
+  }, [
+    previousOrders,
+    offlineLiveOrders,
+    channelTab,
+    statusFilter,
+    providerFilter,
+    resolvedStartTs,
+    resolvedEndTs,
+  ]);
 
   // Compute per-tab counts
   // Counts describe the WHOLE date window, not the loaded page. The tab bar
@@ -482,6 +547,63 @@ const PreviousOrdersSection = () => {
         backgroundColor: colors.screen,
       }}
     >
+      {/* Sync / offline status — mirrors the full Previous Orders screen so
+          release builds always show why the list might be partial. */}
+      {!rawIsOnline ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: s(6),
+            paddingHorizontal: s(10),
+            paddingVertical: s(6),
+            borderRadius: s(6),
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.warning,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.warning,
+              flex: 1,
+              fontWeight: "600",
+            }}
+          >
+            Offline — showing locally stored orders. New orders need a
+            connection.
+          </Text>
+        </View>
+      ) : isSyncing && !hasCompletedCycle ? (
+        <SyncProgressBanner compact />
+      ) : freshness.state === "stale" ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: s(6),
+            paddingHorizontal: s(10),
+            paddingVertical: s(6),
+            borderRadius: s(6),
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.warning,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.warning,
+              flex: 1,
+              fontWeight: "600",
+            }}
+          >
+            Order history is stale — pull down to refresh.
+          </Text>
+        </View>
+      ) : null}
+
       {/* Header: Date Pills + Tabs + Search + Refresh */}
       <View
         style={{
@@ -617,6 +739,8 @@ const PreviousOrdersSection = () => {
           onRefresh={handleRefresh}
           isInitialLoading={isFetching}
           serverSorted
+          groupByDay
+          dayGroupingConfig={dayGroupingConfig}
           ListFooter={
             filteredOrders.length > 0 ? (
               <PaginationBar
@@ -632,39 +756,6 @@ const PreviousOrdersSection = () => {
             ) : null
           }
         />
-
-        {/* New Orders Banner - Floating */}
-        {newOrdersCount > 0 && (
-          <Animated.View
-            entering={iosOnly(FadeIn.duration(200))}
-            exiting={iosOnly(FadeOut.duration(200))}
-            className="absolute top-4 left-0 right-0 items-center z-10"
-            pointerEvents="box-none"
-          >
-            <TouchableOpacity
-              onPress={() => void handleRefresh()}
-              activeOpacity={0.8}
-              className="flex-row items-center gap-2 px-4 py-2.5 rounded-full"
-              style={{
-                backgroundColor: colors.teal,
-                shadowColor: colors.teal,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 8,
-              }}
-            >
-              <RefreshCw size={s(13)} color={colors.onSolid} />
-              <Text
-                className="text-xs font-semibold"
-                style={{ color: colors.onSolid }}
-              >
-                {newOrdersCount} new order{newOrdersCount > 1 ? "s" : ""} — tap
-                to refresh
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
       </View>
 
       {/* Modals */}

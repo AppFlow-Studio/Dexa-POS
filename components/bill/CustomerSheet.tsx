@@ -5,15 +5,17 @@ import { isValidUUID } from "@/lib/offlineIdRegistry";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
+import { useCustomerDirectory } from "@/hooks/customers/useCustomerDirectory";
 import {
     createCustomerOffline,
     createCustomerOnline,
     fetchAndCacheCustomers,
-    getCachedCustomers,
     linkCustomerToOrder,
+    loadTopCustomers,
     processCustomerQueue,
     updateCustomerInfo,
 } from "@/services/customer";
+import { FlashList } from "@shopify/flash-list";
 import { getIsOnline } from "@/services/offlineSyncService";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
@@ -35,7 +37,6 @@ import {
     Modal,
     Platform,
     ScrollView,
-    SectionList,
     Text,
     TextInput,
     TouchableOpacity,
@@ -70,7 +71,15 @@ const CustomerSheet: React.FC = () => {
   const [stateCode, setStateCode] = useState("");
   const [zip, setZip] = useState("");
   const [addressDisplay, setAddressDisplay] = useState("");
-  const [customers, setCustomers] = useState<CustomerWithMeta[]>([]);
+  // Phase 5: the directory comes from the SQLite mirror (5,000 rows) rather
+  // than the 200-row MMKV cache, narrowed server-side by the search box. The
+  // client-side `filteredCustomers` below still runs, unchanged — this is a
+  // SUPERSET of what it matches on. See hooks/customers/useCustomerDirectory.
+  const { customers, reload: reloadDirectory } = useCustomerDirectory(
+    searchQuery,
+    { enabled: isOpen },
+  );
+  const [topCustomers, setTopCustomers] = useState<CustomerWithMeta[]>([]);
   // Wave 2.2: defense-in-depth — block customer assignment when the active
   // order is owned by another station. Server-side enforcement lands in
   // Wave 2.4 via `update_order_details_v1`; this UI gate prevents the
@@ -82,20 +91,23 @@ const CustomerSheet: React.FC = () => {
   storeRef.current = { selectedStore, supabase };
 
   const refreshCustomers = useCallback(async () => {
-    setCustomers(getCachedCustomers());
-
     const { selectedStore: store, supabase: client } = storeRef.current;
 
     if (store && getIsOnline()) {
       try {
-        const updated = await fetchAndCacheCustomers(client, store.merchant_id);
-        setCustomers(updated);
+        // Writes the mirror as a side effect, at the seam where the payload
+        // has already arrived — one fetch, one cadence.
+        await fetchAndCacheCustomers(client, store.merchant_id);
         await processCustomerQueue(client);
       } catch (err) {
         console.warn("Failed to refresh customers:", err);
       }
     }
-  }, []);
+    // Re-read after the fetch either way: offline, this still paints the
+    // mirror, which is the whole point.
+    reloadDirectory();
+    setTopCustomers(await loadTopCustomers(3));
+  }, [reloadDirectory]);
 
   useEffect(() => {
     if (isOpen) {
@@ -120,14 +132,17 @@ const CustomerSheet: React.FC = () => {
     return list;
   }, [searchQuery, customers]);
 
-  const topCustomers = useMemo(() => {
-    return [...customers]
-      .filter((c) => (c.total_orders ?? 0) > 0)
-      .sort((a, b) => (b.total_orders ?? 0) - (a.total_orders ?? 0))
-      .slice(0, 3);
-  }, [customers]);
-
-  const groupedCustomers = useMemo(() => {
+  /**
+   * FlashList has no sections, so the A/B/C grouping is FLATTENED into one
+   * array of headers and rows and told apart by `getItemType`. That is
+   * FlashList's own recommended shape for sectioned data: it lets the two
+   * cell kinds recycle into separate pools, so a header never gets reused as
+   * a customer row (which is what produces the classic wrong-height flicker
+   * when sections are faked with a single item type).
+   *
+   * The grouping itself is unchanged from the SectionList version.
+   */
+  const directoryRows = useMemo(() => {
     const map: Record<string, CustomerWithMeta[]> = {};
     for (const c of filteredCustomers) {
       const first = (c.name || "?")[0].toUpperCase();
@@ -140,7 +155,12 @@ const CustomerSheet: React.FC = () => {
       if (b === "#") return -1;
       return a.localeCompare(b);
     });
-    return letters.map((letter) => ({ title: letter, data: map[letter] }));
+    const rows: (string | CustomerWithMeta)[] = [];
+    for (const letter of letters) {
+      rows.push(letter);
+      rows.push(...map[letter]);
+    }
+    return rows;
   }, [filteredCustomers]);
 
   const handleSelectCustomer = async (customer: CustomerWithMeta) => {
@@ -274,7 +294,7 @@ const CustomerSheet: React.FC = () => {
             address: addressString,
           });
 
-      setCustomers(getCachedCustomers());
+      reloadDirectory();
       await handleSelectCustomer(newCustomer);
     } catch (error: any) {
       show({
@@ -358,7 +378,7 @@ const CustomerSheet: React.FC = () => {
         { name: newName.trim(), address: addressString },
         supabase,
       );
-      setCustomers(getCachedCustomers());
+      reloadDirectory();
       show({
         title: "Customer Updated",
         message: `${newName.trim()} has been updated.`,
@@ -626,14 +646,25 @@ const CustomerSheet: React.FC = () => {
                     </View>
                   )}
 
-                  <SectionList
-                    sections={groupedCustomers}
-                    keyExtractor={(item) => item.id}
+                  <FlashList
+                    data={directoryRows}
+                    // Two cell kinds recycle into separate pools — see the
+                    // note on `directoryRows`.
+                    getItemType={(item) =>
+                      typeof item === "string" ? "header" : "row"
+                    }
+                    keyExtractor={(item) =>
+                      typeof item === "string" ? `hdr-${item}` : item.id
+                    }
+                    // A ballpark for virtualization; FlashList self-corrects
+                    // after first layout. Rows are avatar + 2-3 text lines.
+                    estimatedItemSize={s(58)}
                     contentContainerStyle={{
                       paddingHorizontal: s(12),
                       paddingBottom: s(20),
                     }}
-                    renderSectionHeader={({ section }) => (
+                    renderItem={({ item }) =>
+                      typeof item === "string" ? (
                       <View
                         style={{
                           paddingVertical: s(4),
@@ -652,11 +683,10 @@ const CustomerSheet: React.FC = () => {
                             letterSpacing: 1,
                           }}
                         >
-                          {section.title}
+                          {item}
                         </Text>
                       </View>
-                    )}
-                    renderItem={({ item }: { item: CustomerWithMeta }) => (
+                      ) : (
                       <TouchableOpacity
                         disabled={isAssignDisabled}
                         onPress={() => handleSelectCustomer(item)}
@@ -746,7 +776,8 @@ const CustomerSheet: React.FC = () => {
                           </View>
                         )}
                       </TouchableOpacity>
-                    )}
+                      )
+                    }
                     ListEmptyComponent={
                       <Text
                         style={{

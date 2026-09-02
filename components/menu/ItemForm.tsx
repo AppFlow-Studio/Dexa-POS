@@ -1,103 +1,105 @@
-import AddIngredientModal from '@/components/inventory/AddIngredientModal'
-import RecipeIngredientSheet from '@/components/inventory/RecipeIngredientSheet'
-import { ItemModifierStockSection } from '@/components/menu/ItemModifierStockSection'
-import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog'
-import UnsavedChangesDialog from '@/components/ui/UnsavedChangesDialog'
-import { useToast } from '@/contexts/ToastContext'
-import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
-import {
-  DEFAULT_MENU_ITEM_PLACEHOLDER_ICON,
-  encodeMenuItemPlaceholderIconKey,
-  extractMenuItemPlaceholderIconKey,
-  getMenuItemPlaceholderIcon,
-  MENU_ITEM_PLACEHOLDER_ICON_OPTIONS,
-  type MenuItemPlaceholderIconKey
-} from '@/lib/menuItemPlaceholderIcon'
-import { MENU_IMAGE_MAP } from '@/lib/mockData'
-import { bottomSheetTheme, colors } from '@/lib/theme'
-import { MenuItemType, RecipeItem } from '@/lib/types'
-import { useUiScale } from '@/lib/uiScale'
-import { useInventoryStore } from '@/stores/useInventoryStore'
-import { useMenuStore } from '@/stores/useMenuStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import AddIngredientModal from "@/components/inventory/AddIngredientModal";
+import RecipeIngredientSheet from "@/components/inventory/RecipeIngredientSheet";
+import { ItemModifierStockSection } from "@/components/menu/ItemModifierStockSection";
 import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetSectionList
-} from '@/components/ui/bottomSheet'
-import * as ImagePicker from 'expo-image-picker'
-import { router } from 'expo-router'
+    BottomSheetBackdrop,
+    BottomSheetSectionList,
+} from "@/components/ui/bottomSheet";
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useToast } from "@/contexts/ToastContext";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import {
-  Camera,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  GripVertical,
-  Plus,
-  Save,
-  Search,
-  Trash2,
-  X
-} from 'lucide-react-native'
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+    DEFAULT_MENU_ITEM_PLACEHOLDER_ICON,
+    encodeMenuItemPlaceholderIconKey,
+    extractMenuItemPlaceholderIconKey,
+    getMenuItemPlaceholderIcon,
+    MENU_ITEM_PLACEHOLDER_ICON_OPTIONS,
+    type MenuItemPlaceholderIconKey,
+} from "@/lib/menuItemPlaceholderIcon";
+import { MENU_IMAGE_MAP } from "@/lib/mockData";
+import { bottomSheetTheme, colors } from "@/lib/theme";
+import { MenuItemType, RecipeItem } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import { useInventoryStore } from "@/stores/useInventoryStore";
+import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native'
+    Camera,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    GripVertical,
+    Plus,
+    Save,
+    Search,
+    Trash2,
+    X,
+} from "lucide-react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+    ActivityIndicator,
+    Alert,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import DraggableFlatList, {
-  RenderItemParams,
-  ScaleDecorator
-} from 'react-native-draggable-flatlist'
+    RenderItemParams,
+    ScaleDecorator,
+} from "react-native-draggable-flatlist";
 
 export interface MenuItemFormData {
-  name: string
-  description: string
-  price: string
-  cashPrice: string
-  categories: string[]
-  meal: MenuItemType['meal']
-  image: string
-  imageBase64?: string
-  placeholderIcon: MenuItemPlaceholderIconKey
-  availability: boolean
-  modifiers: string[]
-  recipe: RecipeItem[]
+  name: string;
+  description: string;
+  price: string;
+  cashPrice: string;
+  categories: string[];
+  meal: MenuItemType["meal"];
+  image: string;
+  imageBase64?: string;
+  placeholderIcon: MenuItemPlaceholderIconKey;
+  availability: boolean;
+  modifiers: string[];
+  recipe: RecipeItem[];
 }
 
 interface ItemFormProps {
-  initialData?: MenuItemType
-  onSubmit: (data: Omit<MenuItemType, 'id'>) => Promise<boolean>
-  isSaving: boolean
-  title: string
-  submitButtonLabel: string
-  onDelete?: () => void
+  initialData?: MenuItemType;
+  onSubmit: (data: Omit<MenuItemType, "id">) => Promise<boolean>;
+  isSaving: boolean;
+  title: string;
+  submitButtonLabel: string;
+  onDelete?: () => void;
+  /** Disable all mutating actions (save / delete) — e.g. while offline. */
+  disabled?: boolean;
 }
 
-const MEAL_OPTIONS: MenuItemType['meal'][number][] = [
-  'Lunch',
-  'Dinner',
-  'Brunch',
-  'Specials'
-]
+const MEAL_OPTIONS: MenuItemType["meal"][number][] = [
+  "Lunch",
+  "Dinner",
+  "Brunch",
+  "Specials",
+];
 
 // Human-readable labels + priority order for naming the first invalid field in
 // the validation toast and scrolling it into view.
 const FIELD_LABELS: Record<string, string> = {
-  name: 'Name',
-  price: 'Price',
-  cashPrice: 'Cash price',
-  categories: 'Category'
-}
-const FIELD_PRIORITY = ['name', 'price', 'cashPrice', 'categories']
+  name: "Name",
+  price: "Price",
+  cashPrice: "Cash price",
+  categories: "Category",
+};
+const FIELD_PRIORITY = ["name", "price", "cashPrice", "categories"];
 
 const ItemForm: React.FC<ItemFormProps> = ({
   initialData,
@@ -105,79 +107,81 @@ const ItemForm: React.FC<ItemFormProps> = ({
   isSaving,
   title,
   submitButtonLabel,
-  onDelete
+  onDelete,
+  disabled = false,
 }) => {
-  const categories = useMenuStore(s => s.categories)
-  const modifierGroups = useMenuStore(s => s.modifierGroups)
-  const lastSyncedAt = useMenuStore(s => s.syncState.lastSyncedAt)
-  const { show } = useToast()
-  const uiScale = useUiScale()
-  const s = (n: number) => Math.round(n * uiScale)
+  const categories = useMenuStore((s) => s.categories);
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
+  const lastSyncedAt = useMenuStore((s) => s.syncState.lastSyncedAt);
+  const { show } = useToast();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
-  const selectedStoreForPricing = useStoreSettingsStore(s => s.selectedStore)
-  const pricingStrategy = selectedStoreForPricing?.pricing_strategy
-  const dualPricingPercentage = selectedStoreForPricing?.dual_pricing_percentage
+  const selectedStoreForPricing = useStoreSettingsStore((s) => s.selectedStore);
+  const pricingStrategy = selectedStoreForPricing?.pricing_strategy;
+  const dualPricingPercentage =
+    selectedStoreForPricing?.dual_pricing_percentage;
   const isDualPricing =
-    pricingStrategy === 'dual' &&
-    typeof dualPricingPercentage === 'number' &&
-    dualPricingPercentage > 0
+    pricingStrategy === "dual" &&
+    typeof dualPricingPercentage === "number" &&
+    dualPricingPercentage > 0;
 
   const [formData, setFormData] = useState<MenuItemFormData>({
-    name: '',
-    description: '',
-    price: '',
-    cashPrice: '',
+    name: "",
+    description: "",
+    price: "",
+    cashPrice: "",
     categories: [],
-    meal: ['Lunch'],
-    image: '',
+    meal: ["Lunch"],
+    image: "",
     imageBase64: undefined,
     placeholderIcon: DEFAULT_MENU_ITEM_PLACEHOLDER_ICON,
     availability: true,
     modifiers: [],
-    recipe: []
-  })
+    recipe: [],
+  });
 
-  const [errors, setErrors] = useState<Partial<MenuItemFormData>>({})
-  const [showConfirmation, setShowConfirmation] = useState(false)
-  const [hasChanges, setHasChanges] = useState(false)
-  const hasSavedRef = useRef(false)
+  const [errors, setErrors] = useState<Partial<MenuItemFormData>>({});
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const hasSavedRef = useRef(false);
   // Scroll-to-first-invalid-field support: the form ScrollView + a map of each
   // validatable section's y-offset within the scroll content (set via onLayout).
-  const scrollRef = useRef<ScrollView>(null)
-  const fieldOffsetsRef = useRef<Record<string, number>>({})
+  const scrollRef = useRef<ScrollView>(null);
+  const fieldOffsetsRef = useRef<Record<string, number>>({});
   const [initialFormData, setInitialFormData] =
-    useState<MenuItemFormData | null>(null)
+    useState<MenuItemFormData | null>(null);
 
-  const [isRecipeModalOpen, setRecipeModalOpen] = useState(false)
-  const recipeSheetRef = React.useRef<any>(null)
+  const [isRecipeModalOpen, setRecipeModalOpen] = useState(false);
+  const recipeSheetRef = React.useRef<any>(null);
   const [editingRecipeItemIndex, setEditingRecipeItemIndex] = useState<
     number | null
-  >(null)
-  const inventorySelectionSheetRef = React.useRef<BottomSheet>(null)
-  const inventorySnapPoints = useMemo(() => ['70%'], [])
-  const [inventorySearchQuery, setInventorySearchQuery] = useState('')
-  const { inventoryItems } = useInventoryStore()
+  >(null);
+  const inventorySelectionSheetRef = React.useRef<BottomSheet>(null);
+  const inventorySnapPoints = useMemo(() => ["70%"], []);
+  const [inventorySearchQuery, setInventorySearchQuery] = useState("");
+  const { inventoryItems } = useInventoryStore();
 
   const [recipeQuantities, setRecipeQuantities] = useState<
     Record<string, string>
-  >({})
-  const [modifierSearch, setModifierSearch] = useState('')
+  >({});
+  const [modifierSearch, setModifierSearch] = useState("");
   const [expandedModifiers, setExpandedModifiers] = useState<
     Record<string, boolean>
-  >({})
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  >({});
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
-    hasChanges && !hasSavedRef.current
-  )
+    hasChanges && !hasSavedRef.current,
+  );
 
   useEffect(() => {
-    Keyboard.dismiss()
-  }, [])
+    Keyboard.dismiss();
+  }, []);
 
   useEffect(() => {
     if (initialData) {
-      let cashPriceStr = initialData.cashPrice?.toString() || ''
+      let cashPriceStr = initialData.cashPrice?.toString() || "";
       if (
         isDualPricing &&
         dualPricingPercentage &&
@@ -185,164 +189,163 @@ const ItemForm: React.FC<ItemFormProps> = ({
         initialData.price > 0
       ) {
         const derivedCash =
-          initialData.price / (1 + dualPricingPercentage / 100)
-        cashPriceStr = derivedCash.toFixed(2)
+          initialData.price / (1 + dualPricingPercentage / 100);
+        cashPriceStr = derivedCash.toFixed(2);
       }
       const data: MenuItemFormData = {
         name: initialData.name,
-        description: initialData.description || '',
+        description: initialData.description || "",
         price: initialData.price.toString(),
         cashPrice: cashPriceStr,
         categories: Array.isArray(initialData.category)
           ? initialData.category
           : [initialData.category],
-        meal: initialData.meal || ['Lunch'],
-        image: initialData.image || '',
+        meal: initialData.meal || ["Lunch"],
+        image: initialData.image || "",
         imageBase64: undefined,
         placeholderIcon:
           (initialData.placeholderIcon as
-            | MenuItemPlaceholderIconKey
-            | undefined) ||
+            MenuItemPlaceholderIconKey | undefined) ||
           extractMenuItemPlaceholderIconKey(initialData.cardBgColor) ||
           DEFAULT_MENU_ITEM_PLACEHOLDER_ICON,
         availability: initialData.availability !== false,
         modifiers: initialData.modifierGroupIds || [],
-        recipe: initialData.recipe || []
-      }
-      setFormData(data)
-      setInitialFormData(data)
+        recipe: initialData.recipe || [],
+      };
+      setFormData(data);
+      setInitialFormData(data);
     } else {
       setInitialFormData({
-        name: '',
-        description: '',
-        price: '',
-        cashPrice: '',
+        name: "",
+        description: "",
+        price: "",
+        cashPrice: "",
         categories: [],
-        meal: ['Lunch'],
-        image: '',
+        meal: ["Lunch"],
+        image: "",
         imageBase64: undefined,
         placeholderIcon: DEFAULT_MENU_ITEM_PLACEHOLDER_ICON,
         availability: true,
         modifiers: [],
-        recipe: []
-      })
+        recipe: [],
+      });
     }
-  }, [initialData, isDualPricing, dualPricingPercentage])
+  }, [initialData, isDualPricing, dualPricingPercentage]);
 
   useEffect(() => {
     if (initialFormData) {
       setHasChanges(
-        JSON.stringify(formData) !== JSON.stringify(initialFormData)
-      )
+        JSON.stringify(formData) !== JSON.stringify(initialFormData),
+      );
     }
-  }, [formData, initialFormData])
+  }, [formData, initialFormData]);
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<MenuItemFormData> = {}
-    if (!formData.name.trim()) newErrors.name = 'Name is required'
+    const newErrors: Partial<MenuItemFormData> = {};
+    if (!formData.name.trim()) newErrors.name = "Name is required";
     if (!formData.price.trim()) {
-      newErrors.price = 'Price is required'
+      newErrors.price = "Price is required";
     } else if (
       isNaN(parseFloat(formData.price)) ||
       parseFloat(formData.price) < 0
     ) {
-      newErrors.price = 'Price must be a valid positive number'
+      newErrors.price = "Price must be a valid positive number";
     }
     if (isDualPricing && !formData.cashPrice.trim()) {
-      newErrors.cashPrice = 'Cash price is required for dual pricing'
+      newErrors.cashPrice = "Cash price is required for dual pricing";
     } else if (
       formData.cashPrice &&
       (isNaN(parseFloat(formData.cashPrice)) ||
         parseFloat(formData.cashPrice) < 0)
     ) {
-      newErrors.cashPrice = 'Cash price must be a valid positive number'
+      newErrors.cashPrice = "Cash price must be a valid positive number";
     }
     if (formData.categories.length === 0) {
-      ;(newErrors as any).categories = 'Please select at least one category'
+      (newErrors as any).categories = "Please select at least one category";
     }
-    setErrors(newErrors)
-    const errorKeys = Object.keys(newErrors)
+    setErrors(newErrors);
+    const errorKeys = Object.keys(newErrors);
     if (errorKeys.length > 0) {
       // Name the failing field(s) in the toast instead of a generic message.
-      const labels = FIELD_PRIORITY.filter(k => errorKeys.includes(k)).map(
-        k => FIELD_LABELS[k]
-      )
+      const labels = FIELD_PRIORITY.filter((k) => errorKeys.includes(k)).map(
+        (k) => FIELD_LABELS[k],
+      );
       show({
-        title: 'Validation Error',
+        title: "Validation Error",
         message: labels.length
-          ? `Please fix: ${labels.join(', ')}.`
-          : 'Please correct the highlighted fields before saving.',
-        type: 'error'
-      })
+          ? `Please fix: ${labels.join(", ")}.`
+          : "Please correct the highlighted fields before saving.",
+        type: "error",
+      });
       // Scroll the first invalid field into view so it isn't stuck off-screen.
-      const firstKey = FIELD_PRIORITY.find(k => errorKeys.includes(k))
-      const offset = firstKey ? fieldOffsetsRef.current[firstKey] : undefined
-      if (typeof offset === 'number') {
+      const firstKey = FIELD_PRIORITY.find((k) => errorKeys.includes(k));
+      const offset = firstKey ? fieldOffsetsRef.current[firstKey] : undefined;
+      if (typeof offset === "number") {
         scrollRef.current?.scrollTo({
           y: Math.max(0, offset - s(20)),
-          animated: true
-        })
+          animated: true,
+        });
       }
     }
-    return errorKeys.length === 0
-  }
+    return errorKeys.length === 0;
+  };
 
   const pickImage = async () => {
     const permissionResult =
-      await ImagePicker.requestMediaLibraryPermissionsAsync()
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permissionResult.granted === false) {
       Alert.alert(
-        'Permission Required',
-        'Permission to access camera roll is required!'
-      )
-      return
+        "Permission Required",
+        "Permission to access camera roll is required!",
+      );
+      return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
-      base64: true
-    })
+      base64: true,
+    });
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0]
-      setFormData(prev => ({
+      const asset = result.assets[0];
+      setFormData((prev) => ({
         ...prev,
         imageBase64: asset.base64 || undefined,
-        image: asset.base64 ? '' : asset.uri
-      }))
+        image: asset.base64 ? "" : asset.uri,
+      }));
     }
-  }
+  };
 
   const removeImage = () => {
-    setFormData(prev => ({ ...prev, image: '', imageBase64: undefined }))
-  }
+    setFormData((prev) => ({ ...prev, image: "", imageBase64: undefined }));
+  };
 
   const getImageSource = (): any => {
     if (formData.imageBase64)
-      return { uri: `data:image/jpeg;base64,${formData.imageBase64}` }
+      return { uri: `data:image/jpeg;base64,${formData.imageBase64}` };
     if (formData.image) {
       if (MENU_IMAGE_MAP[formData.image as keyof typeof MENU_IMAGE_MAP]) {
-        return MENU_IMAGE_MAP[formData.image as keyof typeof MENU_IMAGE_MAP]
+        return MENU_IMAGE_MAP[formData.image as keyof typeof MENU_IMAGE_MAP];
       }
-      return { uri: formData.image }
+      return { uri: formData.image };
     }
-    return undefined
-  }
+    return undefined;
+  };
 
   const SelectedPlaceholderIcon = useMemo(
     () => getMenuItemPlaceholderIcon(formData.placeholderIcon),
-    [formData.placeholderIcon]
-  )
+    [formData.placeholderIcon],
+  );
 
   const handleSave = () => {
-    if (!validateForm()) return
-    setShowConfirmation(true)
-  }
+    if (!validateForm()) return;
+    setShowConfirmation(true);
+  };
 
   const confirmSave = async () => {
-    setShowConfirmation(false)
-    const payload: Omit<MenuItemType, 'id'> = {
+    setShowConfirmation(false);
+    const payload: Omit<MenuItemType, "id"> = {
       name: formData.name.trim(),
       description: formData.description.trim() || undefined,
       price: parseFloat(formData.price),
@@ -357,245 +360,258 @@ const ItemForm: React.FC<ItemFormProps> = ({
       availability: formData.availability,
       modifierGroupIds:
         formData.modifiers.length > 0 ? formData.modifiers : undefined,
-      recipe: formData.recipe
-    }
-    const success = await onSubmit(payload)
+      recipe: formData.recipe,
+    };
+    const success = await onSubmit(payload);
     if (success) {
-      hasSavedRef.current = true
-      setHasChanges(false)
-      if (router.canGoBack()) router.back()
+      hasSavedRef.current = true;
+      setHasChanges(false);
+      if (router.canGoBack()) router.back();
     }
-  }
+  };
 
   const toggleCategory = (categoryName: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       categories: prev.categories.includes(categoryName)
-        ? prev.categories.filter(c => c !== categoryName)
-        : [...prev.categories, categoryName]
-    }))
-  }
+        ? prev.categories.filter((c) => c !== categoryName)
+        : [...prev.categories, categoryName],
+    }));
+  };
 
-  const toggleMeal = (meal: MenuItemType['meal'][number]) => {
-    setFormData(prev => ({
+  const toggleMeal = (meal: MenuItemType["meal"][number]) => {
+    setFormData((prev) => ({
       ...prev,
       meal: prev.meal.includes(meal)
-        ? prev.meal.filter(m => m !== meal)
-        : [...prev.meal, meal]
-    }))
-  }
+        ? prev.meal.filter((m) => m !== meal)
+        : [...prev.meal, meal],
+    }));
+  };
 
   const toggleModifier = (modifierId: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       modifiers: prev.modifiers.includes(modifierId)
-        ? prev.modifiers.filter(m => m !== modifierId)
-        : [...prev.modifiers, modifierId]
-    }))
-  }
+        ? prev.modifiers.filter((m) => m !== modifierId)
+        : [...prev.modifiers, modifierId],
+    }));
+  };
 
   const toggleModifierExpand = (modifierId: string) => {
-    setExpandedModifiers(prev => ({ ...prev, [modifierId]: !prev[modifierId] }))
-  }
+    setExpandedModifiers((prev) => ({
+      ...prev,
+      [modifierId]: !prev[modifierId],
+    }));
+  };
 
   const openInventorySelection = () => {
-    setInventorySearchQuery('')
-    inventorySelectionSheetRef.current?.expand()
-  }
+    setInventorySearchQuery("");
+    inventorySelectionSheetRef.current?.expand();
+  };
 
   const selectInventoryItem = (inventoryItemId: string) => {
     if (editingRecipeItemIndex !== null) {
-      const oldItem = formData.recipe[editingRecipeItemIndex]
-      setFormData(prev => ({
+      const oldItem = formData.recipe[editingRecipeItemIndex];
+      setFormData((prev) => ({
         ...prev,
         recipe: prev.recipe.map((item, index) =>
-          index === editingRecipeItemIndex ? { ...item, inventoryItemId } : item
-        )
-      }))
-      setRecipeQuantities(prev => {
-        const next = { ...prev }
+          index === editingRecipeItemIndex
+            ? { ...item, inventoryItemId }
+            : item,
+        ),
+      }));
+      setRecipeQuantities((prev) => {
+        const next = { ...prev };
         if (next[oldItem.inventoryItemId]) {
-          next[inventoryItemId] = next[oldItem.inventoryItemId]
-          delete next[oldItem.inventoryItemId]
+          next[inventoryItemId] = next[oldItem.inventoryItemId];
+          delete next[oldItem.inventoryItemId];
         }
-        return next
-      })
-      setEditingRecipeItemIndex(null)
+        return next;
+      });
+      setEditingRecipeItemIndex(null);
     } else {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        recipe: [...prev.recipe, { inventoryItemId, quantity: 1 }]
-      }))
+        recipe: [...prev.recipe, { inventoryItemId, quantity: 1 }],
+      }));
     }
-    inventorySelectionSheetRef.current?.close()
-  }
+    inventorySelectionSheetRef.current?.close();
+  };
 
   const updateRecipeItemQuantity = (index: number, quantity: string) => {
-    const item = formData.recipe[index]
-    setRecipeQuantities(prev => ({ ...prev, [item.inventoryItemId]: quantity }))
-    setFormData(prev => ({
+    const item = formData.recipe[index];
+    setRecipeQuantities((prev) => ({
+      ...prev,
+      [item.inventoryItemId]: quantity,
+    }));
+    setFormData((prev) => ({
       ...prev,
       recipe: prev.recipe.map((item, i) =>
-        i === index ? { ...item, quantity: parseFloat(quantity) || 0 } : item
-      )
-    }))
-  }
+        i === index ? { ...item, quantity: parseFloat(quantity) || 0 } : item,
+      ),
+    }));
+  };
 
   const removeRecipeItem = (index: number) => {
-    const itemToRemove = formData.recipe[index]
-    setRecipeQuantities(prev => {
-      const next = { ...prev }
-      delete next[itemToRemove.inventoryItemId]
-      return next
-    })
-    setFormData(prev => ({
+    const itemToRemove = formData.recipe[index];
+    setRecipeQuantities((prev) => {
+      const next = { ...prev };
+      delete next[itemToRemove.inventoryItemId];
+      return next;
+    });
+    setFormData((prev) => ({
       ...prev,
-      recipe: prev.recipe.filter((_, i) => i !== index)
-    }))
-  }
+      recipe: prev.recipe.filter((_, i) => i !== index),
+    }));
+  };
 
   const filteredInventoryItems = useMemo(() => {
-    if (!inventorySearchQuery.trim()) return inventoryItems
-    const query = inventorySearchQuery.toLowerCase()
+    if (!inventorySearchQuery.trim()) return inventoryItems;
+    const query = inventorySearchQuery.toLowerCase();
     return inventoryItems.filter(
-      item =>
+      (item) =>
         item.name.toLowerCase().includes(query) ||
-        item.category.toLowerCase().includes(query)
-    )
-  }, [inventorySearchQuery, inventoryItems])
+        item.category.toLowerCase().includes(query),
+    );
+  }, [inventorySearchQuery, inventoryItems]);
 
   const groupedInventoryItems = useMemo(() => {
-    const map: Record<string, typeof inventoryItems> = {}
+    const map: Record<string, typeof inventoryItems> = {};
     for (const item of filteredInventoryItems) {
-      const first = (item.name || '?')[0].toUpperCase()
-      const key = /[A-Z]/.test(first) ? first : '#'
-      if (!map[key]) map[key] = []
-      map[key].push(item)
+      const first = (item.name || "?")[0].toUpperCase();
+      const key = /[A-Z]/.test(first) ? first : "#";
+      if (!map[key]) map[key] = [];
+      map[key].push(item);
     }
     const letters = Object.keys(map).sort((a, b) => {
-      if (a === '#') return 1
-      if (b === '#') return -1
-      return a.localeCompare(b)
-    })
-    return letters.map(letter => ({ title: letter, data: map[letter] }))
-  }, [filteredInventoryItems])
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    });
+    return letters.map((letter) => ({ title: letter, data: map[letter] }));
+  }, [filteredInventoryItems]);
 
   const filteredModifierGroups = useMemo(() => {
-    const query = modifierSearch.toLowerCase()
+    const query = modifierSearch.toLowerCase();
     const matchingGroups = !modifierSearch.trim()
       ? modifierGroups
       : modifierGroups.filter(
-          m =>
+          (m) =>
             m.name.toLowerCase().includes(query) ||
-            (m.description || '').toLowerCase().includes(query)
-        )
+            (m.description || "").toLowerCase().includes(query),
+        );
 
     return [...matchingGroups].sort((a, b) => {
       const orderDiff =
         (a.displayOrder ?? Number.MAX_SAFE_INTEGER) -
-        (b.displayOrder ?? Number.MAX_SAFE_INTEGER)
-      if (orderDiff !== 0) return orderDiff
-      return a.name.localeCompare(b.name)
-    })
-  }, [modifierSearch, modifierGroups])
+        (b.displayOrder ?? Number.MAX_SAFE_INTEGER);
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
+  }, [modifierSearch, modifierGroups]);
 
   const selectedModifierGroups = useMemo(
     () =>
       formData.modifiers
-        .map(modifierId => modifierGroups.find(m => m.id === modifierId))
+        .map((modifierId) => modifierGroups.find((m) => m.id === modifierId))
         .filter((modifier): modifier is (typeof modifierGroups)[number] =>
-          Boolean(modifier)
+          Boolean(modifier),
         ),
-    [formData.modifiers, modifierGroups]
-  )
+    [formData.modifiers, modifierGroups],
+  );
 
   const getInventoryItemName = (id: string) =>
-    inventoryItems.find(i => i.id === id)?.name || 'Unknown Item'
+    inventoryItems.find((i) => i.id === id)?.name || "Unknown Item";
   const getInventoryItemUnit = (id: string) =>
-    inventoryItems.find(i => i.id === id)?.unit || ''
+    inventoryItems.find((i) => i.id === id)?.unit || "";
 
   const handleAddIngredient = (ingredient: RecipeItem) => {
     if (
       !formData.recipe.some(
-        item => item.inventoryItemId === ingredient.inventoryItemId
+        (item) => item.inventoryItemId === ingredient.inventoryItemId,
       )
     ) {
-      setFormData(prev => ({ ...prev, recipe: [...prev.recipe, ingredient] }))
+      setFormData((prev) => ({
+        ...prev,
+        recipe: [...prev.recipe, ingredient],
+      }));
     } else {
-      Alert.alert('Duplicate Item', 'This ingredient is already in the recipe.')
+      Alert.alert(
+        "Duplicate Item",
+        "This ingredient is already in the recipe.",
+      );
     }
-  }
+  };
 
   const renderInventoryBackdrop = useMemo(
-    () => (backdropProps: any) =>
-      (
-        <BottomSheetBackdrop
-          {...backdropProps}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
-    []
-  )
+    () => (backdropProps: any) => (
+      <BottomSheetBackdrop
+        {...backdropProps}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
+    [],
+  );
 
-  const selectedStore = selectedStoreForPricing
-  const currentLocationId = selectedStore?.id
+  const selectedStore = selectedStoreForPricing;
+  const currentLocationId = selectedStore?.id;
 
   const handleCashPriceChange = (text: string) => {
-    setFormData(prev => {
-      const updated = { ...prev, cashPrice: text }
+    setFormData((prev) => {
+      const updated = { ...prev, cashPrice: text };
       if (isDualPricing && text) {
-        const cashVal = parseFloat(text)
+        const cashVal = parseFloat(text);
         if (!isNaN(cashVal) && cashVal >= 0) {
           updated.price = (
             cashVal *
             (1 + dualPricingPercentage! / 100)
-          ).toFixed(2)
+          ).toFixed(2);
         }
       }
-      return updated
-    })
-  }
+      return updated;
+    });
+  };
 
   const handleCardPriceChange = (text: string) => {
-    setFormData(prev => ({ ...prev, price: text }))
-  }
+    setFormData((prev) => ({ ...prev, price: text }));
+  };
 
   const availableCategories = categories
     .filter(
-      cat =>
+      (cat) =>
         cat.isActive &&
         // Global categories (location_id null) are the normal case for a
         // single-location merchant — include them alongside this location's
         // local categories. Do NOT filter global categories out.
-        (cat.location_id == null || cat.location_id === currentLocationId)
+        (cat.location_id == null || cat.location_id === currentLocationId),
     )
     .sort((a, b) => {
       // Global categories first (mirrors the web grouping), then display order
-      const ag = a.location_id == null ? 0 : 1
-      const bg = b.location_id == null ? 0 : 1
-      if (ag !== bg) return ag - bg
-      return a.order - b.order
-    })
+      const ag = a.location_id == null ? 0 : 1;
+      const bg = b.location_id == null ? 0 : 1;
+      if (ag !== bg) return ag - bg;
+      return a.order - b.order;
+    });
 
   // Section label style
   const sectionLabel = {
     fontSize: s(10),
-    fontWeight: '600' as const,
+    fontWeight: "600" as const,
     color: colors.muted,
-    textTransform: 'uppercase' as const,
+    textTransform: "uppercase" as const,
     letterSpacing: 0.8,
-    marginBottom: s(8)
-  }
+    marginBottom: s(8),
+  };
   const card = {
     backgroundColor: colors.card,
     borderRadius: s(12),
     borderWidth: 1,
     borderColor: colors.border,
     padding: s(12),
-    marginBottom: s(12)
-  }
+    marginBottom: s(12),
+  };
   const inputStyle = {
     backgroundColor: colors.screen,
     borderWidth: 1,
@@ -604,31 +620,33 @@ const ItemForm: React.FC<ItemFormProps> = ({
     paddingHorizontal: s(10),
     paddingVertical: s(8),
     fontSize: s(13),
-    color: colors.heading
-  }
+    color: colors.heading,
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.panel }}>
       {/* Header */}
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
           paddingHorizontal: s(16),
           paddingVertical: s(12),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
-          backgroundColor: colors.panel
+          backgroundColor: colors.panel,
         }}
       >
         <Text
-          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
         >
           {title}
         </Text>
 
-        <View style={{ flexDirection: 'row', gap: s(10), alignItems: 'center' }}>
+        <View
+          style={{ flexDirection: "row", gap: s(10), alignItems: "center" }}
+        >
           <TouchableOpacity
             onPress={() => router.back()}
             style={{
@@ -637,61 +655,74 @@ const ItemForm: React.FC<ItemFormProps> = ({
               borderRadius: s(8),
               backgroundColor: colors.card,
               borderWidth: 1,
-              borderColor: colors.border
+              borderColor: colors.border,
             }}
           >
             <Text
-              style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}
+              style={{
+                fontSize: s(12),
+                fontWeight: "600",
+                color: colors.label,
+              }}
             >
               Cancel
             </Text>
           </TouchableOpacity>
           {initialData && onDelete && (
             <TouchableOpacity
-              onPress={() => setShowDeleteDialog(true)}
+              onPress={disabled ? undefined : () => setShowDeleteDialog(true)}
+              disabled={disabled}
               style={{
                 paddingHorizontal: s(12),
                 paddingVertical: s(6),
                 borderRadius: s(8),
-                backgroundColor: colors.danger + '15',
+                backgroundColor: colors.danger + "15",
                 borderWidth: 1,
-                borderColor: colors.danger + '30'
+                borderColor: colors.danger + "30",
+                opacity: disabled ? 0.4 : 1,
               }}
             >
-              <Trash2 size={s(14)} color={colors.danger} />
+              <Trash2
+                size={s(14)}
+                color={disabled ? colors.muted : colors.danger}
+              />
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
+            onPress={disabled ? undefined : handleSave}
+            disabled={isSaving || disabled}
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
+              flexDirection: "row",
+              alignItems: "center",
               gap: s(6),
               paddingHorizontal: s(14),
               paddingVertical: s(6),
               borderRadius: s(8),
               backgroundColor: colors.teal,
-              opacity: isSaving ? 0.7 : 1
+              opacity: isSaving ? 0.7 : disabled ? 0.4 : 1,
             }}
           >
             {isSaving ? (
-              <ActivityIndicator size='small' color={colors.onSolid} />
+              <ActivityIndicator size="small" color={colors.onSolid} />
             ) : (
               <Check size={s(14)} color={colors.onSolid} />
             )}
             <Text
-              style={{ fontSize: s(12), fontWeight: '600', color: colors.onSolid }}
+              style={{
+                fontSize: s(12),
+                fontWeight: "600",
+                color: colors.onSolid,
+              }}
             >
-              {isSaving ? 'Saving...' : submitButtonLabel}
+              {isSaving ? "Saving..." : submitButtonLabel}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, flexDirection: 'row' }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1, flexDirection: "row" }}
       >
         {/* Left: Form */}
         <ScrollView
@@ -703,8 +734,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
           {/* Basic Info */}
           <View
             style={card}
-            onLayout={e => {
-              fieldOffsetsRef.current.name = e.nativeEvent.layout.y
+            onLayout={(e) => {
+              fieldOffsetsRef.current.name = e.nativeEvent.layout.y;
             }}
           >
             <Text style={sectionLabel}>Basic Information</Text>
@@ -712,7 +743,11 @@ const ItemForm: React.FC<ItemFormProps> = ({
             {/* Name */}
             <View style={{ marginBottom: s(10) }}>
               <Text
-                style={{ fontSize: s(11), color: colors.label, marginBottom: s(4) }}
+                style={{
+                  fontSize: s(11),
+                  color: colors.label,
+                  marginBottom: s(4),
+                }}
               >
                 Name *
               </Text>
@@ -720,18 +755,22 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 autoFocus={false}
                 style={[
                   inputStyle,
-                  errors.name ? { borderColor: colors.danger } : {}
+                  errors.name ? { borderColor: colors.danger } : {},
                 ]}
-                placeholder='Enter item name'
+                placeholder="Enter item name"
                 placeholderTextColor={colors.muted}
                 value={formData.name}
-                onChangeText={text =>
-                  setFormData(prev => ({ ...prev, name: text }))
+                onChangeText={(text) =>
+                  setFormData((prev) => ({ ...prev, name: text }))
                 }
               />
               {errors.name && (
                 <Text
-                  style={{ fontSize: s(11), color: colors.danger, marginTop: s(3) }}
+                  style={{
+                    fontSize: s(11),
+                    color: colors.danger,
+                    marginTop: s(3),
+                  }}
                 >
                   {errors.name}
                 </Text>
@@ -741,17 +780,24 @@ const ItemForm: React.FC<ItemFormProps> = ({
             {/* Description */}
             <View style={{ marginBottom: s(10) }}>
               <Text
-                style={{ fontSize: s(11), color: colors.label, marginBottom: s(4) }}
+                style={{
+                  fontSize: s(11),
+                  color: colors.label,
+                  marginBottom: s(4),
+                }}
               >
                 Description
               </Text>
               <TextInput
-                style={[inputStyle, { height: s(70), textAlignVertical: 'top' }]}
-                placeholder='Enter item description'
+                style={[
+                  inputStyle,
+                  { height: s(70), textAlignVertical: "top" },
+                ]}
+                placeholder="Enter item description"
                 placeholderTextColor={colors.muted}
                 value={formData.description}
-                onChangeText={text =>
-                  setFormData(prev => ({ ...prev, description: text }))
+                onChangeText={(text) =>
+                  setFormData((prev) => ({ ...prev, description: text }))
                 }
                 multiline
                 numberOfLines={3}
@@ -761,7 +807,11 @@ const ItemForm: React.FC<ItemFormProps> = ({
             {/* Image */}
             <View>
               <Text
-                style={{ fontSize: s(11), color: colors.label, marginBottom: s(6) }}
+                style={{
+                  fontSize: s(11),
+                  color: colors.label,
+                  marginBottom: s(6),
+                }}
               >
                 Image
               </Text>
@@ -770,47 +820,51 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   style={{
                     marginBottom: s(8),
                     borderRadius: s(8),
-                    overflow: 'hidden',
-                    position: 'relative'
+                    overflow: "hidden",
+                    position: "relative",
                   }}
                 >
                   <Image
                     source={getImageSource()}
-                    style={{ width: '100%', height: s(120), borderRadius: s(8) }}
-                    resizeMode='cover'
+                    style={{
+                      width: "100%",
+                      height: s(120),
+                      borderRadius: s(8),
+                    }}
+                    resizeMode="cover"
                   />
                   <TouchableOpacity
                     onPress={removeImage}
                     style={{
-                      position: 'absolute',
+                      position: "absolute",
                       top: s(6),
                       right: s(6),
                       backgroundColor: colors.danger,
                       borderRadius: s(20),
-                      padding: s(4)
+                      padding: s(4),
                     }}
                   >
-                    <X size={s(12)} color='#fff' />
+                    <X size={s(12)} color="#fff" />
                   </TouchableOpacity>
                 </View>
               )}
               <TouchableOpacity
                 onPress={pickImage}
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
                   gap: s(6),
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
                   borderRadius: s(8),
-                  paddingVertical: s(8)
+                  paddingVertical: s(8),
                 }}
               >
                 <Camera size={s(14)} color={colors.muted} />
                 <Text style={{ fontSize: s(12), color: colors.label }}>
-                  {getImageSource() ? 'Change Image' : 'Pick Image'}
+                  {getImageSource() ? "Change Image" : "Pick Image"}
                 </Text>
               </TouchableOpacity>
 
@@ -820,24 +874,29 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     style={{
                       fontSize: s(11),
                       color: colors.label,
-                      marginBottom: s(6)
+                      marginBottom: s(6),
                     }}
                   >
                     Placeholder Icon
                   </Text>
                   <View
-                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: s(8),
+                    }}
                   >
-                    {MENU_ITEM_PLACEHOLDER_ICON_OPTIONS.map(option => {
-                      const isSelected = formData.placeholderIcon === option.key
-                      const Icon = getMenuItemPlaceholderIcon(option.key)
+                    {MENU_ITEM_PLACEHOLDER_ICON_OPTIONS.map((option) => {
+                      const isSelected =
+                        formData.placeholderIcon === option.key;
+                      const Icon = getMenuItemPlaceholderIcon(option.key);
                       return (
                         <TouchableOpacity
                           key={option.key}
                           onPress={() =>
-                            setFormData(prev => ({
+                            setFormData((prev) => ({
                               ...prev,
-                              placeholderIcon: option.key
+                              placeholderIcon: option.key,
                             }))
                           }
                           style={{
@@ -850,9 +909,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                             backgroundColor: isSelected
                               ? `${colors.teal}18`
                               : colors.screen,
-                            alignItems: 'center',
+                            alignItems: "center",
                             paddingVertical: s(8),
-                            gap: s(4)
+                            gap: s(4),
                           }}
                         >
                           <Icon
@@ -863,14 +922,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
                           <Text
                             style={{
                               fontSize: s(10),
-                              fontWeight: '600',
-                              color: isSelected ? colors.teal : colors.label
+                              fontWeight: "600",
+                              color: isSelected ? colors.teal : colors.label,
                             }}
                           >
                             {option.label}
                           </Text>
                         </TouchableOpacity>
-                      )
+                      );
                     })}
                   </View>
                 </View>
@@ -881,9 +940,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
           {/* Pricing */}
           <View
             style={card}
-            onLayout={e => {
-              fieldOffsetsRef.current.price = e.nativeEvent.layout.y
-              fieldOffsetsRef.current.cashPrice = e.nativeEvent.layout.y
+            onLayout={(e) => {
+              fieldOffsetsRef.current.price = e.nativeEvent.layout.y;
+              fieldOffsetsRef.current.cashPrice = e.nativeEvent.layout.y;
             }}
           >
             <Text style={sectionLabel}>Pricing</Text>
@@ -891,19 +950,19 @@ const ItemForm: React.FC<ItemFormProps> = ({
             {isDualPricing && (
               <View
                 style={{
-                  backgroundColor: colors.teal + '12',
+                  backgroundColor: colors.teal + "12",
                   borderWidth: 1,
-                  borderColor: colors.teal + '40',
+                  borderColor: colors.teal + "40",
                   borderRadius: s(8),
                   padding: s(8),
-                  marginBottom: s(10)
+                  marginBottom: s(10),
                 }}
               >
                 <Text
                   style={{
                     fontSize: s(11),
                     color: colors.teal,
-                    fontWeight: '600'
+                    fontWeight: "600",
                   }}
                 >
                   Dual Pricing Active ({dualPricingPercentage}%)
@@ -911,56 +970,64 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 <Text
                   style={{
                     fontSize: s(11),
-                    color: colors.teal + 'aa',
-                    marginTop: s(2)
+                    color: colors.teal + "aa",
+                    marginTop: s(2),
                   }}
                 >
-                  Edit Cash Price — Card Price is automatically{' '}
+                  Edit Cash Price — Card Price is automatically{" "}
                   {dualPricingPercentage}% higher
                 </Text>
               </View>
             )}
 
-            <View style={{ flexDirection: 'row', gap: s(10) }}>
+            <View style={{ flexDirection: "row", gap: s(10) }}>
               <View style={{ flex: 1 }}>
                 <Text
-                  style={{ fontSize: s(11), color: colors.label, marginBottom: s(4) }}
+                  style={{
+                    fontSize: s(11),
+                    color: colors.label,
+                    marginBottom: s(4),
+                  }}
                 >
-                  {isDualPricing ? 'Cash Price *' : 'Cash Price (Optional)'}
+                  {isDualPricing ? "Cash Price *" : "Cash Price (Optional)"}
                 </Text>
                 <View
                   style={[
                     inputStyle,
                     {
-                      flexDirection: 'row',
-                      alignItems: 'center',
+                      flexDirection: "row",
+                      alignItems: "center",
                       paddingVertical: 0,
-                      height: s(38)
+                      height: s(38),
                     },
-                    errors.cashPrice ? { borderColor: colors.danger } : {}
+                    errors.cashPrice ? { borderColor: colors.danger } : {},
                   ]}
                 >
                   <Text
                     style={{
                       fontSize: s(13),
                       color: colors.muted,
-                      marginRight: s(4)
+                      marginRight: s(4),
                     }}
                   >
                     $
                   </Text>
                   <TextInput
                     style={{ flex: 1, fontSize: s(13), color: colors.heading }}
-                    placeholder='0.00'
+                    placeholder="0.00"
                     placeholderTextColor={colors.muted}
                     value={formData.cashPrice}
                     onChangeText={handleCashPriceChange}
-                    keyboardType='numeric'
+                    keyboardType="numeric"
                   />
                 </View>
                 {errors.cashPrice && (
                   <Text
-                    style={{ fontSize: s(11), color: colors.danger, marginTop: s(3) }}
+                    style={{
+                      fontSize: s(11),
+                      color: colors.danger,
+                      marginTop: s(3),
+                    }}
                   >
                     {errors.cashPrice}
                   </Text>
@@ -969,45 +1036,53 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
               <View style={{ flex: 1 }}>
                 <Text
-                  style={{ fontSize: s(11), color: colors.label, marginBottom: s(4) }}
+                  style={{
+                    fontSize: s(11),
+                    color: colors.label,
+                    marginBottom: s(4),
+                  }}
                 >
-                  {isDualPricing ? 'Card Price (Auto)' : 'Price *'}
+                  {isDualPricing ? "Card Price (Auto)" : "Price *"}
                 </Text>
                 <View
                   style={[
                     inputStyle,
                     {
-                      flexDirection: 'row',
-                      alignItems: 'center',
+                      flexDirection: "row",
+                      alignItems: "center",
                       paddingVertical: 0,
                       height: s(38),
-                      opacity: isDualPricing ? 0.6 : 1
+                      opacity: isDualPricing ? 0.6 : 1,
                     },
-                    errors.price ? { borderColor: colors.danger } : {}
+                    errors.price ? { borderColor: colors.danger } : {},
                   ]}
                 >
                   <Text
                     style={{
                       fontSize: s(13),
                       color: colors.muted,
-                      marginRight: s(4)
+                      marginRight: s(4),
                     }}
                   >
                     $
                   </Text>
                   <TextInput
                     style={{ flex: 1, fontSize: s(13), color: colors.heading }}
-                    placeholder='0.00'
+                    placeholder="0.00"
                     placeholderTextColor={colors.muted}
                     value={formData.price}
                     onChangeText={handleCardPriceChange}
-                    keyboardType='numeric'
+                    keyboardType="numeric"
                     editable={!isDualPricing}
                   />
                 </View>
                 {errors.price && (
                   <Text
-                    style={{ fontSize: s(11), color: colors.danger, marginTop: s(3) }}
+                    style={{
+                      fontSize: s(11),
+                      color: colors.danger,
+                      marginTop: s(3),
+                    }}
                   >
                     {errors.price}
                   </Text>
@@ -1020,17 +1095,17 @@ const ItemForm: React.FC<ItemFormProps> = ({
           <View style={card}>
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between'
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
               }}
             >
               <Text style={sectionLabel}>Availability</Text>
               <TouchableOpacity
                 onPress={() =>
-                  setFormData(prev => ({
+                  setFormData((prev) => ({
                     ...prev,
-                    availability: !prev.availability
+                    availability: !prev.availability,
                   }))
                 }
                 style={{
@@ -1044,8 +1119,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   borderColor: formData.availability
                     ? colors.teal
                     : colors.border,
-                  justifyContent: 'center',
-                  paddingHorizontal: s(2)
+                  justifyContent: "center",
+                  paddingHorizontal: s(2),
                 }}
               >
                 <View
@@ -1054,7 +1129,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     height: s(20),
                     borderRadius: s(10),
                     backgroundColor: colors.onSolid,
-                    alignSelf: formData.availability ? 'flex-end' : 'flex-start'
+                    alignSelf: formData.availability
+                      ? "flex-end"
+                      : "flex-start",
                   }}
                 />
               </TouchableOpacity>
@@ -1064,9 +1141,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
           {/* Meal Types */}
           <View style={card}>
             <Text style={sectionLabel}>Available For</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}>
-              {MEAL_OPTIONS.map(meal => {
-                const selected = formData.meal.includes(meal)
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: s(6) }}>
+              {MEAL_OPTIONS.map((meal) => {
+                const selected = formData.meal.includes(meal);
                 return (
                   <TouchableOpacity
                     key={meal}
@@ -1077,22 +1154,24 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       borderRadius: s(20),
                       borderWidth: 1,
                       backgroundColor: selected
-                        ? colors.teal + '20'
+                        ? colors.teal + "20"
                         : colors.screen,
-                      borderColor: selected ? colors.teal + '60' : colors.border
+                      borderColor: selected
+                        ? colors.teal + "60"
+                        : colors.border,
                     }}
                   >
                     <Text
                       style={{
                         fontSize: s(12),
                         color: selected ? colors.teal : colors.label,
-                        fontWeight: selected ? '600' : '400'
+                        fontWeight: selected ? "600" : "400",
                       }}
                     >
                       {meal}
                     </Text>
                   </TouchableOpacity>
-                )
+                );
               })}
             </View>
           </View>
@@ -1100,31 +1179,31 @@ const ItemForm: React.FC<ItemFormProps> = ({
           {/* Categories */}
           <View
             style={card}
-            onLayout={e => {
-              fieldOffsetsRef.current.categories = e.nativeEvent.layout.y
+            onLayout={(e) => {
+              fieldOffsetsRef.current.categories = e.nativeEvent.layout.y;
             }}
           >
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: s(10)
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: s(10),
               }}
             >
               <Text style={sectionLabel}>Categories</Text>
               <TouchableOpacity
-                onPress={() => router.push('/menu/add-category')}
+                onPress={() => router.push("/menu/add-category")}
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
+                  flexDirection: "row",
+                  alignItems: "center",
                   gap: s(4),
                   paddingHorizontal: s(8),
                   paddingVertical: s(4),
                   borderRadius: s(6),
-                  backgroundColor: colors.teal + '15',
+                  backgroundColor: colors.teal + "15",
                   borderWidth: 1,
-                  borderColor: colors.teal + '40'
+                  borderColor: colors.teal + "40",
                 }}
               >
                 <Plus size={11} color={colors.teal} />
@@ -1132,7 +1211,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   style={{
                     fontSize: 11,
                     color: colors.teal,
-                    fontWeight: '600'
+                    fontWeight: "600",
                   }}
                 >
                   New
@@ -1150,18 +1229,17 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     backgroundColor: colors.screen,
                     borderRadius: 8,
                     padding: 14,
-                    alignItems: 'center'
+                    alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
                       fontSize: 12,
                       color: colors.muted,
-                      textAlign: 'center'
+                      textAlign: "center",
                     }}
                   >
-                    Categories have not loaded yet. Sync the menu and try
-                    again.
+                    Categories have not loaded yet. Sync the menu and try again.
                   </Text>
                 </View>
               ) : (
@@ -1170,30 +1248,30 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     backgroundColor: colors.screen,
                     borderRadius: 8,
                     padding: 14,
-                    alignItems: 'center'
+                    alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
                       fontSize: 12,
                       color: colors.muted,
-                      marginBottom: 8
+                      marginBottom: 8,
                     }}
                   >
                     No categories yet
                   </Text>
                   <TouchableOpacity
-                    onPress={() => router.push('/menu/add-category')}
+                    onPress={() => router.push("/menu/add-category")}
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
+                      flexDirection: "row",
+                      alignItems: "center",
                       gap: 4,
                       paddingHorizontal: 10,
                       paddingVertical: 6,
                       borderRadius: 8,
-                      backgroundColor: colors.teal + '20',
+                      backgroundColor: colors.teal + "20",
                       borderWidth: 1,
-                      borderColor: colors.teal + '50'
+                      borderColor: colors.teal + "50",
                     }}
                   >
                     <Plus size={12} color={colors.teal} />
@@ -1201,7 +1279,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       style={{
                         fontSize: 12,
                         color: colors.teal,
-                        fontWeight: '600'
+                        fontWeight: "600",
                       }}
                     >
                       Create Category
@@ -1210,9 +1288,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 </View>
               )
             ) : (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {availableCategories.map(category => {
-                  const selected = formData.categories.includes(category.name)
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {availableCategories.map((category) => {
+                  const selected = formData.categories.includes(category.name);
                   return (
                     <TouchableOpacity
                       key={category.id}
@@ -1223,14 +1301,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
                         borderRadius: 20,
                         borderWidth: 1,
                         backgroundColor: selected
-                          ? colors.teal + '20'
+                          ? colors.teal + "20"
                           : colors.screen,
                         borderColor: selected
-                          ? colors.teal + '60'
+                          ? colors.teal + "60"
                           : colors.border,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 4
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
                       }}
                     >
                       {selected && <Check size={10} color={colors.teal} />}
@@ -1238,13 +1316,13 @@ const ItemForm: React.FC<ItemFormProps> = ({
                         style={{
                           fontSize: 12,
                           color: selected ? colors.teal : colors.label,
-                          fontWeight: selected ? '600' : '400'
+                          fontWeight: selected ? "600" : "400",
                         }}
                       >
                         {category.name}
                       </Text>
                     </TouchableOpacity>
-                  )
+                  );
                 })}
               </View>
             )}
@@ -1261,60 +1339,60 @@ const ItemForm: React.FC<ItemFormProps> = ({
           <View style={card}>
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 10
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 10,
               }}
             >
               <Text style={sectionLabel}>Modifier Groups</Text>
               <View
-                style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}
+                style={{ flexDirection: "row", gap: 6, alignItems: "center" }}
               >
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
                     borderRadius: 8,
                     paddingHorizontal: 8,
                     paddingVertical: 4,
-                    gap: 4
+                    gap: 4,
                   }}
                 >
                   <Search size={11} color={colors.muted} />
                   <TextInput
                     value={modifierSearch}
                     onChangeText={setModifierSearch}
-                    placeholder='Search...'
+                    placeholder="Search..."
                     placeholderTextColor={colors.muted}
                     style={{
                       fontSize: 12,
                       color: colors.heading,
                       width: 80,
-                      paddingVertical: 2
+                      paddingVertical: 2,
                     }}
                   />
                   {modifierSearch.length > 0 && (
-                    <TouchableOpacity onPress={() => setModifierSearch('')}>
+                    <TouchableOpacity onPress={() => setModifierSearch("")}>
                       <X size={11} color={colors.muted} />
                     </TouchableOpacity>
                   )}
                 </View>
                 <TouchableOpacity
-                  onPress={() => router.push('/menu/add-modifier')}
+                  onPress={() => router.push("/menu/add-modifier")}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     gap: 4,
                     paddingHorizontal: 8,
                     paddingVertical: 4,
                     borderRadius: 6,
-                    backgroundColor: colors.teal + '15',
+                    backgroundColor: colors.teal + "15",
                     borderWidth: 1,
-                    borderColor: colors.teal + '40'
+                    borderColor: colors.teal + "40",
                   }}
                 >
                   <Plus size={11} color={colors.teal} />
@@ -1322,7 +1400,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     style={{
                       fontSize: 11,
                       color: colors.teal,
-                      fontWeight: '600'
+                      fontWeight: "600",
                     }}
                   >
                     New
@@ -1332,10 +1410,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
             </View>
 
             <View style={{ gap: 6 }}>
-              {filteredModifierGroups.map(modifier => {
-                const selected = formData.modifiers.includes(modifier.id)
-                const expanded = !!expandedModifiers[modifier.id]
-                const isRequired = modifier.type === 'required'
+              {filteredModifierGroups.map((modifier) => {
+                const selected = formData.modifiers.includes(modifier.id);
+                const expanded = !!expandedModifiers[modifier.id];
+                const isRequired = modifier.type === "required";
                 return (
                   <View
                     key={modifier.id}
@@ -1343,29 +1421,29 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       borderRadius: 8,
                       borderWidth: 1,
                       borderColor: selected
-                        ? colors.teal + '50'
+                        ? colors.teal + "50"
                         : colors.border,
                       backgroundColor: selected
-                        ? colors.teal + '08'
+                        ? colors.teal + "08"
                         : colors.screen,
-                      overflow: 'hidden'
+                      overflow: "hidden",
                     }}
                   >
                     <View
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
+                        flexDirection: "row",
+                        alignItems: "center",
                         padding: 10,
-                        gap: 8
+                        gap: 8,
                       }}
                     >
                       <TouchableOpacity
                         onPress={() => toggleModifier(modifier.id)}
                         style={{
                           flex: 1,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 8
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
                         }}
                       >
                         <View
@@ -1377,19 +1455,19 @@ const ItemForm: React.FC<ItemFormProps> = ({
                             borderColor: selected ? colors.teal : colors.border,
                             backgroundColor: selected
                               ? colors.teal
-                              : 'transparent',
-                            alignItems: 'center',
-                            justifyContent: 'center'
+                              : "transparent",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
                         >
-                          {selected && <Check size={10} color='#fff' />}
+                          {selected && <Check size={10} color="#fff" />}
                         </View>
                         <Text
                           style={{
                             fontSize: 12,
-                            fontWeight: '600',
+                            fontWeight: "600",
                             color: colors.heading,
-                            flex: 1
+                            flex: 1,
                           }}
                           numberOfLines={1}
                         >
@@ -1401,22 +1479,22 @@ const ItemForm: React.FC<ItemFormProps> = ({
                             paddingVertical: 2,
                             borderRadius: 20,
                             backgroundColor: isRequired
-                              ? colors.danger + '15'
-                              : colors.teal + '15',
+                              ? colors.danger + "15"
+                              : colors.teal + "15",
                             borderWidth: 1,
                             borderColor: isRequired
-                              ? colors.danger + '40'
-                              : colors.teal + '40'
+                              ? colors.danger + "40"
+                              : colors.teal + "40",
                           }}
                         >
                           <Text
                             style={{
                               fontSize: 9,
-                              fontWeight: '700',
-                              color: isRequired ? colors.danger : colors.teal
+                              fontWeight: "700",
+                              color: isRequired ? colors.danger : colors.teal,
                             }}
                           >
-                            {isRequired ? 'Required' : 'Optional'}
+                            {isRequired ? "Required" : "Optional"}
                           </Text>
                         </View>
                       </TouchableOpacity>
@@ -1437,17 +1515,17 @@ const ItemForm: React.FC<ItemFormProps> = ({
                         style={{
                           paddingHorizontal: 10,
                           paddingBottom: 10,
-                          gap: 4
+                          gap: 4,
                         }}
                       >
                         <Text
                           style={{
                             fontSize: 10,
-                            fontWeight: '600',
+                            fontWeight: "600",
                             color: colors.muted,
-                            textTransform: 'uppercase',
+                            textTransform: "uppercase",
                             letterSpacing: 0.5,
-                            marginBottom: 4
+                            marginBottom: 4,
                           }}
                         >
                           Options
@@ -1456,48 +1534,48 @@ const ItemForm: React.FC<ItemFormProps> = ({
                           <View
                             key={option.id}
                             style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "space-between",
                               backgroundColor: colors.card,
                               borderWidth: 1,
                               borderColor: colors.border,
                               borderRadius: 6,
                               paddingHorizontal: 8,
-                              paddingVertical: 5
+                              paddingVertical: 5,
                             }}
                           >
                             <Text style={{ fontSize: 11, color: colors.label }}>
                               {option.name}
                               {option.isDefault ? (
                                 <Text style={{ color: colors.muted }}>
-                                  {' '}
+                                  {" "}
                                   (Default)
                                 </Text>
                               ) : (
-                                ''
+                                ""
                               )}
                             </Text>
                             <Text
                               style={{
                                 fontSize: 11,
-                                fontWeight: '600',
+                                fontWeight: "600",
                                 color:
                                   option.price > 0
                                     ? colors.success
-                                    : colors.muted
+                                    : colors.muted,
                               }}
                             >
                               {option.price > 0
                                 ? `+$${option.price.toFixed(2)}`
-                                : '$0.00'}
+                                : "$0.00"}
                             </Text>
                           </View>
                         ))}
                       </View>
                     )}
                   </View>
-                )
+                );
               })}
             </View>
 
@@ -1505,18 +1583,18 @@ const ItemForm: React.FC<ItemFormProps> = ({
               <View style={{ marginTop: 10, gap: 8 }}>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
                   }}
                 >
                   <Text
                     style={{
                       fontSize: 10,
-                      fontWeight: '600',
+                      fontWeight: "600",
                       color: colors.muted,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
                     }}
                   >
                     Assigned Order
@@ -1527,37 +1605,39 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 </View>
                 <DraggableFlatList
                   data={selectedModifierGroups}
-                  keyExtractor={item => item.id}
+                  keyExtractor={(item) => item.id}
                   scrollEnabled={false}
                   activationDistance={10}
                   onDragEnd={({ data }) =>
-                    setFormData(prev => ({
+                    setFormData((prev) => ({
                       ...prev,
-                      modifiers: data.map(modifier => modifier.id)
+                      modifiers: data.map((modifier) => modifier.id),
                     }))
                   }
                   renderItem={({
                     item,
                     drag,
                     isActive,
-                    getIndex
-                  }: RenderItemParams<(typeof selectedModifierGroups)[number]>) => (
+                    getIndex,
+                  }: RenderItemParams<
+                    (typeof selectedModifierGroups)[number]
+                  >) => (
                     <ScaleDecorator>
                       <View
                         style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
+                          flexDirection: "row",
+                          alignItems: "center",
                           gap: 10,
                           backgroundColor: isActive
-                            ? colors.teal + '10'
+                            ? colors.teal + "10"
                             : colors.card,
                           borderWidth: 1,
                           borderColor: isActive
-                            ? colors.teal + '45'
+                            ? colors.teal + "45"
                             : colors.border,
                           borderRadius: 10,
                           paddingHorizontal: 10,
-                          paddingVertical: 9
+                          paddingVertical: 9,
                         }}
                       >
                         <TouchableOpacity
@@ -1566,7 +1646,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                           style={{
                             padding: 4,
                             borderRadius: 6,
-                            backgroundColor: colors.panel
+                            backgroundColor: colors.panel,
                           }}
                         >
                           <GripVertical size={14} color={colors.muted} />
@@ -1575,20 +1655,18 @@ const ItemForm: React.FC<ItemFormProps> = ({
                           <Text
                             style={{
                               fontSize: 12,
-                              fontWeight: '600',
-                              color: colors.heading
+                              fontWeight: "600",
+                              color: colors.heading,
                             }}
                           >
                             {(getIndex() ?? 0) + 1}. {item.name}
                           </Text>
-                          <Text
-                            style={{ fontSize: 10, color: colors.muted }}
-                          >
-                            {item.type === 'required' ? 'Required' : 'Optional'}
-                            {' • '}
-                            {item.selectionType === 'single'
-                              ? 'Single choice'
-                              : 'Multiple choice'}
+                          <Text style={{ fontSize: 10, color: colors.muted }}>
+                            {item.type === "required" ? "Required" : "Optional"}
+                            {" • "}
+                            {item.selectionType === "single"
+                              ? "Single choice"
+                              : "Multiple choice"}
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -1596,7 +1674,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                           style={{
                             padding: 5,
                             borderRadius: 6,
-                            backgroundColor: colors.danger + '12'
+                            backgroundColor: colors.danger + "12",
                           }}
                         >
                           <X size={12} color={colors.danger} />
@@ -1624,14 +1702,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   backgroundColor: colors.screen,
                   borderRadius: 8,
                   padding: 16,
-                  alignItems: 'center'
+                  alignItems: "center",
                 }}
               >
                 <Text
                   style={{
                     fontSize: 12,
                     color: colors.muted,
-                    marginBottom: 10
+                    marginBottom: 10,
                   }}
                 >
                   No recipe items defined
@@ -1639,15 +1717,15 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 <TouchableOpacity
                   onPress={openInventorySelection}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     gap: 4,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 8,
-                    backgroundColor: colors.teal + '20',
+                    backgroundColor: colors.teal + "20",
                     borderWidth: 1,
-                    borderColor: colors.teal + '50'
+                    borderColor: colors.teal + "50",
                   }}
                 >
                   <Plus size={12} color={colors.teal} />
@@ -1655,7 +1733,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     style={{
                       fontSize: 12,
                       color: colors.teal,
-                      fontWeight: '600'
+                      fontWeight: "600",
                     }}
                   >
                     Add Recipe Item
@@ -1673,23 +1751,23 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       borderColor: colors.border,
                       borderRadius: 8,
                       padding: 8,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
                     }}
                   >
                     <TouchableOpacity
                       style={{ flex: 1 }}
                       onPress={() => {
-                        setEditingRecipeItemIndex(index)
-                        openInventorySelection()
+                        setEditingRecipeItemIndex(index);
+                        openInventorySelection();
                       }}
                     >
                       <Text
                         style={{
                           fontSize: 12,
-                          fontWeight: '600',
-                          color: colors.heading
+                          fontWeight: "600",
+                          color: colors.heading,
                         }}
                       >
                         {getInventoryItemName(recipeItem.inventoryItemId)}
@@ -1704,10 +1782,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
                         recipeQuantities[recipeItem.inventoryItemId] ??
                         recipeItem.quantity.toString()
                       }
-                      onChangeText={text =>
+                      onChangeText={(text) =>
                         updateRecipeItemQuantity(index, text)
                       }
-                      keyboardType='numeric'
+                      keyboardType="numeric"
                       style={{
                         width: 60,
                         backgroundColor: colors.card,
@@ -1717,17 +1795,17 @@ const ItemForm: React.FC<ItemFormProps> = ({
                         padding: 5,
                         fontSize: 12,
                         color: colors.heading,
-                        textAlign: 'center'
+                        textAlign: "center",
                       }}
-                      placeholder='0'
+                      placeholder="0"
                       placeholderTextColor={colors.muted}
                     />
                     <TouchableOpacity
                       onPress={() => removeRecipeItem(index)}
                       style={{
                         padding: 5,
-                        backgroundColor: colors.danger + '15',
-                        borderRadius: 6
+                        backgroundColor: colors.danger + "15",
+                        borderRadius: 6,
                       }}
                     >
                       <X size={12} color={colors.danger} />
@@ -1737,15 +1815,15 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 <TouchableOpacity
                   onPress={openInventorySelection}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
                     gap: 5,
                     borderWidth: 1,
-                    borderStyle: 'dashed',
+                    borderStyle: "dashed",
                     borderColor: colors.border,
                     borderRadius: 8,
-                    paddingVertical: 8
+                    paddingVertical: 8,
                   }}
                 >
                   <Plus size={13} color={colors.muted} />
@@ -1765,7 +1843,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
             borderLeftWidth: 1,
             borderLeftColor: colors.border,
             backgroundColor: colors.card,
-            padding: 16
+            padding: 16,
           }}
         >
           <Text style={[sectionLabel, { marginBottom: 12 }]}>Preview</Text>
@@ -1777,24 +1855,24 @@ const ItemForm: React.FC<ItemFormProps> = ({
               borderRadius: 12,
               borderWidth: 1,
               borderColor: colors.border,
-              overflow: 'hidden',
-              marginBottom: 12
+              overflow: "hidden",
+              marginBottom: 12,
             }}
           >
             <View
               style={{
-                width: '100%',
+                width: "100%",
                 aspectRatio: 1,
                 backgroundColor: colors.panel,
-                alignItems: 'center',
-                justifyContent: 'center'
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               {getImageSource() ? (
                 <Image
                   source={getImageSource()}
-                  style={{ width: '100%', height: '100%' }}
-                  resizeMode='cover'
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
                 />
               ) : (
                 <SelectedPlaceholderIcon
@@ -1808,21 +1886,21 @@ const ItemForm: React.FC<ItemFormProps> = ({
               <Text
                 style={{
                   fontSize: 13,
-                  fontWeight: '700',
+                  fontWeight: "700",
                   color: colors.heading,
-                  marginBottom: 2
+                  marginBottom: 2,
                 }}
                 numberOfLines={1}
               >
-                {formData.name || 'Item Name'}
+                {formData.name || "Item Name"}
               </Text>
               <Text
-                style={{ fontSize: 14, fontWeight: '800', color: colors.teal }}
+                style={{ fontSize: 14, fontWeight: "800", color: colors.teal }}
               >
                 $
                 {formData.price
                   ? parseFloat(formData.price).toFixed(2)
-                  : '0.00'}
+                  : "0.00"}
               </Text>
               {formData.cashPrice && (
                 <Text
@@ -1840,35 +1918,35 @@ const ItemForm: React.FC<ItemFormProps> = ({
               style={{
                 backgroundColor: colors.screen,
                 borderRadius: 8,
-                padding: 8
+                padding: 8,
               }}
             >
               <Text
                 style={{
                   fontSize: 10,
                   color: colors.muted,
-                  fontWeight: '600',
-                  textTransform: 'uppercase',
+                  fontWeight: "600",
+                  textTransform: "uppercase",
                   letterSpacing: 0.5,
-                  marginBottom: 5
+                  marginBottom: 5,
                 }}
               >
                 Categories
               </Text>
               {formData.categories.length > 0 ? (
                 <View
-                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}
                 >
                   {formData.categories.map((cat, i) => (
                     <View
                       key={i}
                       style={{
-                        backgroundColor: colors.teal + '15',
+                        backgroundColor: colors.teal + "15",
                         borderWidth: 1,
-                        borderColor: colors.teal + '40',
+                        borderColor: colors.teal + "40",
                         paddingHorizontal: 6,
                         paddingVertical: 2,
-                        borderRadius: 20
+                        borderRadius: 20,
                       }}
                     >
                       <Text style={{ fontSize: 10, color: colors.teal }}>
@@ -1888,32 +1966,32 @@ const ItemForm: React.FC<ItemFormProps> = ({
               style={{
                 backgroundColor: colors.screen,
                 borderRadius: 8,
-                padding: 8
+                padding: 8,
               }}
             >
               <Text
                 style={{
                   fontSize: 10,
                   color: colors.muted,
-                  fontWeight: '600',
-                  textTransform: 'uppercase',
+                  fontWeight: "600",
+                  textTransform: "uppercase",
                   letterSpacing: 0.5,
-                  marginBottom: 5
+                  marginBottom: 5,
                 }}
               >
                 Meal Times
               </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
                 {formData.meal.map((m, i) => (
                   <View
                     key={i}
                     style={{
-                      backgroundColor: colors.teal + '15',
+                      backgroundColor: colors.teal + "15",
                       borderWidth: 1,
-                      borderColor: colors.teal + '40',
+                      borderColor: colors.teal + "40",
                       paddingHorizontal: 6,
                       paddingVertical: 2,
-                      borderRadius: 20
+                      borderRadius: 20,
                     }}
                   >
                     <Text style={{ fontSize: 10, color: colors.teal }}>
@@ -1929,18 +2007,18 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 backgroundColor: colors.screen,
                 borderRadius: 8,
                 padding: 8,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between'
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
               }}
             >
               <Text
                 style={{
                   fontSize: 10,
                   color: colors.muted,
-                  fontWeight: '600',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5
+                  fontWeight: "600",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
                 }}
               >
                 Status
@@ -1951,22 +2029,22 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   paddingVertical: 2,
                   borderRadius: 20,
                   backgroundColor: formData.availability
-                    ? colors.teal + '20'
-                    : colors.danger + '15',
+                    ? colors.teal + "20"
+                    : colors.danger + "15",
                   borderWidth: 1,
                   borderColor: formData.availability
-                    ? colors.teal + '50'
-                    : colors.danger + '40'
+                    ? colors.teal + "50"
+                    : colors.danger + "40",
                 }}
               >
                 <Text
                   style={{
                     fontSize: 10,
-                    fontWeight: '700',
-                    color: formData.availability ? colors.teal : colors.danger
+                    fontWeight: "700",
+                    color: formData.availability ? colors.teal : colors.danger,
                   }}
                 >
-                  {formData.availability ? 'Available' : 'Unavailable'}
+                  {formData.availability ? "Available" : "Unavailable"}
                 </Text>
               </View>
             </View>
@@ -1976,64 +2054,64 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 style={{
                   backgroundColor: colors.screen,
                   borderRadius: 8,
-                  padding: 8
+                  padding: 8,
                 }}
               >
                 <Text
                   style={{
                     fontSize: 10,
                     color: colors.muted,
-                    fontWeight: '600',
-                    textTransform: 'uppercase',
+                    fontWeight: "600",
+                    textTransform: "uppercase",
                     letterSpacing: 0.5,
-                    marginBottom: 5
+                    marginBottom: 5,
                   }}
                 >
                   Modifiers
                 </Text>
                 <View
-                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}
                 >
-                  {formData.modifiers.map(id => {
-                    const mod = modifierGroups.find(m => m.id === id)
+                  {formData.modifiers.map((id) => {
+                    const mod = modifierGroups.find((m) => m.id === id);
                     return (
                       <View
                         key={id}
                         style={{
-                          backgroundColor: colors.teal + '15',
+                          backgroundColor: colors.teal + "15",
                           borderWidth: 1,
-                          borderColor: colors.teal + '40',
+                          borderColor: colors.teal + "40",
                           paddingHorizontal: 6,
                           paddingVertical: 2,
-                          borderRadius: 20
+                          borderRadius: 20,
                         }}
                       >
                         <Text style={{ fontSize: 10, color: colors.teal }}>
                           {mod?.name}
                         </Text>
                       </View>
-                    )
+                    );
                   })}
                 </View>
               </View>
             )}
 
-            {formData.description.trim() !== '' && (
+            {formData.description.trim() !== "" && (
               <View
                 style={{
                   backgroundColor: colors.screen,
                   borderRadius: 8,
-                  padding: 8
+                  padding: 8,
                 }}
               >
                 <Text
                   style={{
                     fontSize: 10,
                     color: colors.muted,
-                    fontWeight: '600',
-                    textTransform: 'uppercase',
+                    fontWeight: "600",
+                    textTransform: "uppercase",
                     letterSpacing: 0.5,
-                    marginBottom: 4
+                    marginBottom: 4,
                   }}
                 >
                   Description
@@ -2054,16 +2132,16 @@ const ItemForm: React.FC<ItemFormProps> = ({
       <Modal
         visible={showConfirmation}
         transparent
-        animationType='fade'
+        animationType="fade"
         onRequestClose={() => setShowConfirmation(false)}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24
+            backgroundColor: "rgba(0,0,0,0.5)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
           }}
         >
           <View
@@ -2071,28 +2149,28 @@ const ItemForm: React.FC<ItemFormProps> = ({
               backgroundColor: colors.panel,
               borderRadius: 20,
               padding: 24,
-              width: '100%',
+              width: "100%",
               maxWidth: 400,
               borderWidth: 1,
               borderColor: colors.border,
-              shadowColor: '#000',
+              shadowColor: "#000",
               shadowOffset: { width: 0, height: 8 },
               shadowOpacity: 0.3,
               shadowRadius: 16,
-              elevation: 10
+              elevation: 10,
             }}
           >
             {/* Header */}
-            <View style={{ alignItems: 'center', marginBottom: 18 }}>
+            <View style={{ alignItems: "center", marginBottom: 18 }}>
               <View
                 style={{
                   width: 56,
                   height: 56,
-                  backgroundColor: colors.teal + '20',
+                  backgroundColor: colors.teal + "20",
                   borderRadius: 14,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: 14
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 14,
                 }}
               >
                 <Save size={26} color={colors.teal} strokeWidth={2} />
@@ -2100,25 +2178,25 @@ const ItemForm: React.FC<ItemFormProps> = ({
               <Text
                 style={{
                   fontSize: 18,
-                  fontWeight: '800',
+                  fontWeight: "800",
                   color: colors.heading,
-                  marginBottom: 6
+                  marginBottom: 6,
                 }}
               >
-                {title.includes('Edit') ? 'Save Changes?' : 'Add Menu Item?'}
+                {title.includes("Edit") ? "Save Changes?" : "Add Menu Item?"}
               </Text>
               <Text
                 style={{
                   fontSize: 13,
                   color: colors.label,
-                  textAlign: 'center',
-                  lineHeight: 19
+                  textAlign: "center",
+                  lineHeight: 19,
                 }}
               >
-                {title.includes('Edit')
+                {title.includes("Edit")
                   ? `Update "${formData.name}"`
-                  : `Add "${formData.name || 'this item'}"`}{' '}
-                {title.includes('Edit') ? 'with your changes' : 'to the menu'}
+                  : `Add "${formData.name || "this item"}"`}{" "}
+                {title.includes("Edit") ? "with your changes" : "to the menu"}
               </Text>
             </View>
 
@@ -2129,16 +2207,16 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 borderRadius: 12,
                 padding: 12,
                 marginBottom: 18,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
               }}
             >
               {getImageSource() ? (
                 <Image
                   source={getImageSource()}
                   style={{ width: 52, height: 52, borderRadius: 10 }}
-                  resizeMode='cover'
+                  resizeMode="cover"
                 />
               ) : (
                 <View
@@ -2147,8 +2225,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     height: 52,
                     borderRadius: 10,
                     backgroundColor: colors.card,
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
                   <SelectedPlaceholderIcon
@@ -2162,78 +2240,78 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 <Text
                   style={{
                     fontSize: 14,
-                    fontWeight: '700',
-                    color: colors.heading
+                    fontWeight: "700",
+                    color: colors.heading,
                   }}
                 >
-                  {formData.name || 'Item Name'}
+                  {formData.name || "Item Name"}
                 </Text>
                 <Text
                   style={{ fontSize: 12, color: colors.label, marginTop: 4 }}
                 >
                   {formData.categories.length > 0
-                    ? formData.categories.join(', ')
-                    : 'No categories'}
+                    ? formData.categories.join(", ")
+                    : "No categories"}
                 </Text>
                 <Text
                   style={{
                     fontSize: 13,
-                    fontWeight: '700',
+                    fontWeight: "700",
                     color: colors.teal,
-                    marginTop: 4
+                    marginTop: 4,
                   }}
                 >
-                  ${formData.price || '0.00'}
+                  ${formData.price || "0.00"}
                 </Text>
               </View>
             </View>
 
             {/* Action Buttons */}
-            <View style={{ flexDirection: 'column', gap: 10 }}>
+            <View style={{ flexDirection: "column", gap: 10 }}>
               <TouchableOpacity
                 onPress={confirmSave}
                 disabled={isSaving}
                 style={{
-                  width: '100%',
+                  width: "100%",
                   backgroundColor: colors.teal,
                   borderRadius: 12,
                   paddingVertical: 13,
-                  alignItems: 'center',
+                  alignItems: "center",
                   shadowColor: colors.teal,
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.2,
                   shadowRadius: 8,
                   elevation: 4,
-                  opacity: isSaving ? 0.7 : 1
+                  opacity: isSaving ? 0.7 : 1,
                 }}
               >
                 <Text
                   style={{
                     fontSize: 14,
                     color: colors.onSolid,
-                    fontWeight: '700'
+                    fontWeight: "700",
                   }}
                 >
-                  {isSaving ? 'Saving...' : submitButtonLabel}
+                  {isSaving ? "Saving..." : submitButtonLabel}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowConfirmation(false)}
                 style={{
-                  width: '100%',
+                  width: "100%",
                   backgroundColor: colors.card,
                   borderRadius: 12,
                   borderWidth: 1,
                   borderColor: colors.border,
                   paddingVertical: 13,
-                  alignItems: 'center'
+                  alignItems: "center",
                 }}
               >
                 <Text
                   style={{
                     fontSize: 14,
                     color: colors.label,
-                    fontWeight: '700'
+                    fontWeight: "700",
                   }}
                 >
                   Cancel
@@ -2251,15 +2329,17 @@ const ItemForm: React.FC<ItemFormProps> = ({
       />
       <RecipeIngredientSheet
         ref={recipeSheetRef}
-        existingIds={formData.recipe.map(r => r.inventoryItemId)}
+        existingIds={formData.recipe.map((r) => r.inventoryItemId)}
         currentId={null}
-        onSelect={inventoryItemId => {
-          if (formData.recipe.some(r => r.inventoryItemId === inventoryItemId))
-            return
-          setFormData(prev => ({
+        onSelect={(inventoryItemId) => {
+          if (
+            formData.recipe.some((r) => r.inventoryItemId === inventoryItemId)
+          )
+            return;
+          setFormData((prev) => ({
             ...prev,
-            recipe: [...prev.recipe, { inventoryItemId, quantity: 1 }]
-          }))
+            recipe: [...prev.recipe, { inventoryItemId, quantity: 1 }],
+          }));
         }}
       />
 
@@ -2275,26 +2355,26 @@ const ItemForm: React.FC<ItemFormProps> = ({
           {/* Header */}
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
               paddingHorizontal: 20,
               paddingVertical: 14,
               borderBottomWidth: 1,
-              borderBottomColor: colors.border
+              borderBottomColor: colors.border,
             }}
           >
             <View>
               <Text
                 style={{
                   fontSize: 16,
-                  fontWeight: '700',
-                  color: colors.heading
+                  fontWeight: "700",
+                  color: colors.heading,
                 }}
               >
                 {editingRecipeItemIndex !== null
-                  ? 'Replace Item'
-                  : 'Add Recipe Item'}
+                  ? "Replace Item"
+                  : "Add Recipe Item"}
               </Text>
               <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
                 Select an inventory item
@@ -2302,13 +2382,13 @@ const ItemForm: React.FC<ItemFormProps> = ({
             </View>
             <TouchableOpacity
               onPress={() => {
-                setEditingRecipeItemIndex(null)
-                inventorySelectionSheetRef.current?.close()
+                setEditingRecipeItemIndex(null);
+                inventorySelectionSheetRef.current?.close();
               }}
               style={{
                 padding: 6,
                 borderRadius: 8,
-                backgroundColor: colors.panel
+                backgroundColor: colors.panel,
               }}
             >
               <X size={18} color={colors.label} />
@@ -2319,32 +2399,32 @@ const ItemForm: React.FC<ItemFormProps> = ({
           <View style={{ paddingHorizontal: 20, paddingVertical: 14 }}>
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
+                flexDirection: "row",
+                alignItems: "center",
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
                 borderRadius: 8,
                 paddingHorizontal: 10,
                 paddingVertical: 8,
-                gap: 8
+                gap: 8,
               }}
             >
               <Search size={16} color={colors.label} />
               <TextInput
                 value={inventorySearchQuery}
-                onChangeText={text => setInventorySearchQuery(text.trim())}
-                placeholder='Search by name...'
+                onChangeText={(text) => setInventorySearchQuery(text.trim())}
+                placeholder="Search by name..."
                 placeholderTextColor={colors.label}
                 style={{
                   flex: 1,
                   fontSize: 13,
                   color: colors.heading,
-                  paddingVertical: 2
+                  paddingVertical: 2,
                 }}
               />
               {inventorySearchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setInventorySearchQuery('')}>
+                <TouchableOpacity onPress={() => setInventorySearchQuery("")}>
                   <X size={14} color={colors.label} />
                 </TouchableOpacity>
               )}
@@ -2355,30 +2435,30 @@ const ItemForm: React.FC<ItemFormProps> = ({
             <View
               style={{
                 flex: 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingHorizontal: 20
+                alignItems: "center",
+                justifyContent: "center",
+                paddingHorizontal: 20,
               }}
             >
               <Text
                 style={{
                   fontSize: 14,
                   color: colors.label,
-                  textAlign: 'center'
+                  textAlign: "center",
                 }}
               >
                 {inventorySearchQuery
-                  ? 'No items found'
-                  : 'No inventory items available'}
+                  ? "No items found"
+                  : "No inventory items available"}
               </Text>
             </View>
           ) : (
             <BottomSheetSectionList
               sections={groupedInventoryItems}
-              keyExtractor={item => item.id}
+              keyExtractor={(item) => item.id}
               contentContainerStyle={{
                 paddingHorizontal: 12,
-                paddingBottom: 40
+                paddingBottom: 40,
               }}
               renderSectionHeader={({ section }) => (
                 <View
@@ -2388,15 +2468,15 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     marginBottom: 4,
                     marginTop: 8,
                     borderBottomWidth: 1,
-                    borderBottomColor: colors.border
+                    borderBottomColor: colors.border,
                   }}
                 >
                   <Text
                     style={{
                       color: colors.teal,
                       fontSize: 11,
-                      fontWeight: '700',
-                      letterSpacing: 1
+                      fontWeight: "700",
+                      letterSpacing: 1,
                     }}
                   >
                     {section.title}
@@ -2405,12 +2485,12 @@ const ItemForm: React.FC<ItemFormProps> = ({
               )}
               renderItem={({ item: inventoryItem }) => {
                 const isAlreadyInRecipe = formData.recipe.some(
-                  r => r.inventoryItemId === inventoryItem.id
-                )
+                  (r) => r.inventoryItemId === inventoryItem.id,
+                );
                 const isCurrentlyEditing =
                   editingRecipeItemIndex !== null &&
                   formData.recipe[editingRecipeItemIndex]?.inventoryItemId ===
-                    inventoryItem.id
+                    inventoryItem.id;
                 return (
                   <TouchableOpacity
                     onPress={() => selectInventoryItem(inventoryItem.id)}
@@ -2421,25 +2501,25 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       paddingVertical: 10,
                       borderRadius: 8,
                       borderWidth: 1,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                       backgroundColor: isCurrentlyEditing
-                        ? colors.teal + '10'
+                        ? colors.teal + "10"
                         : colors.card,
                       borderColor: isCurrentlyEditing
                         ? colors.teal
                         : colors.border,
                       opacity:
-                        isAlreadyInRecipe && !isCurrentlyEditing ? 0.6 : 1
+                        isAlreadyInRecipe && !isCurrentlyEditing ? 0.6 : 1,
                     }}
                   >
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
                           fontSize: 12,
-                          fontWeight: '600',
-                          color: colors.heading
+                          fontWeight: "600",
+                          color: colors.heading,
                         }}
                       >
                         {inventoryItem.name}
@@ -2448,7 +2528,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                         style={{
                           fontSize: 11,
                           color: colors.label,
-                          marginTop: 2
+                          marginTop: 2,
                         }}
                       >
                         {inventoryItem.stockQuantity} {inventoryItem.unit} · $
@@ -2458,20 +2538,20 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     {isCurrentlyEditing && (
                       <View
                         style={{
-                          backgroundColor: colors.teal + '20',
+                          backgroundColor: colors.teal + "20",
                           borderWidth: 1,
-                          borderColor: colors.teal + '50',
+                          borderColor: colors.teal + "50",
                           paddingHorizontal: 8,
                           paddingVertical: 3,
                           borderRadius: 6,
-                          marginLeft: 8
+                          marginLeft: 8,
                         }}
                       >
                         <Text
                           style={{
                             fontSize: 10,
                             color: colors.teal,
-                            fontWeight: '600'
+                            fontWeight: "600",
                           }}
                         >
                           Current
@@ -2481,20 +2561,20 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     {isAlreadyInRecipe && !isCurrentlyEditing && (
                       <View
                         style={{
-                          backgroundColor: colors.warning + '20',
+                          backgroundColor: colors.warning + "20",
                           borderWidth: 1,
-                          borderColor: colors.warning + '40',
+                          borderColor: colors.warning + "40",
                           paddingHorizontal: 8,
                           paddingVertical: 3,
                           borderRadius: 6,
-                          marginLeft: 8
+                          marginLeft: 8,
                         }}
                       >
                         <Text
                           style={{
                             fontSize: 10,
                             color: colors.warning,
-                            fontWeight: '600'
+                            fontWeight: "600",
                           }}
                         >
                           Added
@@ -2502,7 +2582,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       </View>
                     )}
                   </TouchableOpacity>
-                )
+                );
               }}
             />
           )}
@@ -2517,16 +2597,16 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
       <DeleteConfirmDialog
         isOpen={showDeleteDialog}
-        title='Delete Item'
-        message='Are you sure you want to delete this item? This action cannot be undone.'
+        title="Delete Item"
+        message="Are you sure you want to delete this item? This action cannot be undone."
         onCancel={() => setShowDeleteDialog(false)}
         onConfirm={() => {
-          setShowDeleteDialog(false)
-          onDelete?.()
+          setShowDeleteDialog(false);
+          onDelete?.();
         }}
       />
     </View>
-  )
-}
+  );
+};
 
-export default ItemForm
+export default ItemForm;
