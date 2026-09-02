@@ -42,6 +42,47 @@ const LANDI_CPL = {
   DIVIDER: 48, // ← solid line width — use NORMAL
 };
 
+/**
+ * Milliseconds before a built-in print is treated as hung. Built-in receipts
+ * are local (no network) and finish in a few seconds even when long, so 15s is
+ * a generous ceiling that still bounds a stuck head or a lost OnPrintListener.
+ */
+const LANDI_PRINT_TIMEOUT_MS = 15_000;
+
+/**
+ * Reject if `p` has not settled within `ms`. A late settle of the original
+ * promise after the timeout has fired is swallowed (single-settle guard), so
+ * the native side finishing slowly can never double-resolve the queue.
+ */
+function raceWithTimeout(
+  p: Promise<unknown>,
+  ms: number,
+  label: string,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+    p.then(
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      },
+      (e) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
 export class LandiDriver implements PrinterDriver {
   readonly supportsRawPrint = false;
   private connected = false;
@@ -116,7 +157,17 @@ export class LandiDriver implements PrinterDriver {
     // (fontSize 28 @ lineSpace 0). 5 lines (~17.5 mm) clears the blade with
     // a small bottom margin; less risks cutting into the last text line.
     calibrated.push({ type: "feed", lines: 5 });
-    await printLandiDocument(JSON.stringify({ ...doc, nodes: calibrated }));
+
+    // Hard timeout so a hung head or a never-firing native OnPrintListener can't
+    // leave the print-queue drain (and any print-in-progress UI) stranded. The
+    // native promise settles inside the SDK's OnPrintListener; if it never does,
+    // we reject here, processJob marks the printer disconnected + retries, and
+    // the queue moves on. A late native resolution afterwards is ignored.
+    await raceWithTimeout(
+      printLandiDocument(JSON.stringify({ ...doc, nodes: calibrated })),
+      LANDI_PRINT_TIMEOUT_MS,
+      "Landi built-in print",
+    );
   }
 
   async openCashDrawer(): Promise<void> {

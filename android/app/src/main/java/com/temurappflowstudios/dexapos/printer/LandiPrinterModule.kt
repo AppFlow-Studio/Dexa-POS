@@ -108,6 +108,14 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun initPrinter(promise: Promise) {
+        // Offload OmniDriver bind + peripheral acquisition to the print worker
+        // thread. Under the New Architecture a @ReactMethod may be dispatched on
+        // a UI-critical thread; serializing init on printExecutor keeps the heavy
+        // OmniDriver setup off it and orders it ahead of the first print job.
+        printExecutor.execute { performInit(promise) }
+    }
+
+    private fun performInit(promise: Promise) {
         try {
             // Idempotent: if a prior init already established the OmniDriver
             // connection, skip the costly re-init. vectorPrinter and cashBox
@@ -205,6 +213,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     fun printDocument(documentJson: String, promise: Promise) {
         printExecutor.execute {
             try {
+                Log.d(TAG, "printDocument: running on thread=${Thread.currentThread().name}")
                 val p = requirePrinter(promise) ?: return@execute
                 val doc = JSONObject(documentJson)
                 val nodes = doc.getJSONArray("nodes")
@@ -255,6 +264,11 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             Log.d(TAG, "VectorPrinter: calling startPrint() (needsCut=$needsCut)")
             vp.startPrint(object : OnPrintListener {
                 override fun onSuccess() {
+                    // Thread audit: if this logs "main", the post-print cut/close
+                    // (incl. cutLatch.await up to 3s) and warmCashBox() run on the
+                    // UI thread — the prime suspect for the on-device touch freeze.
+                    // Confirm here before offloading this body to printExecutor.
+                    Log.d(TAG, "VectorPrinter onSuccess on thread=${Thread.currentThread().name}")
                     Log.d(TAG, "VectorPrinter: print completed successfully")
                     try { vp.closeDevice() } catch (_: Exception) {}
 
@@ -303,6 +317,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 override fun onFail(errorCode: Int) {
+                    Log.e(TAG, "VectorPrinter onFail on thread=${Thread.currentThread().name}")
                     Log.e(TAG, "VectorPrinter: print failed (0x${errorCode.toString(16)})")
                     try {
                         vp.closeDevice()
