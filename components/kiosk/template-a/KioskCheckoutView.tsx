@@ -5,6 +5,7 @@ import {
   useKioskCheckout,
   type KioskCheckoutTotals,
 } from "@/components/kiosk/shared/useKioskCheckout";
+import { useActiveProcessor } from "@/hooks/useActiveProcessor";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
@@ -47,12 +48,26 @@ export function KioskCheckoutView({
 }) {
   const scale = useKioskUiScale();
   const clearCart = useKioskCartStore((state) => state.clear);
-  const { status, error, totals, computeTotals, payOrder } = useKioskCheckout();
+  const { status, error, totals, computeTotals, payOrder, cancelCharge } =
+    useKioskCheckout();
+
+  // The active processor decides whether the card read can be cancelled from the
+  // kiosk: Castles/Valor/Dejavoo support a cancel-before-card, ATOM does not (no
+  // endpoint in v1), so we hide the Back button for it rather than promise a
+  // cancel we can't honour.
+  const { activeType } = useActiveProcessor();
+  const canCancelCharge = activeType !== "atom";
 
   // No backend order exists until the customer pays, so backing out is a plain
   // navigation — nothing to void or clean up.
   const handleBack = () => {
     onBack();
+  };
+
+  // Back pressed during the card read — abort the sale on the terminal. payOrder
+  // resolves the real outcome (cancelled / verify-with-staff / raced-to-paid).
+  const handleCancelCharge = () => {
+    void cancelCharge();
   };
 
   const tipEnabled = config.tipScreenEnabled;
@@ -140,6 +155,16 @@ export function KioskCheckoutView({
     );
   }
 
+  // ---- CANCELLING (Back pressed during the card read) ----
+  if (status === "cancelling") {
+    return <CancellingScreen config={config} />;
+  }
+
+  // ---- CANCELLED (confirmed — no charge; order voided) ----
+  if (status === "cancelled") {
+    return <CancelledScreen config={config} onDone={handleBack} />;
+  }
+
   // ---- PROCESSING / ERROR ----
   return (
     <View
@@ -199,7 +224,11 @@ export function KioskCheckoutView({
           </View>
         </>
       ) : status === "charging" ? (
-        <TapCardScreen config={config} scale={scale} />
+        <TapCardScreen
+          config={config}
+          scale={scale}
+          onCancel={canCancelCharge ? handleCancelCharge : undefined}
+        />
       ) : (
         <>
           <ActivityIndicator size="large" color={config.primaryColor} />
@@ -228,9 +257,12 @@ export function KioskCheckoutView({
 function TapCardScreen({
   config,
   scale,
+  onCancel,
 }: {
   config: KioskConfig;
   scale: number;
+  /** When provided, a circular Back button cancels the card read on the device. */
+  onCancel?: () => void;
 }) {
   const muted = `${config.textColor}99`;
 
@@ -272,6 +304,123 @@ function TapCardScreen({
         color={config.primaryColor}
         style={{ marginTop: kioskPx(8, scale) }}
       />
+
+      {/* Circular Back — bottom-left in both orientations. Cancels the sale on
+          the terminal (return2Idle / cancel-before-card) and returns to cart. */}
+      {onCancel ? (
+        <KioskPressable
+          onPress={onCancel}
+          pressedScale={0.9}
+          accessibilityLabel="Cancel payment and go back"
+          style={{
+            position: "absolute",
+            bottom: kioskPx(28, scale),
+            left: kioskPx(28, scale),
+            zIndex: 10,
+            width: kioskPx(56, scale),
+            height: kioskPx(56, scale),
+            borderRadius: kioskPx(28, scale),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: `${config.textColor}12`,
+          }}
+        >
+          <ChevronLeft size={kioskPx(30, scale)} color={config.textColor} />
+        </KioskPressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Shown while the Back-triggered cancel is being dispatched to the terminal.
+ * The real outcome (cancelled / verify-with-staff / raced-to-paid) is resolved
+ * by the checkout hook when the in-flight charge settles.
+ */
+function CancellingScreen({ config }: { config: KioskConfig }) {
+  const s = useKioskUiScale();
+  const muted = `${config.textColor}99`;
+
+  return (
+    <View
+      className="flex-1 items-center justify-center px-10"
+      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
+    >
+      <ActivityIndicator size="large" color={config.primaryColor} />
+      <Text
+        style={{
+          fontSize: kioskPx(20, s),
+          fontWeight: "700",
+          color: config.textColor,
+        }}
+      >
+        Cancelling…
+      </Text>
+      <Text
+        style={{ fontSize: kioskPx(15, s), color: muted, textAlign: "center" }}
+      >
+        Cancelling the payment on the card reader.
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Confirmed cancellation — no charge was made and the half-built order has been
+ * voided. Auto-returns to the cart so the customer can retry, with an explicit
+ * Back-to-cart action if they don't want to wait.
+ */
+function CancelledScreen({
+  config,
+  onDone,
+}: {
+  config: KioskConfig;
+  onDone: () => void;
+}) {
+  const s = useKioskUiScale();
+  const muted = `${config.textColor}99`;
+
+  useEffect(() => {
+    const t = setTimeout(onDone, 1800);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <View
+      className="flex-1 items-center justify-center px-10"
+      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
+    >
+      <CheckCircle2 size={kioskPx(84, s)} color={config.primaryColor} />
+      <Text
+        style={{
+          fontSize: kioskPx(24, s),
+          fontWeight: "800",
+          color: config.textColor,
+        }}
+      >
+        Payment cancelled
+      </Text>
+      <Text
+        style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}
+      >
+        No charge was made. Taking you back to your cart…
+      </Text>
+      <Pressable
+        onPress={onDone}
+        style={{
+          marginTop: kioskPx(8, s),
+          paddingHorizontal: kioskPx(36, s),
+          paddingVertical: kioskPx(16, s),
+          borderRadius: kioskPx(16, s),
+          backgroundColor: config.primaryColor,
+        }}
+      >
+        <Text
+          style={{ color: "#FFFFFF", fontSize: kioskPx(18, s), fontWeight: "700" }}
+        >
+          Back to cart
+        </Text>
+      </Pressable>
     </View>
   );
 }

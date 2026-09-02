@@ -71,6 +71,20 @@ export interface ChargeActiveTerminalResult {
   terminalId?: string;
 }
 
+/**
+ * Everything the caller needs to cancel an in-flight sale (a kiosk Back button):
+ * the terminal it's running on and the reference id Valor/Dejavoo cancel by.
+ * Fed to `cancelActiveTerminalCharge`.
+ */
+export interface ChargeStartedHandle {
+  /** terminal_type of the terminal running the sale. */
+  terminalType: string;
+  /** DB id of the terminal. */
+  terminalId: string;
+  /** Reference id of the sale (Valor/Dejavoo need it to cancel; Castles doesn't). */
+  referenceId: string;
+}
+
 export interface ChargeActiveTerminalArgs {
   /** Grand total to charge in dollars, INCLUDING tip (kiosk convention). */
   amount: number;
@@ -82,6 +96,12 @@ export interface ChargeActiveTerminalArgs {
   dbOrderId?: string;
   /** Live Supabase client (for the terminal txn counters + Dejavoo creds). */
   supabase: ReturnType<typeof useSupabaseClient>;
+  /**
+   * Fired once, synchronously, the instant the (blocking) card read is dispatched
+   * to the terminal — hands the caller the handle needed to cancel it. NOT called
+   * for the DEV no-terminal simulation or unsupported types (nothing to cancel).
+   */
+  onChargeStarted?: (handle: ChargeStartedHandle) => void;
 }
 
 const INDETERMINATE_MESSAGE =
@@ -99,7 +119,8 @@ const INDETERMINATE_MESSAGE =
 export async function chargeActiveTerminal(
   args: ChargeActiveTerminalArgs,
 ): Promise<ChargeActiveTerminalResult> {
-  const { amount, tipAmount, orderId, dbOrderId, supabase } = args;
+  const { amount, tipAmount, orderId, dbOrderId, supabase, onChargeStarted } =
+    args;
   // Base (pre-tip) amount — the terminal adds the tip on top for Castles/Valor/
   // ATOM; Dejavoo takes the grand total plus a tip breakdown.
   const base = Math.max(0, amount - tipAmount);
@@ -164,6 +185,11 @@ export async function chargeActiveTerminal(
     const referenceId = counter.next();
 
     const journalId = writeJournal();
+    onChargeStarted?.({
+      terminalType: "castles",
+      terminalId: terminal.id,
+      referenceId,
+    });
     const result = await service.processSale({ amount: base, tipAmount, referenceId });
 
     updatePaymentJournal(journalId, {
@@ -234,6 +260,11 @@ export async function chargeActiveTerminal(
     const amountCents = Math.round((base + Number.EPSILON) * 100);
     const tipCents = Math.round((tipAmount + Number.EPSILON) * 100);
 
+    onChargeStarted?.({
+      terminalType: "valor",
+      terminalId: terminal.id,
+      referenceId,
+    });
     const result = await service.processSale({
       amount: amountCents,
       tipAmount: tipCents,
@@ -316,6 +347,11 @@ export async function chargeActiveTerminal(
 
     const journalId = writeJournal();
 
+    onChargeStarted?.({
+      terminalType: "atom",
+      terminalId: terminal.id,
+      referenceId,
+    });
     // ATOM is single-session; pause background probing for the whole sale, and
     // bring ourselves back to the front afterward (it foregrounds itself).
     suspendAtomLoopbackProbing();
@@ -387,6 +423,11 @@ export async function chargeActiveTerminal(
     const refId = generateRefId("CARD", undefined, locSuffix, staSuffix);
 
     const journalId = writeJournal();
+    onChargeStarted?.({
+      terminalType: "dejavoo",
+      terminalId: terminal.id ?? "",
+      referenceId: refId,
+    });
     const result = await api
       .sale()
       .amount(amount) // grand total incl. tip

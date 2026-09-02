@@ -1,3 +1,4 @@
+import { resolveKioskChargeOutcome } from "@/components/kiosk/shared/chargeOutcome";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { CartItem } from "@/lib/types";
@@ -5,7 +6,11 @@ import { sendReceipt } from "@/services/messaging/sendReceiptService";
 import { payFullCard } from "@/services/paymentService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { getReceiptPrinter } from "@/services/printing/PrintRouter";
-import { chargeActiveTerminal } from "@/services/terminals/chargeActiveTerminal";
+import {
+  chargeActiveTerminal,
+  type ChargeStartedHandle,
+} from "@/services/terminals/chargeActiveTerminal";
+import { cancelActiveTerminalCharge } from "@/services/terminals/cancelActiveTerminalCharge";
 import {
   lineCashUnitPrice,
   lineUnitPrice,
@@ -15,7 +20,7 @@ import {
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -39,6 +44,8 @@ export type KioskCheckoutStatus =
   | "creating" // building + creating the backend order
   | "ready" // order created, totals known, awaiting pay
   | "charging" // waiting on the terminal
+  | "cancelling" // Back pressed during the card read — aborting on the device
+  | "cancelled" // confirmed cancel: no charge, order voided
   | "finalizing" // kitchen send + payment record
   | "success"
   | "error";
@@ -104,11 +111,20 @@ export function useKioskCheckout() {
   const [result, setResult] = useState<KioskCheckoutResult | null>(null);
   const [totals, setTotals] = useState<KioskCheckoutTotals | null>(null);
 
+  // Cancel plumbing. `chargeHandleRef` holds what the active sale needs to be
+  // aborted (set by chargeActiveTerminal's onChargeStarted); `cancelRequestedRef`
+  // records that the customer pressed Back so payOrder can treat a clean charge
+  // failure as a confirmed cancellation rather than a decline.
+  const chargeHandleRef = useRef<ChargeStartedHandle | null>(null);
+  const cancelRequestedRef = useRef(false);
+
   const reset = useCallback(() => {
     setStatus("idle");
     setError(null);
     setResult(null);
     setTotals(null);
+    chargeHandleRef.current = null;
+    cancelRequestedRef.current = false;
   }, []);
 
   /**
@@ -260,6 +276,14 @@ export function useKioskCheckout() {
 
         // 4. Charge the card on the station's ACTIVE terminal — same routing +
         // per-processor branches (Castles/Valor/ATOM/Dejavoo) the POS uses.
+        // Reset the cancel plumbing for this attempt, and capture the handle the
+        // Back button needs to abort the in-flight sale.
+        cancelRequestedRef.current = false;
+        chargeHandleRef.current = null;
+        // Terminal type of the sale, captured when it goes live — used to pick
+        // the right cancel-outcome branch (Castles' cancel can't confirm no
+        // charge; Valor/Dejavoo cancel on a separate channel and can).
+        let startedTerminalType: string | undefined;
         setStatus("charging");
         const charge = await chargeActiveTerminal({
           amount: amountToCharge,
@@ -267,21 +291,48 @@ export function useKioskCheckout() {
           orderId: liveOrderId,
           dbOrderId: createdDbId,
           supabase,
+          onChargeStarted: (handle) => {
+            chargeHandleRef.current = handle;
+            startedTerminalType = handle.terminalType;
+            // If the customer pressed Back while we were still connecting (before
+            // this handle existed), the abort had no reference id to target for
+            // Valor/Dejavoo. Now that the sale is live, dispatch it for real.
+            if (cancelRequestedRef.current) {
+              void cancelActiveTerminalCharge({
+                referenceId: handle.referenceId,
+                supabase,
+              });
+            }
+          },
         });
-        if (!charge.ok) {
-          // INDETERMINATE — the charge MAY have landed (socket died after the
-          // card read, or a partial approval). Do NOT void the order: voiding
-          // locally can't refund a captured charge, and re-charging would double
-          // it. Leave it for staff reconciliation and surface a clear message.
-          if (!charge.indeterminate) {
+        // Decide the reaction to the settled charge. An APPROVED card always
+        // wins — even if the customer pressed Back a beat too late, the order is
+        // completed and taken through confirmation (we must not un-charge it).
+        // A possibly-captured charge (indeterminate, or an unconfirmable Castles
+        // cancel) is NEVER voided or re-charged — it routes to staff.
+        const outcome = resolveKioskChargeOutcome({
+          ok: charge.ok,
+          indeterminate: charge.indeterminate,
+          message: charge.message,
+          userCancelled: cancelRequestedRef.current,
+          terminalType: startedTerminalType,
+        });
+        if (outcome.kind !== "success") {
+          // Void the half-built order ONLY when nothing could have been
+          // captured (confirmed cancel or clean decline). Never for "verify".
+          if (outcome.kind === "cancelled" || outcome.kind === "declined") {
             try {
               orderStore.voidOrder(liveOrderId);
             } catch {
               /* best-effort */
             }
           }
+          if (outcome.kind === "cancelled") {
+            setStatus("cancelled");
+            return null;
+          }
           setStatus("error");
-          setError(charge.message ?? "Payment declined.");
+          setError(outcome.message);
           return null;
         }
 
@@ -365,6 +416,31 @@ export function useKioskCheckout() {
     [supabase],
   );
 
+  /**
+   * Cancel the in-flight card read (kiosk Back button). Dispatches an abort to
+   * the active terminal (Castles socket close / Valor cancel-before-card /
+   * Dejavoo abort). The authoritative outcome — cancelled vs. verify-with-staff
+   * vs. raced-to-success — is decided by `payOrder` when the charge settles, so
+   * this only flips the UI into "cancelling" and fires the abort. Idempotent:
+   * only meaningful while a charge is in flight.
+   */
+  const cancelCharge = useCallback(async () => {
+    if (cancelRequestedRef.current) return; // already cancelling — ignore repeat taps
+    cancelRequestedRef.current = true;
+    setStatus("cancelling");
+    try {
+      await cancelActiveTerminalCharge({
+        referenceId: chargeHandleRef.current?.referenceId,
+        supabase,
+      });
+    } catch (e) {
+      // Non-fatal: the in-flight charge still settles and payOrder resolves the
+      // real outcome. A failed dispatch just means the device may not have been
+      // told to abort — payOrder's indeterminate guard still protects us.
+      console.warn("[kioskCheckout] cancelCharge dispatch failed:", e);
+    }
+  }, [supabase]);
+
   return {
     status,
     error,
@@ -372,6 +448,7 @@ export function useKioskCheckout() {
     totals,
     computeTotals,
     payOrder,
+    cancelCharge,
     reset,
   };
 }
