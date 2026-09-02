@@ -31,7 +31,7 @@ export default function KdsSettingsPage() {
         }}
       >
         <TouchableOpacity
-          onPress={() => router.navigate("/kds")}
+          onPress={() => router.back()}
           accessibilityLabel="Back to KDS"
           style={{
             width: s(32),
