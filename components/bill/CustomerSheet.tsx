@@ -33,10 +33,7 @@ import React, {
 } from "react";
 import {
     Keyboard,
-    KeyboardAvoidingView,
     Modal,
-    Platform,
-    ScrollView,
     Text,
     TextInput,
     TouchableOpacity,
@@ -61,6 +58,7 @@ const CustomerSheet: React.FC = () => {
   const supabase = useSupabaseClient();
 
   const [viewMode, setViewMode] = useState<"search" | "add" | "edit">("search");
+  const isForm = viewMode === "add" || viewMode === "edit";
   const [editingCustomer, setEditingCustomer] =
     useState<CustomerWithMeta | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -395,6 +393,29 @@ const CustomerSheet: React.FC = () => {
     }
   };
 
+  const fieldLabelStyle = {
+    color: colors.label,
+    fontSize: s(10),
+    fontWeight: "600" as const,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.8,
+  };
+
+  const fieldInputStyle = {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: s(8),
+    height: s(46),
+    paddingHorizontal: s(12),
+    color: colors.heading,
+    fontSize: s(14),
+    textAlignVertical: "center" as const,
+    includeFontPadding: false,
+    paddingTop: 0,
+    paddingBottom: 0,
+  };
+
   const handleClose = () => {
     closeSheet();
     clearForm();
@@ -412,7 +433,11 @@ const CustomerSheet: React.FC = () => {
         <View
           style={{
             flex: 1,
-            justifyContent: "center",
+            // The form is top-anchored: it then does not move at all when the
+            // soft keyboard opens, the keyboard simply covers empty space
+            // below it. Search keeps its centered, full-height directory.
+            justifyContent: isForm ? "flex-start" : "center",
+            paddingTop: isForm ? s(24) : 0,
             alignItems: "center",
             backgroundColor: "rgba(0,0,0,0.5)",
           }}
@@ -421,10 +446,16 @@ const CustomerSheet: React.FC = () => {
             <View
               style={{
                 width: s(480),
-                height: "80%",
+                // The form sizes to its content (~320px) so it fits inside the
+                // keyboard safe zone by construction - see the two-column row
+                // and conditional address field below.
+                height: isForm ? undefined : "80%",
                 backgroundColor: colors.screen,
                 borderRadius: s(16),
-                overflow: "hidden",
+                // AddressAutocomplete renders its dropdown upward
+                // (dropdownPosition="top") and absolutely positioned; clipping
+                // it to the now-short modal would cut off suggestions.
+                overflow: isForm ? "visible" : "hidden",
                 borderWidth: 1,
                 borderColor: colors.border,
               }}
@@ -793,64 +824,38 @@ const CustomerSheet: React.FC = () => {
                   />
                 </View>
               ) : (
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === "ios" ? "padding" : "height"}
-                  style={{ flex: 1 }}
-                >
-                  <ScrollView
-                    contentContainerStyle={{ padding: s(16), gap: s(14) }}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    <Text style={{ color: colors.muted, fontSize: s(11) }}>
-                      {viewMode === "edit"
-                        ? "Update customer name or address. Phone number cannot be changed."
-                        : "Address fields are optional."}
-                    </Text>
+                <View style={{ padding: s(16), gap: s(14) }}>
+                  {/* No ScrollView. The form is sized to fit inside the
+                      keyboard safe zone, so any future field that would
+                      overflow shows up as a visible QA failure instead of a
+                      silent scroll. Taps on the address suggestions still land
+                      without keyboardShouldPersistTaps because the modal box
+                      sits in its own no-op TouchableWithoutFeedback, which
+                      keeps the overlay Keyboard.dismiss handler from
+                      swallowing the first tap. */}
+                  <Text style={{ color: colors.muted, fontSize: s(11) }}>
+                    {viewMode === "edit"
+                      ? "Update customer name or address. Phone number cannot be changed."
+                      : "Phone and address are optional."}
+                  </Text>
 
-                    <View style={{ gap: s(5) }}>
-                      <Text
-                        style={{
-                          color: colors.label,
-                          fontSize: s(10),
-                          fontWeight: "600",
-                          textTransform: "uppercase",
-                          letterSpacing: 0.8,
-                        }}
-                      >
-                        Full Name *
-                      </Text>
+                  {/* Name and phone share one row. Landscape has the width to
+                      spare, and dropping a whole field row (~90px) is what
+                      lets the form clear the keyboard. */}
+                  <View style={{ flexDirection: "row", gap: s(12) }}>
+                    <View style={{ flex: 1, gap: s(5) }}>
+                      <Text style={fieldLabelStyle}>Full Name *</Text>
                       <TextInput
                         value={newName}
                         onChangeText={setNewName}
                         placeholder="e.g. John Doe"
                         placeholderTextColor={colors.muted}
-                        style={{
-                          backgroundColor: colors.card,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: s(8),
-                          height: s(46),
-                          paddingHorizontal: s(12),
-                          color: colors.heading,
-                          fontSize: s(14),
-                          textAlignVertical: "center",
-                          includeFontPadding: false,
-                          paddingTop: 0,
-                          paddingBottom: 0,
-                        }}
+                        style={fieldInputStyle}
                       />
                     </View>
 
-                    <View style={{ gap: s(5) }}>
-                      <Text
-                        style={{
-                          color: colors.label,
-                          fontSize: s(10),
-                          fontWeight: "600",
-                          textTransform: "uppercase",
-                          letterSpacing: 0.8,
-                        }}
-                      >
+                    <View style={{ flex: 1, gap: s(5) }}>
+                      <Text style={fieldLabelStyle}>
                         Phone Number{" "}
                         {viewMode === "add" ? "(optional)" : "(read-only)"}
                       </Text>
@@ -860,134 +865,123 @@ const CustomerSheet: React.FC = () => {
                           viewMode === "edit" ? undefined : handlePhoneChange
                         }
                         editable={viewMode !== "edit"}
+                        // Focused first, on the keypad IME: the common path (a
+                        // phone-led lookup) never raises the tall QWERTY.
+                        autoFocus={viewMode === "add"}
                         placeholder="(555) 555-5555"
                         maxLength={14}
-                        keyboardType="number-pad"
-                        inputMode="numeric"
+                        keyboardType="phone-pad"
+                        inputMode="tel"
                         placeholderTextColor={colors.muted}
-                        style={{
-                          backgroundColor:
-                            viewMode === "edit"
-                              ? colors.card + "80"
-                              : colors.card,
-                          borderWidth: 1,
-                          borderColor:
-                            viewMode === "edit"
-                              ? colors.border
-                              : colors.teal + "60",
-                          borderRadius: s(8),
-                          height: s(46),
-                          paddingHorizontal: s(12),
-                          color:
-                            viewMode === "edit" ? colors.muted : colors.heading,
-                          fontSize: s(14),
-                          textAlignVertical: "center",
-                          includeFontPadding: false,
-                          paddingTop: 0,
-                          paddingBottom: 0,
-                        }}
+                        style={[
+                          fieldInputStyle,
+                          {
+                            backgroundColor:
+                              viewMode === "edit"
+                                ? colors.card + "80"
+                                : colors.card,
+                            borderColor:
+                              viewMode === "edit"
+                                ? colors.border
+                                : colors.teal + "60",
+                            color:
+                              viewMode === "edit"
+                                ? colors.muted
+                                : colors.heading,
+                          },
+                        ]}
                       />
                     </View>
+                  </View>
 
-                    <View style={{ gap: s(5) }}>
-                      <Text
+                  <View style={{ gap: s(5) }}>
+                    <Text style={fieldLabelStyle}>Delivery Address</Text>
+                    <AddressAutocomplete
+                      value={addressDisplay}
+                      onChangeText={(text) => {
+                        setAddressDisplay(text);
+                        setStreet(text);
+                        setCity("");
+                        setStateCode("");
+                        setZip("");
+                      }}
+                      onAddressSelected={(addr) => {
+                        setStreet(addr.street);
+                        setCity(addr.city);
+                        setStateCode(addr.state);
+                        setZip(addr.zip);
+                        setAddressDisplay(
+                          [addr.street, addr.city, addr.state, addr.zip]
+                            .filter(Boolean)
+                            .join(", "),
+                        );
+                      }}
+                      placeholder="Search address..."
+                      dropdownPosition="top"
+                    />
+                    {(city || stateCode || zip) && (
+                      <View
                         style={{
-                          color: colors.label,
-                          fontSize: s(10),
-                          fontWeight: "600",
-                          textTransform: "uppercase",
-                          letterSpacing: 0.8,
+                          flexDirection: "row",
+                          gap: s(6),
+                          flexWrap: "wrap",
+                          marginTop: s(4),
                         }}
                       >
-                        Delivery Address
-                      </Text>
-                      <AddressAutocomplete
-                        value={addressDisplay}
-                        onChangeText={(text) => {
-                          setAddressDisplay(text);
-                          setStreet(text);
-                          setCity("");
-                          setStateCode("");
-                          setZip("");
-                        }}
-                        onAddressSelected={(addr) => {
-                          setStreet(addr.street);
-                          setCity(addr.city);
-                          setStateCode(addr.state);
-                          setZip(addr.zip);
-                          setAddressDisplay(
-                            [addr.street, addr.city, addr.state, addr.zip]
-                              .filter(Boolean)
-                              .join(", "),
-                          );
-                        }}
-                        placeholder="Search address..."
-                        dropdownPosition="top"
-                      />
-                      {(city || stateCode || zip) && (
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            gap: s(6),
-                            flexWrap: "wrap",
-                            marginTop: s(4),
-                          }}
-                        >
-                          {[street, city, stateCode, zip]
-                            .filter(Boolean)
-                            .map((v, i) => (
-                              <Text
-                                key={i}
-                                style={{
-                                  fontSize: s(11),
-                                  color: colors.muted,
-                                  backgroundColor: colors.card,
-                                  paddingHorizontal: s(6),
-                                  paddingVertical: s(2),
-                                  borderRadius: s(4),
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                }}
-                              >
-                                {v}
-                              </Text>
-                            ))}
-                        </View>
-                      )}
-                    </View>
+                        {[street, city, stateCode, zip]
+                          .filter(Boolean)
+                          .map((v, i) => (
+                            <Text
+                              key={i}
+                              style={{
+                                fontSize: s(11),
+                                color: colors.muted,
+                                backgroundColor: colors.card,
+                                paddingHorizontal: s(6),
+                                paddingVertical: s(2),
+                                borderRadius: s(4),
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                              }}
+                            >
+                              {v}
+                            </Text>
+                          ))}
+                      </View>
+                    )}
+                  </View>
 
-                    <TouchableOpacity
-                      onPress={
-                        viewMode === "edit"
-                          ? handleSaveEditCustomer
-                          : handleSaveNewCustomer
-                      }
+                  <TouchableOpacity
+                    onPress={
+                      viewMode === "edit"
+                        ? handleSaveEditCustomer
+                        : handleSaveNewCustomer
+                    }
+                    style={{
+                      borderRadius: s(8),
+                      height: s(46),
+                      paddingHorizontal: s(16),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginTop: s(4),
+                      backgroundColor: colors.teal + "18",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                    }}
+                  >
+                    <Text
                       style={{
-                        borderRadius: s(8),
-                        height: s(46),
-                        paddingHorizontal: s(16),
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginTop: s(4),
-                        backgroundColor: colors.teal + "18",
-                        borderWidth: 1,
-                        borderColor: colors.teal + "50",
+                        color: colors.teal,
+                        fontSize: s(14),
+                        fontWeight: "700",
                       }}
                     >
-                      <Text
-                        style={{
-                          color: colors.teal,
-                          fontSize: s(14),
-                          fontWeight: "700",
-                        }}
-                      >
-                        {viewMode === "edit"
-                          ? "Update Customer"
-                          : "Save Customer"}
-                      </Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </KeyboardAvoidingView>
+                      {viewMode === "edit"
+                        ? "Update Customer"
+                        : "Save Customer"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </TouchableWithoutFeedback>
