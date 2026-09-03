@@ -7,6 +7,7 @@ in the owning feature, engineering, quality, or handoff folder.
 
 | Date | Ticket | Status | Plan |
 | --- | --- | --- | --- |
+| 2026-09-03 | POS/KDS late item leaves parent order at Ready | Code implemented - automated and device QA pending | `docs/features/kds/late-item-order-status-reopen.md` |
 | 2026-08-18 | P0 refund receipts - approval persistence, physical print, and reprint | POS code complete - migration, physical QA, and website hosted/email/SMS handoff remain | `docs/features/payments-terminals/refund-receipt-printing.md` |
 | 2026-08-18 | POS Orders provider chips use shared resolver | Code complete - tablet QA pending | `docs/features/orders/provider-chip-platform-resolver-regression.md` |
 | 2026-08-16 | POS hide portal-disabled menus | Code complete - portal/POS staging QA pending | `docs/engineering/performance/pos-hide-inactive-menus.md` |

@@ -1,5 +1,5 @@
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
-import { CartItem } from "@/lib/types";
+import type { CartItem, OrderProfile } from "@/lib/types";
 
 export type EffectiveItemStatus =
   | "new"
@@ -41,6 +41,30 @@ export function getOrderSentStatus(): "sent_to_kitchen" | "preparing" {
   const mode =
     useLocationConfigStore.getState().config.kds.workflowMode;
   return mode === "2-step" ? "preparing" : "sent_to_kitchen";
+}
+
+/**
+ * Reopen the fulfillment lifecycle when an open check fires another batch.
+ * A previously ready/completed kitchen cycle is no longer the order's current
+ * state once a new item is sent. Closed or terminally-cancelled checks remain
+ * terminal as a defense-in-depth guard for stale/programmatic callers.
+ */
+export function getOrderStatusAfterKitchenSend(
+  currentStatus: OrderProfile["order_status"],
+  checkStatus: OrderProfile["check_status"],
+  sentStatus: ReturnType<typeof getOrderSentStatus> = getOrderSentStatus(),
+): OrderProfile["order_status"] {
+  if (
+    checkStatus === "Closed" ||
+    currentStatus === "void" ||
+    currentStatus === "cancelled" ||
+    currentStatus === "refunded" ||
+    currentStatus === "declined"
+  ) {
+    return currentStatus;
+  }
+
+  return sentStatus;
 }
 
 /**

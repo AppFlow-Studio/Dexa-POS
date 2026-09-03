@@ -11,6 +11,7 @@ import {
 } from "@/lib/kdsSendTraceability";
 import {
     getKitchenSentStatus,
+    getOrderStatusAfterKitchenSend,
     getOrderSentStatus,
     isKitchenItemSent,
 } from "@/lib/kitchenStatusUtils";
@@ -10035,12 +10036,12 @@ export const useOrderStore = create<OrderState>()(
                           : item.item_status;
               }
 
-              if (
-                (status === "sent" || status === "preparing") &&
-                order.order_status === "draft"
-              ) {
+              if (status === "sent" || status === "preparing") {
                 const now = new Date().toISOString();
-                order.order_status = getOrderSentStatus();
+                order.order_status = getOrderStatusAfterKitchenSend(
+                  order.order_status,
+                  order.check_status,
+                );
                 order.sent_to_kitchen_at ||= now;
                 if (order.order_type === "dine_in") {
                   order.opened_at ||= now;
@@ -10049,6 +10050,8 @@ export const useOrderStore = create<OrderState>()(
 
               // Aggregate order_status for dine-in
               if (
+                status !== "sent" &&
+                status !== "preparing" &&
                 order.order_type === "dine_in" &&
                 order.order_status !== "draft" &&
                 order.service_location_id !== null
@@ -12670,20 +12673,27 @@ export const useOrderStore = create<OrderState>()(
                 ? totals.cash_outstanding_total <= 0.01
                 : totals.outstanding_total <= 0.01); // Allow tiny rounding margin
 
-            // Determine new order status:
-            // - If order is in "draft" and payment is made, move to "preparing"
-            // - If order is already "preparing" or later, keep current status
-            // - If order is fully paid, it stays at current status (kitchen flow continues)
+            // A payment can be the action that fires a late item. Reopen the
+            // parent fulfillment cycle whenever this payment moved at least one
+            // item from unsent to sent; otherwise preserve the existing cycle.
             const currentStatus = order.order_status;
             const shouldUpdateToPreparingStatus =
               currentStatus === "draft" || currentStatus === "pending";
-            const newOrderStatus = shouldUpdateToPreparingStatus
-              ? "preparing"
-              : currentStatus;
+            const newOrderStatus =
+              kitchenSentLocalItemIds.length > 0
+                ? getOrderStatusAfterKitchenSend(
+                    currentStatus,
+                    order.check_status,
+                  )
+                : shouldUpdateToPreparingStatus
+                  ? "preparing"
+                  : currentStatus;
 
-            // Set opened_at timestamp when transitioning to preparing (if not already set)
+            // Set opened_at when the payment starts the first kitchen cycle.
             const shouldSetOpenedAt =
-              shouldUpdateToPreparingStatus && !order.opened_at;
+              (kitchenSentLocalItemIds.length > 0 ||
+                shouldUpdateToPreparingStatus) &&
+              !order.opened_at;
             const newOpenedAt = shouldSetOpenedAt
               ? new Date().toISOString()
               : order.opened_at;
@@ -12725,7 +12735,7 @@ export const useOrderStore = create<OrderState>()(
               currentOrder.total_cash_amount = totals.cash_total_amount; // Always set for dual pricing display
               currentOrder.total_tax = totals.tax_amount; // Always card tax
               currentOrder.total_discount = totals.discount_amount;
-              // Update order_status to "preparing" if it was in draft/pending
+              // Keep the parent status aligned with the newly-fired item batch.
               currentOrder.order_status = newOrderStatus;
               // Set opened_at timestamp when transitioning
               currentOrder.opened_at = newOpenedAt;
@@ -14236,10 +14246,10 @@ export const useOrderStore = create<OrderState>()(
               order.items = finalCart;
               order.sent_to_kitchen_at =
                 order.sent_to_kitchen_at || new Date().toISOString();
-              // Use appropriate status if order was draft, keep current if already sent
-              if (order.order_status === "draft") {
-                order.order_status = getOrderSentStatus();
-              }
+              order.order_status = getOrderStatusAfterKitchenSend(
+                order.order_status,
+                order.check_status,
+              );
             });
 
             // No need to manually update `orders` array - the subscription will handle it.
@@ -14349,10 +14359,10 @@ export const useOrderStore = create<OrderState>()(
             const updatedOrder: OrderProfile = {
               ...order,
               items: updatedItems,
-              order_status:
-                order.order_status === "draft"
-                  ? getOrderSentStatus()
-                  : order.order_status,
+              order_status: getOrderStatusAfterKitchenSend(
+                order.order_status,
+                order.check_status,
+              ),
               sent_to_kitchen_at:
                 order.sent_to_kitchen_at || new Date().toISOString(),
               // Set opened_at timestamp if it's not already set for a Dine In order
