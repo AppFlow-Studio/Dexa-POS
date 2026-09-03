@@ -17,13 +17,20 @@ import {
 } from "lucide-react-native";
 import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import {
-    ActivityIndicator,
     RefreshControl,
     ScrollView,
     Text,
     TouchableOpacity,
     View,
 } from "react-native";
+import Animated, {
+    cancelAnimation,
+    useAnimatedStyle,
+    useSharedValue,
+    withRepeat,
+    withSequence,
+    withTiming,
+} from "react-native-reanimated";
 import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
 import DayHeader from "../previous-orders/DayHeader";
 
@@ -527,6 +534,99 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
 
 OrderRow.displayName = "OrderRow";
 
+// ─── Skeleton loading ────────────────────────────────────────
+// Animated placeholder rows shown in place of the "No orders found" empty
+// state while the first history page is loading — same pulsing-line treatment
+// as the full Previous Orders screen (app/(main)/previous-orders.tsx). A
+// single shared opacity drives every bar (one animation, many views) instead
+// of the per-bar animation the page uses, since this table can mount 8 rows.
+const SKELETON_ROW_COUNT = 8;
+
+const OrdersTableSkeleton: React.FC = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const opacity = useSharedValue(0.3);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.7, { duration: 800 }),
+        withTiming(0.3, { duration: 800 }),
+      ),
+      -1,
+    );
+    return () => cancelAnimation(opacity);
+  }, []);
+  const pulse = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  // Helper — not a component, just an element factory, so it can reuse the
+  // single shared `pulse` style without introducing extra hooks.
+  const bar = (w: number, h: number, extra?: object) => (
+    <Animated.View
+      style={[
+        {
+          width: w,
+          height: h,
+          backgroundColor: colors.border,
+          borderRadius: s(6),
+        },
+        pulse,
+        extra,
+      ]}
+    />
+  );
+
+  return (
+    <>
+      {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
+        <View
+          key={i}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            minHeight: 52,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            backgroundColor: colors.panel,
+          }}
+        >
+          {/* Left accent bar — matches OrderRow's status stripe */}
+          <View
+            style={{ width: 3, alignSelf: "stretch", backgroundColor: colors.border }}
+          />
+          {/* ORDER (flex 2) — number + customer */}
+          <View
+            style={{ flex: 2, paddingVertical: s(10), paddingHorizontal: s(14), gap: s(6) }}
+          >
+            {bar(s(70), s(12))}
+            {bar(s(120), s(10))}
+          </View>
+          {/* TIME (flex 2.5) — time + date */}
+          <View style={{ flex: 2.5, paddingHorizontal: s(8), gap: s(6) }}>
+            {bar(s(64), s(12))}
+            {bar(s(90), s(10))}
+          </View>
+          {/* STAFF (flex 1.5) */}
+          <View style={{ flex: 1.5, paddingHorizontal: s(8) }}>
+            {bar(s(80), s(12))}
+          </View>
+          {/* TOTAL (flex 1.5, right-aligned) */}
+          <View style={{ flex: 1.5, paddingHorizontal: s(8), alignItems: "flex-end" }}>
+            {bar(s(56), s(12))}
+          </View>
+          {/* STATUS (flex 1.2, centered pill) */}
+          <View style={{ flex: 1.2, paddingHorizontal: s(8), alignItems: "center" }}>
+            {bar(s(60), s(20), { borderRadius: 999 })}
+          </View>
+          {/* ACTIONS (48px) */}
+          <View style={{ width: s(48), alignItems: "center" }}>
+            {bar(s(24), s(24), { borderRadius: s(6) })}
+          </View>
+        </View>
+      ))}
+    </>
+  );
+};
+
 const OrdersTable: React.FC<OrdersTableProps> = ({
   orders,
   sortColumn,
@@ -693,15 +793,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
       >
         {sortedOrders.length === 0 ? (
           isInitialLoading ? (
-            <View className="py-20 items-center justify-center">
-              <ActivityIndicator size="small" color={colors.teal} />
-              <Text
-                style={{ color: colors.muted, marginTop: s(8) }}
-                className="text-sm"
-              >
-                Loading orders…
-              </Text>
-            </View>
+            <OrdersTableSkeleton />
           ) : (
             <View className="py-20 items-center justify-center">
               <Text style={{ color: colors.muted }} className="text-sm">

@@ -1069,6 +1069,17 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         _hasMore: false, // Block loadMore until refresh resolves bounds + sets _hasMore
         _isLoadingMore: false,
         _oldestCursor: null,
+        // A window switch is a NEW result set, so the debounced refetch below
+        // MUST run — reset the refresh-coalesce clock so it can't be swallowed
+        // by the 4s HISTORY_REFRESH_COALESCE_MS guard in refreshPreviousOrders.
+        // Without this, re-tapping a pill or switching ranges within 4s of the
+        // last fetch clears the list (above) but the guard short-circuits the
+        // refetch, leaving "0 orders" until a manual pull-to-refresh (which
+        // passes force and so bypasses the guard). The coalesce guard still
+        // protects re-entry / broadcast-echo refreshes — those don't call
+        // setDateWindow, so their clock is untouched.
+        lastHistoryRefreshAt: null,
+        _lastRefreshLocationId: null,
         // A new date window is a new result set — always start at its first
         // page. Without this, switching dates while on page 2 of a long window
         // re-queries page 2 of the NEW window (empty when it only has one
