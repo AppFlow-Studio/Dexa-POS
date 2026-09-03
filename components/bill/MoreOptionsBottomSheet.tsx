@@ -100,9 +100,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   // Pending action to execute after the sheet finishes closing (index === -1).
   // Replaces fragile setTimeout(250) delays that could race with Reanimated animations.
   const pendingActionRef = useRef<(() => void) | null>(null);
+  /** Last index reported by the sheet; -1 means closed/closing. See `closeAndThen`. */
+  const sheetIndexRef = useRef(-1);
 
   const handleSheetChange = useCallback(
     (index: number) => {
+      sheetIndexRef.current = index;
       if (index === -1 && pendingActionRef.current) {
         const action = pendingActionRef.current;
         pendingActionRef.current = null;
@@ -113,13 +116,26 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     [onSheetChange],
   );
 
-  /** Close sheet, then execute `action` once the close animation completes. */
+  /**
+   * Close sheet, then execute `action` once the close animation completes.
+   *
+   * The action is parked in `pendingActionRef` and drained by `handleSheetChange(-1)`.
+   * If the sheet is ALREADY closing (a backdrop tap or swipe that raced this press),
+   * `close()` is a no-op and that -1 change may have fired already — the parked action
+   * would then sit there forever and the tap would silently do nothing. So only park
+   * it when we actually own a live sheet; otherwise run it directly on the next tick,
+   * which is where it would have run anyway.
+   */
   const closeAndThen = useCallback(
     (action: () => void) => {
-      pendingActionRef.current = action;
-      if (ref && "current" in ref && ref.current) {
-        ref.current.close();
+      const sheet = ref && "current" in ref ? ref.current : null;
+      if (!sheet || sheetIndexRef.current === -1) {
+        // Sheet is gone or on its way out — nothing left to close it behind.
+        setTimeout(action, 0);
+        return;
       }
+      pendingActionRef.current = action;
+      sheet.close();
     },
     [ref],
   );
