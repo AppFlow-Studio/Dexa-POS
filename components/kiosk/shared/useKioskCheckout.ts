@@ -5,7 +5,10 @@ import { sendReceipt } from "@/services/messaging/sendReceiptService";
 import { payFullCard } from "@/services/paymentService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { getReceiptPrinter } from "@/services/printing/PrintRouter";
-import { chargeActiveTerminal } from "@/services/terminals/chargeActiveTerminal";
+import {
+  chargeActiveTerminal,
+  type ChargeCancelHandle,
+} from "@/services/terminals/chargeActiveTerminal";
 import {
   lineCashUnitPrice,
   lineUnitPrice,
@@ -15,7 +18,7 @@ import {
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -41,7 +44,16 @@ export type KioskCheckoutStatus =
   | "charging" // waiting on the terminal
   | "finalizing" // kitchen send + payment record
   | "success"
+  | "cancelled" // aborted at the card prompt — no card read, nothing charged
   | "error";
+
+/**
+ * DEV-only: seconds the hardware-free simulated charge sits on the "Swipe, Tap,
+ * or Insert your card" screen before approving. Long enough to actually press
+ * Cancel and see the abort path work without a terminal. Release builds always
+ * talk to real hardware, so this is ignored there.
+ */
+const KIOSK_SIMULATED_CARD_WAIT_MS = 60_000;
 
 export interface KioskCheckoutTotals {
   subtotal: number;
@@ -104,11 +116,52 @@ export function useKioskCheckout() {
   const [result, setResult] = useState<KioskCheckoutResult | null>(null);
   const [totals, setTotals] = useState<KioskCheckoutTotals | null>(null);
 
+  // Abort handle for the sale currently parked on the terminal's card prompt.
+  // Published by `chargeActiveTerminal` the moment the sale is dispatched and
+  // retracted when it resolves, so `canCancelCharge` can never go stale.
+  const cancelHandleRef = useRef<ChargeCancelHandle | null>(null);
+  const [cancelSupported, setCancelSupported] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  // Set when the customer aborts; read by payOrder so a cancel is reported as a
+  // cancel rather than as a decline.
+  const cancelRequestedRef = useRef(false);
+
+  const setCancelHandle = useCallback((handle: ChargeCancelHandle | null) => {
+    cancelHandleRef.current = handle;
+    setCancelSupported(handle?.supported ?? false);
+  }, []);
+
   const reset = useCallback(() => {
     setStatus("idle");
     setError(null);
     setResult(null);
     setTotals(null);
+    cancelHandleRef.current = null;
+    cancelRequestedRef.current = false;
+    setCancelSupported(false);
+    setIsCancelling(false);
+  }, []);
+
+  /**
+   * Ask the terminal to abort the sale sitting on the card prompt. Best-effort:
+   * if the card already landed, the abort is a no-op and `payOrder` still
+   * resolves through its normal approved/declined path — we never fabricate a
+   * cancel, so a charge that DID land is still recorded.
+   */
+  const cancelCharge = useCallback(async () => {
+    const handle = cancelHandleRef.current;
+    if (!handle?.supported) return;
+    cancelRequestedRef.current = true;
+    setIsCancelling(true);
+    try {
+      await handle.cancel();
+    } catch (err) {
+      // The sale's own result path is authoritative — a failed abort just means
+      // the transaction runs to completion.
+      console.warn("[kioskCheckout] cancel failed:", err);
+    } finally {
+      setIsCancelling(false);
+    }
   }, []);
 
   /**
@@ -261,13 +314,34 @@ export function useKioskCheckout() {
         // 4. Charge the card on the station's ACTIVE terminal — same routing +
         // per-processor branches (Castles/Valor/ATOM/Dejavoo) the POS uses.
         setStatus("charging");
+        cancelRequestedRef.current = false;
         const charge = await chargeActiveTerminal({
           amount: amountToCharge,
           tipAmount,
           orderId: liveOrderId,
           dbOrderId: createdDbId,
           supabase,
-        });
+          onCancelHandle: setCancelHandle,
+          ...(__DEV__ && KIOSK_SIMULATED_CARD_WAIT_MS
+            ? { simulatedCardWaitMs: KIOSK_SIMULATED_CARD_WAIT_MS }
+            : {}),
+        }).finally(() => setCancelHandle(null));
+
+        // Customer aborted at the card prompt and the terminal confirmed no card
+        // was read — void the half-built order and return the kiosk to the cart
+        // so they can start over. This is NOT an error state.
+        if (charge.cancelled) {
+          try {
+            orderStore.voidOrder(liveOrderId);
+          } catch {
+            /* best-effort */
+          }
+          cancelRequestedRef.current = false;
+          setStatus("cancelled");
+          setError(null);
+          return null;
+        }
+
         if (!charge.ok) {
           // INDETERMINATE — the charge MAY have landed (socket died after the
           // card read, or a partial approval). Do NOT void the order: voiding
@@ -362,7 +436,7 @@ export function useKioskCheckout() {
         return null;
       }
     },
-    [supabase],
+    [supabase, setCancelHandle],
   );
 
   return {
@@ -373,5 +447,11 @@ export function useKioskCheckout() {
     computeTotals,
     payOrder,
     reset,
+    /** Abort the sale on the card prompt (no-op unless `canCancelCharge`). */
+    cancelCharge,
+    /** True while the terminal can still be told to abort before a card read. */
+    canCancelCharge: cancelSupported,
+    /** True between pressing cancel and the terminal acknowledging it. */
+    isCancellingCharge: isCancelling,
   };
 }

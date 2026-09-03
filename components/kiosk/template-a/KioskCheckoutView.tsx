@@ -47,7 +47,17 @@ export function KioskCheckoutView({
 }) {
   const scale = useKioskUiScale();
   const clearCart = useKioskCartStore((state) => state.clear);
-  const { status, error, totals, computeTotals, payOrder } = useKioskCheckout();
+  const {
+    status,
+    error,
+    totals,
+    computeTotals,
+    payOrder,
+    reset,
+    cancelCharge,
+    canCancelCharge,
+    isCancellingCharge,
+  } = useKioskCheckout();
 
   // No backend order exists until the customer pays, so backing out is a plain
   // navigation — nothing to void or clean up.
@@ -80,10 +90,20 @@ export function KioskCheckoutView({
       clearCart();
       setStep("success");
     } else {
-      // payOrder failed — surface the error on the processing screen.
+      // payOrder failed — surface the error on the processing screen. A cancel
+      // is handled separately by the `cancelled` effect below (cart preserved).
       setStep("processing");
     }
   };
+
+  // Cancelled at the card prompt: nothing was charged and the half-built order
+  // was voided, so put the customer back in their cart with items intact. Reset
+  // the hook first so a re-entry doesn't start on a stale `cancelled` status.
+  useEffect(() => {
+    if (status !== "cancelled") return;
+    reset();
+    onBack();
+  }, [status, reset, onBack]);
 
   // If tipping is disabled, pay as soon as totals are ready — but ONLY after the
   // customer step is done (step advances to "processing"), never on mount.
@@ -199,7 +219,13 @@ export function KioskCheckoutView({
           </View>
         </>
       ) : status === "charging" ? (
-        <TapCardScreen config={config} scale={scale} />
+        <TapCardScreen
+          config={config}
+          scale={scale}
+          canCancel={canCancelCharge}
+          isCancelling={isCancellingCharge}
+          onCancel={cancelCharge}
+        />
       ) : (
         <>
           <ActivityIndicator size="large" color={config.primaryColor} />
@@ -224,15 +250,36 @@ export function KioskCheckoutView({
 /**
  * Prominent "Swipe / Tap your card" screen shown while waiting for the card
  * terminal. Uses the same CreditCard icon from lucide that the POS uses.
+ *
+ * ALWAYS offers a way out. Before this, the screen was a dead end: once the sale
+ * was dispatched the customer sat on it until the terminal timed out, with no
+ * visible cancel — the POS has had a "Cancel Transaction" button on its own
+ * equivalent screen all along (see `CardPaymentView`), the kiosk just never got
+ * one. Cancelling asks the terminal to abort BEFORE a card is read, so it can
+ * never cancel money that already moved.
+ *
+ * The button is deliberately quiet (outline, muted, below the fold of attention)
+ * so it doesn't compete with "tap your card" for a customer who is mid-payment,
+ * and it takes a two-tap confirm so a stray touch can't kill a live sale.
+ *
+ * On a processor with no cancel-before-card endpoint (ATOM) we say so plainly
+ * and point at the reader's own cancel key rather than showing a dead button.
  */
 function TapCardScreen({
   config,
   scale,
+  canCancel,
+  isCancelling,
+  onCancel,
 }: {
   config: KioskConfig;
   scale: number;
+  canCancel: boolean;
+  isCancelling: boolean;
+  onCancel: () => void | Promise<void>;
 }) {
   const muted = `${config.textColor}99`;
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <View
@@ -264,7 +311,6 @@ function TapCardScreen({
         }}
       >
         Follow the prompts on the card reader.
-        {"\n"}Please don&apos;t leave this screen.
       </Text>
 
       <ActivityIndicator
@@ -272,6 +318,119 @@ function TapCardScreen({
         color={config.primaryColor}
         style={{ marginTop: kioskPx(8, scale) }}
       />
+
+      {/* ---- Way out ---- */}
+      <View style={{ marginTop: kioskPx(28, scale), alignItems: "center" }}>
+        {!canCancel ? (
+          <Text
+            style={{
+              fontSize: kioskPx(14, scale),
+              color: muted,
+              textAlign: "center",
+              lineHeight: kioskPx(21, scale),
+            }}
+          >
+            To cancel, press the red key on the card reader.
+          </Text>
+        ) : isCancelling ? (
+          <Text
+            style={{
+              fontSize: kioskPx(15, scale),
+              color: muted,
+              fontWeight: "700",
+            }}
+          >
+            Cancelling…
+          </Text>
+        ) : confirming ? (
+          <View style={{ alignItems: "center", gap: kioskPx(12, scale) }}>
+            <Text
+              style={{
+                fontSize: kioskPx(15, scale),
+                color: config.textColor,
+                textAlign: "center",
+                fontWeight: "700",
+              }}
+            >
+              Cancel this payment?
+            </Text>
+            <Text
+              style={{
+                fontSize: kioskPx(13, scale),
+                color: muted,
+                textAlign: "center",
+              }}
+            >
+              You will not be charged. Your order is kept in your cart.
+            </Text>
+            <View style={{ flexDirection: "row", gap: kioskPx(12, scale) }}>
+              <KioskPressable
+                onPress={() => setConfirming(false)}
+                style={{
+                  paddingHorizontal: kioskPx(24, scale),
+                  paddingVertical: kioskPx(12, scale),
+                  borderRadius: kioskPx(14, scale),
+                  backgroundColor: config.primaryColor,
+                }}
+              >
+                <Text
+                  style={{
+                    color: config.backgroundColor,
+                    fontSize: kioskPx(15, scale),
+                    fontWeight: "800",
+                  }}
+                >
+                  Keep paying
+                </Text>
+              </KioskPressable>
+              <KioskPressable
+                onPress={() => {
+                  setConfirming(false);
+                  void onCancel();
+                }}
+                style={{
+                  paddingHorizontal: kioskPx(24, scale),
+                  paddingVertical: kioskPx(12, scale),
+                  borderRadius: kioskPx(14, scale),
+                  borderWidth: 1.5,
+                  borderColor: `${config.textColor}40`,
+                }}
+              >
+                <Text
+                  style={{
+                    color: config.textColor,
+                    fontSize: kioskPx(15, scale),
+                    fontWeight: "700",
+                  }}
+                >
+                  Yes, cancel
+                </Text>
+              </KioskPressable>
+            </View>
+          </View>
+        ) : (
+          <KioskPressable
+            onPress={() => setConfirming(true)}
+            style={{
+              paddingHorizontal: kioskPx(28, scale),
+              paddingVertical: kioskPx(14, scale),
+              borderRadius: kioskPx(16, scale),
+              borderWidth: 1.5,
+              borderColor: `${config.textColor}30`,
+            }}
+          >
+            <Text
+              style={{
+                color: muted,
+                fontSize: kioskPx(15, scale),
+                fontWeight: "700",
+              }}
+            >
+              Cancel payment
+            </Text>
+          </KioskPressable>
+        )}
+      </View>
     </View>
   );
 }
