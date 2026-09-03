@@ -37,15 +37,17 @@ import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import { useRouter } from "expo-router";
 import {
     ArrowUpToLine,
+    CheckCheck,
     CheckSquare,
     Flame,
+    ListChecks,
     RotateCcw,
     Settings,
     ShoppingBag,
-    Square,
     Star,
     Truck,
     UtensilsCrossed,
+    X,
 } from "lucide-react-native";
 import React, {
     useCallback,
@@ -776,13 +778,21 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       onAdvance(ticket.ticket_id, itemIds, "served");
     }, [ticketItems, ticket.ticket_id, onAdvance]);
 
-    // Determine border color based on state
+    // Determine border color based on state. Bulk selection uses the teal
+    // accent so it stays distinguishable from the info-blue focus ring — the
+    // two previously rendered identically, so a selected card and a focused
+    // card were impossible to tell apart.
     let borderColor = "#E5E7EB"; // default light gray
     if (bulkMode && isSelected) {
-      borderColor = colors.info;
+      borderColor = colors.teal;
     } else if (isFocused) {
       borderColor = colors.info;
     }
+
+    // In bulk mode unselected cards recede, so the chosen set reads at a glance
+    // across a wall of tickets — there is no per-card tick to hunt for.
+    const bulkUnselected = bulkMode && !isSelected;
+    const bulkSelected = bulkMode && isSelected;
 
     const isDineIn =
       ticket.order_type?.toLowerCase() === "dine_in" ||
@@ -980,51 +990,55 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             borderRadius: s(10),
             overflow: "hidden",
             backgroundColor: "#FFFFFF",
-            borderTopWidth: 1,
-            borderBottomWidth: 1,
-            borderRightWidth: 1,
-            borderLeftWidth: hasUnacknowledgedNotices || isDineIn ? s(4) : 1,
-            borderTopColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
-            borderBottomColor: hasUnacknowledgedNotices
-              ? "#FECACA"
-              : borderColor,
-            borderRightColor: hasUnacknowledgedNotices
-              ? "#FECACA"
-              : borderColor,
-            borderLeftColor: hasUnacknowledgedNotices
-              ? "#DC2626"
-              : isDineIn
-                ? colors.teal
+            // There is no corner indicator — the card itself is the selection
+            // state. A selected card carries a solid teal ring on every edge,
+            // and that ring wins over the notice/dine-in accents so it never
+            // renders half-teal, half-red.
+            borderTopWidth: bulkSelected ? s(4) : 1,
+            borderBottomWidth: bulkSelected ? s(4) : 1,
+            borderRightWidth: bulkSelected ? s(4) : 1,
+            borderLeftWidth: bulkSelected
+              ? s(4)
+              : hasUnacknowledgedNotices || isDineIn
+                ? s(4)
+                : 1,
+            borderTopColor: bulkSelected
+              ? colors.teal
+              : hasUnacknowledgedNotices
+                ? "#FECACA"
                 : borderColor,
-            shadowColor: "#000",
+            borderBottomColor: bulkSelected
+              ? colors.teal
+              : hasUnacknowledgedNotices
+                ? "#FECACA"
+                : borderColor,
+            borderRightColor: bulkSelected
+              ? colors.teal
+              : hasUnacknowledgedNotices
+                ? "#FECACA"
+                : borderColor,
+            borderLeftColor: bulkSelected
+              ? colors.teal
+              : hasUnacknowledgedNotices
+                ? "#DC2626"
+                : isDineIn
+                  ? colors.teal
+                  : borderColor,
+            // With no tick to look for, the contrast between a lifted selected
+            // card and dimmed, shrunken unselected ones carries the whole read.
+            opacity: bulkUnselected ? 0.4 : 1,
+            transform: bulkUnselected
+              ? [{ scale: 0.97 }]
+              : bulkSelected
+                ? [{ scale: 1.01 }]
+                : [],
+            shadowColor: bulkSelected ? colors.teal : "#000",
             shadowOffset: { width: 0, height: s(2) },
-            shadowOpacity: 0.08,
-            shadowRadius: s(4),
-            elevation: 2,
+            shadowOpacity: bulkSelected ? 0.45 : 0.08,
+            shadowRadius: bulkSelected ? s(10) : s(4),
+            elevation: bulkSelected ? 8 : 2,
           }}
         >
-          {/* Bulk mode checkbox overlay */}
-          {bulkMode && (
-            <View
-              style={{
-                position: "absolute",
-                top: s(6),
-                right: s(6),
-                zIndex: 10,
-              }}
-            >
-              {isSelected ? (
-                <CheckSquare
-                  size={s(20)}
-                  color={colors.info}
-                  fill={colors.info}
-                />
-              ) : (
-                <Square size={s(20)} color={colors.label} />
-              )}
-            </View>
-          )}
-
           {/* Card Header: Order Number + Order Type + Timer + Badges (darker background) */}
           <View
             style={{
@@ -2306,6 +2320,10 @@ const KitchenDisplayScreen = () => {
   const selectAllVisible = useKDSStore((s) => s.selectAllVisible);
   const clearSelection = useKDSStore((s) => s.clearSelection);
   const bulkAdvanceTickets = useKDSStore((s) => s.bulkAdvanceTickets);
+  // Whole-tab actions ignore the selection and hit every ticket in the tab, so
+  // they stay collapsed behind a toggle instead of sitting beside the
+  // per-selection buttons where they were one mis-tap away.
+  const [showBulkTabActions, setShowBulkTabActions] = useState(false);
   const bulkMarkTicketsDone = useKDSStore((s) => s.bulkMarkTicketsDone);
   const setOnNewOrderCallback = useKDSStore((s) => s.setOnNewOrderCallback);
   const recallTicket = useKDSStore((s) => s.recallTicket);
@@ -2772,6 +2790,9 @@ const KitchenDisplayScreen = () => {
     (status: StatusFilter) => {
       setActiveStatus(status);
       if (bulkMode) clearSelection();
+      // The whole-tab panel names a count and a scope that both just changed,
+      // so collapse it rather than leave a stale target on screen.
+      setShowBulkTabActions(false);
     },
     [bulkMode, clearSelection],
   );
@@ -2893,6 +2914,11 @@ const KitchenDisplayScreen = () => {
     (action: "selected" | "all" | "done-selected" | "done-all") => {
       setPendingBulkAction(action);
       setShowPinModal(true);
+      // Collapse the whole-tab panel once its action is committed, so it does
+      // not stay open over a tab the action just emptied.
+      if (action === "all" || action === "done-all") {
+        setShowBulkTabActions(false);
+      }
     },
     [],
   );
@@ -3015,9 +3041,19 @@ const KitchenDisplayScreen = () => {
     setPendingBulkAction(null);
   }, []);
 
+  const handleToggleBulkMode = useCallback(() => {
+    toggleBulkMode();
+    setShowBulkTabActions(false);
+  }, [toggleBulkMode]);
+
   const handleSelectAll = useCallback(() => {
     selectAllVisible(activeFilteredTickets.map((t) => t.ticket_id));
   }, [selectAllVisible, activeFilteredTickets]);
+
+  // Drives the Select All / Deselect All flip in the bulk bar.
+  const allVisibleSelected =
+    activeFilteredTickets.length > 0 &&
+    selectionCount >= activeFilteredTickets.length;
 
   // ─── Long-Press Action Menu Handlers ────────────────────────────
   const handleTicketLongPress = useCallback(
@@ -3492,29 +3528,35 @@ const KitchenDisplayScreen = () => {
                   }}
                 />
                 <TouchableOpacity
-                  onPress={toggleBulkMode}
+                  onPress={handleToggleBulkMode}
                   style={{
                     paddingHorizontal: s(12),
                     paddingVertical: s(6),
                     borderRadius: s(14),
-                    backgroundColor: bulkMode
-                      ? colors.info + "20"
-                      : "transparent",
+                    // Active bulk mode reads as a solid teal switch, matching
+                    // the selection ring, instead of another faint outline
+                    // pill indistinguishable from the tabs beside it.
+                    backgroundColor: bulkMode ? colors.teal : "transparent",
                     borderWidth: 1,
-                    borderColor: bulkMode ? colors.info + "50" : colors.border,
+                    borderColor: bulkMode ? colors.teal : colors.border,
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: s(4),
+                    gap: s(5),
                   }}
                 >
+                  {bulkMode ? (
+                    <X size={s(13)} color={colors.onSolid} />
+                  ) : (
+                    <ListChecks size={s(13)} color={colors.label} />
+                  )}
                   <Text
                     style={{
-                      color: bulkMode ? colors.info : colors.label,
+                      color: bulkMode ? colors.onSolid : colors.label,
                       fontSize: s(12),
-                      fontWeight: bulkMode ? "700" : "600",
+                      fontWeight: bulkMode ? "800" : "600",
                     }}
                   >
-                    {bulkMode ? "Exit Bulk" : "Bulk"}
+                    {bulkMode ? "Done Selecting" : "Select"}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -3758,62 +3800,98 @@ const KitchenDisplayScreen = () => {
             backgroundColor: colors.panel,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
+            // A teal top rule ties the bar to the teal selection ring on cards.
+            borderTopWidth: s(3),
+            borderTopColor: colors.teal,
             paddingHorizontal: s(16),
-            paddingVertical: s(8),
+            paddingVertical: s(10),
             flexDirection: "row",
             alignItems: "center",
-            justifyContent: "space-between",
+            gap: s(12),
           }}
         >
+          {/* ── Left: selection state ── */}
           <View
-            style={{ flexDirection: "row", alignItems: "center", gap: s(12) }}
+            style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}
           >
-            <Text style={{ color: colors.label, fontSize: s(13) }}>
-              {selectionCount} selected
-            </Text>
-            <TouchableOpacity
-              onPress={handleSelectAll}
+            <View
               style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(7),
                 paddingHorizontal: s(10),
-                paddingVertical: s(4),
-                backgroundColor: colors.teal + "20",
-                borderWidth: 1,
-                borderColor: colors.teal + "50",
-                borderRadius: s(6),
+                paddingVertical: s(6),
+                borderRadius: s(8),
+                backgroundColor:
+                  selectionCount > 0 ? colors.teal : colors.border,
               }}
             >
+              <ListChecks
+                size={s(15)}
+                color={selectionCount > 0 ? colors.onSolid : colors.label}
+              />
               <Text
                 style={{
-                  color: colors.teal,
-                  fontSize: s(12),
-                  fontWeight: "600",
+                  color: selectionCount > 0 ? colors.onSolid : colors.label,
+                  fontSize: s(13),
+                  fontWeight: "800",
+                  fontVariant: ["tabular-nums"],
                 }}
               >
-                Select All
+                {selectionCount > 0
+                  ? selectionCount + " of " + activeFilteredTickets.length
+                  : "Tap tickets to select"}
               </Text>
-            </TouchableOpacity>
+            </View>
+
+            {/* Select-all doubles as deselect-all once everything is picked,
+                so one control covers both directions instead of two pills. */}
             <TouchableOpacity
-              onPress={clearSelection}
+              onPress={allVisibleSelected ? clearSelection : handleSelectAll}
+              disabled={activeFilteredTickets.length === 0}
               style={{
-                paddingHorizontal: s(10),
-                paddingVertical: s(4),
-                backgroundColor: "transparent",
+                minHeight: s(36),
+                paddingHorizontal: s(12),
+                justifyContent: "center",
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: s(6),
+                opacity: activeFilteredTickets.length === 0 ? 0.4 : 1,
               }}
             >
               <Text
                 style={{
-                  color: colors.label,
+                  color: colors.heading,
                   fontSize: s(12),
-                  fontWeight: "600",
+                  fontWeight: "700",
                 }}
               >
-                Clear
+                {allVisibleSelected ? "Deselect All" : "Select All"}
               </Text>
             </TouchableOpacity>
+
+            {selectionCount > 0 && (
+              <TouchableOpacity
+                onPress={clearSelection}
+                style={{
+                  minHeight: s(36),
+                  minWidth: s(36),
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: s(8),
+                }}
+              >
+                <X size={s(17)} color={colors.label} />
+              </TouchableOpacity>
+            )}
           </View>
+
+          <View style={{ flex: 1 }} />
+
+          {/* ── Right: actions on the selected set ──
+              Filled = primary path, and both are disabled with no selection so
+              a mis-tap cannot fire a store-wide action. Whole-tab actions live
+              behind the overflow toggle below, away from the thumb. */}
           <View
             style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
           >
@@ -3821,117 +3899,186 @@ const KitchenDisplayScreen = () => {
               onPress={() => handleBulkAction("selected")}
               disabled={selectionCount === 0}
               style={{
-                paddingHorizontal: s(12),
-                paddingVertical: s(6),
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(7),
+                minHeight: s(40),
+                paddingHorizontal: s(16),
+                borderRadius: s(9),
                 backgroundColor:
-                  selectionCount > 0 ? colors.teal + "20" : "transparent",
+                  selectionCount > 0 ? colors.teal : "transparent",
                 borderWidth: 1,
-                borderColor:
-                  selectionCount > 0 ? colors.teal + "50" : colors.border,
-                borderRadius: s(6),
-                opacity: selectionCount > 0 ? 1 : 0.5,
+                borderColor: selectionCount > 0 ? colors.teal : colors.border,
+                opacity: selectionCount > 0 ? 1 : 0.45,
               }}
             >
+              <ArrowUpToLine
+                size={s(15)}
+                color={selectionCount > 0 ? colors.onSolid : colors.label}
+              />
               <Text
                 style={{
-                  color: selectionCount > 0 ? colors.teal : colors.label,
-                  fontSize: s(12),
-                  fontWeight: "700",
+                  color: selectionCount > 0 ? colors.onSolid : colors.label,
+                  fontSize: s(13),
+                  fontWeight: "800",
                 }}
               >
-                Advance Selected
+                Advance
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               onPress={() => handleBulkAction("done-selected")}
               disabled={selectionCount === 0}
               style={{
-                paddingHorizontal: s(12),
-                paddingVertical: s(6),
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(7),
+                minHeight: s(40),
+                paddingHorizontal: s(16),
+                borderRadius: s(9),
                 backgroundColor:
-                  selectionCount > 0 ? colors.warning + "18" : "transparent",
+                  selectionCount > 0 ? colors.warning : "transparent",
                 borderWidth: 1,
                 borderColor:
-                  selectionCount > 0 ? colors.warning + "45" : colors.border,
-                borderRadius: s(6),
-                opacity: selectionCount > 0 ? 1 : 0.5,
+                  selectionCount > 0 ? colors.warning : colors.border,
+                opacity: selectionCount > 0 ? 1 : 0.45,
               }}
             >
+              <CheckCheck
+                size={s(15)}
+                color={selectionCount > 0 ? "#0C0F1A" : colors.label}
+              />
               <Text
                 style={{
-                  color: selectionCount > 0 ? colors.warning : colors.label,
-                  fontSize: s(12),
-                  fontWeight: "700",
+                  color: selectionCount > 0 ? "#0C0F1A" : colors.label,
+                  fontSize: s(13),
+                  fontWeight: "800",
                 }}
               >
-                Mark Selected Done
+                Mark Done
               </Text>
             </TouchableOpacity>
+
+            <View
+              style={{
+                width: 1,
+                height: s(24),
+                backgroundColor: colors.border,
+                marginHorizontal: s(2),
+              }}
+            />
+
+            {/* Whole-tab actions: destructive by scale, so they sit behind a
+                toggle rather than one tap from the per-selection buttons. */}
             <TouchableOpacity
-              onPress={() => handleBulkAction("all")}
+              onPress={() => setShowBulkTabActions((v) => !v)}
               disabled={activeFilteredTickets.length === 0}
               style={{
+                minHeight: s(40),
                 paddingHorizontal: s(12),
-                paddingVertical: s(6),
-                backgroundColor:
-                  activeFilteredTickets.length > 0
-                    ? colors.danger + "20"
-                    : "transparent",
+                justifyContent: "center",
+                borderRadius: s(9),
                 borderWidth: 1,
-                borderColor:
-                  activeFilteredTickets.length > 0
-                    ? colors.danger + "50"
-                    : colors.border,
-                borderRadius: s(6),
-                opacity: activeFilteredTickets.length > 0 ? 1 : 0.5,
+                borderColor: showBulkTabActions ? colors.danger : colors.border,
+                backgroundColor: showBulkTabActions
+                  ? colors.danger + "18"
+                  : "transparent",
+                opacity: activeFilteredTickets.length === 0 ? 0.4 : 1,
               }}
             >
               <Text
                 style={{
-                  color:
-                    activeFilteredTickets.length > 0
-                      ? colors.danger
-                      : colors.label,
+                  color: showBulkTabActions ? colors.danger : colors.label,
                   fontSize: s(12),
                   fontWeight: "700",
                 }}
               >
-                Advance All in Tab
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleBulkAction("done-all")}
-              disabled={activeFilteredTickets.length === 0}
-              style={{
-                paddingHorizontal: s(12),
-                paddingVertical: s(6),
-                backgroundColor:
-                  activeFilteredTickets.length > 0
-                    ? colors.warning + "18"
-                    : "transparent",
-                borderWidth: 1,
-                borderColor:
-                  activeFilteredTickets.length > 0
-                    ? colors.warning + "45"
-                    : colors.border,
-                borderRadius: s(6),
-                opacity: activeFilteredTickets.length > 0 ? 1 : 0.5,
-              }}
-            >
-              <Text
-                style={{
-                  color:
-                    activeFilteredTickets.length > 0
-                      ? colors.warning
-                      : colors.label,
-                  fontSize: s(12),
-                  fontWeight: "700",
-                }}
-              >
-                Mark All Done
+                {showBulkTabActions ? "Whole Tab ▴" : "Whole Tab ▾"}
               </Text>
             </TouchableOpacity>
           </View>
+        </View>
+      )}
+
+      {/* ─── Whole-tab bulk actions (revealed) ─── */}
+      {bulkMode && activeStatus !== "done" && showBulkTabActions && (
+        <View
+          style={{
+            backgroundColor: colors.danger + "12",
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            paddingHorizontal: s(16),
+            paddingVertical: s(10),
+            flexDirection: "row",
+            alignItems: "center",
+            gap: s(10),
+          }}
+        >
+          <Text
+            style={{
+              color: colors.label,
+              fontSize: s(12),
+              fontWeight: "600",
+              flex: 1,
+            }}
+          >
+            Applies to all {activeFilteredTickets.length} ticket
+            {activeFilteredTickets.length === 1 ? "" : "s"} in this tab —
+            selection is ignored.
+          </Text>
+          <TouchableOpacity
+            onPress={() => handleBulkAction("all")}
+            disabled={activeFilteredTickets.length === 0}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(7),
+              minHeight: s(38),
+              paddingHorizontal: s(14),
+              borderRadius: s(9),
+              borderWidth: 1,
+              borderColor: colors.danger,
+              opacity: activeFilteredTickets.length === 0 ? 0.4 : 1,
+            }}
+          >
+            <ArrowUpToLine size={s(14)} color={colors.danger} />
+            <Text
+              style={{
+                color: colors.danger,
+                fontSize: s(12),
+                fontWeight: "800",
+              }}
+            >
+              Advance All
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleBulkAction("done-all")}
+            disabled={activeFilteredTickets.length === 0}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(7),
+              minHeight: s(38),
+              paddingHorizontal: s(14),
+              borderRadius: s(9),
+              borderWidth: 1,
+              borderColor: colors.danger,
+              opacity: activeFilteredTickets.length === 0 ? 0.4 : 1,
+            }}
+          >
+            <CheckCheck size={s(14)} color={colors.danger} />
+            <Text
+              style={{
+                color: colors.danger,
+                fontSize: s(12),
+                fontWeight: "800",
+              }}
+            >
+              Mark All Done
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
