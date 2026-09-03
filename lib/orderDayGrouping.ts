@@ -34,13 +34,21 @@ export interface DayGroup {
   orders: OrderProfile[];
 }
 
+/**
+ * getBusinessDayForTimestamp only takes ISO strings / Dates, so epoch ms
+ * (the shape our day keys use) has to be wrapped first.
+ */
+function toBusinessDayInput(ts: number | string | Date): string | Date {
+  return typeof ts === "number" ? new Date(ts) : ts;
+}
+
 export function dayKeyOf(
   ts: number | string | Date,
   config?: BusinessDayConfig | null,
 ): number {
   if (config) {
     try {
-      const day = getBusinessDayForTimestamp(ts, config);
+      const day = getBusinessDayForTimestamp(toBusinessDayInput(ts), config);
       const bounds = getBusinessDayBounds(day, config);
       return new Date(bounds.startUtc).getTime();
     } catch {
@@ -56,7 +64,7 @@ export function getDayLabel(
 ): string {
   if (config) {
     try {
-      const day = getBusinessDayForTimestamp(ts, config);
+      const day = getBusinessDayForTimestamp(toBusinessDayInput(ts), config);
       const current = getCurrentBusinessDay(config);
       if (day === current) return "Today";
       const previous = DateTime.fromISO(current, { zone: config.timezone })

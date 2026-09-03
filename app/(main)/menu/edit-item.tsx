@@ -2,6 +2,10 @@ import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import ItemForm from "@/components/menu/ItemForm";
 import { MenuScopeLoadingScreen } from "@/components/menu/MenuScopeLoadingScreen";
 import { useToast } from "@/contexts/ToastContext";
+import {
+    MENU_OFFLINE_REASON,
+    useMenuWriteGate,
+} from "@/hooks/menu/useMenuWriteGate";
 import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuItemType } from "@/lib/types";
