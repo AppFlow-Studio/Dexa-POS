@@ -64,6 +64,9 @@ const CustomerSheet: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [isNameFocused, setIsNameFocused] = useState(false);
+  const [isPhoneFocused, setIsPhoneFocused] = useState(false);
+  const [isAddressFocused, setIsAddressFocused] = useState(false);
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("");
   const [stateCode, setStateCode] = useState("");
@@ -445,7 +448,7 @@ const CustomerSheet: React.FC = () => {
           <TouchableWithoutFeedback onPress={() => {}}>
             <View
               style={{
-                width: s(480),
+                width: s(600),
                 // The form sizes to its content (~320px) so it fits inside the
                 // keyboard safe zone by construction - see the two-column row
                 // and conditional address field below.
@@ -848,9 +851,21 @@ const CustomerSheet: React.FC = () => {
                       <TextInput
                         value={newName}
                         onChangeText={setNewName}
+                        // Name leads the form, so it's the field that should
+                        // be focused when the "add" form first opens.
+                        autoFocus={viewMode === "add"}
+                        onFocus={() => setIsNameFocused(true)}
+                        onBlur={() => setIsNameFocused(false)}
                         placeholder="e.g. John Doe"
                         placeholderTextColor={colors.muted}
-                        style={fieldInputStyle}
+                        style={[
+                          fieldInputStyle,
+                          {
+                            borderColor: isNameFocused
+                              ? colors.teal
+                              : colors.border,
+                          },
+                        ]}
                       />
                     </View>
 
@@ -865,9 +880,8 @@ const CustomerSheet: React.FC = () => {
                           viewMode === "edit" ? undefined : handlePhoneChange
                         }
                         editable={viewMode !== "edit"}
-                        // Focused first, on the keypad IME: the common path (a
-                        // phone-led lookup) never raises the tall QWERTY.
-                        autoFocus={viewMode === "add"}
+                        onFocus={() => setIsPhoneFocused(true)}
+                        onBlur={() => setIsPhoneFocused(false)}
                         placeholder="(555) 555-5555"
                         maxLength={14}
                         keyboardType="phone-pad"
@@ -883,7 +897,9 @@ const CustomerSheet: React.FC = () => {
                             borderColor:
                               viewMode === "edit"
                                 ? colors.border
-                                : colors.teal + "60",
+                                : isPhoneFocused
+                                  ? colors.teal
+                                  : colors.border,
                             color:
                               viewMode === "edit"
                                 ? colors.muted
@@ -918,6 +934,13 @@ const CustomerSheet: React.FC = () => {
                       }}
                       placeholder="Search address..."
                       dropdownPosition="top"
+                      onFocus={() => setIsAddressFocused(true)}
+                      onBlur={() => setIsAddressFocused(false)}
+                      inputStyle={{
+                        borderColor: isAddressFocused
+                          ? colors.teal
+                          : colors.border,
+                      }}
                     />
                     {(city || stateCode || zip) && (
                       <View
