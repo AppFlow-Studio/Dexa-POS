@@ -506,6 +506,74 @@ function getTicketItems(ticket: KDSTicket | null | undefined): KDSTicketItem[] {
   return Array.isArray(ticket?.items) ? ticket.items : [];
 }
 
+/**
+ * Approximate rendered height of a ticket card, in scaled px.
+ *
+ * Fed to MasonryFlashList via `overrideItemLayout`. Without it, a variable-height
+ * masonry list has to measure every mounted card to pack its columns — so bumping
+ * one ticket out of a crowded board re-measures everything still on screen, which
+ * is the bulk of the bump lag. With a per-ticket size up front, the columns re-pack
+ * from numbers instead.
+ *
+ * This is a seed, not a contract: FlashList corrects against real measurements
+ * once cells mount, so an imperfect estimate costs a little accuracy in the
+ * scrollbar and nothing in correctness or layout. Errs slightly high — an
+ * over-estimate leaves a small gap that closes on measure, whereas an
+ * under-estimate makes content jump upward as it settles.
+ */
+function estimateTicketCardHeight(
+  ticket: KDSTicket,
+  hideDoneItems: boolean,
+  aggregateIdenticalItems: boolean,
+  scale: (n: number) => number,
+): number {
+  const items = getTicketItems(ticket);
+
+  // Header: fixed s(44) content block + vertical padding + border. Deliberately
+  // constant — the focused (quick-action) header is sized to match the normal
+  // one so cards don't jump when focused.
+  let height = scale(44) + scale(10) * 2 + 1;
+
+  // Item rows the card will actually draw. Mirrors the visibleItems pipeline:
+  // done items can be hidden, and voided/refunded rows always survive that
+  // filter; a partial refund splits one item into two rows.
+  let rows = 0;
+  let modifierCount = 0;
+  let noteCount = 0;
+  for (const item of items) {
+    const isInactive = Boolean(item.is_voided) || Boolean(item.is_refunded);
+    if (hideDoneItems && item.kitchen_status === "ready" && !isInactive)
+      continue;
+    const partialRefund =
+      Boolean(item.is_refunded) &&
+      Boolean(item.refunded_quantity) &&
+      (item.refunded_quantity ?? 0) < item.quantity;
+    rows += partialRefund ? 2 : 1;
+    modifierCount += item.modifiers?.length ?? 0;
+    if (item.special_instructions) noteCount += 1;
+  }
+
+  // Aggregation collapses identical rows, so the real count is at most `rows`.
+  // We can't know the collapsed count without redoing the grouping, so treat
+  // aggregation as a mild reduction rather than paying for that work here.
+  if (aggregateIdenticalItems && rows > 1) rows = Math.ceil(rows * 0.85);
+
+  // Item name line (s(13) text ≈ s(18) line box) + s(6) gap between rows.
+  height += rows * (scale(18) + scale(6));
+  // Modifier lines: s(12) text (≈ s(16) line box) + s(2) top margin.
+  height += modifierCount * (scale(16) + scale(2));
+  // Special-instruction lines render at s(11) with a little breathing room.
+  height += noteCount * scale(16);
+
+  // Order note block (label + up to 3 wrapped lines) when present and enabled.
+  if (ticket.order_notes) height += scale(14) + scale(16) * 2;
+
+  // Item list padding + card border/margin.
+  height += scale(10) * 2 + scale(8);
+
+  return Math.round(height);
+}
+
 // ─── Allergen Detection ────────────────────────────────────────────
 const ALLERGEN_KEYWORDS: Record<string, { label: string; color: string }> = {
   shellfish: { label: "SHELLFISH", color: colors.danger },
@@ -601,7 +669,11 @@ interface KDSTicketCardProps {
   // Interaction mode. "double-tap" (default) bumps on double tap. "single-select"
   // makes a single tap select the ticket so its actions appear in the KDS header.
   tapMode: "double-tap" | "single-select";
-  isFocused: boolean;
+  // NOTE: focus is deliberately NOT a prop. Passing it down would put
+  // `focusedTicketId` in renderTicketCard's dep array, giving every card a new
+  // renderer identity on every selection change and re-rendering the whole
+  // board. The card subscribes to the focus slice itself, so a selection
+  // re-renders only the two cards whose focus actually flipped.
   onSelectTicket?: (ticketId: string) => void;
   onRush?: (ticketId: string) => void;
   onPrioritize?: (ticketId: string) => void;
@@ -619,13 +691,23 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     hideDoneItems,
     displaySettings,
     tapMode,
-    isFocused,
     onSelectTicket,
     onRush,
     onPrioritize,
   }) => {
     const uiScale = useUiScale();
     const s = (n: number) => Math.round(n * uiScale);
+    // Focus is read from the store rather than passed down — see the note on
+    // the props interface. Mirrors the old prop exactly: focus only counts in
+    // single-select mode, so double-tap mode always sees `false`.
+    const isFocused = useKDSStore(
+      useCallback(
+        (st) =>
+          tapMode === "single-select" &&
+          st.focusedTicketId === ticket.ticket_id,
+        [tapMode, ticket.ticket_id],
+      ),
+    );
     const bulkMode = useKDSStore((s) => s.bulkMode);
     const isSelected = useKDSStore(
       useCallback(
@@ -1899,7 +1981,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       prev.hideDoneItems !== next.hideDoneItems ||
       prev.displaySettings !== next.displaySettings ||
       prev.tapMode !== next.tapMode ||
-      prev.isFocused !== next.isFocused ||
+      // isFocused is no longer a prop — the card subscribes to the focus slice
+      // itself, and that subscription re-renders it independently of this memo.
       prev.onSelectTicket !== next.onSelectTicket ||
       prev.onRush !== next.onRush ||
       prev.onPrioritize !== next.onPrioritize
@@ -1957,15 +2040,23 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 interface KDSDoneTicketCardProps {
   ticket: KDSTicket;
   onRecall: (ticketId: string) => void;
-  isFocused: boolean;
+  // Focus is read from the store inside the card rather than passed as a prop —
+  // see the note on KDSTicketCardProps.
   onSelectTicket?: (ticketId: string) => void;
   showServerName?: boolean;
 }
 
 const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
-  ({ ticket, onRecall, isFocused, onSelectTicket, showServerName }) => {
+  ({ ticket, onRecall, onSelectTicket, showServerName }) => {
     const uiScale = useUiScale();
     const s = (n: number) => Math.round(n * uiScale);
+    // Unlike the active card, done-tab focus was never gated on tapMode.
+    const isFocused = useKDSStore(
+      useCallback(
+        (st) => st.focusedTicketId === ticket.ticket_id,
+        [ticket.ticket_id],
+      ),
+    );
     const timeElapsed = useMemo(
       () => getBucketedElapsed(ticket.start_time_epoch, ticket.done_time_epoch),
       [ticket.start_time_epoch, ticket.done_time_epoch],
@@ -2273,7 +2364,6 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
   (prev, next) =>
     prev.ticket === next.ticket &&
     prev.onRecall === next.onRecall &&
-    prev.isFocused === next.isFocused &&
     prev.onSelectTicket === next.onSelectTicket &&
     prev.showServerName === next.showServerName,
 );
@@ -2281,7 +2371,11 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 // ─── Main Screen ──────────────────────────────────────────────────
 const KitchenDisplayScreen = () => {
   const uiScale = useUiScale();
-  const s = (n: number) => Math.round(n * uiScale);
+  // Stable identity across renders (uiScale changes only on resize / scale
+  // setting change). `renderMasonryTicket` depends on `s`, so a fresh arrow
+  // here would rebuild FlashList's renderItem on every page render and
+  // re-render every mounted cell — the memo below is what makes that hold.
+  const s = useCallback((n: number) => Math.round(n * uiScale), [uiScale]);
   const router = useRouter();
   const supabase = useSupabaseClient();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
@@ -3238,10 +3332,6 @@ const KitchenDisplayScreen = () => {
         hideDoneItems={kdsHideDoneItems}
         displaySettings={displaySettings}
         tapMode={kdsTicketTapMode}
-        isFocused={
-          kdsTicketTapMode === "single-select" &&
-          focusedTicketId === item.ticket_id
-        }
         onSelectTicket={handleSelectTicket}
         onRush={handleFocusedRush}
         onPrioritize={handleFocusedPrioritize}
@@ -3258,7 +3348,9 @@ const KitchenDisplayScreen = () => {
       displaySettings,
       urgencyThresholds,
       kdsTicketTapMode,
-      focusedTicketId,
+      // focusedTicketId is intentionally absent: the card subscribes to focus
+      // itself, so keeping it here would rebuild this renderer — and re-render
+      // every mounted card — on each selection change.
       handleSelectTicket,
       handleFocusedRush,
       handleFocusedPrioritize,
@@ -3270,12 +3362,12 @@ const KitchenDisplayScreen = () => {
       <KDSDoneTicketCard
         ticket={item}
         onRecall={recallDoneTicket}
-        isFocused={focusedTicketId === item.ticket_id}
         onSelectTicket={handleSelectTicket}
         showServerName={kdsShowServerName}
       />
     ),
-    [recallDoneTicket, focusedTicketId, handleSelectTicket, kdsShowServerName],
+    // focusedTicketId intentionally absent — the card subscribes to it itself.
+    [recallDoneTicket, handleSelectTicket, kdsShowServerName],
   );
 
   // Stable identity so KDSTicketColumn's memo isn't defeated by a new closure
@@ -3345,6 +3437,54 @@ const KitchenDisplayScreen = () => {
   const ticketKeyExtractor = useCallback(
     (ticket: KDSTicket) => ticket.ticket_id,
     [],
+  );
+
+  // Median estimated card height for the current board, used as FlashList's
+  // seed size. A hardcoded constant that reads low makes FlashList mount more
+  // cards than it needs and then correct; deriving it from the tickets actually
+  // on screen keeps the seed honest as ticket sizes drift through service.
+  const estimatedTicketSize = useMemo(() => {
+    if (isDoneTab || ticketsForLayout.length === 0) return s(220);
+    const sample = ticketsForLayout.slice(0, 24).map((t) =>
+      estimateTicketCardHeight(
+        t,
+        kdsHideDoneItems && workflowMode !== "2-step",
+        displaySettings.aggregateIdenticalItems,
+        s,
+      ),
+    );
+    sample.sort((a, b) => a - b);
+    return sample[Math.floor(sample.length / 2)];
+  }, [
+    isDoneTab,
+    ticketsForLayout,
+    kdsHideDoneItems,
+    workflowMode,
+    displaySettings.aggregateIdenticalItems,
+    s,
+  ]);
+
+  // Seed each card's size so masonry can re-pack its columns arithmetically
+  // instead of re-measuring every mounted card on each bump. Mirrors the card's
+  // own `shouldHideDoneItems = hideDoneItems && !onItemPress`, where onItemPress
+  // is only wired up in 2-step mode.
+  const overrideTicketLayout = useCallback(
+    (layout: { span?: number; size?: number }, ticket: KDSTicket) => {
+      if (isDoneTab) return; // done cards are compact and uniform enough
+      layout.size = estimateTicketCardHeight(
+        ticket,
+        kdsHideDoneItems && workflowMode !== "2-step",
+        displaySettings.aggregateIdenticalItems,
+        s,
+      );
+    },
+    [
+      isDoneTab,
+      kdsHideDoneItems,
+      workflowMode,
+      displaySettings.aggregateIdenticalItems,
+      s,
+    ],
   );
 
   // Skeleton grid for loading state
@@ -4106,12 +4246,17 @@ const KitchenDisplayScreen = () => {
             numColumns={columnCount}
             renderItem={renderMasonryTicket}
             keyExtractor={ticketKeyExtractor}
-            estimatedItemSize={s(220)}
+            estimatedItemSize={estimatedTicketSize}
+            /* Per-ticket size estimate, so re-packing after a bump is arithmetic
+               rather than a re-measure of every mounted card. */
+            overrideItemLayout={overrideTicketLayout}
             /* Ticket height varies with item count, so the estimate is only a
                seed — render well ahead of the viewport so a fling never waits
                on a row being recycled. */
             drawDistance={s(900)}
-            extraData={focusedTicketId}
+            /* No extraData for focus: each card subscribes to the focus slice
+               itself, so it repaints on its own. Threading focus through here
+               would re-render every mounted card on each selection instead. */
             contentContainerStyle={{
               paddingHorizontal: s(4),
               paddingTop: s(4),
