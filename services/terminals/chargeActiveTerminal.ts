@@ -63,13 +63,7 @@ export interface ChargeActiveTerminalResult {
    * read, or a partial approval). Caller MUST NOT void the order or re-charge.
    */
   indeterminate?: boolean;
-  /**
-   * The operator/customer aborted at the card prompt before any card was read.
-   * NOT a decline — no money moved, so the caller can safely void and let them
-   * start over.
-   */
-  cancelled?: boolean;
-  /** Human message for a decline / error / indeterminate / cancel. */
+  /** Human message for a decline / error / indeterminate. */
   message?: string;
   /** JSONB handed to `payFullCard` as `p_terminal_response`. */
   terminalResponse?: Record<string, unknown>;
@@ -78,16 +72,17 @@ export interface ChargeActiveTerminalResult {
 }
 
 /**
- * Handle published while a sale is parked on the terminal's card prompt. Calling
- * `cancel()` asks the terminal to abort BEFORE the card is read — exactly what
- * the POS's "Cancel Transaction" button does (see `CardPaymentView`). It is a
- * best-effort request, never a guarantee: if the card already landed, the abort
- * is a no-op and the sale still resolves through its own result path.
+ * Everything the caller needs to cancel an in-flight sale (a kiosk Back button):
+ * the terminal it's running on and the reference id Valor/Dejavoo cancel by.
+ * Fed to `cancelActiveTerminalCharge`.
  */
-export interface ChargeCancelHandle {
-  /** False for processors with no cancel-before-card endpoint (ATOM). */
-  supported: boolean;
-  cancel: () => Promise<void>;
+export interface ChargeStartedHandle {
+  /** terminal_type of the terminal running the sale. */
+  terminalType: string;
+  /** DB id of the terminal. */
+  terminalId: string;
+  /** Reference id of the sale (Valor/Dejavoo need it to cancel; Castles doesn't). */
+  referenceId: string;
 }
 
 export interface ChargeActiveTerminalArgs {
@@ -102,15 +97,15 @@ export interface ChargeActiveTerminalArgs {
   /** Live Supabase client (for the terminal txn counters + Dejavoo creds). */
   supabase: ReturnType<typeof useSupabaseClient>;
   /**
-   * Called once the sale is dispatched and the terminal is waiting on a card,
-   * handing the caller a way to abort it. Called again with `null` when the sale
-   * resolves, so a stale handle is never left armed. Optional.
+   * Fired once, synchronously, the instant the (blocking) card read is dispatched
+   * to the terminal — hands the caller the handle needed to cancel it. NOT called
+   * for the DEV no-terminal simulation or unsupported types (nothing to cancel).
    */
-  onCancelHandle?: (handle: ChargeCancelHandle | null) => void;
+  onChargeStarted?: (handle: ChargeStartedHandle) => void;
   /**
    * DEV-only: how long the no-terminal simulated approval sits on the card
    * prompt before approving. Lets the "Swipe, Tap, or Insert" screen (and its
-   * Cancel button) be exercised on hardware-free builds. Ignored in release and
+   * Back button) be exercised on hardware-free builds. Ignored in release and
    * whenever a real terminal is configured.
    */
   simulatedCardWaitMs?: number;
@@ -118,8 +113,6 @@ export interface ChargeActiveTerminalArgs {
 
 const INDETERMINATE_MESSAGE =
   "Payment is being verified. Please see a staff member before trying again.";
-
-const CANCELLED_MESSAGE = "Payment cancelled — you have not been charged.";
 
 /**
  * Charge the card on the station's active terminal, mirroring the POS.
@@ -133,12 +126,8 @@ const CANCELLED_MESSAGE = "Payment cancelled — you have not been charged.";
 export async function chargeActiveTerminal(
   args: ChargeActiveTerminalArgs,
 ): Promise<ChargeActiveTerminalResult> {
-  const { amount, tipAmount, orderId, dbOrderId, supabase, onCancelHandle } =
+  const { amount, tipAmount, orderId, dbOrderId, supabase, onChargeStarted } =
     args;
-  // Publish/retract the abort handle for whichever sale is on the card prompt.
-  const publishCancel = (handle: ChargeCancelHandle | null) =>
-    onCancelHandle?.(handle);
-  const clearCancel = () => publishCancel(null);
   // Base (pre-tip) amount — the terminal adds the tip on top for Castles/Valor/
   // ATOM; Dejavoo takes the grand total plus a tip breakdown.
   const base = Math.max(0, amount - tipAmount);
@@ -154,27 +143,12 @@ export async function chargeActiveTerminal(
       console.warn(
         "[chargeActiveTerminal] No terminal configured — simulating approval (__DEV__ only).",
       );
-      // Simulate the card-prompt wait so the cancel affordance is exercisable
-      // without hardware. `simulatedCardWaitMs` lets a dev build sit on the
-      // "Swipe, Tap, or Insert" screen long enough to actually press Cancel.
-      const waitMs = args.simulatedCardWaitMs ?? 800;
-      const cancelled = await new Promise<boolean>((resolve) => {
-        const t = setTimeout(() => {
-          clearCancel();
-          resolve(false);
-        }, waitMs);
-        publishCancel({
-          supported: true,
-          cancel: async () => {
-            clearTimeout(t);
-            clearCancel();
-            resolve(true);
-          },
-        });
-      });
-      if (cancelled) {
-        return { ok: false, cancelled: true, message: CANCELLED_MESSAGE };
-      }
+      // Sit on the simulated card prompt so the cancel affordance is
+      // exercisable without hardware. There is no real sale to abort, so
+      // `onChargeStarted` is deliberately not fired — a Back press during this
+      // window is classified by `resolveKioskChargeOutcome` as a confirmed
+      // cancellation (no terminalType ⇒ not the unconfirmable Castles path).
+      await new Promise((r) => setTimeout(r, args.simulatedCardWaitMs ?? 800));
       return { ok: true, terminalResponse: { simulated: true, amount } };
     }
     return {
@@ -223,15 +197,12 @@ export async function chargeActiveTerminal(
     const referenceId = counter.next();
 
     const journalId = writeJournal();
-    // Cancel-before-card for Castles is a graceful disconnect — the same abort
-    // the POS's Cancel Transaction button issues.
-    publishCancel({
-      supported: true,
-      cancel: () => service.gracefulDisconnect(),
+    onChargeStarted?.({
+      terminalType: "castles",
+      terminalId: terminal.id,
+      referenceId,
     });
-    const result = await service
-      .processSale({ amount: base, tipAmount, referenceId })
-      .finally(clearCancel);
+    const result = await service.processSale({ amount: base, tipAmount, referenceId });
 
     updatePaymentJournal(journalId, {
       status: "terminal_approved",
@@ -301,29 +272,24 @@ export async function chargeActiveTerminal(
     const amountCents = Math.round((base + Number.EPSILON) * 100);
     const tipCents = Math.round((tipAmount + Number.EPSILON) * 100);
 
-    // Cancel-before-card on the 5001 socket. Fire-and-don't-trust: if the card
-    // already landed this is a no-op and the sale reconciles via TRAN_MODE 90.
-    publishCancel({
-      supported: true,
-      cancel: async () => {
-        await service.cancelInFlight(referenceId);
+    onChargeStarted?.({
+      terminalType: "valor",
+      terminalId: terminal.id,
+      referenceId,
+    });
+    const result = await service.processSale({
+      amount: amountCents,
+      tipAmount: tipCents,
+      referenceId,
+      // STAN captured at S2 (before card) — persist for TRAN_MODE 90 recovery.
+      onStan: (stan) => {
+        updatePaymentJournal(journalId, {
+          status: "terminal_approved",
+          terminalTxnId: stan,
+          ...(dbOrderId ? { dbOrderId } : {}),
+        });
       },
     });
-    const result = await service
-      .processSale({
-        amount: amountCents,
-        tipAmount: tipCents,
-        referenceId,
-        // STAN captured at S2 (before card) — persist for TRAN_MODE 90 recovery.
-        onStan: (stan) => {
-          updatePaymentJournal(journalId, {
-            status: "terminal_approved",
-            terminalTxnId: stan,
-            ...(dbOrderId ? { dbOrderId } : {}),
-          });
-        },
-      })
-      .finally(clearCancel);
 
     const valorTx = result.terminalResponse?.valor_transaction as
       | Record<string, string>
@@ -393,14 +359,14 @@ export async function chargeActiveTerminal(
 
     const journalId = writeJournal();
 
+    onChargeStarted?.({
+      terminalType: "atom",
+      terminalId: terminal.id,
+      referenceId,
+    });
     // ATOM is single-session; pause background probing for the whole sale, and
     // bring ourselves back to the front afterward (it foregrounds itself).
     suspendAtomLoopbackProbing();
-    // ATOM has no cancel-before-card endpoint (/cancel reverses an ALREADY
-    // completed payment) — same limitation the POS documents. Publish an
-    // unsupported handle so the UI can tell the customer to cancel on the
-    // reader itself rather than showing a button that does nothing.
-    publishCancel({ supported: false, cancel: async () => {} });
     const result = await service
       .processSale({
         amount: base,
@@ -410,10 +376,7 @@ export async function chargeActiveTerminal(
           industryData: { type: "RESTAURANT", checkNumber: referenceId },
         },
       })
-      .finally(() => {
-        resumeAtomLoopbackProbing();
-        clearCancel();
-      });
+      .finally(() => resumeAtomLoopbackProbing());
     void atomBringPosToForeground();
 
     const atomTx = result.terminalResponse?.atom_transaction as
@@ -432,7 +395,6 @@ export async function chargeActiveTerminal(
       failPaymentJournal(journalId, `terminal_aborted: ${result.errorCode ?? "cancelled"}`);
       return {
         ok: false,
-        cancelled: true,
         message: result.error || "Payment cancelled — no charge. Please try again.",
       };
     }
@@ -473,13 +435,10 @@ export async function chargeActiveTerminal(
     const refId = generateRefId("CARD", undefined, locSuffix, staSuffix);
 
     const journalId = writeJournal();
-    // Cancel-before-card is an abort against the same refId — what the POS's
-    // Cancel Transaction button issues for Dejavoo.
-    publishCancel({
-      supported: true,
-      cancel: async () => {
-        await api.abortTransaction().referenceId(refId).execute();
-      },
+    onChargeStarted?.({
+      terminalType: "dejavoo",
+      terminalId: terminal.id ?? "",
+      referenceId: refId,
     });
     const result = await api
       .sale()
@@ -487,8 +446,7 @@ export async function chargeActiveTerminal(
       .tip(tipAmount)
       .paymentType("Credit")
       .refId(refId)
-      .execute()
-      .finally(clearCancel);
+      .execute();
 
     updatePaymentJournal(journalId, {
       status: "terminal_approved",
