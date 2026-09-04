@@ -102,6 +102,13 @@ export interface ChargeActiveTerminalArgs {
    * for the DEV no-terminal simulation or unsupported types (nothing to cancel).
    */
   onChargeStarted?: (handle: ChargeStartedHandle) => void;
+  /**
+   * DEV-only: how long the no-terminal simulated approval sits on the card
+   * prompt before approving. Lets the "Swipe, Tap, or Insert" screen (and its
+   * Back button) be exercised on hardware-free builds. Ignored in release and
+   * whenever a real terminal is configured.
+   */
+  simulatedCardWaitMs?: number;
 }
 
 const INDETERMINATE_MESSAGE =
@@ -136,7 +143,12 @@ export async function chargeActiveTerminal(
       console.warn(
         "[chargeActiveTerminal] No terminal configured — simulating approval (__DEV__ only).",
       );
-      await new Promise((r) => setTimeout(r, 800));
+      // Sit on the simulated card prompt so the cancel affordance is
+      // exercisable without hardware. There is no real sale to abort, so
+      // `onChargeStarted` is deliberately not fired — a Back press during this
+      // window is classified by `resolveKioskChargeOutcome` as a confirmed
+      // cancellation (no terminalType ⇒ not the unconfirmable Castles path).
+      await new Promise((r) => setTimeout(r, args.simulatedCardWaitMs ?? 800));
       return { ok: true, terminalResponse: { simulated: true, amount } };
     }
     return {

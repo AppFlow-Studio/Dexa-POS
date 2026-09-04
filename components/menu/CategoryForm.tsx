@@ -72,6 +72,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
   title,
   submitButtonLabel,
   onDelete,
+  disabled = false,
 }) => {
   const allItems = useMenuStore((store) => store.menuItems);
   const addCustomPricing = useMenuStore((store) => store.addCustomPricing);

@@ -50,6 +50,14 @@ export type KioskCheckoutStatus =
   | "success"
   | "error";
 
+/**
+ * DEV-only: how long the no-terminal simulated approval parks on the card
+ * prompt, so the "Swipe, Tap, or Insert" screen and its Back button can be
+ * exercised on a hardware-free build. Ignored in release and whenever a real
+ * terminal is configured.
+ */
+const KIOSK_SIMULATED_CARD_WAIT_MS = 60_000;
+
 export interface KioskCheckoutTotals {
   subtotal: number;
   tax: number;
@@ -304,6 +312,9 @@ export function useKioskCheckout() {
               });
             }
           },
+          ...(__DEV__
+            ? { simulatedCardWaitMs: KIOSK_SIMULATED_CARD_WAIT_MS }
+            : {}),
         });
         // Decide the reaction to the settled charge. An APPROVED card always
         // wins — even if the customer pressed Back a beat too late, the order is

@@ -645,6 +645,8 @@ interface DraggableMenuCategoryProps {
     toIndex: number,
   ) => void;
   isEditable: boolean;
+  /** False while offline — hides/disables the mutating affordances. */
+  canWrite: boolean;
   itemCount: number;
   dragPreview: { fromIndex: number; toIndex: number } | null;
   onDragPreviewChange: (fromIndex: number, toIndex: number) => void;
