@@ -3,6 +3,7 @@ import { useDeltaSync } from "@/hooks/db/useDeltaSync";
 import { useAutoSettlementScheduler } from "@/hooks/pos/useAutoSettlementScheduler";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
+import { useMenuVersionWatch } from "@/hooks/pos/useMenuVersionWatch";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
@@ -213,6 +214,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // pos_sync is staleTime:Infinity, so without this a website 86 never reaches a
   // running POS. Surgical snooze-only reconcile (no full menu rebuild). KDS skips.
   useMenuSnoozeReconcile(isKDS ? undefined : selectedStore?.id);
+
+  // The other half of "the menu on screen is current": PRICES and menu
+  // structure. Snoozes above cover 86s; this polls the cheap version watermark
+  // and invalidates pos_sync only when it actually moves, so an edited price
+  // reaches a running station (kiosks especially) within the poll interval
+  // instead of at the next app restart. KDS skips — it renders no menu.
+  useMenuVersionWatch(isKDS ? undefined : selectedStore?.id);
 
   // Wave 3.0d-5: combined order reconcile on slow→fast + foreground recovery.
   // Sequenced: cart-shape push (3.0f-3) → 500ms gap → header pull (3.0d-5).

@@ -1,5 +1,6 @@
 import { FailedSyncsPanel } from "@/components/settings/sync-status/FailedSyncsPanel";
 import { SyncQueuePanel } from "@/components/settings/sync-status/SyncQueuePanel";
+import { menuVersionQueryKey } from "@/hooks/pos/useMenuVersionWatch";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors, spinnerColor } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
@@ -10,7 +11,7 @@ import { syncNow } from "@/services/offlineSyncService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react-native";
+import { RefreshCw, UtensilsCrossed } from "lucide-react-native";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -89,6 +90,67 @@ const SyncingScreen: React.FC = () => {
       });
     }
     setSyncingKey(null);
+  };
+
+  /**
+   * On-demand version probe — the manual counterpart to useMenuVersionWatch's
+   * poll, for when someone has just edited a price and does not want to wait out
+   * the interval.
+   *
+   * Reports honestly rather than always claiming success: it compares the live
+   * watermark against the one already applied, and only pulls the menu when they
+   * differ. "Menu Up to Date" is a real answer here, not a fallback.
+   */
+  const handleCheckMenuChanges = async () => {
+    const locationId = selectedStore?.id;
+    if (!supabase || !locationId) return;
+    setSyncingKey("menu_version");
+    try {
+      const { data, error } = await supabase.rpc("get_pos_menu_version_v1", {
+        p_location_id: locationId,
+      });
+      if (error) throw error;
+
+      const remoteVersion = (data as string | null) ?? null;
+      const appliedVersion =
+        queryClient.getQueryData<{ version?: string | null }>([
+          "pos_sync",
+          locationId,
+        ])?.version ?? null;
+
+      if (remoteVersion && appliedVersion && remoteVersion === appliedVersion) {
+        toastService.show({
+          title: "Menu Up to Date",
+          message: "No menu or price changes since the last sync.",
+          type: "success",
+        });
+        return;
+      }
+
+      await queryClient.invalidateQueries({
+        queryKey: ["pos_sync", locationId],
+      });
+      // The version probe is now the baseline for the background watcher too,
+      // so it does not re-detect this same change on its next tick.
+      await queryClient.invalidateQueries({
+        queryKey: menuVersionQueryKey(locationId),
+      });
+      toastService.show({
+        title: "Menu Updated",
+        message: "Menu and prices have been refreshed.",
+        type: "success",
+      });
+    } catch (e) {
+      console.error("[SyncingScreen] menu version check failed:", e);
+      toastService.show({
+        title: "Check Failed",
+        message:
+          "Could not check for menu changes. Check your connection and try again.",
+        type: "error",
+      });
+    } finally {
+      setSyncingKey(null);
+    }
   };
 
   const renderSyncButton = (
@@ -197,6 +259,13 @@ const SyncingScreen: React.FC = () => {
             <RefreshCw size={s(16)} color={colors.teal} />,
             "all",
             handleSyncAll,
+          )}
+          {renderSyncButton(
+            "Check for Menu Changes",
+            "Fetch the menu only if prices or items changed since the last sync",
+            <UtensilsCrossed size={s(16)} color={colors.teal} />,
+            "menu_version",
+            handleCheckMenuChanges,
           )}
         </View>
       </ScrollView>

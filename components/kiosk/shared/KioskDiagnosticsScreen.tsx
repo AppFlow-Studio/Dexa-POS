@@ -3,6 +3,10 @@ import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor
 import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
+import {
+    MENU_VERSION_POLL_MS,
+    menuVersionQueryKey,
+} from "@/hooks/pos/useMenuVersionWatch";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import { getDeviceId } from "@/lib/deviceId";
@@ -57,10 +61,12 @@ import {
     RotateCcw,
     SlidersHorizontal,
     Usb,
+    UtensilsCrossed,
     Wifi,
     WifiOff,
     X,
 } from "lucide-react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -170,6 +176,69 @@ export function KioskDiagnosticsScreen({
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const { isOnline, rawIsOnline, quality, pendingSyncCount } =
     useNetworkStatus();
+
+  // ── Menu freshness (on-demand) ──
+  //
+  // useMenuVersionWatch already polls the watermark in the background, so this
+  // is the "I just changed a price, don't make me wait out the interval" path.
+  // It probes the version first and only pulls the menu when it actually moved,
+  // so a no-op check costs bytes rather than the whole menu tree.
+  const menuVersionSupabase = useSupabaseClient();
+  const menuQueryClient = useQueryClient();
+  const [checkingMenu, setCheckingMenu] = useState(false);
+
+  const handleCheckMenuChanges = async () => {
+    const locationId = selectedStore?.id;
+    if (!menuVersionSupabase || !locationId) return;
+    setCheckingMenu(true);
+    try {
+      const { data, error } = await menuVersionSupabase.rpc(
+        "get_pos_menu_version_v1",
+        { p_location_id: locationId },
+      );
+      if (error) throw error;
+
+      const remoteVersion = (data as string | null) ?? null;
+      const appliedVersion =
+        menuQueryClient.getQueryData<{ version?: string | null }>([
+          "pos_sync",
+          locationId,
+        ])?.version ?? null;
+
+      if (remoteVersion && appliedVersion && remoteVersion === appliedVersion) {
+        toastService.show({
+          title: "Menu Up to Date",
+          message: "No menu or price changes since the last sync.",
+          type: "success",
+        });
+        return;
+      }
+
+      await menuQueryClient.invalidateQueries({
+        queryKey: ["pos_sync", locationId],
+      });
+      // Re-baseline the background watcher so it does not re-detect this same
+      // change on its next tick.
+      await menuQueryClient.invalidateQueries({
+        queryKey: menuVersionQueryKey(locationId),
+      });
+      toastService.show({
+        title: "Menu Updated",
+        message: "Menu and prices have been refreshed.",
+        type: "success",
+      });
+    } catch (e) {
+      console.error("[KioskDiagnostics] menu version check failed:", e);
+      toastService.show({
+        title: "Check Failed",
+        message:
+          "Could not check for menu changes. Check your connection and try again.",
+        type: "error",
+      });
+    } finally {
+      setCheckingMenu(false);
+    }
+  };
 
   // ── Active sidebar section ──
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
@@ -1143,6 +1212,44 @@ export function KioskDiagnosticsScreen({
           value={isOnline ? "Online" : "Degraded / Offline"}
         />
         <Row label="Pending syncs" value={String(pendingSyncCount)} last />
+      </Section>
+
+      <Section title="Menu" Icon={UtensilsCrossed}>
+        <Row
+          label="Menu version"
+          value={
+            menuQueryClient.getQueryData<{ version?: string | null }>([
+              "pos_sync",
+              selectedStore?.id,
+            ])?.version ?? "—"
+          }
+          mono
+        />
+        <Row
+          label="Auto-check"
+          value={
+            MENU_VERSION_POLL_MS >= 60_000
+              ? `Every ${Math.round(MENU_VERSION_POLL_MS / 60_000)} min`
+              : `Every ${Math.round(MENU_VERSION_POLL_MS / 1000)}s`
+          }
+          last
+        />
+        <View className="px-5 py-4 border-t border-gray-100">
+          <TouchableOpacity
+            onPress={handleCheckMenuChanges}
+            disabled={checkingMenu}
+            className="flex-row items-center justify-center py-3 rounded-2xl bg-teal-600"
+          >
+            {checkingMenu ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <RefreshCw size={16} color="#FFFFFF" />
+            )}
+            <Text className="text-sm font-bold text-white ml-2">
+              {checkingMenu ? "Checking…" : "Check for menu changes"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </Section>
 
       <Section title="Station" Icon={MonitorSmartphone}>
