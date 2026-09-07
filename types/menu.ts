@@ -14,6 +14,14 @@ export type PriceSource =
   | "location_category"
   | "location_menu";
 
+export type MenuChannel = "pos" | "kiosk" | "online";
+
+export interface MenuChannelVisibility {
+  pos: boolean;
+  kiosk: boolean;
+  online: boolean;
+}
+
 // ============================================================================
 // 1.5. TAX RATE TYPES
 // ============================================================================
@@ -197,6 +205,8 @@ export interface MenuWithCategories {
   is_global: boolean; // location_id IS NULL
   is_location_owned: boolean; // location_id IS NOT NULL
   display_order?: number | null;
+  /** Per-location surface visibility. Missing values default to visible. */
+  channel_visibility?: Partial<MenuChannelVisibility> | null;
 
   created_at: string;
   updated_at: string;

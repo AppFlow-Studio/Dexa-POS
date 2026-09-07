@@ -418,6 +418,11 @@ const transformMenuItemsFromSync = (
         description: menu.description || undefined,
         isActive: menu.is_active,
         displayOrder: menu.display_order ?? undefined,
+        channelVisibility: {
+          pos: menu.channel_visibility?.pos !== false,
+          kiosk: menu.channel_visibility?.kiosk !== false,
+          online: menu.channel_visibility?.online !== false
+        },
         categories: categories.sort((a, b) => {
           // Website Logic: Missing order goes to the BOTTOM
           const aOrder = a.displayOrder ?? a.order ?? 999999

@@ -1,8 +1,11 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
 import { MenuItemType, Schedule } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useMenuVisibilityStore } from "@/stores/useMenuVisibilityStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
     BottomSheetBackdrop,
     BottomSheetFlatList,
@@ -20,6 +23,8 @@ import React, {
 } from "react";
 import { Keyboard, Text, TouchableOpacity, View } from "react-native";
 import SearchResultItem from "./SearchResultItem";
+
+const EMPTY_HIDDEN_MENU_IDS: string[] = [];
 
 // Helper to check schedule availability
 const isScheduleActive = (schedules: Schedule[] | undefined): boolean => {
@@ -87,6 +92,19 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const [isOpen, setIsOpen] = useState(false);
 
   const { menus } = useMenuStore((state) => state);
+  const selectedStoreId = useStoreSettingsStore(
+    (state) => state.selectedStore?.id ?? null,
+  );
+  const hiddenMenuIds = useMenuVisibilityStore(
+    (state) =>
+      (selectedStoreId
+        ? state.hiddenMenuIdsByLocation[selectedStoreId]
+        : null) ?? EMPTY_HIDDEN_MENU_IDS,
+  );
+  const visibleMenus = useMemo(
+    () => filterPosOrderEntryMenus(menus, hiddenMenuIds),
+    [menus, hiddenMenuIds],
+  );
   const { closeSearch, setSearchSheetRef, clearSearchSheetRef } =
     useSearchStore();
 
@@ -100,7 +118,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
     const availableSections: SearchSection[] = [];
     const unavailableSections: SearchSection[] = [];
 
-    menus.forEach((menu) => {
+    visibleMenus.forEach((menu) => {
       // 1. Check Menu Schedule
       const isMenuAvailable = isScheduleActive(menu.schedules);
       const menuItems: SearchSection["data"] = [];
@@ -175,7 +193,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
     });
 
     return [...availableSections, ...unavailableSections];
-  }, [isOpen, deferredSearchText, menus]);
+  }, [isOpen, deferredSearchText, visibleMenus]);
 
   // Flatten sections → a single virtualizable row list (header + item rows) so
   // BottomSheetFlatList only mounts the rows currently on screen.

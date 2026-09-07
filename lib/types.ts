@@ -286,6 +286,11 @@ export interface Menu {
   description?: string;
   isActive: boolean;
   displayOrder?: number;
+  channelVisibility?: {
+    pos: boolean;
+    kiosk: boolean;
+    online: boolean;
+  };
   categories: Category[]; // Changed to array of full Category objects (Tree Structure)
   schedules?: Schedule[];
   createdAt: string;

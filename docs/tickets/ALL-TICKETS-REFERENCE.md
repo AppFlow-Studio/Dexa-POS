@@ -8,8 +8,9 @@ in the owning feature, engineering, quality, or handoff folder.
 | Date | Ticket | Status | Plan |
 | --- | --- | --- | --- |
 | 2026-08-18 | P0 refund receipts - approval persistence, physical print, and reprint | POS code complete - migration, physical QA, and website hosted/email/SMS handoff remain | `docs/features/payments-terminals/refund-receipt-printing.md` |
+| 2026-08-21 | DEXA-00017 support-inbox POS fixes + combined refund/menu evidence | POS items 1-5 implemented; combined QA runbook ready; CFD and website tip-rule work remain | `docs/quality/qa-tracking/support-inbox-refund-menu-video-runbook-2026-08-21.md` |
 | 2026-08-18 | POS Orders provider chips use shared resolver | Code complete - tablet QA pending | `docs/features/orders/provider-chip-platform-resolver-regression.md` |
-| 2026-08-16 | POS hide portal-disabled menus | Code complete - portal/POS staging QA pending | `docs/engineering/performance/pos-hide-inactive-menus.md` |
+| 2026-08-21 | POS/Web menu channel visibility (POS, kiosk, online) | POS + migration implemented and targeted tests passed - website controls, migration deployment, and QA pending | `docs/features/menu-management/menu-channel-visibility.md` |
 | 2026-08-14 | POS-KDS routing traceability | Code complete - shared migration review/application and physical QA pending | `docs/engineering/performance/kds-routing-traceability-pos.md` |
 | 2026-08-14 | POS single-location menu framing | Code complete - emulator/tablet and staging data QA pending | `docs/engineering/performance/pos-single-location-menu-framing.md` |
 | 2026-08-04 | POS Online Orders local-day boundaries | Implemented - migration and tablet QA pending | `docs/features/orders/online-orders-local-day-boundaries-plan.md` |
