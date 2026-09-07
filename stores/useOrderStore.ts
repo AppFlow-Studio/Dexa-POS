@@ -101,6 +101,10 @@ import {
     parseSequenceFromDisplayNumber,
     seedLocalSequence,
 } from "@/lib/localOrderSequence";
+import {
+  LOCAL_WRITES_ORDERS,
+  LOCAL_WRITES_SEATING,
+} from "@/services/localFirst/localWrites";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
@@ -220,6 +224,22 @@ const resolveTableNameForOrder = (
 
 function isOrderTableStillSeating(order?: OrderProfile | null): boolean {
   if (!order || order.order_type !== "dine_in") return false;
+
+  // ── Local-first seating removes the window this guard describes. ─────────
+  //
+  // The "seating" status exists to cover the gap between tapping "Seat" and
+  // seat_guests_v3 returning the session id and order id. During that gap the
+  // order has no identity, so items cannot safely be attached to it — hence
+  // the "Seating in progress — please wait" toast at the call site.
+  //
+  // With EXPO_PUBLIC_LOCAL_WRITES_SEATING on, seatLocal() mints both ids and
+  // commits the session, its tables and the order in ONE SQLite transaction
+  // before the tap finishes. There is no gap left to guard: the order is
+  // real, addressable and ready for items on the very next frame.
+  //
+  // Gated rather than deleted because the flag is the rollback. Once local
+  // seating is the only path, this whole function goes (Phase 6).
+  if (LOCAL_WRITES_SEATING) return false;
 
   const sessionStore = useTableSessionStore.getState();
   if (order.session_id) {
@@ -8389,7 +8409,23 @@ export const useOrderStore = create<OrderState>()(
             // so items must proceed locally (offline-first). Blocking offline would
             // strand the user permanently. The queued-create check also lets adds
             // through once the create op is registered, even on a flaky connection.
+            // ── Local-first order creation removes this wait entirely. ──────
+            //
+            // This gate blocks adds until the order has a `db_order_id`, i.e.
+            // until create_order_v3 has replied — that round trip IS the
+            // "Creating order — please wait" toast below.
+            //
+            // With EXPO_PUBLIC_LOCAL_WRITES_ORDERS on, createLocalOrder()
+            // mints a v4 UUID and a final order number and commits the row
+            // with its outbox op in one SQLite transaction. The order has a
+            // real, server-acceptable identity from the first frame, so there
+            // is nothing to wait for and nothing to gate. `db_order_id` stops
+            // being a meaningful signal at all — the id IS the db id.
+            //
+            // Gated rather than deleted because the flag is the rollback; the
+            // gate and `ensureActiveOrderCreated` both go in Phase 6.
             if (
+              !LOCAL_WRITES_ORDERS &&
               getIsOnline() &&
               !activeOrder.db_order_id &&
               !getOrderCreationOperationId(activeOrder.id)

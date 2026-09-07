@@ -28,7 +28,11 @@ import type { EntityDescriptor } from "@/lib/db/entities";
 import { getDb } from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/mutex";
 import { canStore, type StationKind } from "@/lib/db/policy";
-import { TABLE_CONFLICT_KEYS, type TableName } from "@/lib/db/schema";
+import {
+  TABLE_CONFLICT_KEYS,
+  TABLES_WITH_SYNC_STATUS,
+  type TableName,
+} from "@/lib/db/schema";
 import {
   KEY_DB_POLICY_REJECT,
   KEY_DB_PRUNED_ROWS,
@@ -292,9 +296,33 @@ async function pruneToRetention(
   const { maxRows, pruneBy } = entity.retention;
   if (maxRows === null) return 0;
 
+  // ── RETENTION EXEMPTION FOR UNSYNCED ROWS (v12) ──────────────────────────
+  //
+  // Retention was written when every row here was a projection of something
+  // the server already had, so deleting one was free — a refetch away.
+  //
+  // From v12 that is no longer true. A row with `_sync_status != 'synced'` is
+  // a write the server has NEVER seen: an order rung up during an outage, or
+  // an item added seconds ago whose op has not drained yet. Pruning it is
+  // permanent, silent data loss — a guest's check deleted by a cap.
+  //
+  // The exemption is expressed as an extra conjunct on the DELETE rather than
+  // by shrinking the "keep" set, so unsynced rows are protected even when they
+  // fall outside the newest `maxRows` by `pruneBy`. That case is not
+  // hypothetical: an order created offline yesterday sorts old, and is exactly
+  // the row that most needs protecting.
+  //
+  // Tables without the column (children, lookups) still prune normally — the
+  // guard is added only where it exists, from the declared set in schema.ts
+  // rather than a runtime PRAGMA probe (see TABLES_WITH_SYNC_STATUS for why).
+  const unsyncedGuard = TABLES_WITH_SYNC_STATUS.has(entity.table)
+    ? `AND _sync_status = 'synced'`
+    : "";
+
   const result = await db.runAsync(
     `DELETE FROM ${entity.table}
       WHERE location_id = ?
+        ${unsyncedGuard}
         AND rowid NOT IN (
           SELECT rowid FROM ${entity.table}
            WHERE location_id = ?
@@ -306,6 +334,7 @@ async function pruneToRetention(
 
   return result.changes ?? 0;
 }
+
 
 /**
  * Upsert the sync_state row: watermark, floor, row count, timestamps.

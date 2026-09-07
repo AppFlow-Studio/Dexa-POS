@@ -28,11 +28,59 @@ function getSequenceKey(
   return `local_order_seq:${locationId}:${dateStr}${suffix}`;
 }
 
+/**
+ * In-process high-water mark per sequence key.
+ *
+ * ── Why MMKV alone is not enough ───────────────────────────────────────────
+ *
+ * This used to be a bare `storage.getNumber(key) ?? 0` read-increment-write.
+ * If that read ever fails or returns nothing — a cleared bucket, a storage
+ * error, a partially-mocked environment — the counter silently RESTARTS at 1,
+ * and every order that day gets number 0001.
+ *
+ * That mattered little while these numbers were a cosmetic fallback for
+ * offline orders. It matters a lot now: under Decision 0.1 the locally minted
+ * number is FINAL and is what the server stores. A reset means every order
+ * collides on `orders_order_number_merchant_key`, `create_order_v4` renumbers
+ * every single one, and the number printed on the guest's receipt stops
+ * matching the number in the system — the exact reconciliation problem that
+ * decision was taken to avoid.
+ *
+ * Same fix as the Lamport clock in lib/db/outbox.ts: the in-memory value is
+ * authoritative once seeded, MMKV is write-through durability. A failed read
+ * then costs ordering across a restart, never uniqueness within a session.
+ * Caught by a test that generated 25 orders and got 25 copies of number 1.
+ */
+const cachedSequences = new Map<string, number>();
+
 function nextSequence(key: string): number {
-  const current = storage.getNumber(key) ?? 0;
+  let current = cachedSequences.get(key);
+
+  if (current === undefined) {
+    // First use this process: seed from disk, tolerating a failed read.
+    try {
+      current = storage.getNumber(key) ?? 0;
+    } catch {
+      current = 0;
+    }
+  }
+
   const next = current + 1;
-  storage.set(key, next);
+  cachedSequences.set(key, next);
+
+  try {
+    storage.set(key, next);
+  } catch {
+    // Durability lost, uniqueness kept. The next boot reseeds from whatever
+    // did persist; a collision there is caught and renumbered server-side.
+  }
+
   return next;
+}
+
+/** Test seam — the module cache outlives a cleared storage mock otherwise. */
+export function __resetLocalSequencesForTests(): void {
+  cachedSequences.clear();
 }
 
 /**

@@ -18,6 +18,7 @@ import { dbWriteMutex } from "@/lib/db/mutex";
 import { DB_PURGE_PENDING_KEY, type PurgeReason } from "@/lib/db/purgeFlag";
 import {
   DROP_STATEMENTS,
+  isAdditiveUpgrade,
   PRAGMAS,
   SCHEMA_REBUILD_IS_SAFE,
   SCHEMA_STATEMENTS,
@@ -208,6 +209,27 @@ async function applySchema(handle: SQLite.SQLiteDatabase): Promise<void> {
   }
 
   if (current !== 0) {
+    // ── ADDITIVE UPGRADE: keep the data. ───────────────────────────────────
+    //
+    // Checked BEFORE the rebuild branch. Track A is in production, so every
+    // tablet holds a populated mirror; dropping it to add four unrelated
+    // tables would force a full cold re-sync (up to the 20,000-order cap) on
+    // every device, on the update that ships the bump — minutes of "Syncing
+    // order history…" for no benefit.
+    //
+    // Safe because every statement in SCHEMA_STATEMENTS is
+    // `CREATE ... IF NOT EXISTS`: re-running them is a no-op for what already
+    // exists and creates only what is new. isAdditiveUpgrade() pins the target
+    // to SCHEMA_VERSION, so this cannot silently skip a destructive bump.
+    if (isAdditiveUpgrade(current)) {
+      console.log(
+        `[LocalDB] schema v${current} -> v${SCHEMA_VERSION}: additive, keeping data`,
+      );
+      await execAll(handle, SCHEMA_STATEMENTS);
+      await handle.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      return;
+    }
+
     if (!SCHEMA_REBUILD_IS_SAFE) {
       throw new Error(
         `[LocalDB] schema v${current} -> v${SCHEMA_VERSION} needs a migration. ` +
