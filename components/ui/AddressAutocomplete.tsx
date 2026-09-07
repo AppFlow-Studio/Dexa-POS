@@ -26,6 +26,8 @@ interface AddressAutocompleteProps {
   onAddressSelected: (address: ParsedAddress) => void;
   placeholder?: string;
   inputStyle?: StyleProp<ViewStyle>;
+  onFocus?: () => void;
+  onBlur?: () => void;
   /** Render suggestions inline (pushes content down) instead of absolute overlay */
   inline?: boolean;
   /** Where to render the suggestions dropdown relative to the input.
@@ -44,6 +46,8 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   onAddressSelected,
   placeholder = "Search address...",
   inputStyle,
+  onFocus: onFocusProp,
+  onBlur: onBlurProp,
   inline = false,
   dropdownPosition = "below",
 }) => {
@@ -74,13 +78,15 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   const handleFocus = useCallback(() => {
     isFocusedRef.current = true;
     sessionTokenRef.current = uuidv4();
-  }, []);
+    onFocusProp?.();
+  }, [onFocusProp]);
 
   const handleBlur = useCallback(() => {
     isFocusedRef.current = false;
     // Delay to allow tap on suggestion to register
     setTimeout(() => setShowDropdown(false), 200);
-  }, []);
+    onBlurProp?.();
+  }, [onBlurProp]);
 
   const fetchSuggestions = useCallback(async (text: string) => {
     if (!text.trim() || text.length < 3) {

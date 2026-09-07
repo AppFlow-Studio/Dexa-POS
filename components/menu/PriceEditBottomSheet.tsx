@@ -168,7 +168,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       if (isDualPricing && filtered) {
         const cardPrice = parseFloat(filtered);
         if (!isNaN(cardPrice)) {
-          const calculatedCash = cardPrice * (1 - dualPricingPercentage! / 100);
+          const calculatedCash = cardPrice / (1 + dualPricingPercentage! / 100);
           setCashPriceValue(calculatedCash.toFixed(2));
         }
       }
@@ -184,7 +184,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       if (isDualPricing && filtered) {
         const cashPrice = parseFloat(filtered);
         if (!isNaN(cashPrice)) {
-          const calculatedCard = cashPrice / (1 - dualPricingPercentage! / 100);
+          const calculatedCard = cashPrice * (1 + dualPricingPercentage! / 100);
           setPriceValue(calculatedCard.toFixed(2));
         }
       }
@@ -454,7 +454,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
             <Text
               style={{ fontSize: s(12), color: colors.info, fontWeight: "600" }}
             >
-              Dual Pricing Active — {dualPricingPercentage}% cash discount
+              Dual Pricing Active — card +{dualPricingPercentage}% over cash
             </Text>
           </View>
         )}

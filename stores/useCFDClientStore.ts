@@ -64,6 +64,7 @@ interface CFDClientStore {
   themeMode: 'light' | 'dark'
   merchantHasLoyalty: boolean
   pricingDisplayMode: 'dual' | 'card_only' | 'cash_only'
+  cfdUiScaleOverride: number | null
 
   // Actions
   setPairing: (data: CFDPairingData) => void;
@@ -130,6 +131,7 @@ export const useCFDClientStore = create<CFDClientStore>()(
       themeMode: 'dark',
       merchantHasLoyalty: false,
       pricingDisplayMode: 'dual',
+      cfdUiScaleOverride: null,
 
       // Actions
       setPairing: (data) => {
@@ -212,7 +214,13 @@ export const useCFDClientStore = create<CFDClientStore>()(
           merchantHasLoyalty:
             payload.merchantHasLoyalty ?? get().merchantHasLoyalty,
           pricingDisplayMode:
-            payload.pricingDisplayMode ?? get().pricingDisplayMode
+            payload.pricingDisplayMode ?? get().pricingDisplayMode,
+          // `null` is a meaningful value here ("no override"), so `??` would
+          // make the setting impossible to clear — key presence is the test.
+          cfdUiScaleOverride:
+            'cfdUiScaleOverride' in payload
+              ? (payload.cfdUiScaleOverride ?? null)
+              : get().cfdUiScaleOverride
         })
     }),
     {

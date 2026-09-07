@@ -1,6 +1,11 @@
+import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import MenuForm from "@/components/menu/MenuForm";
 import { MenuScopeLoadingScreen } from "@/components/menu/MenuScopeLoadingScreen";
 import { useToast } from "@/contexts/ToastContext";
+import {
+    MENU_OFFLINE_REASON,
+    useMenuWriteGate,
+} from "@/hooks/menu/useMenuWriteGate";
 import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
@@ -8,7 +13,6 @@ import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchSt
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
-import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -23,6 +27,7 @@ const EditMenuScreen: React.FC = () => {
   const { show } = useToast();
   const { isSingleLocation, isLoading: isSingleLocationLoading } =
     useIsSingleLocation();
+  const { canWrite } = useMenuWriteGate();
   const [isSaving, setIsSaving] = useState(false);
   const setMenuTab = useMenuManagementSearchStore((s) => s.setActiveTab);
 
@@ -39,14 +44,22 @@ const EditMenuScreen: React.FC = () => {
     return <MenuScopeLoadingScreen />;
   }
   if (existing && isGlobalMenu && !isSingleLocation) {
-    return <GlobalItemScreen type="Menu" />
+    return <GlobalItemScreen type="Menu" />;
   }
   if (existing && !isGlobalMenu && !isLocalMenu) {
-    return <GlobalItemScreen type="Menu" />
+    return <GlobalItemScreen type="Menu" />;
   }
 
   const handleSubmit = async (data: any): Promise<boolean> => {
     if (!existing) return false;
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: "warning",
+      });
+      return false;
+    }
     setIsSaving(true);
     try {
       // Update in backend
@@ -72,10 +85,10 @@ const EditMenuScreen: React.FC = () => {
       const newCategoryNames = data.categories as string[];
 
       const addedCategories = newCategoryNames.filter(
-        (name) => !existingCategoryNames.includes(name)
+        (name) => !existingCategoryNames.includes(name),
       );
       const removedCategories = existingCategoryNames.filter(
-        (name) => !newCategoryNames.includes(name)
+        (name) => !newCategoryNames.includes(name),
       );
 
       // 2. Handle Additions
@@ -89,7 +102,7 @@ const EditMenuScreen: React.FC = () => {
               categoryId: category.id,
               merchantId: selectedStore?.merchant_id || "",
               displayOrder: 0, // Default order
-            }
+            },
           );
           if (addError) {
             console.error(`Failed to add category ${catName}:`, addError);
@@ -112,7 +125,7 @@ const EditMenuScreen: React.FC = () => {
             await MenuService.removeCategoryFromMenu(
               supabase,
               existing.id,
-              category.id
+              category.id,
             );
           if (removeError) {
             console.error(`Failed to remove category ${catName}:`, removeError);
@@ -155,6 +168,14 @@ const EditMenuScreen: React.FC = () => {
 
   const handleDelete = async () => {
     if (!existing) return;
+    if (!canWrite) {
+      show({
+        title: "You're offline",
+        message: MENU_OFFLINE_REASON,
+        type: "warning",
+      });
+      return;
+    }
 
     try {
       setIsSaving(true);
@@ -208,6 +229,7 @@ const EditMenuScreen: React.FC = () => {
         initialData={existing}
         onSubmit={handleSubmit}
         isSaving={isSaving}
+        disabled={!canWrite}
         title="Edit Menu"
         submitButtonLabel="Save Changes"
         onDelete={handleDelete}

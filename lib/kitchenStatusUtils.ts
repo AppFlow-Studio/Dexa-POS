@@ -42,3 +42,23 @@ export function getOrderSentStatus(): "sent_to_kitchen" | "preparing" {
     useLocationConfigStore.getState().config.kds.workflowMode;
   return mode === "2-step" ? "preparing" : "sent_to_kitchen";
 }
+
+/**
+ * True when the line has never been fired (no status or 'new').
+ * Single source of truth — components used to carry their own copies.
+ */
+export function isKitchenItemUnsent(item: {
+  kitchen_status?: string | null;
+}): boolean {
+  return !item.kitchen_status || item.kitchen_status === "new";
+}
+
+/**
+ * True when the line has been fired at least once (any non-new status).
+ * Inverse of isKitchenItemUnsent.
+ */
+export function isKitchenItemSent(item: {
+  kitchen_status?: string | null;
+}): boolean {
+  return !!item.kitchen_status && item.kitchen_status !== "new";
+}

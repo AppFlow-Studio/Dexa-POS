@@ -1,4 +1,9 @@
 import { useCFD } from "@/contexts/CFDProvider";
+import {
+  classifyKickOutcome,
+  describeCashDrawerKickError,
+  DRAWER_UNCONFIRMED_MESSAGE,
+} from "@/lib/cashDrawerKick";
 import { computeChangeBreakdown } from "@/lib/cashChange";
 import { round2 } from "@/lib/order-calculator";
 import { colors } from "@/lib/theme";
@@ -108,10 +113,24 @@ const CashPaymentView = () => {
     showProcessing("cash", 0);
     try {
       // Fire cash drawer immediately — don't wait for payment to complete.
-      // The physical action has no data dependency on payment success.
-      PrinterService.openCashDrawer().catch((err) =>
-        console.warn("[CashPayment] Cash drawer auto-open failed:", err),
-      );
+      // The physical action has no data dependency on payment success, so this
+      // stays fire-and-forget (payment is never gated on the drawer). Only a
+      // genuine "opened nowhere" surfaces a non-blocking warning — success is
+      // silent (the drawer physically opening is its own confirmation).
+      PrinterService.openCashDrawer({ trigger: "cash_sale" })
+        .then((kick) => {
+          if (!kick.ok) {
+            toastService.show({
+              title: "Cash Drawer",
+              message: describeCashDrawerKickError(kick),
+              type: "warning",
+              duration: 4000,
+            });
+          }
+        })
+        .catch((err) =>
+          console.warn("[CashPayment] Cash drawer auto-open failed:", err),
+        );
 
       const amountTenderedNum = parseFloat(amountTendered) || 0;
       await handlePaymentCompletion({
@@ -146,10 +165,34 @@ const CashPaymentView = () => {
   const handleBack = () => setView("payment-method-selection");
 
   const handleOpenDrawer = async () => {
+    // Explicit operator action — be honest. Success is silent (the drawer
+    // opening is its own confirmation); failure/unconfirmed surfaces a toast.
     try {
-      await PrinterService.openCashDrawer();
+      const kick = await PrinterService.openCashDrawer({ trigger: "manual" });
+      const outcome = classifyKickOutcome(kick);
+      if (outcome === "failed") {
+        toastService.show({
+          title: "Drawer Did Not Open",
+          message: describeCashDrawerKickError(kick),
+          type: "error",
+          duration: 5000,
+        });
+      } else if (outcome === "unconfirmed") {
+        toastService.show({
+          title: "Check the Drawer",
+          message: DRAWER_UNCONFIRMED_MESSAGE,
+          type: "warning",
+          duration: 5000,
+        });
+      }
     } catch (err) {
       console.warn("[CashPayment] Manual drawer open failed:", err);
+      toastService.show({
+        title: "Drawer Did Not Open",
+        message: "The cash drawer could not be opened.",
+        type: "error",
+        duration: 5000,
+      });
     }
   };
 

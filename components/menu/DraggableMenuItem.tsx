@@ -1,62 +1,63 @@
-import OptimizedListImage from '@/components/ui/OptimizedListImage'
-import { resolveMenuItemImageSource } from '@/lib/menuItemImageSource'
+import OptimizedListImage from "@/components/ui/OptimizedListImage";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import {
-  extractMenuItemPlaceholderIconKey,
-  getMenuItemPlaceholderIcon,
-  type MenuItemPlaceholderIconKey
-} from '@/lib/menuItemPlaceholderIcon'
-import { colors } from '@/lib/theme'
+    extractMenuItemPlaceholderIconKey,
+    getMenuItemPlaceholderIcon,
+    type MenuItemPlaceholderIconKey,
+} from "@/lib/menuItemPlaceholderIcon";
 import {
-  formatSnoozeCountdown,
-  isActivelySnoozed
-} from '@/lib/snoozeDurations'
-import { MenuItemType } from '@/lib/types'
-import { useUiScale } from '@/lib/uiScale'
-import * as Haptics from 'expo-haptics'
-import { Ban, GripVertical } from 'lucide-react-native'
-import React, { useMemo } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+    formatSnoozeCountdown,
+    isActivelySnoozed,
+} from "@/lib/snoozeDurations";
+import { colors } from "@/lib/theme";
+import { MenuItemType } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import * as Haptics from "expo-haptics";
+import { Ban, GripVertical } from "lucide-react-native";
+import React, { useMemo } from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  Extrapolate,
-  Layout,
-  interpolate,
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming
-} from 'react-native-reanimated'
+    Extrapolate,
+    Layout,
+    interpolate,
+    runOnJS,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+    withTiming,
+} from "react-native-reanimated";
 
 interface DraggableMenuItemProps {
-  item: MenuItemType
-  index: number
-  categoryId: string
-  menuId: string
-  onReorder: (fromIndex: number, toIndex: number) => void
+  item: MenuItemType;
+  index: number;
+  categoryId: string;
+  menuId: string;
+  onReorder: (fromIndex: number, toIndex: number) => void;
   onItemPriceEdit: (
     item: MenuItemType,
     categoryId: string,
-    menuId: string
-  ) => void
-  onItemSnooze: (item: MenuItemType) => void
-  isEditable: boolean
-  itemCount: number
-  columnCount: number
-  dragPreview: { fromIndex: number; toIndex: number } | null
-  onDragPreviewChange: (fromIndex: number, toIndex: number) => void
-  onDragPreviewEnd: () => void
+    menuId: string,
+  ) => void;
+  onItemSnooze: (item: MenuItemType) => void;
+  isEditable: boolean;
+  canWrite: boolean;
+  itemCount: number;
+  columnCount: number;
+  dragPreview: { fromIndex: number; toIndex: number } | null;
+  onDragPreviewChange: (fromIndex: number, toIndex: number) => void;
+  onDragPreviewEnd: () => void;
 }
 
-const ITEM_CARD_WIDTH_BASE = 130
-const ITEM_CARD_HEIGHT_BASE = 160
-const ITEM_GRID_GAP_BASE = 6
+const ITEM_CARD_WIDTH_BASE = 130;
+const ITEM_CARD_HEIGHT_BASE = 160;
+const ITEM_GRID_GAP_BASE = 6;
 
 const createStyles = (scale: number) => {
-  const s = (n: number) => Math.round(n * scale)
-  const cardWidth = s(ITEM_CARD_WIDTH_BASE)
-  const cardHeight = s(ITEM_CARD_HEIGHT_BASE)
-  const gridGap = s(ITEM_GRID_GAP_BASE)
+  const s = (n: number) => Math.round(n * scale);
+  const cardWidth = s(ITEM_CARD_WIDTH_BASE);
+  const cardHeight = s(ITEM_CARD_HEIGHT_BASE);
+  const gridGap = s(ITEM_GRID_GAP_BASE);
   return {
     cardWidth,
     cardHeight,
@@ -70,85 +71,88 @@ const createStyles = (scale: number) => {
         borderRadius: s(10),
         marginBottom: s(4),
         borderWidth: 1,
-        overflow: 'hidden',
-        flexDirection: 'column'
+        overflow: "hidden",
+        flexDirection: "column",
       },
       touchable: {
         flex: 1,
-        flexDirection: 'column'
+        flexDirection: "column",
       },
       imageWrapper: {
         height: s(100),
-        width: '100%'
+        width: "100%",
       },
       placeholderContainer: {
-        width: '100%',
-        height: '100%',
-        alignItems: 'center',
-        justifyContent: 'center'
+        width: "100%",
+        height: "100%",
+        alignItems: "center",
+        justifyContent: "center",
       },
       contentContainer: {
         paddingHorizontal: s(8),
         paddingVertical: s(6),
         gap: s(2),
         flex: 1,
-        justifyContent: 'flex-start'
+        justifyContent: "flex-start",
       },
       nameText: {
         fontSize: s(11),
-        fontWeight: '600',
-        lineHeight: s(14)
+        fontWeight: "600",
+        lineHeight: s(14),
       },
       priceText: {
         fontSize: s(11),
-        fontWeight: '700'
+        fontWeight: "700",
       },
       gripHandle: {
-        position: 'absolute',
+        position: "absolute",
         top: s(8),
         right: s(8),
         zIndex: 10,
         borderRadius: s(6),
-        padding: s(4)
+        padding: s(4),
       },
       snoozeBadge: {
-        position: 'absolute',
+        position: "absolute",
         top: s(6),
         left: s(6),
         zIndex: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
+        flexDirection: "row",
+        alignItems: "center",
         gap: s(3),
         paddingHorizontal: s(5),
         paddingVertical: s(2),
-        borderRadius: s(6)
+        borderRadius: s(6),
       },
       snoozeBadgeText: {
         fontSize: s(9),
-        fontWeight: '700'
+        fontWeight: "700",
       },
       snoozeButton: {
-        position: 'absolute',
+        position: "absolute",
         bottom: s(6),
         right: s(6),
         zIndex: 10,
         padding: s(5),
         borderRadius: s(6),
-        borderWidth: 1
-      }
-    })
-  }
-}
+        borderWidth: 1,
+      },
+    }),
+  };
+};
 
-const draggableMenuItemStylesByScale = new Map<number, ReturnType<typeof createStyles>>()
+const draggableMenuItemStylesByScale = new Map<
+  number,
+  ReturnType<typeof createStyles>
+>();
 
 const getStylesForScale = (scale: number) => {
-  const cached = draggableMenuItemStylesByScale.get(scale)
-  if (cached) return cached
-  const next = createStyles(scale)
-  draggableMenuItemStylesByScale.set(scale, next)
-  return next
-}
+  const cached = draggableMenuItemStylesByScale.get(scale);
+  if (cached) return cached;
+  const next = createStyles(scale);
+  draggableMenuItemStylesByScale.set(scale, next);
+  return next;
+};
 
 const DraggableMenuItem = React.memo(
   ({
@@ -160,140 +164,150 @@ const DraggableMenuItem = React.memo(
     onItemPriceEdit,
     onItemSnooze,
     isEditable,
+    canWrite,
     itemCount,
     columnCount,
     dragPreview,
     onDragPreviewChange,
-    onDragPreviewEnd
+    onDragPreviewEnd,
   }: DraggableMenuItemProps) => {
-    const uiScale = useUiScale()
-    const sc = (n: number) => Math.round(n * uiScale)
-    const { styles: baseStyles, gridCellWidth, gridCellHeight, cardWidth } = useMemo(
-      () => getStylesForScale(uiScale),
-      [uiScale]
-    )
+    const uiScale = useUiScale();
+    const sc = (n: number) => Math.round(n * uiScale);
+    const {
+      styles: baseStyles,
+      gridCellWidth,
+      gridCellHeight,
+      cardWidth,
+    } = useMemo(() => getStylesForScale(uiScale), [uiScale]);
 
-    const translateX = useSharedValue(0)
-    const translateY = useSharedValue(0)
-    const scale = useSharedValue(1)
-    const isDragging = useSharedValue(false)
-    const dragOriginIndex = useSharedValue(index)
-    const [isDragActive, setIsDragActive] = React.useState(false)
+    const translateX = useSharedValue(0);
+    const translateY = useSharedValue(0);
+    const scale = useSharedValue(1);
+    const isDragging = useSharedValue(false);
+    const dragOriginIndex = useSharedValue(index);
+    const [isDragActive, setIsDragActive] = React.useState(false);
 
     const hapticStart = () => {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    }
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
 
     const hapticDrop = () => {
-      void Haptics.selectionAsync()
-    }
+      void Haptics.selectionAsync();
+    };
 
     const panGesture = Gesture.Pan()
+      .enabled(canWrite)
       .activateAfterLongPress(120)
       .activeOffsetX([-8, 8])
       .activeOffsetY([-8, 8])
       .onStart(() => {
-        isDragging.value = true
-        scale.value = withSpring(1.05)
-        dragOriginIndex.value = index
-        runOnJS(setIsDragActive)(true)
-        runOnJS(onDragPreviewChange)(index, index)
-        runOnJS(hapticStart)()
+        isDragging.value = true;
+        scale.value = withSpring(1.05);
+        dragOriginIndex.value = index;
+        runOnJS(setIsDragActive)(true);
+        runOnJS(onDragPreviewChange)(index, index);
+        runOnJS(hapticStart)();
       })
-      .onUpdate(event => {
-        translateX.value = event.translationX
-        translateY.value = event.translationY
+      .onUpdate((event) => {
+        translateX.value = event.translationX;
+        translateY.value = event.translationY;
 
-        const safeColumns = Math.max(1, columnCount)
-        const originColumn = dragOriginIndex.value % safeColumns
-        const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+        const safeColumns = Math.max(1, columnCount);
+        const originColumn = dragOriginIndex.value % safeColumns;
+        const originRow = Math.floor(dragOriginIndex.value / safeColumns);
         const targetColumn = Math.round(
-          originColumn + event.translationX / gridCellWidth
-        )
+          originColumn + event.translationX / gridCellWidth,
+        );
         const targetRow = Math.round(
-          originRow + event.translationY / gridCellHeight
-        )
-        const clampedColumn = Math.max(0, Math.min(safeColumns - 1, targetColumn))
-        const unclampedIndex = targetRow * safeColumns + clampedColumn
-        const newIndex = Math.max(0, Math.min(itemCount - 1, unclampedIndex))
+          originRow + event.translationY / gridCellHeight,
+        );
+        const clampedColumn = Math.max(
+          0,
+          Math.min(safeColumns - 1, targetColumn),
+        );
+        const unclampedIndex = targetRow * safeColumns + clampedColumn;
+        const newIndex = Math.max(0, Math.min(itemCount - 1, unclampedIndex));
 
         if (
           !dragPreview ||
           dragPreview.fromIndex !== dragOriginIndex.value ||
           dragPreview.toIndex !== newIndex
         ) {
-          runOnJS(onDragPreviewChange)(dragOriginIndex.value, newIndex)
+          runOnJS(onDragPreviewChange)(dragOriginIndex.value, newIndex);
         }
       })
-      .onEnd(event => {
-        const safeColumns = Math.max(1, columnCount)
-        const originColumn = dragOriginIndex.value % safeColumns
-        const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+      .onEnd((event) => {
+        const safeColumns = Math.max(1, columnCount);
+        const originColumn = dragOriginIndex.value % safeColumns;
+        const originRow = Math.floor(dragOriginIndex.value / safeColumns);
         const targetColumn = Math.round(
-          originColumn + event.translationX / gridCellWidth
-        )
+          originColumn + event.translationX / gridCellWidth,
+        );
         const targetRow = Math.round(
-          originRow + event.translationY / gridCellHeight
-        )
-        const clampedColumn = Math.max(0, Math.min(safeColumns - 1, targetColumn))
-        const unclampedIndex = targetRow * safeColumns + clampedColumn
-        const newIndex = Math.max(0, Math.min(itemCount - 1, unclampedIndex))
+          originRow + event.translationY / gridCellHeight,
+        );
+        const clampedColumn = Math.max(
+          0,
+          Math.min(safeColumns - 1, targetColumn),
+        );
+        const unclampedIndex = targetRow * safeColumns + clampedColumn;
+        const newIndex = Math.max(0, Math.min(itemCount - 1, unclampedIndex));
 
-        runOnJS(onDragPreviewEnd)()
+        runOnJS(onDragPreviewEnd)();
         if (newIndex !== dragOriginIndex.value && newIndex >= 0) {
-          runOnJS(onReorder)(dragOriginIndex.value, newIndex)
-          runOnJS(hapticDrop)()
+          runOnJS(onReorder)(dragOriginIndex.value, newIndex);
+          runOnJS(hapticDrop)();
         }
 
-        translateX.value = withTiming(0)
-        translateY.value = withTiming(0)
-        scale.value = withSpring(1)
-        isDragging.value = false
-        runOnJS(setIsDragActive)(false)
-      })
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+        scale.value = withSpring(1);
+        isDragging.value = false;
+        runOnJS(setIsDragActive)(false);
+      });
 
     const animatedStyle = useAnimatedStyle(() => {
       const shadowOpacity = interpolate(
         scale.value,
         [1, 1.05],
         [0, 0.2],
-        Extrapolate.CLAMP
-      )
-      const safeColumns = Math.max(1, columnCount)
-      const currentColumn = index % safeColumns
-      const currentRow = Math.floor(index / safeColumns)
-      const originColumn = dragOriginIndex.value % safeColumns
-      const originRow = Math.floor(dragOriginIndex.value / safeColumns)
+        Extrapolate.CLAMP,
+      );
+      const safeColumns = Math.max(1, columnCount);
+      const currentColumn = index % safeColumns;
+      const currentRow = Math.floor(index / safeColumns);
+      const originColumn = dragOriginIndex.value % safeColumns;
+      const originRow = Math.floor(dragOriginIndex.value / safeColumns);
       const dragCompensationX = isDragging.value
         ? (currentColumn - originColumn) * gridCellWidth
-        : 0
+        : 0;
       const dragCompensationY = isDragging.value
         ? (currentRow - originRow) * gridCellHeight
-        : 0
+        : 0;
 
       return {
         transform: [
           { translateX: translateX.value - dragCompensationX },
           { translateY: translateY.value - dragCompensationY },
-          { scale: scale.value }
+          { scale: scale.value },
         ],
         shadowOpacity,
         elevation: isDragging.value ? 4 : 0,
-        zIndex: isDragging.value ? 500 : 1
-      }
-    })
+        zIndex: isDragging.value ? 500 : 1,
+      };
+    });
 
-    const imageSource = resolveMenuItemImageSource(item.image)
-    const snoozeLabel = formatSnoozeCountdown(item.snoozedUntil)
-    const isSnoozed = isActivelySnoozed(item.snoozedUntil)
+    const imageSource = resolveMenuItemImageSource(item.image);
+    const snoozeLabel = formatSnoozeCountdown(item.snoozedUntil);
+    const isSnoozed = isActivelySnoozed(item.snoozedUntil);
     const PlaceholderIcon = React.useMemo(() => {
       const iconKey =
         item.placeholderIcon ??
-        extractMenuItemPlaceholderIconKey(item.cardBgColor)
+        extractMenuItemPlaceholderIconKey(item.cardBgColor);
       return getMenuItemPlaceholderIcon(
-        iconKey as MenuItemPlaceholderIconKey | undefined
-      )
-    }, [item.placeholderIcon, item.cardBgColor])
+        iconKey as MenuItemPlaceholderIconKey | undefined,
+      );
+    }, [item.placeholderIcon, item.cardBgColor]);
 
     return (
       <Animated.View
@@ -305,14 +319,18 @@ const DraggableMenuItem = React.memo(
         }
       >
         <TouchableOpacity
-          onPress={() => onItemPriceEdit(item, categoryId, menuId)}
+          onPress={
+            canWrite
+              ? () => onItemPriceEdit(item, categoryId, menuId)
+              : undefined
+          }
           style={[
             baseStyles.card,
             {
               backgroundColor: colors.card,
-              borderColor: colors.teal + '35'
+              borderColor: colors.teal + "35",
             },
-            baseStyles.touchable
+            baseStyles.touchable,
           ]}
           activeOpacity={0.7}
         >
@@ -321,15 +339,15 @@ const DraggableMenuItem = React.memo(
             {imageSource ? (
               <OptimizedListImage
                 source={imageSource}
-                style={{ width: '100%', height: '100%' }}
-                contentFit='cover'
-                recyclingKey={`${item.id}:${item.image ?? ''}`}
+                style={{ width: "100%", height: "100%" }}
+                contentFit="cover"
+                recyclingKey={`${item.id}:${item.image ?? ""}`}
               />
             ) : (
               <View
                 style={[
                   baseStyles.placeholderContainer,
-                  { backgroundColor: `${colors.teal}08` }
+                  { backgroundColor: `${colors.teal}08` },
                 ]}
               >
                 <PlaceholderIcon
@@ -345,7 +363,7 @@ const DraggableMenuItem = React.memo(
           <View
             style={[
               baseStyles.contentContainer,
-              { backgroundColor: `${colors.card}f0`, paddingTop: sc(4) }
+              { backgroundColor: `${colors.card}f0`, paddingTop: sc(4) },
             ]}
           >
             <GestureDetector gesture={panGesture}>
@@ -354,8 +372,8 @@ const DraggableMenuItem = React.memo(
                   baseStyles.gripHandle,
                   {
                     backgroundColor: `${colors.panel}cc`,
-                    opacity: isEditable ? 1 : 0.85
-                  }
+                    opacity: isEditable ? 1 : 0.85,
+                  },
                 ]}
               >
                 <GripVertical size={sc(10)} color={colors.muted} />
@@ -377,11 +395,13 @@ const DraggableMenuItem = React.memo(
         {snoozeLabel && (
           <View
             style={[baseStyles.snoozeBadge, { backgroundColor: colors.danger }]}
-            pointerEvents='none'
+            pointerEvents="none"
           >
             <Ban size={sc(9)} color={colors.onSolid} />
-            <Text style={[baseStyles.snoozeBadgeText, { color: colors.onSolid }]}>
-              {snoozeLabel === '86' ? '86' : `86 · ${snoozeLabel}`}
+            <Text
+              style={[baseStyles.snoozeBadgeText, { color: colors.onSolid }]}
+            >
+              {snoozeLabel === "86" ? "86" : `86 · ${snoozeLabel}`}
             </Text>
           </View>
         )}
@@ -389,25 +409,28 @@ const DraggableMenuItem = React.memo(
         {/* Quick 86 / out-of-stock action (bottom-right). Own touchable so it
             doesn't trigger the card's edit press. */}
         <TouchableOpacity
-          onPress={() => onItemSnooze(item)}
+          onPress={canWrite ? () => onItemSnooze(item) : undefined}
+          disabled={!canWrite}
           hitSlop={6}
           style={[
             baseStyles.snoozeButton,
             {
-              backgroundColor: isSnoozed
-                ? colors.danger
-                : colors.danger + '18',
-              borderColor: colors.danger + '35'
-            }
+              backgroundColor: isSnoozed ? colors.danger : colors.danger + "18",
+              borderColor: colors.danger + "35",
+              opacity: canWrite ? 1 : 0.4,
+            },
           ]}
         >
-          <Ban size={sc(13)} color={isSnoozed ? colors.onSolid : colors.danger} />
+          <Ban
+            size={sc(13)}
+            color={isSnoozed ? colors.onSolid : colors.danger}
+          />
         </TouchableOpacity>
       </Animated.View>
-    )
-  }
-)
+    );
+  },
+);
 
-DraggableMenuItem.displayName = 'DraggableMenuItem'
+DraggableMenuItem.displayName = "DraggableMenuItem";
 
-export default DraggableMenuItem
+export default DraggableMenuItem;

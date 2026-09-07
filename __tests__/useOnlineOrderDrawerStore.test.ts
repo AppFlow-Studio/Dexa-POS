@@ -5,13 +5,20 @@
  * Covers: openDrawer REPLACES the seen map with the active keys (mark-all +
  * prune in one write), markManySeen is additive and reference-stable when
  * nothing is new (the no-op guard prevents render loops with the drawer's
- * arrival-watch effect), closeDrawer keeps the seen set, and isOpen is
- * excluded from persistence.
+ * arrival-watch effect), closeDrawer keeps the seen set, isOpen is excluded
+ * from persistence, and the draggable tab position clamps + persists.
  */
-import { useOnlineOrderDrawerStore } from "@/stores/useOnlineOrderDrawerStore";
+import {
+  DEFAULT_TAB_POSITION_Y,
+  useOnlineOrderDrawerStore,
+} from "@/stores/useOnlineOrderDrawerStore";
 
 beforeEach(() => {
-  useOnlineOrderDrawerStore.setState({ isOpen: false, seenOrderIds: {} });
+  useOnlineOrderDrawerStore.setState({
+    isOpen: false,
+    seenOrderIds: {},
+    tabPositionY: DEFAULT_TAB_POSITION_Y,
+  });
 });
 
 describe("useOnlineOrderDrawerStore", () => {
@@ -77,13 +84,40 @@ describe("useOnlineOrderDrawerStore", () => {
     expect(useOnlineOrderDrawerStore.getState().seenOrderIds).toBe(before);
   });
 
-  it("persists seenOrderIds but NOT isOpen", () => {
+  it("persists seenOrderIds and tabPositionY but NOT isOpen", () => {
     useOnlineOrderDrawerStore.getState().openDrawer(["a"]);
+    useOnlineOrderDrawerStore.getState().setTabPositionY(0.5);
     const options = (useOnlineOrderDrawerStore as any).persist.getOptions();
     const persisted = options.partialize(
       useOnlineOrderDrawerStore.getState(),
     );
-    expect(persisted).toEqual({ seenOrderIds: { a: true } });
+    expect(persisted).toEqual({
+      seenOrderIds: { a: true },
+      tabPositionY: 0.5,
+    });
     expect("isOpen" in persisted).toBe(false);
+  });
+
+  it("setTabPositionY clamps to 0..1", () => {
+    useOnlineOrderDrawerStore.getState().setTabPositionY(-3);
+    expect(useOnlineOrderDrawerStore.getState().tabPositionY).toBe(0);
+    useOnlineOrderDrawerStore.getState().setTabPositionY(42);
+    expect(useOnlineOrderDrawerStore.getState().tabPositionY).toBe(1);
+    useOnlineOrderDrawerStore.getState().setTabPositionY(0.25);
+    expect(useOnlineOrderDrawerStore.getState().tabPositionY).toBe(0.25);
+  });
+
+  it("setTabPositionY no-ops when the position is unchanged", () => {
+    useOnlineOrderDrawerStore.getState().setTabPositionY(0.6);
+    const before = useOnlineOrderDrawerStore.getState();
+    useOnlineOrderDrawerStore.getState().setTabPositionY(0.6);
+    expect(useOnlineOrderDrawerStore.getState()).toBe(before);
+  });
+
+  it("dragging the tab does not disturb the seen set", () => {
+    useOnlineOrderDrawerStore.getState().openDrawer(["a", "b"]);
+    const seenBefore = useOnlineOrderDrawerStore.getState().seenOrderIds;
+    useOnlineOrderDrawerStore.getState().setTabPositionY(0.9);
+    expect(useOnlineOrderDrawerStore.getState().seenOrderIds).toBe(seenBefore);
   });
 });

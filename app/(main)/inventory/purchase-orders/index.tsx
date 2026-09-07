@@ -3,6 +3,7 @@ import VendorCreatePOModule from "@/components/inventory/VendorCreatePOModule";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { useToast } from "@/contexts/ToastContext";
+import { useInventoryWriteGate } from "@/hooks/inventory/useInventoryWriteGate";
 import { colors } from "@/lib/theme";
 import { PurchaseOrder } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -216,6 +217,9 @@ const PurchaseOrdersScreen = () => {
   const [expenseModuleOpenSignal, setExpenseModuleOpenSignal] = useState(0);
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+  // Reads work offline from the mirror; writes do not. See Phase 5 in
+  // docs/engineering/architecture/sqlite-offline-first.md.
+  const { canWrite, blockedReason } = useInventoryWriteGate();
 
   const poModuleVendor = useMemo(
     () => vendors.find((v) => v.id === poModuleVendorId) || null,
@@ -626,6 +630,9 @@ const PurchaseOrdersScreen = () => {
               <View style={{ justifyContent: "flex-end" }}>
                 <TouchableOpacity
                   onPress={() => setIsVendorPickerOpen(true)}
+                  disabled={!canWrite}
+                  accessibilityState={{ disabled: !canWrite }}
+                  accessibilityHint={blockedReason ?? undefined}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -636,6 +643,7 @@ const PurchaseOrdersScreen = () => {
                     borderWidth: 1,
                     borderColor: colors.teal + "50",
                     borderRadius: s(8),
+                    opacity: canWrite ? 1 : 0.4,
                   }}
                 >
                   <Plus size={s(13)} color={colors.teal} />
@@ -838,6 +846,9 @@ const PurchaseOrdersScreen = () => {
               <View style={{ justifyContent: "flex-end" }}>
                 <TouchableOpacity
                   onPress={() => setExpenseModuleOpenSignal((s) => s + 1)}
+                  disabled={!canWrite}
+                  accessibilityState={{ disabled: !canWrite }}
+                  accessibilityHint={blockedReason ?? undefined}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -848,6 +859,7 @@ const PurchaseOrdersScreen = () => {
                     borderWidth: 1,
                     borderColor: colors.teal + "50",
                     borderRadius: 8,
+                    opacity: canWrite ? 1 : 0.4,
                   }}
                 >
                   <Plus size={13} color={colors.teal} />

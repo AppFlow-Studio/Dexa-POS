@@ -1,9 +1,10 @@
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
+import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
 import {
     derivePaymentRefundState,
     getCashPricedOrderTotal,
+    hasCollectedPayment,
 } from "@/lib/paymentStatus";
-import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
 import { getProviderKey, PROVIDER_LABELS } from "@/lib/previousOrdersFilters";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
@@ -162,6 +163,10 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const totalRefunded = refundState.totalRefunded;
   const isFullyRefunded =
     order.order_status === "refunded" || refundState.isFullyRefunded;
+  // Refund reverses collected money — an unpaid order (no captured payment)
+  // has nothing to refund, so the action stays hidden even though onRefund is
+  // wired on the screen.
+  const canRefund = hasCollectedPayment(order.payments) && !isFullyRefunded;
   const displayTotal =
     getCashPricedOrderTotal(order) ?? order.total_amount ?? 0;
 
@@ -550,7 +555,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                 }}
               />
             )}
-            {onRefund && !isFullyRefunded && (
+            {onRefund && canRefund && (
               <MenuRow
                 icon={<RotateCcw color={colors.teal} size={s(15)} />}
                 label="Process Refund"

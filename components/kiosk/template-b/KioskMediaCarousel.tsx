@@ -115,6 +115,10 @@ export function KioskMediaCarousel({
   }, [slide, slides.length]);
 
   const videoUri = slide?.kind === "video" ? slide.uri : null;
+  // When the video is the ONLY asset, loop it natively for a seamless self-loop
+  // instead of advancing the carousel. When images are also present, the video
+  // plays once and hands back to the image cycle (playToEnd listener below).
+  const videoOnly = imageUrls.length === 0;
   // useCaching persists the downloaded video to disk (ExoPlayer/AVPlayer cache)
   // keyed by source — without it expo-video re-fetches over the network on
   // every remount (e.g. the idle screen resetting after each customer), even
@@ -123,20 +127,25 @@ export function KioskMediaCarousel({
   const player = useVideoPlayer(
     videoUri ? { uri: videoUri, useCaching: true } : "",
     (p) => {
-      p.loop = false;
+      p.loop = videoOnly;
       p.muted = true;
     },
   );
 
   useEffect(() => {
     if (!videoUri) return;
+    // Keep loop in sync if the image set changes without recreating the player.
+    player.loop = videoOnly;
     player.play();
+    // Only advance on end when there are other slides to move to; when the video
+    // is the only asset, native looping replays it (no listener needed).
+    if (videoOnly) return;
     const sub = player.addListener("playToEnd", () => {
       advance();
     });
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoUri, player]);
+  }, [videoUri, player, videoOnly]);
 
   if (!slide) return null;
 

@@ -292,9 +292,15 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     return (
       <>
         <DropdownMenu onOpenChange={setMenuOpen}>
-          <View className="flex-row items-center gap-2">
-            {/* Avatar circle — tapping opens dropdown */}
-            <DropdownMenuTrigger
+          {/* Avatar + name — tapping either one opens the dropdown */}
+          <DropdownMenuTrigger
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(8),
+            }}
+          >
+            <View
               style={{
                 width: s(30),
                 height: s(30),
@@ -329,8 +335,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   }}
                 />
               )}
-            </DropdownMenuTrigger>
-            {/* Name — non-interactive */}
+            </View>
             <View>
               <Text
                 className="font-medium text-xs leading-tight"
@@ -342,7 +347,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 <BreakCountdown startTime={session.breakStartTime} />
               )}
             </View>
-          </View>
+          </DropdownMenuTrigger>
 
           <DropdownMenuContent
             className="w-[300px] rounded-2xl shadow-2xl mt-3 overflow-hidden p-0"

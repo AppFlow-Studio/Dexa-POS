@@ -1,0 +1,70 @@
+-- =====================================================================
+-- SQLite Track A / Phase 2 — index for the delta sync cursor
+-- =====================================================================
+-- Why: the local read mirror pulls changes with a keyset cursor:
+--
+--     SELECT ... FROM orders
+--      WHERE location_id = $1
+--        AND (updated_at > $2 OR (updated_at = $2 AND id > $3))
+--      ORDER BY updated_at ASC, id ASC
+--      LIMIT $4
+--
+-- Verification (docs/engineering/architecture/sqlite-phase2-verification.sql,
+-- query A1) found that `orders` has 30 indexes and NOT ONE of them includes
+-- updated_at. The closest are:
+--
+--     idx_orders_location_created_at  (location_id, created_at DESC)
+--     idx_orders_sync                 (last_synced_at, sync_version)
+--
+-- Neither can serve the query above. Without this index Postgres must read
+-- EVERY order for the location and sort it to answer each 200-row page —
+-- which makes the delta pull more expensive than the full fetch it exists to
+-- replace. This index is therefore a hard prerequisite for the delta engine,
+-- not an optimization.
+--
+-- Column order is exact, and matters:
+--   location_id  — equality predicate, so it leads
+--   updated_at   — range predicate + primary sort
+--   id           — the keyset tiebreak AND secondary sort
+--
+-- With all three present and ASC (matching the query's ORDER BY), Postgres
+-- walks the index in order and needs no Sort node: the LIMIT stops the scan
+-- after 200 rows regardless of how large the table is.
+--
+-- Deliberately NOT partial. Unlike idx_orders_history_bootstrap and
+-- idx_orders_active_bootstrap, the delta must see every order at the location
+-- regardless of status — a status transition (completed -> void) is exactly
+-- the kind of change it exists to carry, and a partial index would make rows
+-- vanish from the cursor's view as they moved out of the predicate.
+--
+-- CONCURRENTLY because `orders` is the hottest table in the system and this
+-- runs against a live POS. That means:
+--
+--     >>> THIS FILE CANNOT RUN INSIDE A TRANSACTION BLOCK. <<<
+--
+-- Supabase's migration runner wraps files in BEGIN/COMMIT by default. Run
+-- this one manually via the SQL editor or psql, or split it out of the batch.
+-- If it is run non-concurrently by mistake it will hold an ACCESS EXCLUSIVE
+-- lock on orders for the duration of the build — an outage on a busy site.
+--
+-- Rollback: DROP INDEX CONCURRENTLY IF EXISTS idx_orders_location_updated;
+-- Dropping it does not break correctness, only speed — the delta still returns
+-- the right rows, just slowly.
+-- =====================================================================
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_location_updated
+  ON public.orders USING btree (location_id, updated_at, id);
+
+-- ---------------------------------------------------------------------
+-- Verify the planner actually adopts it. Substitute a real location_id and
+-- a recent timestamp; expect an Index Scan (or Index Only Scan) on
+-- idx_orders_location_updated with NO Sort node above it.
+-- ---------------------------------------------------------------------
+-- EXPLAIN (ANALYZE, BUFFERS)
+-- SELECT id, updated_at FROM public.orders
+--  WHERE location_id = '<uuid>'
+--    AND (updated_at > '2026-08-01T00:00:00Z'
+--         OR (updated_at = '2026-08-01T00:00:00Z'
+--             AND id > '00000000-0000-0000-0000-000000000000'))
+--  ORDER BY updated_at ASC, id ASC
+--  LIMIT 200;

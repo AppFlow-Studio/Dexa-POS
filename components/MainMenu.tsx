@@ -26,6 +26,27 @@ import PinNumpad from "./auth/PinNumpad";
 import ClockInOutModal from "./timeclock/ClockInOutModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
+/**
+ * Analytics only survives offline when its Phase 5 local path is on — with the
+ * flag unset, the page falls back to 13 network queries and paints nothing.
+ * Gating the tile on the same flag means the documented rollback (unset it)
+ * greys the tile back out instead of leaving a dead entry point behind.
+ */
+const LOCAL_ANALYTICS_ENABLED = process.env.EXPO_PUBLIC_LOCAL_ANALYTICS === "1";
+
+/**
+ * Same conditional-entry-point rule as analytics, for the same reason. With
+ * the boards flag unset the Online Orders screen is one RPC and nothing else,
+ * so an offline tap would open an empty board with an error banner. With it
+ * set the board paints from the mirror and says so.
+ *
+ * `/kds` stays offline-disabled. Its Done tab is server-authoritative for an
+ * hour and shared across stations by construction, and the active columns are
+ * the live RPC — there is nothing on this device that could honestly fill
+ * either while the radio is off.
+ */
+const LOCAL_BOARDS_ENABLED = process.env.EXPO_PUBLIC_LOCAL_BOARDS === "1";
+
 interface MenuCardProps {
   icon: React.ReactNode;
   title: string;
@@ -183,14 +204,33 @@ const MainMenu: React.FC = () => {
   // instead of navigating, so this tile carries no route.
   const [isClockInOutOpen, setClockInOutOpen] = useState(false);
 
-  // Previous Orders is allowed offline: it falls back to the last
-  // successfully-fetched snapshot (previousOrdersOfflineCache) instead of going
-  // blank, so the tile stays usable without a connection.
+  // Routes that render from a local cache instead of going blank without a
+  // connection, so their tiles stay usable offline:
+  // - Previous Orders falls back to the last successfully-fetched snapshot
+  //   (previousOrdersOfflineCache).
+  // - Inventory paints its catalog from the SQLite mirror (Phase 5 in
+  //   docs/engineering/architecture/sqlite-offline-first.md). Reads work
+  //   offline; the writes inside the section guard themselves and surface an
+  //   "You're offline" alert.
+  // - Menu Management renders from useMenuStore, which PosSyncProvider hydrates
+  //   from the Phase 4 menu mirror at boot. Its writes are not offline-aware,
+  //   but they fail safely — optimistic edits roll back and deletes go
+  //   server-first — so the worst case is a generic error toast, not divergence.
+  // - Analytics computes its numbers in SQL over the orders mirror (Phase 5,
+  //   same doc). It is read-only, so there is nothing to guard. The two things
+  //   it CANNOT answer offline say so on the page rather than reporting zero:
+  //   the table-session stat cards render "—" (table_sessions is not mirrored),
+  //   and a range reaching past the mirror's retention floor shows the coverage
+  //   banner. Without the tile, none of that is reachable.
   const offlineAllowedRoutes = new Set([
     "/order-processing",
     "/tables",
     "/settings",
     "/previous-orders",
+    "/inventory",
+    "/menu",
+    ...(LOCAL_ANALYTICS_ENABLED ? ["/analytics"] : []),
+    ...(LOCAL_BOARDS_ENABLED ? ["/online-orders"] : []),
   ]);
 
   const handleLockedAccess = (route: string) => {

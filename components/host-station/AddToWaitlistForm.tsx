@@ -1,7 +1,6 @@
 import { formatUsPhone, normalizeUsPhoneDigits } from '@/lib/phone'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { getCachedCustomers } from '@/services/customer'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
 import { FloorPlanService } from '@/services/floorPlanService'
 import {

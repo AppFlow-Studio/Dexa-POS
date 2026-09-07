@@ -1,8 +1,19 @@
 // services/customers.ts
 
+import {
+    CUSTOMER_FETCH_LIMIT,
+    writeCustomersSnapshot,
+    type ServerCustomer,
+} from "@/lib/db/descriptors/customers";
+import {
+    searchLocalCustomers,
+    topLocalCustomers,
+} from "@/lib/db/customersQuery";
+import { stationKind } from "@/lib/db/policy";
 import { isValidUUID, resolveToBackendId } from "@/lib/offlineIdRegistry";
 import { getSyncJSON, setSyncJSON } from "@/lib/storage";
 import { getIsOnline } from "@/services/offlineSyncService";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
     Customer,
     CustomerWithMeta
@@ -12,6 +23,24 @@ import { v4 as uuidv4 } from "uuid";
 
 const CUSTOMER_CACHE_KEY = "customers_cache";
 const CUSTOMER_QUEUE_KEY = "customer_ops_queue";
+
+/**
+ * Phase 5 — when set, the directory is read from the SQLite mirror instead of
+ * the MMKV cache. Off: today's 200-row cache path, unchanged.
+ */
+const LOCAL_CUSTOMERS_ENABLED =
+    process.env.EXPO_PUBLIC_LOCAL_CUSTOMERS === "1";
+
+/**
+ * What the MMKV cache still holds once the mirror exists.
+ *
+ * It stops being the directory and becomes the fallback + the home of
+ * offline-pending creates, so it keeps the old 200-row footprint rather than
+ * growing to the mirror's 5,000. Writing 5,000 customers through MMKV on every
+ * fetch would pay the serialization cost twice for a list nothing reads while
+ * the mirror is healthy.
+ */
+const MMKV_CACHE_LIMIT = 200;
 
 type CustomerOperation =
     | {
@@ -120,7 +149,11 @@ export async function fetchAndCacheCustomers(
         .select("*")
         .eq("merchant_id", merchantId)
         .order("last_order_date", { ascending: false, nullsFirst: true })
-        .limit(200);
+        // Phase 5: was a hard 200, which is why a customer who last visited a
+        // few months ago at a busy location could not be found — online or
+        // offline. The limit and the mirror's retention cap are the same
+        // number by construction; see CUSTOMER_FETCH_LIMIT.
+        .limit(CUSTOMER_FETCH_LIMIT);
 
     if (error) throw error;
 
@@ -131,10 +164,107 @@ export async function fetchAndCacheCustomers(
         synced_at: new Date().toISOString(),
     }));
 
-    // Preserve any offline customers not yet synced
+    // Mirror the directory at the seam where the payload has already arrived —
+    // one fetch, one cadence, no duplicated round trip. Fire-and-forget: a
+    // mirror failure costs the next screen's offline paint, never the list
+    // being returned right now.
+    if (LOCAL_CUSTOMERS_ENABLED && data?.length) {
+        const { selectedStore, selectedStation } =
+            useStoreSettingsStore.getState();
+        if (selectedStore?.id) {
+            void writeCustomersSnapshot(
+                stationKind(selectedStation?.station_type),
+                selectedStore.id,
+                data as ServerCustomer[]
+            );
+        }
+    }
+
+    // The MMKV cache stays the fallback path and keeps holding offline creates.
+    // It is deliberately still capped by what one fetch returns — it is not
+    // trying to be the directory any more, the mirror is.
     const offline = readCache().filter((c) => c.is_offline);
-    writeCache(mergeCustomers(normalized, offline));
+    writeCache(mergeCustomers(normalized.slice(0, MMKV_CACHE_LIMIT), offline));
     return readCache();
+}
+
+/**
+ * The customer directory for a type-ahead, from the mirror when it is
+ * available and the MMKV cache when it is not.
+ *
+ * `query` narrows the mirror to a SUPERSET of what any one screen matches on
+ * (name, phone, address) — every caller still runs its own filter over the
+ * result, so per-screen matching semantics are untouched. See
+ * lib/db/customersQuery.ts for why the split is drawn there.
+ *
+ * OFFLINE-PENDING CUSTOMERS ARE MERGED ON TOP, and that is not a nicety. A
+ * customer created while offline exists only in the MMKV queue until it syncs;
+ * if the directory came from the mirror alone, the customer an operator just
+ * created would vanish from the list they created it in. They are merged
+ * unconditionally rather than filtered by `query`, because there are at most a
+ * handful and the caller's own filter will narrow them correctly anyway.
+ */
+export async function loadCustomerDirectory(
+    query?: string
+): Promise<CustomerWithMeta[]> {
+    const pending = readCache().filter((c) => c.is_offline);
+
+    if (!LOCAL_CUSTOMERS_ENABLED) return readCache();
+
+    const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+    if (!locationId) return readCache();
+
+    let mirrored: ServerCustomer[] | null = null;
+    try {
+        mirrored = await searchLocalCustomers({ locationId, query });
+    } catch {
+        mirrored = null;
+    }
+    // Null means the DB is not open; empty means it is open and holds nothing
+    // for this location yet (no fetch has landed). Both fall back — an empty
+    // directory is exactly the blank list this mirror exists to prevent.
+    if (!mirrored || mirrored.length === 0) return readCache();
+
+    const normalized: CustomerWithMeta[] = mirrored.map((c) => ({
+        ...(c as unknown as CustomerWithMeta),
+        phoneNumber: (c.phone as string | null) ?? null,
+        is_offline: false,
+    }));
+
+    return mergeCustomers(normalized, pending);
+}
+
+/**
+ * The busiest customers, straight from SQL.
+ *
+ * Falls back to sorting the MMKV cache — which is what every caller used to
+ * do, and which made this "the top N of the most recent 200" rather than the
+ * top N.
+ */
+export async function loadTopCustomers(
+    limit = 3
+): Promise<CustomerWithMeta[]> {
+    const fallback = () =>
+        [...readCache()]
+            .filter((c) => (c.total_orders ?? 0) > 0)
+            .sort((a, b) => (b.total_orders ?? 0) - (a.total_orders ?? 0))
+            .slice(0, limit);
+
+    if (!LOCAL_CUSTOMERS_ENABLED) return fallback();
+    const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+    if (!locationId) return fallback();
+
+    try {
+        const rows = await topLocalCustomers(locationId, limit);
+        if (!rows || rows.length === 0) return fallback();
+        return rows.map((c) => ({
+            ...(c as unknown as CustomerWithMeta),
+            phoneNumber: (c.phone as string | null) ?? null,
+            is_offline: false,
+        }));
+    } catch {
+        return fallback();
+    }
 }
 
 function mergeCustomers(

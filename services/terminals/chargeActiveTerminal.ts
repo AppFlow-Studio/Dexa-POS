@@ -71,6 +71,20 @@ export interface ChargeActiveTerminalResult {
   terminalId?: string;
 }
 
+/**
+ * Everything the caller needs to cancel an in-flight sale (a kiosk Back button):
+ * the terminal it's running on and the reference id Valor/Dejavoo cancel by.
+ * Fed to `cancelActiveTerminalCharge`.
+ */
+export interface ChargeStartedHandle {
+  /** terminal_type of the terminal running the sale. */
+  terminalType: string;
+  /** DB id of the terminal. */
+  terminalId: string;
+  /** Reference id of the sale (Valor/Dejavoo need it to cancel; Castles doesn't). */
+  referenceId: string;
+}
+
 export interface ChargeActiveTerminalArgs {
   /** Grand total to charge in dollars, INCLUDING tip (kiosk convention). */
   amount: number;
@@ -82,6 +96,19 @@ export interface ChargeActiveTerminalArgs {
   dbOrderId?: string;
   /** Live Supabase client (for the terminal txn counters + Dejavoo creds). */
   supabase: ReturnType<typeof useSupabaseClient>;
+  /**
+   * Fired once, synchronously, the instant the (blocking) card read is dispatched
+   * to the terminal — hands the caller the handle needed to cancel it. NOT called
+   * for the DEV no-terminal simulation or unsupported types (nothing to cancel).
+   */
+  onChargeStarted?: (handle: ChargeStartedHandle) => void;
+  /**
+   * DEV-only: how long the no-terminal simulated approval sits on the card
+   * prompt before approving. Lets the "Swipe, Tap, or Insert" screen (and its
+   * Back button) be exercised on hardware-free builds. Ignored in release and
+   * whenever a real terminal is configured.
+   */
+  simulatedCardWaitMs?: number;
 }
 
 const INDETERMINATE_MESSAGE =
@@ -89,23 +116,46 @@ const INDETERMINATE_MESSAGE =
 
 /**
  * Charge the card on the station's active terminal, mirroring the POS.
- * Falls back to an 800 ms simulated approval when no terminal is configured, so
- * dev / no-hardware kiosks still complete an order.
+ *
+ * In DEV builds only, falls back to an 800 ms simulated approval when no
+ * terminal is configured (or the type is unsupported), so no-hardware /
+ * emulator kiosks can still exercise the flow. In a RELEASE build those cases
+ * hard-fail (`ok: false`) — an unattended self-service kiosk must NEVER mark an
+ * order paid without actually collecting money.
  */
 export async function chargeActiveTerminal(
   args: ChargeActiveTerminalArgs,
 ): Promise<ChargeActiveTerminalResult> {
-  const { amount, tipAmount, orderId, dbOrderId, supabase } = args;
+  const { amount, tipAmount, orderId, dbOrderId, supabase, onChargeStarted } =
+    args;
   // Base (pre-tip) amount — the terminal adds the tip on top for Castles/Valor/
   // ATOM; Dejavoo takes the grand total plus a tip breakdown.
   const base = Math.max(0, amount - tipAmount);
 
   const terminal = resolveActiveProcessor().activeTerminal;
 
-  // No configured terminal — simulate (unchanged legacy behaviour).
+  // No configured terminal.
   if (!terminal) {
-    await new Promise((r) => setTimeout(r, 800));
-    return { ok: true, terminalResponse: { simulated: true, amount } };
+    // DEV only: simulate an approval so the flow can be exercised on an
+    // emulator / no-hardware kiosk. In a release build this MUST fail — a
+    // shipped kiosk with no terminal cannot mark an order paid for free.
+    if (__DEV__) {
+      console.warn(
+        "[chargeActiveTerminal] No terminal configured — simulating approval (__DEV__ only).",
+      );
+      // Sit on the simulated card prompt so the cancel affordance is
+      // exercisable without hardware. There is no real sale to abort, so
+      // `onChargeStarted` is deliberately not fired — a Back press during this
+      // window is classified by `resolveKioskChargeOutcome` as a confirmed
+      // cancellation (no terminalType ⇒ not the unconfirmable Castles path).
+      await new Promise((r) => setTimeout(r, args.simulatedCardWaitMs ?? 800));
+      return { ok: true, terminalResponse: { simulated: true, amount } };
+    }
+    return {
+      ok: false,
+      message:
+        "No payment terminal is configured for this kiosk. Please see a staff member.",
+    };
   }
 
   const journalKey = uuidv4();
@@ -147,6 +197,11 @@ export async function chargeActiveTerminal(
     const referenceId = counter.next();
 
     const journalId = writeJournal();
+    onChargeStarted?.({
+      terminalType: "castles",
+      terminalId: terminal.id,
+      referenceId,
+    });
     const result = await service.processSale({ amount: base, tipAmount, referenceId });
 
     updatePaymentJournal(journalId, {
@@ -217,6 +272,11 @@ export async function chargeActiveTerminal(
     const amountCents = Math.round((base + Number.EPSILON) * 100);
     const tipCents = Math.round((tipAmount + Number.EPSILON) * 100);
 
+    onChargeStarted?.({
+      terminalType: "valor",
+      terminalId: terminal.id,
+      referenceId,
+    });
     const result = await service.processSale({
       amount: amountCents,
       tipAmount: tipCents,
@@ -299,6 +359,11 @@ export async function chargeActiveTerminal(
 
     const journalId = writeJournal();
 
+    onChargeStarted?.({
+      terminalType: "atom",
+      terminalId: terminal.id,
+      referenceId,
+    });
     // ATOM is single-session; pause background probing for the whole sale, and
     // bring ourselves back to the front afterward (it foregrounds itself).
     suspendAtomLoopbackProbing();
@@ -370,6 +435,11 @@ export async function chargeActiveTerminal(
     const refId = generateRefId("CARD", undefined, locSuffix, staSuffix);
 
     const journalId = writeJournal();
+    onChargeStarted?.({
+      terminalType: "dejavoo",
+      terminalId: terminal.id ?? "",
+      referenceId: refId,
+    });
     const result = await api
       .sale()
       .amount(amount) // grand total incl. tip
@@ -474,7 +544,17 @@ export async function chargeActiveTerminal(
     return { ok: true, terminalId: terminal.id, terminalResponse };
   }
 
-  // Unknown / unsupported terminal type — simulate rather than block the order.
-  await new Promise((r) => setTimeout(r, 800));
-  return { ok: true, terminalResponse: { simulated: true, amount } };
+  // Unknown / unsupported terminal type.
+  if (__DEV__) {
+    console.warn(
+      `[chargeActiveTerminal] Unsupported terminal type "${terminal.terminal_type}" — simulating approval (__DEV__ only).`,
+    );
+    await new Promise((r) => setTimeout(r, 800));
+    return { ok: true, terminalResponse: { simulated: true, amount } };
+  }
+  return {
+    ok: false,
+    message:
+      "This kiosk's payment terminal isn't supported. Please see a staff member.",
+  };
 }

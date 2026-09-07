@@ -1,8 +1,12 @@
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useToast } from '@/contexts/ToastContext'
+import { useInventoryWriteGate } from '@/hooks/inventory/useInventoryWriteGate'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { useInventoryStore } from '@/stores/useInventoryStore'
+import {
+  InventoryOfflineError,
+  useInventoryStore
+} from '@/stores/useInventoryStore'
 import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import {
@@ -42,6 +46,9 @@ const PurchaseOrderDetailScreen = () => {
   const { show } = useToast()
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
+  // Reads work offline from the mirror; writes do not. See Phase 5 in
+  // docs/engineering/architecture/sqlite-offline-first.md.
+  const { canWrite, blockedReason } = useInventoryWriteGate()
 
   const po = purchaseOrders.find(p => p.id === poId)
   const vendor = po ? vendors.find(v => v.id === po.vendorId) : null
@@ -110,6 +117,19 @@ const PurchaseOrderDetailScreen = () => {
     }
   }
 
+  /**
+   * Report a refused write with its real reason.
+   *
+   * Every action on this screen already throws on failure and every handler
+   * already catches — but they discarded the error and reported a generic
+   * "Failed to ...". Offline that is technically true and practically useless:
+   * it reads as a server problem when the fix is to reconnect.
+   */
+  const reportWriteFailure = (error: unknown, fallback: string) => {
+    const offline = error instanceof InventoryOfflineError
+    Alert.alert(offline ? "You're offline" : 'Error', offline ? error.message : fallback)
+  }
+
   const handleLogDelivery = async () => {
     if (!poId) return
     // Build received items payload from draft (fallback to original quantities)
@@ -134,8 +154,8 @@ const PurchaseOrderDetailScreen = () => {
         message: `Delivery logged for PO #${po.poNumber}`,
         type: 'success'
       })
-    } catch {
-      Alert.alert('Error', 'Failed to log delivery.')
+    } catch (error) {
+      reportWriteFailure(error, 'Failed to log delivery.')
     }
   }
 
@@ -171,8 +191,8 @@ const PurchaseOrderDetailScreen = () => {
         message: `Payment logged for PO #${po.poNumber}`,
         type: 'success'
       })
-    } catch {
-      Alert.alert('Error', 'Failed to log payment.')
+    } catch (error) {
+      reportWriteFailure(error, 'Failed to log payment.')
     }
   }
 
@@ -186,8 +206,8 @@ const PurchaseOrderDetailScreen = () => {
         message: `PO #${po.poNumber} has been cancelled`,
         type: 'success'
       })
-    } catch {
-      Alert.alert('Error', 'Failed to cancel purchase order.')
+    } catch (error) {
+      reportWriteFailure(error, 'Failed to cancel purchase order.')
     }
   }
 
@@ -200,8 +220,8 @@ const PurchaseOrderDetailScreen = () => {
         message: `PO #${po.poNumber} submitted to Pending Delivery`,
         type: 'success'
       })
-    } catch {
-      Alert.alert('Error', 'Failed to submit draft purchase order.')
+    } catch (error) {
+      reportWriteFailure(error, 'Failed to submit draft purchase order.')
     }
   }
 
@@ -216,8 +236,8 @@ const PurchaseOrderDetailScreen = () => {
         type: 'success'
       })
       router.back()
-    } catch {
-      Alert.alert('Error', 'Failed to delete draft purchase order.')
+    } catch (error) {
+      reportWriteFailure(error, 'Failed to delete draft purchase order.')
     }
   }
 
@@ -737,6 +757,9 @@ const PurchaseOrderDetailScreen = () => {
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
                 onPress={handleSubmitDraft}
+                disabled={!canWrite}
+                accessibilityState={{ disabled: !canWrite }}
+                accessibilityHint={blockedReason ?? undefined}
                 style={{
                   flex: 1,
                   backgroundColor: colors.teal + '20',
@@ -744,7 +767,8 @@ const PurchaseOrderDetailScreen = () => {
                   borderColor: colors.teal + '50',
                   borderRadius: 8,
                   paddingVertical: 9,
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  opacity: canWrite ? 1 : 0.4
                 }}
               >
                 <Text
@@ -759,6 +783,9 @@ const PurchaseOrderDetailScreen = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowDeleteDraftDialog(true)}
+                disabled={!canWrite}
+                accessibilityState={{ disabled: !canWrite }}
+                accessibilityHint={blockedReason ?? undefined}
                 style={{
                   flex: 1,
                   backgroundColor: colors.danger + '20',
@@ -766,7 +793,8 @@ const PurchaseOrderDetailScreen = () => {
                   borderColor: colors.danger + '50',
                   borderRadius: 8,
                   paddingVertical: 9,
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  opacity: canWrite ? 1 : 0.4
                 }}
               >
                 <Text
@@ -809,13 +837,17 @@ const PurchaseOrderDetailScreen = () => {
             {!showDeliveryForm ? (
               <TouchableOpacity
                 onPress={() => setShowDeliveryForm(true)}
+                disabled={!canWrite}
+                accessibilityState={{ disabled: !canWrite }}
+                accessibilityHint={blockedReason ?? undefined}
                 style={{
                   backgroundColor: colors.teal + '20',
                   borderWidth: 1,
                   borderColor: colors.teal + '50',
                   borderRadius: 8,
                   paddingVertical: 9,
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  opacity: canWrite ? 1 : 0.4
                 }}
               >
                 <Text
@@ -1116,6 +1148,9 @@ const PurchaseOrderDetailScreen = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleSubmitDelivery}
+                    disabled={!canWrite}
+                    accessibilityState={{ disabled: !canWrite }}
+                    accessibilityHint={blockedReason ?? undefined}
                     style={{
                       flex: 1,
                       backgroundColor: colors.teal + '20',
@@ -1123,7 +1158,8 @@ const PurchaseOrderDetailScreen = () => {
                       borderColor: colors.teal + '50',
                       borderRadius: 8,
                       paddingVertical: 9,
-                      alignItems: 'center'
+                      alignItems: 'center',
+                      opacity: canWrite ? 1 : 0.4
                     }}
                   >
                     <Text
@@ -1168,13 +1204,17 @@ const PurchaseOrderDetailScreen = () => {
             {!showPaymentForm ? (
               <TouchableOpacity
                 onPress={() => setShowPaymentForm(true)}
+                disabled={!canWrite}
+                accessibilityState={{ disabled: !canWrite }}
+                accessibilityHint={blockedReason ?? undefined}
                 style={{
                   backgroundColor: colors.teal + '20',
                   borderWidth: 1,
                   borderColor: colors.teal + '50',
                   borderRadius: 8,
                   paddingVertical: 9,
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  opacity: canWrite ? 1 : 0.4
                 }}
               >
                 <Text
@@ -1408,6 +1448,9 @@ const PurchaseOrderDetailScreen = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleLogPayment}
+                    disabled={!canWrite}
+                    accessibilityState={{ disabled: !canWrite }}
+                    accessibilityHint={blockedReason ?? undefined}
                     style={{
                       flex: 1,
                       backgroundColor: colors.teal + '20',
@@ -1415,7 +1458,8 @@ const PurchaseOrderDetailScreen = () => {
                       borderColor: colors.teal + '50',
                       borderRadius: 8,
                       paddingVertical: 9,
-                      alignItems: 'center'
+                      alignItems: 'center',
+                      opacity: canWrite ? 1 : 0.4
                     }}
                   >
                     <Text
@@ -1831,6 +1875,9 @@ const PurchaseOrderDetailScreen = () => {
           >
             <TouchableOpacity
               onPress={() => setShowCancelDialog(true)}
+              disabled={!canWrite}
+              accessibilityState={{ disabled: !canWrite }}
+              accessibilityHint={blockedReason ?? undefined}
               style={{
                 backgroundColor: colors.danger + '20',
                 borderWidth: 1,
@@ -1838,7 +1885,8 @@ const PurchaseOrderDetailScreen = () => {
                 borderRadius: 8,
                 paddingVertical: 9,
                 paddingHorizontal: 14,
-                alignItems: 'center'
+                alignItems: 'center',
+                opacity: canWrite ? 1 : 0.4
               }}
             >
               <Text

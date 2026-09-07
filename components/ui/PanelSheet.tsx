@@ -282,6 +282,31 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
     // Callback plumbing: stable refs + a `closedRef` guard so onClose fires exactly
     // once even when a swipe-dismiss and a programmatic close race.
     const closedRef = useRef(!startsOpen);
+    /**
+     * Synchronous "a close is in flight" intent. `closedRef` cannot serve this: it
+     * only flips true when `fireCloseCallbacks` runs, which is AFTER the close
+     * animation has committed and the panel has left the tree. During that ~220ms
+     * window `closedRef` still read false, so a second `close()` sailed past its
+     * guard and started a rival `withTiming(0)` on an already-unmounting panel. That
+     * orphaned animation could land after a later `open()` and unmount the freshly
+     * opened panel — the sheet flashed and vanished and the trigger button looked
+     * dead. Set by close(); cleared by open() and by the drag gesture.
+     */
+    const closingRef = useRef(!startsOpen);
+    /**
+     * Bumped by every open(). close() captures the generation it started under and
+     * hands it to finishClose, which drops the unmount if a newer open() has since
+     * taken the panel over — otherwise a superseded close's callback would unmount
+     * the sheet the user just reopened.
+     */
+    const openGenRef = useRef(0);
+    /**
+     * Bumped by open() to request the slide-in, and applied by an effect once the
+     * panel is actually mounted. See the comment in open() for why the animation
+     * cannot be started there.
+     */
+    const openReqRef = useRef(0);
+    const [openReq, setOpenReq] = useState(0);
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
     const onDismissRef = useRef(onDismiss);
@@ -297,7 +322,18 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
       onChangeRef.current?.(-1);
     }, []);
 
-    const finishClose = useCallback(() => {
+    /** Drop the in-flight-close claim so a later close() is not swallowed. */
+    const releaseClosing = useCallback(() => {
+      closingRef.current = false;
+    }, []);
+
+    const finishClose = useCallback((gen: number) => {
+      // A newer open() has taken the panel over since the close that scheduled this
+      // callback started, so it is stale — unmounting here would kill the sheet the
+      // user just reopened (it flashes and vanishes, and the trigger button looks
+      // dead until something else re-renders the tree). open() already cleared the
+      // close claim, so there is nothing to release here; just decline the unmount.
+      if (gen !== openGenRef.current) return;
       // Only unmount here. The close callbacks fire from the effect below, AFTER the
       // panel has actually left the tree — mirroring the native ModalBottomSheet's
       // onDismiss timing (fires once the sheet is gone). Call sites depend on this:
@@ -305,6 +341,14 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
       // its overlay into a clean tree, not the tearing-down sheet surface.
       setIsOpen(false);
     }, []);
+
+    // Run the slide-in AFTER the panel is mounted (see open()). Skipping req 0 keeps
+    // a sheet that starts open (non-modal, index >= 0) at its already-correct
+    // progress of 1 instead of re-animating it in on mount.
+    useEffect(() => {
+      if (openReq === 0 || !isOpen) return;
+      progress.value = withTiming(1, { duration: OPEN_MS });
+    }, [openReq, isOpen, progress]);
 
     // Fire close callbacks once the close has committed (open → closed transition).
     const prevOpenRef = useRef(isOpen);
@@ -316,16 +360,29 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
     const open = useCallback(
       (notifyIndex: number) => {
         closedRef.current = false;
+        closingRef.current = false;
+        // Invalidate any close callback still in flight: it captured the previous
+        // generation, so it bails instead of unmounting the panel we open here.
+        openGenRef.current += 1;
         // Release any in-flight close claim BEFORE the write that cancels its
         // animation, so the cancelled callback doesn't unmount the panel we are
         // about to show. Shared-value writes from JS keep their order.
         closingSV.value = 0;
         setTargetIdx(Math.max(0, notifyIndex));
         setIsOpen(true);
-        progress.value = withTiming(1, { duration: OPEN_MS });
+        // Ask the post-mount effect to run the slide-in. Writing withTiming(1) here
+        // instead would animate a node that is not in the tree yet: while closed the
+        // panel is unmounted (`if (!isOpen) return null`), so the animation starts
+        // and can finish before React commits the mount. The panel then attaches to
+        // `progress` reading a raw 0 and stays translated fully off-screen — the
+        // sheet appears not to open at all, and only becomes visible later when a
+        // close animation drives `progress` while the node IS mounted (the panel
+        // sliding away is the first and only thing the user sees).
+        openReqRef.current += 1;
+        setOpenReq(openReqRef.current);
         onChangeRef.current?.(notifyIndex);
       },
-      [progress, closingSV],
+      [closingSV],
     );
 
     const close = useCallback(() => {
@@ -334,11 +391,19 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
       // fires dismiss() again right after onClose set the table to null. Without this
       // guard that starts a second close animation on the already-unmounted panel,
       // which fatally crashes Reanimated on the New Architecture (app drops to home).
-      if (closedRef.current) return;
+      //
+      // `closingRef` (not `closedRef`) is the guard: it is set synchronously here,
+      // so a close issued while another is still animating is dropped instead of
+      // starting a rival animation whose orphaned callback could later unmount a
+      // reopened panel. `closedRef` only reports whether onClose has already fired,
+      // ~220ms later, and is far too late to gate re-entry.
+      if (closingRef.current || closedRef.current) return;
+      closingRef.current = true;
       // Claim the close; open() and the drag gesture release the claim when they
       // take the panel back over.
       closingSV.value = 1;
-      progress.value = withTiming(0, { duration: CLOSE_MS }, (finished) => {
+      const gen = openGenRef.current;
+      progress.value = withTiming(0, { duration: CLOSE_MS }, () => {
         "worklet";
         // An INTERRUPTED close (finished === false) must unmount too. Only
         // open() and the drag gesture legitimately interrupt a close, and both
@@ -352,7 +417,9 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
         // re-ran close()); the rest needed an app restart.
         if (closingSV.value !== 1) return;
         closingSV.value = 0;
-        runOnJS(finishClose)();
+        // finishClose re-checks `gen` on the JS thread and drops the unmount if a
+        // newer open() has taken over in the meantime.
+        runOnJS(finishClose)(gen);
       });
     }, [progress, finishClose, closingSV]);
 
@@ -417,10 +484,23 @@ const PanelSheet = forwardRef<BottomSheetMethods, PanelSheetProps>(
             if (e.translationY > h * 0.25 || e.velocityY > 800) {
               runOnJS(close)();
             } else {
+              // Snapping back open: the drag took the panel over from any close
+              // that was in flight (onUpdate cleared closingSV), so release the
+              // JS-side claim too. Without this, a drag started during a close
+              // that then snaps back leaves closingRef stuck true and every later
+              // close() is swallowed by its guard — the sheet can't be dismissed.
+              runOnJS(releaseClosing)();
               progress.value = withTiming(1, { duration: 160 });
             }
           }),
-      [enablePanDownToClose, close, progress, panelHeightSV, closingSV],
+      [
+        enablePanDownToClose,
+        close,
+        progress,
+        panelHeightSV,
+        closingSV,
+        releaseClosing,
+      ],
     );
 
     if (!isOpen) return null;

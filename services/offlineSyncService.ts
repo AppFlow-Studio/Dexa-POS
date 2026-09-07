@@ -931,6 +931,42 @@ function findCollapseTarget(
 }
 
 /**
+ * S7: find an existing PENDING send_to_kitchen op for the same order to fold a
+ * new send into. Repeated presses while offline must not queue N distinct sends
+ * with fresh idempotency keys over overlapping item sets — every replay would
+ * re-run the fire_time rewrite in bulk_update_order_item_status_v2 and churn
+ * KDS tickets (S2). Folding reuses the existing op (and its idempotency key),
+ * so the server-side dedupe can collapse the batch.
+ *
+ * Only folds when the new press overlaps the existing batch's item set (same
+ * items or a superset). A completely disjoint batch is a genuinely different
+ * send and stays separate.
+ */
+function findSendToKitchenDedupeTarget(
+  localOrderId: string,
+  newLocalItemIds: string[],
+): OfflineOperation | null {
+  if (!localOrderId || newLocalItemIds.length === 0) return null;
+  const newSet = new Set(newLocalItemIds);
+  let best: OfflineOperation | null = null;
+  let bestOverlap = -1;
+  for (const op of pendingOperations) {
+    if (op.status !== "pending" || op.type !== "send_to_kitchen") continue;
+    if (op.localOrderId !== localOrderId) continue;
+    const existing = new Set<string>(
+      (op.params?.localItemIds as string[] | undefined) ?? [],
+    );
+    const overlap = [...newSet].filter((id) => existing.has(id)).length;
+    if (overlap === 0) continue;
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      best = op;
+    }
+  }
+  return best;
+}
+
+/**
  * Add an operation to the offline queue.
  * Supports priority ordering, dependency tracking, and operation collapsing.
  */
@@ -972,6 +1008,34 @@ export async function queueOperation(
         collapseTarget.type,
       );
       return collapseTarget.id;
+    }
+  }
+
+  // S7: deduplicate queued kitchen sends per order — repeated presses while
+  // offline must collapse into one logical send with one idempotency key.
+  if (op.type === "send_to_kitchen") {
+    const sendParams = op.params as { localItemIds?: string[] } | undefined;
+    const dedupeTarget = findSendToKitchenDedupeTarget(
+      op.localOrderId,
+      sendParams?.localItemIds ?? [],
+    );
+    if (dedupeTarget) {
+      const union = new Set<string>(
+        (dedupeTarget.params?.localItemIds as string[] | undefined) ?? [],
+      );
+      for (const id of sendParams?.localItemIds ?? []) union.add(id);
+      dedupeTarget.params = {
+        ...dedupeTarget.params,
+        localItemIds: [...union],
+      };
+      dedupeTarget.timestamp = new Date().toISOString();
+      await saveQueueToStorage();
+      console.log(
+        "[OfflineSync] Deduplicated send_to_kitchen into:",
+        dedupeTarget.id,
+        `(union ${union.size} items)`,
+      );
+      return dedupeTarget.id;
     }
   }
 

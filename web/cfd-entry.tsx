@@ -21,7 +21,7 @@ import {
   triggerCFDPhoneSubmit,
 } from "@/lib/cfdLoyaltyTriggers";
 import { setThemeMode } from "@/lib/theme";
-import { UiScaleProvider } from "@/lib/uiScale";
+import { CFDScaleProvider, UiScaleProvider } from "@/lib/uiScale";
 import type {
   CFDMessage,
   CFDPayload,
@@ -32,6 +32,7 @@ import {
   CFDWebDisplayProvider,
   useCFDWebDisplayStore,
 } from "@/web/cfdWebDisplayProvider";
+import type { ReactNode } from "react";
 import { AppRegistry, StyleSheet, View } from "react-native";
 
 // ---------------------------------------------------------------------------
@@ -209,9 +210,9 @@ function CFDWebApp() {
   };
 
   return (
-    <UiScaleProvider>
-      <View style={rootStyles.root}>
-        <CFDWebDisplayProvider>
+    <View style={rootStyles.root}>
+      <CFDWebDisplayProvider>
+        <CFDScaledRoot>
           <CFDScreenRouter
             nativeLoyaltyPrompt
             onTipSelected={handleTipSelected}
@@ -219,9 +220,32 @@ function CFDWebApp() {
             onLoyaltySkip={handleLoyaltySkip}
             onLoyaltyJoin={handleLoyaltyJoin}
           />
-        </CFDWebDisplayProvider>
-      </View>
-    </UiScaleProvider>
+        </CFDScaledRoot>
+      </CFDWebDisplayProvider>
+    </View>
+  );
+}
+
+/**
+ * Emits `--ui-scale` for the WebView tree at the *CFD* scale.
+ *
+ * This is the one CFD runtime where NativeWind utility classes resolve
+ * through the `--ui-scale` CSS variable, so the variable has to reflect the
+ * operator's CFD override — not the POS scale. That means UiScaleProvider
+ * must sit *below* CFDWebDisplayProvider (where the override arrives via the
+ * payload) and below CFDScaleProvider (which is what makes the useUiScale()
+ * inside UiScaleProvider resolve to the CFD scale).
+ *
+ * Ordering matters: hoisting UiScaleProvider above the display data — as it
+ * originally was — silently publishes the unscaled POS value, so any
+ * `className`-based sizing added to a CFD screen would not scale.
+ */
+function CFDScaledRoot({ children }: { children: ReactNode }) {
+  const override = useCFDWebDisplayStore((s) => s.cfdUiScaleOverride);
+  return (
+    <CFDScaleProvider override={override}>
+      <UiScaleProvider>{children}</UiScaleProvider>
+    </CFDScaleProvider>
   );
 }
 

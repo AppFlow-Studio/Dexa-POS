@@ -7,7 +7,7 @@ import { NotifyContext, TemplateKey } from "@/lib/notifyTemplates";
 import { formatUsPhone, normalizeUsPhoneDigits } from "@/lib/phone";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { getCachedCustomers } from "@/services/customer";
+import { useCustomerDirectory } from "@/hooks/customers/useCustomerDirectory";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -394,7 +394,12 @@ const AddReservationModal: React.FC<{
   );
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const allCustomers = useMemo(() => getCachedCustomers(), [visible]);
+  // Phase 5: candidates from the SQLite mirror (the whole directory) instead
+  // of the 200-row MMKV cache. The filter in `customerResults` is unchanged —
+  // this list is a SUPERSET of what it matches on.
+  const { customers: allCustomers } = useCustomerDirectory(customerQuery, {
+    enabled: visible,
+  });
 
   useEffect(
     () => () => {

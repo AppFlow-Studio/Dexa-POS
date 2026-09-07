@@ -19,7 +19,11 @@ import {
     ACTION_TO_EVENT,
     type SessionAction as DispatchableAction,
 } from "@/lib/sessionActions";
-import { _fireEffects, type SideEffectContext } from "@/lib/sessionSideEffects";
+import {
+  _fireEffects,
+  type KitchenEffectOutcome,
+  type SideEffectContext,
+} from "@/lib/sessionSideEffects";
 import { createLazyPersistStorage } from "@/lib/storage";
 import {
     canTransition as canTransitionFn,
@@ -372,7 +376,25 @@ export type DispatchResult = {
   success: boolean;
   error?: string;
   nextStatus?: TableStatus | null;
+  /**
+   * Real outcome of the dispatched action's effects, populated when the caller
+   * opts in via `awaitEffects` (used by SEND_TO_KITCHEN so the operator is told
+   * the truth — K6).
+   */
+  outcome?: KitchenEffectOutcome;
 };
+
+/** Narrow an awaited effect result to a KitchenEffectOutcome, if it is one. */
+function isKitchenEffectOutcome(value: unknown): value is KitchenEffectOutcome {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "status" in value &&
+    ["sent", "queued", "rejected", "skipped"].includes(
+      (value as { status: string }).status,
+    )
+  );
+}
 
 interface TableSessionStoreState {
   /** tableId → session data */
@@ -389,8 +411,13 @@ interface TableSessionStoreState {
   ) => number;
 
   /** High-level dispatch for SessionAction (from lib/sessionActions.ts).
-   *  Validates transition, applies optimistic update, fires side effects. */
-  dispatchAction: (action: DispatchableAction) => Promise<DispatchResult>;
+   *  Validates transition, applies optimistic update, fires side effects.
+   *  Pass { awaitEffects: true } to await the effects and receive their real
+   *  outcome (used by SEND_TO_KITCHEN — K6). */
+  dispatchAction: (
+    action: DispatchableAction,
+    opts?: { awaitEffects?: boolean },
+  ) => Promise<DispatchResult>;
 
   // ---- Session methods (moved from useFloorPlanStore) ----
 
@@ -590,6 +617,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
         dispatchAction: async (
           action: DispatchableAction,
+          opts?: { awaitEffects?: boolean },
         ): Promise<DispatchResult> => {
           const { tableId } = action;
           const session = get().sessions[tableId];
@@ -697,7 +725,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             markOrderPendingVoid(action.orderId);
           }
 
-          // 3. Fire side effects asynchronously
+          // 3. Fire side effects. Default: queueMicrotask so effects fire after
+          // Zustand commits (fire-and-forget). Opt-in `awaitEffects` waits for
+          // the effect to complete and returns its real outcome — used by
+          // SEND_TO_KITCHEN so a failed send can roll back and tell the truth
+          // (K6) instead of stamping success before the send has even run.
           const ctx: SideEffectContext = {
             action,
             tableId,
@@ -706,12 +738,37 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             sessionId: session?.id,
           };
 
-          // Use queueMicrotask so effects fire after Zustand commits
-          queueMicrotask(() => {
-            _fireEffects(ctx).catch((err) => {
-              console.error("[dispatchAction] Side effect error:", err);
+          if (opts?.awaitEffects) {
+            const outcomes = await _fireEffects(ctx);
+            const kitchenOutcome = outcomes.find(isKitchenEffectOutcome);
+            if (kitchenOutcome) {
+              if (
+                kitchenOutcome.status === "sent" ||
+                kitchenOutcome.status === "queued"
+              ) {
+                // 'queued': the optimistic state stands and the offline queue
+                // will deliver — but the caller is told the truth so it can
+                // toast "queued" instead of "sent".
+                return { success: true, nextStatus, outcome: kitchenOutcome };
+              }
+              return {
+                success: false,
+                error:
+                  kitchenOutcome.status === "rejected"
+                    ? "The kitchen rejected the send."
+                    : "Nothing could be sent to the kitchen.",
+                nextStatus,
+                outcome: kitchenOutcome,
+              };
+            }
+          } else {
+            // Use queueMicrotask so effects fire after Zustand commits
+            queueMicrotask(() => {
+              _fireEffects(ctx).catch((err) => {
+                console.error("[dispatchAction] Side effect error:", err);
+              });
             });
-          });
+          }
 
           if (
             session?.id &&

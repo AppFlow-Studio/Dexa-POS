@@ -1,10 +1,16 @@
+import InventoryStaleBanner from "@/components/inventory/InventoryStaleBanner";
 import { useInventorySync } from "@/hooks/pos/useInventorySync";
+import {
+  readInventorySnapshot,
+  writeInventorySnapshot,
+} from "@/lib/db/descriptors/inventory";
+import { stationKind } from "@/lib/db/policy";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Slot, usePathname, useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 // Define the tabs for the inventory section
@@ -15,25 +21,85 @@ const INVENTORY_TABS = [
   { name: "Reports", path: "/inventory/reports" },
 ];
 
+/**
+ * Phase 5 mirror flag. Off = the section behaves exactly as it did, so rollback
+ * is unsetting one env var.
+ */
+const LOCAL_INVENTORY_ENABLED =
+  process.env.EXPO_PUBLIC_LOCAL_INVENTORY === "1";
+
 export default function InventoryLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const setInventoryData = useInventoryStore((s) => s.setInventoryData);
   const fetchPurchaseOrders = useInventoryStore((s) => s.fetchPurchaseOrders);
 
-  const { data: inventoryData } = useInventorySync(selectedStore?.id ?? null);
+  const locationId = selectedStore?.id ?? null;
+  const {
+    data: inventoryData,
+    isFetching,
+    isError,
+    refetch,
+  } = useInventorySync(locationId);
+
+  // True while the catalog on screen came off disk rather than the network.
+  const [isFromMirror, setIsFromMirror] = useState(false);
+  // Set the moment live data lands, so a slow mirror read can never overwrite
+  // a fresher live payload — the read is an accelerator, never an authority.
+  const liveDataApplied = useRef(false);
 
   useEffect(() => {
-    if (inventoryData) {
+    liveDataApplied.current = false;
+    setIsFromMirror(false);
+  }, [locationId]);
+
+  // Paint from the mirror first. The live query is already in flight; this only
+  // wins the race when the network is slow or absent, which is the entire point.
+  useEffect(() => {
+    if (!LOCAL_INVENTORY_ENABLED || !locationId) return;
+    let cancelled = false;
+
+    (async () => {
+      const snapshot = await readInventorySnapshot(locationId);
+      if (cancelled || !snapshot || liveDataApplied.current) return;
       setInventoryData({
-        items: inventoryData.inventoryItems,
-        vendors: inventoryData.vendors,
+        items: snapshot.inventoryItems,
+        vendors: snapshot.vendors,
       });
+      setIsFromMirror(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locationId, setInventoryData]);
+
+  useEffect(() => {
+    if (!inventoryData) return;
+
+    liveDataApplied.current = true;
+    setIsFromMirror(false);
+    setInventoryData({
+      items: inventoryData.inventoryItems,
+      vendors: inventoryData.vendors,
+    });
+
+    // Mirror the RAW rows this payload was mapped from, at the seam where they
+    // have already arrived — one fetch, one cadence, no duplicated round trip.
+    // Fire-and-forget: a mirror failure costs the next entry's offline paint,
+    // never the catalog on screen right now.
+    if (LOCAL_INVENTORY_ENABLED && locationId) {
+      void writeInventorySnapshot(
+        stationKind(selectedStation?.station_type),
+        locationId,
+        inventoryData.raw,
+      );
     }
-  }, [inventoryData, setInventoryData]);
+  }, [inventoryData, locationId, selectedStation?.station_type, setInventoryData]);
 
   useEffect(() => {
     if (selectedStore?.id) {
@@ -43,6 +109,17 @@ export default function InventoryLayout() {
 
   return (
     <View className="flex-1 p-4" style={{ backgroundColor: colors.screen }}>
+      {LOCAL_INVENTORY_ENABLED && (
+        <InventoryStaleBanner
+          isSyncing={isFetching}
+          isFromMirror={isFromMirror}
+          isError={isError}
+          onRetry={() => {
+            void refetch();
+          }}
+        />
+      )}
+
       {/* Header with Navigation Tabs */}
       <View className="flex-row items-center mb-4">
         <View

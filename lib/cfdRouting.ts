@@ -23,12 +23,25 @@ const TABLES_NON_SALES_PREFIXES = [
  * Returns true when the operator is actively editing an order:
  *   - any `/order-processing/...` route
  *   - a specific `/tables/<id>` route (NOT the floor-plan / waitlist /
- *     edit-layout / clean-table sub-routes)
+ *     edit-layout / clean-table sub-routes) — kept for the standalone
+ *     `[tableId]` route, though the live table-ordering UI no longer
+ *     navigates there (see `tableOverlayOpen` below)
+ *   - the table order overlay is open (`tableOverlayOpen`): this is how a
+ *     table's order is actually opened today — `TableOrderOverlay` renders
+ *     `TableOrderView` on top of the bare `/tables` route via
+ *     `usePendingTableOverlay` instead of navigating, so pathname alone
+ *     never reflects "operator is on a table's order". Without this the
+ *     CFD stays on idle for every table order.
  *
  * Anywhere else (menu, settings, scheduling, analytics, KDS, the bare
- * /tables index, etc.) returns false so the CFD goes idle.
+ * /tables index with no overlay open, etc.) returns false so the CFD goes
+ * idle.
  */
-export function isCFDSalesPathname(pathname: string): boolean {
+export function isCFDSalesPathname(
+  pathname: string,
+  tableOverlayOpen?: boolean
+): boolean {
+  if (tableOverlayOpen) return true;
   if (!pathname) return false;
   if (pathname.includes("order-processing")) return true;
 

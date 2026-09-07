@@ -12,8 +12,10 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -47,6 +49,7 @@ export function KioskCustomerInfoStep({
   const s = useKioskUiScale();
   const supabase = useSupabaseClient();
   const setCustomer = useKioskCartStore((st) => st.setCustomer);
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
 
   const [sub, setSub] = useState<Sub>("phone");
   const [digits, setDigits] = useState("");
@@ -146,16 +149,40 @@ export function KioskCustomerInfoStep({
   // ── NAME ENTRY ──
   if (sub === "name") {
     const nameValid = name.trim().length > 0;
+    // A landscape kiosk loses roughly half its height to the software keyboard
+    // (the app runs adjustResize, so the window itself shrinks). Centred, this
+    // block is taller than what's left and the input and Continue button end up
+    // behind the keyboard or clipped off the resized window — so in landscape
+    // it anchors to the top and tightens its rhythm instead. Portrait keeps the
+    // centred layout: there is enough height above the keyboard for it.
+    //
+    // Keyed to orientation, not to a keyboard-visibility listener, on purpose:
+    // the input autofocuses, so the keyboard is up for essentially the whole
+    // life of this screen, and reacting to the event would just add a visible
+    // jump ~300ms after entry. The ScrollView is the backstop either way —
+    // whatever the panel size, everything stays reachable.
+    const lift = winWidth > winHeight;
     return (
       <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
         <BackButton onPress={() => setSub("phone")} />
-        <View
-          className="flex-1 items-center justify-center px-10"
-          style={{ gap: kioskPx(24, s) }}
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            flexGrow: 1,
+            alignItems: "center",
+            justifyContent: lift ? "flex-start" : "center",
+            // Clears the absolutely-positioned back chevron when top-anchored.
+            paddingTop: lift ? kioskPx(76, s) : 0,
+            paddingBottom: kioskPx(28, s),
+            paddingHorizontal: kioskPx(40, s),
+            gap: kioskPx(lift ? 14 : 24, s),
+          }}
         >
           <Text
             style={{
-              fontSize: kioskPx(32, s),
+              fontSize: kioskPx(lift ? 26 : 32, s),
               fontWeight: "800",
               color: config.textColor,
               textAlign: "center",
@@ -210,7 +237,7 @@ export function KioskCustomerInfoStep({
               Continue
             </Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </View>
     );
   }

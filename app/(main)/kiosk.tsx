@@ -14,7 +14,7 @@ import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 /**
@@ -65,13 +65,26 @@ export default function KioskScreen() {
     });
   }, [queryClient]);
 
-  // Lock the device to the configured orientation. Re-locks when the config's
-  // orientation changes (e.g. a committed edit).
-  useKioskOrientation(config?.orientation);
+  // Lock the device to the configured orientation and resolve which one the
+  // layouts should render for. The device-local override (Kiosk Settings →
+  // Menu Layout) wins over the profile, and its "Auto" mode follows the panel.
+  const orientation = useKioskOrientation(config?.orientation);
+
+  // Everything downstream reads `config.orientation`, so the resolved value is
+  // folded back into the config rather than threaded through as a second prop.
+  // Identity is preserved when nothing changed — `configsEqual` in the store
+  // keeps `config` referentially stable, and this memo must not undo that.
+  const effectiveConfig = useMemo(
+    () =>
+      !config || config.orientation === orientation
+        ? config
+        : { ...config, orientation },
+    [config, orientation],
+  );
 
   // No config yet (first ever load, nothing cached). A persisted config renders
   // immediately even while the background poll refreshes.
-  if (!config) {
+  if (!config || !effectiveConfig) {
     if (status === "error") {
       return (
         <View className="flex-1 items-center justify-center bg-black px-8">
@@ -95,6 +108,9 @@ export default function KioskScreen() {
   if (showDiagnostics) {
     return (
       <KioskScaleProvider>
+        {/* Raw config, not `effectiveConfig` — this screen inspects and edits
+            the profile, so it must show what the profile actually says. It
+            resolves the device's own orientation override itself. */}
         <KioskDiagnosticsScreen
           config={config}
           onClose={() => setShowDiagnostics(false)}
@@ -119,19 +135,19 @@ export default function KioskScreen() {
           clearCart();
           setIdle(true);
         }}
-        backgroundColor={config.backgroundColor}
-        textColor={config.headerTextColor}
-        accentColor={config.primaryColor}
+        backgroundColor={effectiveConfig.backgroundColor}
+        textColor={effectiveConfig.headerTextColor}
+        accentColor={effectiveConfig.primaryColor}
       >
         {isIdle ? (
           <KioskAttractScreen
-            config={config}
+            config={effectiveConfig}
             onStart={() => setIdle(false)}
             onLogoLongPress={() => setShowPinModal(true)}
           />
         ) : (
           <KioskTemplateRouter
-            config={config}
+            config={effectiveConfig}
             onExit={() => {
               clearCart();
               setIdle(true);

@@ -36,6 +36,9 @@ interface PrinterStoreState {
       lastStatus?: string;
       errorCount?: number;
       lastPrintAt?: string;
+      // Diagnostic metadata to merge into printers.metadata (shallow-merged
+      // with the existing jsonb so graphicsOnly/emulation/starModel survive).
+      metadata?: Record<string, unknown>;
     },
   ) => Promise<void>;
   getPrinterById: (id: string) => PrinterConfig | undefined;
@@ -170,6 +173,8 @@ export const usePrinterStore = create<PrinterStoreState>()(
             p.errorCount = updates.errorCount;
           if (updates.lastPrintAt !== undefined)
             p.lastPrintAt = updates.lastPrintAt;
+          if (updates.metadata !== undefined)
+            p.metadata = { ...(p.metadata ?? {}), ...updates.metadata };
           p.lastStatusAt = new Date().toISOString();
         });
 
@@ -186,6 +191,15 @@ export const usePrinterStore = create<PrinterStoreState>()(
             dbUpdates.error_count = updates.errorCount;
           if (updates.lastPrintAt !== undefined)
             dbUpdates.last_print_at = updates.lastPrintAt;
+          if (updates.metadata !== undefined) {
+            // Shallow-merge into existing jsonb (post local set() above, so the
+            // store copy already carries the new keys). Preserves graphicsOnly/
+            // emulation/starModel written elsewhere. Same single UPDATE — no
+            // extra round-trip.
+            const existingMeta =
+              get().printers.find((p) => p.id === printerId)?.metadata ?? {};
+            dbUpdates.metadata = { ...existingMeta, ...updates.metadata };
+          }
 
           await supabase.from("printers").update(dbUpdates).eq("id", printerId);
         } catch (e) {

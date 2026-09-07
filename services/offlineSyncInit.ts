@@ -14,6 +14,7 @@ import { queryClient } from "@/contexts/TanstackProvider";
 import { getDeviceId } from "@/lib/deviceId";
 import {
     buildKitchenSendQueueParams,
+    clearKitchenSendInFlight,
     createKitchenSendContext,
     isTerminalKitchenMutationError,
     type KitchenSendQueueParams,
@@ -3076,6 +3077,9 @@ async function executeQueuedOperation(
           // Clear sync status for items that were successfully sent
           if (localItemIds?.length) {
             useSyncStatusStore.getState().clearAllForOrder(localItemIds);
+            // S3: the queued send is now confirmed by the server — drop the
+            // optimistic-status protection so the server owns the line.
+            clearKitchenSendInFlight(localItemIds);
           }
 
           // Log offline batch for KDS awareness

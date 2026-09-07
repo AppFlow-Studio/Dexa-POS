@@ -349,7 +349,7 @@ function pushSingleItem (
   if (item.notes) {
     nodes.push({
       type: 'text_line',
-      content: `  *** ${sanitizeForPrint(item.notes)} ***`,
+      content: `  Note: ${sanitizeForPrint(item.notes)}`,
       format: { bold: true }
     })
   }
