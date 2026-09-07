@@ -32,6 +32,9 @@ import {
   observeRemoteLamport,
   pendingOpCount,
   backoffMs,
+  purgeUnsyncableOps,
+  requeueFailedOps,
+  unsyncedItemIds,
   __resetLamportForTests,
 } from "@/lib/db/outbox";
 import { ENTITIES, type EntityDescriptor } from "@/lib/db/entities";
@@ -412,6 +415,97 @@ describe("drain bookkeeping", () => {
       `SELECT _sync_status FROM orders WHERE id = 'ord-1'`,
     );
     expect(row?._sync_status).toBe("local");
+  });
+
+  it("names exactly which items are not on the server", async () => {
+    // The diagnostic behind KITCHEN_ITEMS_UNRESOLVED: an id on the cart line
+    // whose row is still 'local' is an item the server cannot route.
+    const db = getDb()!;
+    await db.runAsync(
+      `INSERT INTO orders (id, location_id, created_at, updated_at, _server_seen_at, payload)
+       VALUES ('o1', ?, ?, ?, ?, '{}')`,
+      [LOCATION, isoAt(0), isoAt(0), isoAt(0)],
+    );
+    await db.runAsync(
+      `INSERT INTO order_items (id, order_id, item_name, _sync_status, payload)
+       VALUES ('i-synced','o1','A','synced','{}')`,
+    );
+    await db.runAsync(
+      `INSERT INTO order_items (id, order_id, item_name, _sync_status, payload)
+       VALUES ('i-local','o1','B','local','{}')`,
+    );
+
+    const missing = await unsyncedItemIds([
+      "i-synced",
+      "i-local",
+      "i-does-not-exist",
+    ]);
+
+    // Unsynced AND entirely absent both count as "the server does not have it".
+    expect(missing.sort()).toEqual(["i-does-not-exist", "i-local"]);
+  });
+
+  it("requeues failed ops once, so a shipped fix can recover them", async () => {
+    // Every bug found in the field (non-uuid item ids, un-flattened modifier
+    // payloads) parks the ops that hit it. Without a requeue those orders stay
+    // stranded even though the next build would push them fine.
+    await seedOp("op-was-broken");
+    await markRejected("op-was-broken", "some bug now fixed", {
+      table: "orders",
+      id: "ord-1",
+    });
+    expect((await claimBatch()).map((o) => o.id)).not.toContain("op-was-broken");
+
+    const requeued = await requeueFailedOps();
+
+    expect(requeued).toBe(1);
+    expect((await claimBatch()).map((o) => o.id)).toContain("op-was-broken");
+  });
+
+  it("never re-claims an op that was permanently rejected", async () => {
+    // REGRESSION (real device): claimBatch used `status != 'inflight'`, which
+    // also matched 'failed'. Every permanently-rejected op was re-pushed on
+    // EVERY drain — one tap replaying twenty dead ops, flooding the log and
+    // calling the server with requests that can never succeed.
+    await seedOp("op-dead");
+    await markRejected("op-dead", "invalid input syntax for type uuid", {
+      table: "orders",
+      id: "ord-1",
+    });
+
+    const claimed = await claimBatch();
+    expect(claimed.map((o) => o.id)).not.toContain("op-dead");
+  });
+
+  it("purges ops whose entity id can never be a uuid", async () => {
+    const db = getDb()!;
+    await commitLocalWrite(
+      [],
+      [
+        {
+          id: "op-legacy",
+          op: "create_order",
+          entity: "order",
+          entityId: "order_1788799538394_vxvqwc",
+          payload: {},
+        },
+        {
+          id: "op-good",
+          op: "create_order",
+          entity: "order",
+          entityId: "8ce00f36-d090-472d-bd71-36812d6c9cfb",
+          payload: {},
+        },
+      ],
+    );
+
+    const purged = await purgeUnsyncableOps();
+
+    expect(purged).toBe(1);
+    const left = await db.getAllAsync<{ id: string }>(
+      `SELECT id FROM outbox ORDER BY id`,
+    );
+    expect(left.map((r) => r.id)).toEqual(["op-good"]);
   });
 
   it("parks a rejection as failed and flags the row, never dropping it", async () => {

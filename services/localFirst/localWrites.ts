@@ -26,6 +26,7 @@
  * (2) is why these go through `commitLocalWrite` rather than writing the row
  * and queueing separately. That dual write is the thing that loses orders.
  */
+import { getReadDb } from "@/lib/db/index";
 import { commitLocalWrite, type OutboxEntry } from "@/lib/db/outbox";
 import { getDeviceId } from "@/lib/deviceId";
 import { generateLocalOrderNumbers } from "@/lib/localOrderSequence";
@@ -52,6 +53,24 @@ export interface LocalWriteResult<T> {
 }
 
 const nowIso = () => new Date().toISOString();
+
+/** Existing local order row, if any. Read connection — never blocks a writer. */
+async function findLocalOrder(
+  orderId: string,
+): Promise<{ order_number: string; display_number: string } | null> {
+  const db = getReadDb();
+  if (!db) return null;
+  try {
+    return await db.getFirstAsync<{
+      order_number: string;
+      display_number: string;
+    }>(`SELECT order_number, display_number FROM orders WHERE id = ?`, [
+      orderId,
+    ]);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Ids here are ALWAYS v4 UUIDs — deliberately not routed through
@@ -88,6 +107,25 @@ export interface CreateLocalOrderInput {
   customerName?: string | null;
   customerPhone?: string | null;
   specialInstructions?: string | null;
+  /**
+   * Reuse an id the caller already minted.
+   *
+   * The store creates its optimistic order first and keys `ordersById` by that
+   * id. Minting a SECOND id here would recreate the exact rekey this design
+   * removes, so the caller passes its own and the row adopts it.
+   */
+  orderId?: string;
+  /**
+   * Reuse a number the caller already allocated.
+   *
+   * `startNewOrder` mints one via generateLocalOrderNumbers when it builds the
+   * optimistic order. Minting a SECOND one here consumed the per-station
+   * sequence twice, so every "New Order" advanced the counter by 2 and left a
+   * permanent gap in the day's numbering. The caller owns the number for the
+   * same reason it owns the id.
+   */
+  orderNumber?: string;
+  displayNumber?: string;
 }
 
 export interface CreatedLocalOrder {
@@ -103,11 +141,39 @@ export interface CreatedLocalOrder {
 export async function createLocalOrder(
   input: CreateLocalOrderInput,
 ): Promise<LocalWriteResult<CreatedLocalOrder>> {
-  const orderId = mintUuid();
-  const { orderNumber, displayNumber } = generateLocalOrderNumbers(
-    input.locationId,
-    input.stationNumber ?? null,
-  );
+  const orderId = input.orderId ?? mintUuid();
+
+  // Already written by an earlier call for this same order? Return it rather
+  // than appending a SECOND create_order op — the row insert is now
+  // ON CONFLICT DO NOTHING, but the outbox append is not, and a duplicate op
+  // would push the same create twice. (Harmless server-side, since
+  // create_order_v4 is idempotent on the id, but it inflates the queue and
+  // muddies "is this order synced?".)
+  const existing = await findLocalOrder(orderId);
+  if (existing) {
+    return {
+      ok: true,
+      value: {
+        orderId,
+        orderNumber: existing.order_number,
+        displayNumber: existing.display_number,
+      },
+    };
+  }
+  // Only allocate when the caller has not already. Both must be present —
+  // taking one and regenerating the other would desynchronise the display
+  // number from the order number, which is worse than either alone.
+  const allocated =
+    input.orderNumber && input.displayNumber
+      ? {
+          orderNumber: input.orderNumber,
+          displayNumber: input.displayNumber,
+        }
+      : generateLocalOrderNumbers(
+          input.locationId,
+          input.stationNumber ?? null,
+        );
+  const { orderNumber, displayNumber } = allocated;
   const deviceId = getDeviceId();
   const ts = nowIso();
 
@@ -128,13 +194,22 @@ export async function createLocalOrder(
   const result = await commitLocalWrite(
     [
       {
+        // ON CONFLICT DO NOTHING: `ensureOrderCreated` is called from several
+        // places for the same order (the eager-create effect and the add-item
+        // path), and two of them can race past the caller's "already created?"
+        // guard. A plain INSERT then fails the whole transaction with
+        // "UNIQUE constraint failed: orders.id" and the order never gets
+        // written at all — which is strictly worse than the duplicate it was
+        // protecting against. The row is keyed by an id the caller owns, so
+        // re-running this is a no-op by definition.
         sql: `INSERT INTO orders (
                 id, location_id, merchant_id, order_number, display_number,
                 order_type, status, table_number, session_id, customer_name,
                 customer_phone, station_id, device_id, created_by_staff_id,
                 created_at, updated_at, _sync_status, _device_id,
                 _server_seen_at, payload
-              ) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?)`,
+              ) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?)
+              ON CONFLICT(id) DO NOTHING`,
         args: [
           orderId,
           input.locationId,
@@ -198,6 +273,8 @@ export interface AddLocalItemInput {
   courseNumber?: number | null;
   seatNumber?: number | null;
   stationId?: string | null;
+  /** Reuse the cart item's id, so the store key IS the row id. */
+  itemId?: string;
 }
 
 /**
@@ -208,7 +285,7 @@ export interface AddLocalItemInput {
 export async function addLocalItem(
   input: AddLocalItemInput,
 ): Promise<LocalWriteResult<{ itemId: string }>> {
-  const itemId = mintUuid();
+  const itemId = input.itemId ?? mintUuid();
   const deviceId = getDeviceId();
   const ts = nowIso();
 
@@ -241,7 +318,8 @@ export async function addLocalItem(
               cash_unit_price_minor, item_status, course_number, seat_number,
               special_instructions, selected_size_id, selected_size_name,
               created_at, updated_at, _sync_status, _device_id, payload
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)
+            ON CONFLICT(id) DO NOTHING`,
       args: [
         itemId,
         input.orderId,
@@ -346,7 +424,8 @@ export async function seatLocal(
               guest_notes, reservation_id, waitlist_id, server_staff_id, status,
               is_active, seated_at, created_at, updated_at, _sync_status,
               _device_id, payload
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seated', 1, ?, ?, ?, 'local', ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seated', 1, ?, ?, ?, 'local', ?, ?)
+            ON CONFLICT(id) DO NOTHING`,
       args: [
         sessionId,
         input.locationId,

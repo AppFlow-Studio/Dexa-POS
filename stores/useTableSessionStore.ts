@@ -15,6 +15,11 @@
  */
 
 import { markOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
+import { mintStoreSessionId } from "@/lib/localFirst/identity";
+import {
+  LOCAL_WRITES_SEATING,
+  seatLocal,
+} from "@/services/localFirst/localWrites";
 import {
     ACTION_TO_EVENT,
     type SessionAction as DispatchableAction,
@@ -1248,9 +1253,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             .substring(2, 9)}`;
           const localOrderId =
             params.localOrderId ||
-            `local_order_${Date.now()}_${Math.random()
-              .toString(36)
-              .substring(2, 9)}`;
+            mintStoreSessionId();
 
           // 2. Resolve staff/merchant/device/station context
           const storeSettings = useStoreSettingsStore.getState();
@@ -1350,6 +1353,66 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             }
             return { resolved: false as const };
           };
+
+          // ── 4a. LOCAL-FIRST SEATING ────────────────────────────────────
+          //
+          // Writes the session, its table links and (optionally) the order in
+          // ONE SQLite transaction, with both ids minted here. Runs
+          // regardless of connectivity — that is the point: seating a table
+          // must not depend on the network, and the drain pushes it to
+          // seat_guests_v4 (idempotent on the session id) when there is one.
+          //
+          // This is what makes `isOrderTableStillSeating()` return false:
+          // there is no window between the tap and a usable order.
+          if (LOCAL_WRITES_SEATING) {
+            const seated = await seatLocal({
+              tableIds: params.tableIds,
+              locationId: storeSettings.selectedStore?.id ?? "",
+              merchantId,
+              partySize: params.partySize,
+              createOrder: shouldCreateOrder,
+              stationNumber:
+                useStoreSettingsStore.getState().selectedStation
+                  ?.station_number ?? null,
+              stationId,
+              staffId: serverStaffId ?? staffId ?? null,
+              guestName: params.guestName ?? null,
+              guestPhone: params.guestPhone ?? null,
+              reservationId: params.reservationId ?? null,
+              waitlistId: params.waitlistId ?? null,
+            });
+
+            if (seated.ok && seated.value) {
+              // Promote the optimistic session to the REAL ids and out of the
+              // local-only "seating" status in one dispatch. Both ids are
+              // final, so nothing downstream will need rekeying.
+              const realSession: TableSession = {
+                ...optimisticSession,
+                id: seated.value.sessionId,
+                session_number: seated.value.sessionId
+                  .slice(-6)
+                  .toUpperCase(),
+                status: "seated" as TableStatus,
+                order_id: seated.value.orderId ?? undefined,
+              };
+
+              get().batchDispatch(
+                params.tableIds.map((tableId) => ({
+                  tableId,
+                  action: { type: "SET" as const, session: realSession },
+                })),
+              );
+              return {
+                sessionId: seated.value.sessionId,
+                orderId: seated.value.orderId ?? undefined,
+              };
+            }
+
+            // A failed LOCAL write is fatal — there is no row anywhere. Fall
+            // through to the legacy path rather than reporting a seat that
+            // does not exist.
+            console.error("[seatGuests] local seat failed:", seated.error);
+          }
 
           // 4. Try backend if online
           if (isOnline && supabase) {

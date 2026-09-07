@@ -101,9 +101,15 @@ import {
     parseSequenceFromDisplayNumber,
     seedLocalSequence,
 } from "@/lib/localOrderSequence";
+import { mintStoreOrderId } from "@/lib/localFirst/identity";
+import { unsyncedItemIds } from "@/lib/db/outbox";
+import { waitForOrderSynced } from "@/services/localFirst/outboxDrain";
 import {
+  LOCAL_WRITES_ITEMS,
   LOCAL_WRITES_ORDERS,
   LOCAL_WRITES_SEATING,
+  addLocalItem,
+  createLocalOrder,
 } from "@/services/localFirst/localWrites";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
@@ -519,6 +525,45 @@ function isCustomModifierGroup(categoryId: string | undefined | null): boolean {
 // restoreDiscountsFromBackend extracted to @/utils/discountUtils.ts
 
 /**
+ * CartItem modifiers -> the flat row shape add_order_item_v5 inserts.
+ *
+ * The inverse of transformBackendModifiers below. Add-ons ride along too:
+ * they are priced by the calculator, so they must reach the server as
+ * modifier rows or the server-side total would disagree with the cart's.
+ */
+function flattenModifiersForRpc(item: CartItem): unknown[] | null {
+  const rows: unknown[] = [];
+
+  for (const group of item.customizations?.modifiers ?? []) {
+    for (const opt of group.options ?? []) {
+      rows.push({
+        modifier_group_id: group.categoryId ?? null,
+        modifier_item_id: opt.id ?? null,
+        modifier_group_name: group.categoryName ?? "Modifiers",
+        modifier_name: opt.name ?? "",
+        price_modifier: opt.price ?? 0,
+        quantity: 1,
+        is_no: (opt as { isNo?: boolean }).isNo ?? false,
+      });
+    }
+  }
+
+  for (const addOn of item.customizations?.addOns ?? []) {
+    rows.push({
+      modifier_group_id: null,
+      modifier_item_id: addOn.id ?? null,
+      modifier_group_name: "Add-ons",
+      modifier_name: addOn.name ?? "",
+      price_modifier: addOn.price ?? 0,
+      quantity: 1,
+      is_no: false,
+    });
+  }
+
+  return rows.length > 0 ? rows : null;
+}
+
+/**
  * Transform backend OrderItemModifier[] to CartItem modifiers format.
  * Groups modifiers by modifier_group_name into categories with options.
  */
@@ -781,6 +826,31 @@ async function _commitKitchenSendForBatchInner(
   const supabase = getOrderStoreSupabaseClient();
   const isOnlineNow = getIsOnline();
 
+  // ── Barrier: the server must HAVE the items before we ask it to route
+  //    them to the kitchen. ────────────────────────────────────────────────
+  //
+  // `send_order_to_kitchen_v1` receives `db_order_item_id`s and resolves them
+  // against `order_items` SERVER-SIDE. Under local-first, that id is minted on
+  // the device and set on the cart line the moment the LOCAL write commits —
+  // so an item can look perfectly ready here while its row is still in the
+  // outbox. The RPC then silently under-reports:
+  //
+  //     KITCHEN_ITEMS_UNRESOLVED  requestedCount: 6, updatedCount: 4
+  //
+  // i.e. two items that never reached the kitchen.
+  //
+  // Placed HERE, not in sendNewItemsToKitchenForOrder: this inner helper is
+  // the single choke point every kitchen send passes through (the store
+  // action, the straggler retry, and the offline replay all funnel into it),
+  // so one barrier covers them all instead of one per caller.
+  //
+  // On timeout we proceed anyway — the local state is already correct and the
+  // ops stay queued, and blocking an operator from sending food because sync
+  // is slow is worse than a late server-side route.
+  if (LOCAL_WRITES_ITEMS && isOnlineNow && freshOrder.db_order_id) {
+    await waitForOrderSynced(freshOrder.db_order_id);
+  }
+
   const freshItems = freshOrder.items ?? [];
   const freshSentItems = freshItems.filter(
     (i) => sentLocalIds.has(i.id) && !!i.db_order_item_id,
@@ -788,6 +858,20 @@ async function _commitKitchenSendForBatchInner(
   const dbItemIds = freshSentItems
     .map((i) => i.db_order_item_id)
     .filter((id): id is string => !!id);
+
+  // Name the items the server cannot route, BEFORE calling it. Without this
+  // the only symptom is a count mismatch with no way to tell which lines were
+  // dropped.
+  if (LOCAL_WRITES_ITEMS && dbItemIds.length > 0) {
+    const missing = await unsyncedItemIds(dbItemIds);
+    if (missing.length > 0) {
+      console.error(
+        `[LF] ✗ kitchen send: ${missing.length}/${dbItemIds.length} item(s) not synced ` +
+          `to the server — these will NOT reach the kitchen:`,
+        missing,
+      );
+    }
+  }
 
   // Stragglers: batch items that STILL have no db_order_item_id after the wait.
   // Hand them to the offline queue (offline_batch), which replays the send once
@@ -1300,6 +1384,56 @@ const ensureOrderCreated = async (
     }
   }
 
+  // ── LOCAL-FIRST ORDER CREATION ──────────────────────────────────────────
+  //
+  // The order's id is ALREADY its server primary key (mintStoreOrderId under
+  // EXPO_PUBLIC_CLIENT_IDS), so there is no server round trip to wait for and
+  // nothing to rekey. Write the row plus its outbox op in one SQLite
+  // transaction and return immediately; the drain pushes it to
+  // create_order_v4, which is idempotent on that same id.
+  //
+  // `db_order_id` is set to the order's OWN id — under client ids the two are
+  // the same value, which is precisely the invariant that makes every
+  // "has the server seen this yet?" check downstream stop mattering.
+  if (LOCAL_WRITES_ORDERS) {
+    const res = await createLocalOrder({
+      merchantId: selectedStore.merchant_id ?? "",
+      locationId: selectedStore.id,
+      orderType: order.order_type ?? "take_out",
+      stationNumber:
+        useStoreSettingsStore.getState().selectedStation?.station_number ?? null,
+      stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
+      staffId: (order as any).created_by_staff_id ?? null,
+      tableNumber: (order as any).table_number ?? order.service_location_id ?? null,
+      sessionId: order.session_id ?? null,
+      customerName: order.customer_name ?? null,
+      customerPhone: order.customer_phone ?? null,
+      orderId: order.id,
+      // The store already allocated these in startNewOrder. Letting
+      // createLocalOrder mint its own burned the per-station sequence twice,
+      // so every new order advanced the counter by 2.
+      orderNumber: order.order_number ?? undefined,
+      displayNumber: order.display_number ?? undefined,
+    });
+
+    if (!res.ok || !res.value) {
+      // A failed LOCAL write is fatal to the gesture — there is no server to
+      // fall back to and no row anywhere. Surface it rather than returning a
+      // db id that does not exist.
+      console.error("[ensureOrderCreated] local write failed:", res.error);
+      return null;
+    }
+
+    setOrderDbId(
+      order.id,
+      res.value.orderId,
+      res.value.orderNumber,
+      res.value.displayNumber,
+      new Date().toISOString(),
+    );
+    return res.value.orderId;
+  }
+
   // ========================================================================
   // PER-ORDER PIN ATTRIBUTION GUARD
   // ========================================================================
@@ -1759,6 +1893,120 @@ const addItemToBackend = async (
   if (item.isDraft) {
     if (__DEV__) console.log("Backend sync skipped: Item is draft");
     return true;
+  }
+
+  // ========================================================================
+  // LOCAL-FIRST ITEM WRITE
+  // ========================================================================
+  //
+  // Replaces BOTH branches below (the online add_order_item RPC and the
+  // offline queue) with one path that behaves identically whether or not
+  // there is a network: write the row and its outbox op in one SQLite
+  // transaction, return, and let the drain push it.
+  //
+  // Merges still go down the legacy path. A merge is an UPDATE to an existing
+  // item's quantity, not a create, so it needs `update_item_quantity`
+  // semantics the outbox does not carry yet — routing it here would silently
+  // add a second line instead of increasing the first.
+  if (LOCAL_WRITES_ITEMS && !isMerge) {
+    console.log(
+      `[LF] addItem LOCAL path item=${item.id?.slice(0, 8)} name=${item.name}`,
+    );
+    const orderId = await ensureOrderCreated(order, setOrderDbId);
+    if (!orderId) {
+      markItemFailed(item.id, "Could not create order locally");
+      return false;
+    }
+
+    const res = await addLocalItem({
+      orderId,
+      locationId: selectedStore.id,
+      menuItemId: item.menuItemId ?? null,
+      itemName: item.name,
+      quantity: item.quantity,
+      unitPrice: item.baseCardPrice ?? item.unitPrice ?? item.price ?? 0,
+      cashUnitPrice: item.baseCashPrice ?? item.cashPrice ?? null,
+      categoryId: (item as any).categoryId ?? null,
+      categoryName: (item as any).categoryName ?? null,
+      menuId: (item as any).menuId ?? null,
+      menuName: (item as any).menuName ?? null,
+      selectedSizeId: item.customizations?.size?.id ?? null,
+      selectedSizeName: item.customizations?.size?.name ?? null,
+      sizePriceModifier: item.customizations?.size?.priceModifier ?? 0,
+      // FLATTENED, not the cart shape.
+      //
+      // CartItem modifiers are nested groups —
+      // `[{ categoryId, categoryName, options: [{id,name,price}] }]` — but
+      // add_order_item_v5 inserts each element of p_modifiers straight into
+      // order_item_modifiers, reading `modifier_group_name` / `modifier_name`
+      // off each one. Passing the nested shape through made every one of those
+      // NULL and the insert died on
+      // `null value in column "modifier_group_name" ... violates not-null`.
+      //
+      // Same flatten the legacy open-item path uses for
+      // replace_order_item_modifiers_v2.
+      modifiers: flattenModifiersForRpc(item),
+      specialInstructions: item.customizations?.notes ?? null,
+      courseNumber: item.courseNumber ?? 1,
+      seatNumber: item.seatNumber ?? null,
+      stationId:
+        useStoreSettingsStore.getState().selectedStation?.id ?? null,
+      // NOTE: deliberately NOT `item.id`.
+      //
+      // A CartItem's id is a composite MERGE key built by generateCartItemId —
+      // `<menuItemId>|modifiers:<groupId>:<optionId>_<ts>_<rand>` — so that
+      // tapping the same item+modifiers twice collapses into one line. It is
+      // not a row identity and it is not a uuid, so passing it as p_item_id
+      // failed every push with `22P02 invalid input syntax for type uuid`.
+      // addLocalItem mints a proper uuid instead, and we store it back on the
+      // cart line as db_order_item_id below — the same field the legacy path
+      // fills from the RPC response.
+    });
+
+    if (!res.ok) {
+      console.error("[LF] ✗ addLocalItem failed:", res.error);
+      markItemFailed(item.id, res.error ?? "Local write failed");
+      return false;
+    }
+
+    // Bind the cart line to its row id, exactly as the legacy path does with
+    // the RPC's returned order_item_id. Without this the line has no
+    // db_order_item_id and every later mutation (quantity, void, seat, course)
+    // has nothing to address.
+    const itemDbId = res.value!.itemId;
+    useOrderStore.setState((state) => {
+      const key = resolveOrderKey();
+      const target = state.ordersById[key];
+      if (!target) return state;
+      return {
+        ordersById: {
+          ...state.ordersById,
+          [key]: {
+            ...target,
+            items: target.items.map((i) =>
+              i.id === item.id
+                ? {
+                    ...i,
+                    db_order_item_id: itemDbId,
+                    sync_status: "synced" as const,
+                  }
+                : i,
+            ),
+          },
+        },
+      };
+    });
+
+    onSyncComplete?.(resolveOrderKey());
+    return true;
+  }
+
+  if (!LOCAL_WRITES_ITEMS) {
+    console.log("[LF] addItem LEGACY path — EXPO_PUBLIC_LOCAL_WRITES_ITEMS off");
+  } else if (isMerge) {
+    console.log(
+      "[LF] addItem LEGACY path — this is a MERGE (quantity update), not a new item",
+    );
   }
 
   // ========================================================================
@@ -2947,15 +3195,6 @@ const addItemToBackend = async (
 // Interface for capturing previous state for rollback on sync failure
 interface PaymentRollbackState {
   order: OrderProfile;
-  activeOrderSubtotal: number;
-  activeOrderTax: number;
-  activeOrderTotal: number;
-  activeOrderDiscount: number;
-  activeOrderOutstandingSubtotal: number;
-  activeOrderOutstandingTax: number;
-  activeOrderOutstandingTotal: number;
-  activeOrderTotalCash: number;
-  activeOrderOutstandingCash: number;
 }
 
 // Backend sync helper - processes payment using process_payment_v2
@@ -3277,19 +3516,6 @@ const syncPaymentToBackend = async (
           useOrderStore.setState((state) => {
             state.ordersById[order.id] = rollbackState.order;
             if (order.id === activeOrderId) {
-              state.activeOrderSubtotal = rollbackState.activeOrderSubtotal;
-              state.activeOrderTax = rollbackState.activeOrderTax;
-              state.activeOrderTotal = rollbackState.activeOrderTotal;
-              state.activeOrderDiscount = rollbackState.activeOrderDiscount;
-              state.activeOrderOutstandingSubtotal =
-                rollbackState.activeOrderOutstandingSubtotal;
-              state.activeOrderOutstandingTax =
-                rollbackState.activeOrderOutstandingTax;
-              state.activeOrderOutstandingTotal =
-                rollbackState.activeOrderOutstandingTotal;
-              state.activeOrderTotalCash = rollbackState.activeOrderTotalCash;
-              state.activeOrderOutstandingCash =
-                rollbackState.activeOrderOutstandingCash;
             }
           });
         }
@@ -3649,12 +3875,6 @@ const syncPaymentToBackend = async (
 
         // Update outstanding totals if this is the active order
         if (order.id === activeOrderId) {
-          state.activeOrderOutstandingTotal =
-            data.unpaid_card_total ?? data.order_amount_due;
-          state.activeOrderOutstandingCash =
-            data.order_cash_amount_due ??
-            data.unpaid_cash_total ??
-            data.order_amount_due;
         }
       });
 
@@ -3840,19 +4060,6 @@ const syncPaymentToBackend = async (
         state.ordersById[order.id] = rollbackState.order;
         // Revert active order totals if this was the active order
         if (order.id === activeOrderId) {
-          state.activeOrderSubtotal = rollbackState.activeOrderSubtotal;
-          state.activeOrderTax = rollbackState.activeOrderTax;
-          state.activeOrderTotal = rollbackState.activeOrderTotal;
-          state.activeOrderDiscount = rollbackState.activeOrderDiscount;
-          state.activeOrderOutstandingSubtotal =
-            rollbackState.activeOrderOutstandingSubtotal;
-          state.activeOrderOutstandingTax =
-            rollbackState.activeOrderOutstandingTax;
-          state.activeOrderOutstandingTotal =
-            rollbackState.activeOrderOutstandingTotal;
-          state.activeOrderTotalCash = rollbackState.activeOrderTotalCash;
-          state.activeOrderOutstandingCash =
-            rollbackState.activeOrderOutstandingCash;
         }
       });
     }
@@ -3932,18 +4139,9 @@ interface OrderState {
 
   // --- DERIVED STATE (Totals for the ACTIVE order) ---
   // These values will be automatically updated by the store's actions.
-  activeOrderSubtotal: number;
-  activeOrderTax: number;
-  activeOrderTotal: number;
-  activeOrderDiscount: number;
   // Outstanding (unpaid) totals for the ACTIVE order
-  activeOrderOutstandingSubtotal: number;
-  activeOrderOutstandingTax: number;
-  activeOrderOutstandingTotal: number;
   // Cash pricing total (using cash prices + modifiers + add-ons)
-  activeOrderTotalCash: number;
   // Outstanding cash totals (unpaid items using cash pricing)
-  activeOrderOutstandingCash: number;
 
   // --- PENDING TABLE SELECTION ---
   pendingTableSelection: string | null; // Store pending table selection
@@ -5042,15 +5240,6 @@ export const useOrderStore = create<OrderState>()(
           isInitializing: false,
           // Queued backend updates (Phase 3: Race Condition Prevention)
           pendingBackendUpdates: {},
-          activeOrderSubtotal: 0,
-          activeOrderTax: 0,
-          activeOrderTotal: 0,
-          activeOrderDiscount: 0,
-          activeOrderOutstandingSubtotal: 0,
-          activeOrderOutstandingTax: 0,
-          activeOrderOutstandingTotal: 0,
-          activeOrderTotalCash: 0,
-          activeOrderOutstandingCash: 0,
           pendingTableSelection: null,
 
           // === STATION CONTEXT ===
@@ -5190,17 +5379,6 @@ export const useOrderStore = create<OrderState>()(
               }
 
               if (state.activeOrderId === orderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
 
@@ -6369,21 +6547,8 @@ export const useOrderStore = create<OrderState>()(
                         localOrderId === state.activeOrderId &&
                         !hasPendingChanges
                       ) {
-                        state.activeOrderTotal = backendOrder.card_total;
-                        state.activeOrderTax = backendOrder.card_tax_amount;
-                        state.activeOrderSubtotal = backendOrder.card_subtotal;
-                        state.activeOrderDiscount =
-                          backendOrder.discount_amount === 0 &&
-                          localHasConfirmedDiscounts
-                            ? (existingOrder.total_discount ?? 0)
-                            : backendOrder.discount_amount;
                         if (!isPaymentLocallyAhead) {
-                          state.activeOrderOutstandingTotal =
-                            backendOrder.amount_due;
                         }
-                        state.activeOrderOutstandingCash =
-                          backendOrder.cash_amount_due;
-                        state.activeOrderTotalCash = backendOrder.cash_total;
                       }
                     });
 
@@ -6454,17 +6619,6 @@ export const useOrderStore = create<OrderState>()(
                           ...(localOrderId === get().activeOrderId
                             ? {
                                 _queuedActiveOrderState: {
-                                  activeOrderTotal: backendOrder.card_total,
-                                  activeOrderTax: backendOrder.card_tax_amount,
-                                  activeOrderSubtotal:
-                                    backendOrder.card_subtotal,
-                                  activeOrderDiscount:
-                                    backendOrder.discount_amount,
-                                  activeOrderOutstandingTotal:
-                                    backendOrder.amount_due,
-                                  activeOrderOutstandingCash:
-                                    backendOrder.cash_amount_due,
-                                  activeOrderTotalCash: backendOrder.cash_total,
                                 },
                               }
                             : {}),
@@ -8046,15 +8200,6 @@ export const useOrderStore = create<OrderState>()(
             if (!orderId) {
               set({
                 activeOrderId: null,
-                activeOrderSubtotal: 0,
-                activeOrderTax: 0,
-                activeOrderTotal: 0,
-                activeOrderDiscount: 0,
-                activeOrderOutstandingSubtotal: 0,
-                activeOrderOutstandingTax: 0,
-                activeOrderOutstandingTotal: 0,
-                activeOrderTotalCash: 0,
-                activeOrderOutstandingCash: 0,
               });
               return;
             }
@@ -8318,7 +8463,7 @@ export const useOrderStore = create<OrderState>()(
             const newOrder: OrderProfile = {
               id:
                 details?.orderId ||
-                `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                mintStoreOrderId(),
               service_location_id: details?.tableId || null,
               service_location_name: snapshotTableName(details?.tableId),
               order_status: "draft",
@@ -8960,16 +9105,6 @@ export const useOrderStore = create<OrderState>()(
               order.total_discount = totals.discount_amount;
               order.amount_due = totals.outstanding_total;
               order.cash_amount_due = totals.cash_outstanding_total;
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
             });
 
             // Track mutation for own-station broadcast guard
@@ -9819,16 +9954,6 @@ export const useOrderStore = create<OrderState>()(
               }
 
               // Update derived active order state
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
             });
 
             console.log(
@@ -10238,16 +10363,6 @@ export const useOrderStore = create<OrderState>()(
               order.total_discount = totals.discount_amount;
               order.amount_due = totals.outstanding_total;
               order.cash_amount_due = totals.cash_outstanding_total;
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
             });
 
             // Track mutation for own-station broadcast guard
@@ -10778,16 +10893,6 @@ export const useOrderStore = create<OrderState>()(
               order.total_discount = totals.discount_amount;
               order.amount_due = totals.outstanding_total;
               order.cash_amount_due = totals.cash_outstanding_total;
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
             });
 
             // Phase 7D: Set pending status in sync store for BillItem indicator
@@ -11171,17 +11276,6 @@ export const useOrderStore = create<OrderState>()(
               order.cash_amount_due = totals.cash_outstanding_total;
 
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
 
@@ -11569,17 +11663,6 @@ export const useOrderStore = create<OrderState>()(
               o.cash_amount_due = totals.cash_outstanding_total;
 
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
 
@@ -11777,17 +11860,6 @@ export const useOrderStore = create<OrderState>()(
               o.cash_amount_due = totals.cash_outstanding_total;
 
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
           },
@@ -11822,17 +11894,6 @@ export const useOrderStore = create<OrderState>()(
               o.cash_amount_due = totals.cash_outstanding_total;
 
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
           },
@@ -11926,7 +11987,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Create new order for next customer
             const newGlobalOrder: OrderProfile = {
-              id: `order_${Date.now()}`,
+              id: mintStoreOrderId(),
               service_location_id: null,
               order_status: "draft",
               check_status: "Opened",
@@ -11954,14 +12015,6 @@ export const useOrderStore = create<OrderState>()(
               syncTableOrderIdIndexForOrder(state, newGlobalOrder.id);
               state.activeOrderId = newGlobalOrder.id;
               // Reset active order totals for new empty order
-              state.activeOrderSubtotal = 0;
-              state.activeOrderTax = 0;
-              state.activeOrderTotal = 0;
-              state.activeOrderDiscount = 0;
-              state.activeOrderOutstandingSubtotal = 0;
-              state.activeOrderOutstandingTax = 0;
-              state.activeOrderOutstandingTotal = 0;
-              state.activeOrderTotalCash = 0;
             });
 
             // Background sync
@@ -12341,16 +12394,6 @@ export const useOrderStore = create<OrderState>()(
             // ================================================================
             const rollbackState: PaymentRollbackState = {
               order: { ...order },
-              activeOrderSubtotal: get().activeOrderSubtotal,
-              activeOrderTax: get().activeOrderTax,
-              activeOrderTotal: get().activeOrderTotal,
-              activeOrderDiscount: get().activeOrderDiscount,
-              activeOrderOutstandingSubtotal:
-                get().activeOrderOutstandingSubtotal,
-              activeOrderOutstandingTax: get().activeOrderOutstandingTax,
-              activeOrderOutstandingTotal: get().activeOrderOutstandingTotal,
-              activeOrderTotalCash: get().activeOrderTotalCash,
-              activeOrderOutstandingCash: get().activeOrderOutstandingCash,
             };
 
             // Generate unique local ID and timestamp for this payment
@@ -12779,17 +12822,6 @@ export const useOrderStore = create<OrderState>()(
 
               // Add active order updates if applicable
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
 
               // Ensure order is persisted while it has unsynced payment data
@@ -12857,7 +12889,7 @@ export const useOrderStore = create<OrderState>()(
           },
 
           markOrderAsPaid: (orderId: string) => {
-            const { ordersById, activeOrderDiscount } = get();
+            const { ordersById } = get();
             const order = ordersById[orderId]; // O(1) lookup
             if (!order) return;
 
@@ -13057,15 +13089,6 @@ export const useOrderStore = create<OrderState>()(
               if (wasActiveOrder) {
                 state.activeOrderId = null;
                 // Reset derived state if this was the active order
-                state.activeOrderSubtotal = 0;
-                state.activeOrderTax = 0;
-                state.activeOrderTotal = 0;
-                state.activeOrderDiscount = 0;
-                state.activeOrderOutstandingSubtotal = 0;
-                state.activeOrderOutstandingTax = 0;
-                state.activeOrderOutstandingTotal = 0;
-                state.activeOrderTotalCash = 0;
-                state.activeOrderOutstandingCash = 0;
               }
             });
 
@@ -14047,7 +14070,7 @@ export const useOrderStore = create<OrderState>()(
             );
 
             const newMergedOrderData = {
-              id: `order_${Date.now()}`,
+              id: mintStoreOrderId(),
               service_location_id: primaryTableId,
               service_location_name: snapshotTableName(primaryTableId),
               order_status: "preparing" as const,
@@ -14130,7 +14153,7 @@ export const useOrderStore = create<OrderState>()(
             };
 
             const newOrder: OrderProfile = {
-              id: `order_${Date.now()}`,
+              id: mintStoreOrderId(),
               service_location_id: null,
               order_status: "draft",
               check_status: "Opened",
@@ -14145,14 +14168,6 @@ export const useOrderStore = create<OrderState>()(
               state.orderIds.push(newOrder.id);
               state.activeOrderId = newOrder.id;
               // Reset totals synchronously for the new empty order
-              state.activeOrderSubtotal = 0;
-              state.activeOrderTax = 0;
-              state.activeOrderTotal = 0;
-              state.activeOrderDiscount = 0;
-              state.activeOrderOutstandingSubtotal = 0;
-              state.activeOrderOutstandingTax = 0;
-              state.activeOrderOutstandingTotal = 0;
-              state.activeOrderTotalCash = 0;
             });
 
             // Sync to backend with the hardened batch send (mirrors
@@ -14354,6 +14369,7 @@ export const useOrderStore = create<OrderState>()(
             // OFFLINE-FIRST: Update local state immediately
             // ================================================================
             if (!_checkCartEditable(get(), orderId)) return;
+
             // Kitchen operations work with local state - no need to wait for sync
             // Backend status update is queued for later (fire-and-forget)
 
@@ -14542,10 +14558,6 @@ export const useOrderStore = create<OrderState>()(
 
               if (state.activeOrderId === orderId) {
                 state.activeOrderId = null;
-                state.activeOrderSubtotal = 0;
-                state.activeOrderTax = 0;
-                state.activeOrderTotal = 0;
-                state.activeOrderDiscount = 0;
               }
             });
 
@@ -14715,12 +14727,6 @@ export const useOrderStore = create<OrderState>()(
 
               // Update active order totals if this is the active order
               if (orderId === activeOrderId) {
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
 
@@ -14987,12 +14993,6 @@ export const useOrderStore = create<OrderState>()(
                 : ("Opened" as const);
               if (updatedPayments.length === 0) o.split_payment_path = null;
               if (orderId === activeOrderId) {
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
           },
@@ -15535,9 +15535,7 @@ export const useOrderStore = create<OrderState>()(
                   /* non-fatal */
                 }
                 // No existing order — create new
-                localOrderId = `order_${Date.now()}_${Math.random()
-                  .toString(36)
-                  .substr(2, 9)}`;
+                localOrderId = mintStoreOrderId();
                 isNewOrder = true;
               }
 
@@ -16156,19 +16154,7 @@ export const useOrderStore = create<OrderState>()(
 
                   // Update outstanding totals if this is the active order
                   if (localOrderId === state.activeOrderId) {
-                    state.activeOrderOutstandingTotal = dbOrder.amount_due || 0;
                     // Priority: backend cash_amount_due > current local value > card amount_due
-                    state.activeOrderOutstandingCash =
-                      dbOrder.cash_amount_due ??
-                      state.activeOrderOutstandingCash ??
-                      dbOrder.amount_due ??
-                      0;
-                    state.activeOrderTotal =
-                      dbOrder.card_total || dbOrder.total_amount || 0;
-                    state.activeOrderTax =
-                      dbOrder.card_tax_amount || dbOrder.tax_amount || 0;
-                    state.activeOrderSubtotal =
-                      dbOrder.card_subtotal || dbOrder.subtotal || 0;
                   }
                 });
 
@@ -16412,8 +16398,6 @@ export const useOrderStore = create<OrderState>()(
 
                 // Update outstanding totals if this is the active order
                 if (orderId === state.activeOrderId) {
-                  state.activeOrderOutstandingTotal = dbOrder.amount_due ?? 0;
-                  state.activeOrderOutstandingCash = dbOrder.cash_amount_due;
                 }
               });
 
@@ -17087,18 +17071,6 @@ export const useOrderStore = create<OrderState>()(
 
               // Update active order derived state if this is the active order
               if (orderId === state.activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = preserveBackendDiscount
-                  ? o.total_discount!
-                  : totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = finalOutstandingTotal;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash = finalCashOutstandingTotal;
               }
             });
 
@@ -18329,16 +18301,6 @@ export const useOrderStore = create<OrderState>()(
                   syncTableOrderIdIndexForOrder(state, storeKey, currentOrder);
                   // Update active order derived state if this is the active order
                   if (storeKey === state.activeOrderId) {
-                    state.activeOrderTotal =
-                      orderData.card_total ?? orderData.total_amount;
-                    state.activeOrderTax = orderData.tax_amount;
-                    state.activeOrderDiscount = orderData.discount_amount;
-                    state.activeOrderOutstandingTotal =
-                      hasLocalAdvancedPayments && !isServerPaidUpgrade
-                        ? (currentOrder.amount_due ?? orderData.amount_due)
-                        : orderData.amount_due;
-                    state.activeOrderOutstandingCash =
-                      orderData.cash_amount_due;
                   }
                 });
 

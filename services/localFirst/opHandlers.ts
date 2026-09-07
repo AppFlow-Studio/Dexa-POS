@@ -104,8 +104,29 @@ export type ConflictSink = (conflict: TableOccupiedConflict) => void;
 
 // ---------------------------------------------------------------------------
 
-function rpcError(error: unknown): DrainOutcome {
-  return outcomeFromError(error);
+function rpcError(rpc: string, error: unknown): DrainOutcome {
+  const outcome = outcomeFromError(error);
+  const text =
+    outcome.kind === "rejected"
+      ? outcome.reason
+      : outcome.kind === "retry"
+        ? outcome.error
+        : "";
+
+  // A MISSING function is the failure that looks most like "sync is just
+  // broken": the RPC 404s, the error is unrecognised, so it classifies as
+  // transient and retries forever — silently, with the op stuck in the queue.
+  // Call it out by name, because the fix is a migration, not a retry.
+  if (/does not exist|schema cache|PGRST202/i.test(text)) {
+    console.error(
+      `[LF] ✗ ${rpc} — FUNCTION NOT DEPLOYED. Apply the migration for ${rpc} ` +
+        `before enabling local-first writes. Ops will retry forever until you do.`,
+      text,
+    );
+  } else {
+    console.error(`[LF] ✗ ${rpc} ${outcome.kind}:`, text);
+  }
+  return outcome;
 }
 
 /**
@@ -122,6 +143,7 @@ export function makeOpHandlers(
   return {
     create_order: async (op: ClaimedOp): Promise<DrainOutcome> => {
       const p = op.payload as CreateOrderPayload;
+      console.log(`[LF] → create_order_v4 order=${op.entityId}`);
       try {
         const { data, error } = await client.rpc("create_order_v4", {
           p_merchant_id: p.merchantId,
@@ -140,7 +162,10 @@ export function makeOpHandlers(
           p_order_number: p.orderNumber ?? null,
         });
 
-        if (error) return rpcError(error);
+        if (error) return rpcError("create_order_v4", error);
+        console.log(
+          `[LF] ✓ create_order_v4 order=${op.entityId} number=${data?.order_number} existed=${!!data?.already_existed}`,
+        );
 
         // §6.3 — the server renumbered us because our locally minted number
         // collided. The ID is unchanged (identity is sacred); only the number
@@ -153,12 +178,15 @@ export function makeOpHandlers(
         }
         return { kind: "synced" };
       } catch (error) {
-        return rpcError(error);
+        return rpcError("create_order_v4", error);
       }
     },
 
     add_item: async (op: ClaimedOp): Promise<DrainOutcome> => {
       const p = op.payload as AddItemPayload;
+      console.log(
+        `[LF] → add_order_item_v5 item=${op.entityId} order=${p.orderId} name=${p.itemName} qty=${p.quantity}`,
+      );
       try {
         const { data, error } = await client.rpc("add_order_item_v5", {
           p_order_id: p.orderId,
@@ -187,15 +215,19 @@ export function makeOpHandlers(
           p_item_id: op.entityId,
         });
 
-        if (error) return rpcError(error);
+        if (error) return rpcError("add_order_item_v5", error);
+        console.log(
+          `[LF] ✓ add_order_item_v5 item=${op.entityId} order=${p.orderId} existed=${!!data?.already_existed}`,
+        );
         return { kind: "synced", syncVersion: data?.sync_version ?? null };
       } catch (error) {
-        return rpcError(error);
+        return rpcError("add_order_item_v5", error);
       }
     },
 
     seat_guests: async (op: ClaimedOp): Promise<DrainOutcome> => {
       const p = op.payload as SeatGuestsPayload;
+      console.log(`[LF] → seat_guests_v4 session=${op.entityId}`);
       try {
         const { data, error } = await client.rpc("seat_guests_v4", {
           p_table_ids: p.tableIds,
@@ -215,7 +247,7 @@ export function makeOpHandlers(
           p_order_number: p.orderNumber ?? null,
         });
 
-        if (error) return rpcError(error);
+        if (error) return rpcError("seat_guests_v4", error);
 
         // ── §9.5 — two stations seated the same table while partitioned.
         //
@@ -242,9 +274,12 @@ export function makeOpHandlers(
           };
         }
 
+        console.log(
+          `[LF] ✓ seat_guests_v4 session=${op.entityId} order=${data?.order_id}`,
+        );
         return { kind: "synced" };
       } catch (error) {
-        return rpcError(error);
+        return rpcError("seat_guests_v4", error);
       }
     },
   };

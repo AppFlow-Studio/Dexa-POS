@@ -8,7 +8,7 @@ import {
   calculateItemEffectiveCashPrice,
   useOrderStore
 } from '@/stores/useOrderStore'
-import { useActiveOrder } from '@/stores/selectors/orderSelectors'
+import { useActiveOrder, useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
@@ -196,8 +196,11 @@ const PayForItemsView: React.FC = () => {
   useRefreshActiveOrder()
 
   const activeOrder = useActiveOrder()
-  const activeOrderTotal = useOrderStore(state => state.activeOrderTotal)
-  const activeOrderOutstandingCash = useOrderStore(state => state.activeOrderOutstandingCash)
+  // §4.3 — derived, not the store's mirrored fields. See BillSection for why
+  // the mirrors are a second source of truth for money.
+  const payTotals = useActiveOrderTotals()
+  const activeOrderTotal = payTotals?.total ?? 0
+  const activeOrderOutstandingCash = payTotals?.cashAmountDue ?? 0
   const taxRatesMap = useStoreSettingsStore(state => state.taxRatesMap)
   const setView = usePaymentStore(s => s.setView)
   const close = usePaymentStore(s => s.close)

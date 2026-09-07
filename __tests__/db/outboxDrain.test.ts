@@ -21,7 +21,11 @@ import {
   classifyError,
   drainOnce,
   errorText,
+  nudgeDrain,
+  registerDrainRunner,
+  waitForOrderSynced,
   outcomeFromError,
+  __resetNudgeForTests,
   __resetDrainForTests,
   type DrainOutcome,
   type OpHandlers,
@@ -287,5 +291,102 @@ describe("re-entrancy", () => {
 
     expect(maxConcurrent).toBe(1);
     expect(a.attempted + b.attempted).toBe(1);
+  });
+});
+
+
+describe("prompt drain after a local write", () => {
+  afterEach(() => __resetNudgeForTests());
+
+  it("coalesces a burst of writes into ONE drain", async () => {
+    // Ringing in a round of drinks fires one nudge per item. Without
+    // coalescing that is N overlapping pushes on the connection.
+    let runs = 0;
+    registerDrainRunner(async () => {
+      runs++;
+    });
+
+    for (let i = 0; i < 10; i++) nudgeDrain();
+    expect(runs).toBe(0); // still deferred
+
+    await new Promise((r) => setTimeout(r, 400));
+    expect(runs).toBe(1);
+  });
+
+  it("fires anyway under sustained input — the debounce cannot starve", async () => {
+    // A plain trailing debounce STARVES when input arrives faster than the
+    // delay: every nudge reschedules the last and the drain never runs,
+    // reintroducing exactly the latency it was added to remove. The max-wait
+    // is what makes that impossible.
+    let runs = 0;
+    registerDrainRunner(async () => {
+      runs++;
+    });
+
+    const started = Date.now();
+    while (Date.now() - started < 2600) {
+      nudgeDrain();
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    expect(runs).toBeGreaterThanOrEqual(1);
+  });
+
+  it("is inert when no runner is registered", () => {
+    // The drain hook unregisters on unmount; a nudge from a late write must
+    // not throw into the caller's write path.
+    __resetNudgeForTests();
+    expect(() => nudgeDrain()).not.toThrow();
+  });
+});
+
+
+describe("sync barrier (waitForOrderSynced)", () => {
+  afterEach(() => __resetNudgeForTests());
+
+  it("returns immediately when the order has nothing queued", async () => {
+    await seedOrder("o-clean");
+    const started = Date.now();
+    await expect(waitForOrderSynced("o-clean", 2000)).resolves.toBe(true);
+    expect(Date.now() - started).toBeLessThan(150);
+  });
+
+  it("resolves once the order's ops drain", async () => {
+    // The send-to-kitchen case: items are committed locally, and the server
+    // must have them before send_items_to_kitchen resolves the cart against
+    // order_items — otherwise it silently under-reports
+    // (KITCHEN_ITEMS_UNRESOLVED requestedCount: 6, updatedCount: 4).
+    await seedOrder("o1");
+    await enqueue("op-1", "o1");
+
+    const handlers: OpHandlers = { add_item: ok };
+    registerDrainRunner(async () => {
+      __resetDrainForTests();
+      registerDrainRunner(async () => {});
+      await drainOnce(handlers);
+    });
+
+    await expect(waitForOrderSynced("o1", 4000)).resolves.toBe(true);
+    expect(await pendingOpCount()).toBe(0);
+  });
+
+  it("times out rather than blocking the operator forever", async () => {
+    // Food has to be able to reach the kitchen even when sync is wedged: the
+    // local state is already correct and the ops stay queued.
+    await seedOrder("o-stuck");
+    await enqueue("op-stuck", "o-stuck");
+    registerDrainRunner(async () => {});
+
+    await expect(waitForOrderSynced("o-stuck", 400)).resolves.toBe(false);
+    // The op is NOT dropped — it is still queued for the next drain.
+    expect(await pendingOpCount()).toBe(1);
+  });
+
+  it("is scoped per order — another check's backlog cannot block this one", async () => {
+    await seedOrder("mine");
+    await seedOrder("theirs");
+    await enqueue("op-theirs", "theirs");
+
+    await expect(waitForOrderSynced("mine", 500)).resolves.toBe(true);
   });
 });

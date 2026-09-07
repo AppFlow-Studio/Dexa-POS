@@ -33,6 +33,8 @@ import {
 
 const LOCATION = "11111111-1111-4111-8111-111111111111";
 const MERCHANT = "22222222-2222-4222-8222-222222222222";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** A server that records what it was asked to do. */
 function recordingServer(opts: { offline?: boolean } = {}) {
@@ -132,6 +134,68 @@ describe("the row exists before the network is touched", () => {
     );
     expect(row?._sync_status).toBe("local");
     expect(await pendingOpCount()).toBe(1);
+  });
+
+  it("createLocalOrder is idempotent — a second call cannot fail on the id", async () => {
+    // REGRESSION: `ensureOrderCreated` is called from several places for the
+    // same order (the eager-create effect and the add-item path). The first
+    // version did a plain INSERT, so the second call died with
+    // "UNIQUE constraint failed: orders.id" — rolling back the transaction and
+    // leaving the order with NO row at all, which is far worse than the
+    // duplicate it was meant to prevent. Reported from a real device.
+    const first = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+      orderId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    });
+    const second = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+      orderId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    // Same identity AND same number — a second call must not renumber either.
+    expect(second.value!.orderId).toBe(first.value!.orderId);
+    expect(second.value!.orderNumber).toBe(first.value!.orderNumber);
+
+    const db = getDb()!;
+    const rows = await db.getAllAsync(
+      `SELECT id FROM orders WHERE id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'`,
+    );
+    expect(rows).toHaveLength(1);
+    // And exactly ONE create op, not two.
+    expect(await pendingOpCount()).toBe(1);
+  });
+
+  it("addLocalItem is idempotent on the item id", async () => {
+    const order = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+    const args = {
+      orderId: order.value!.orderId,
+      locationId: LOCATION,
+      itemName: "Burger",
+      quantity: 1,
+      unitPrice: 10,
+      itemId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    };
+    expect((await addLocalItem(args)).ok).toBe(true);
+    expect((await addLocalItem(args)).ok).toBe(true);
+
+    const db = getDb()!;
+    const rows = await db.getAllAsync(
+      `SELECT id FROM order_items WHERE id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'`,
+    );
+    expect(rows).toHaveLength(1);
   });
 
   it("seatLocal produces session AND order in one transaction", async () => {
@@ -283,6 +347,64 @@ describe("a full offline service period converges on reconnect", () => {
   });
 });
 
+describe("id format guards the uuid columns", () => {
+  /**
+   * REGRESSION (real device): with LOCAL_WRITES_* on but CLIENT_IDS unset, the
+   * store minted `order_1788799715753_z9hga7` and every query filtering a uuid
+   * column by order id failed with
+   *
+   *     22P02  invalid input syntax for type uuid
+   *
+   * surfacing as "Failed to load seat assignments" / "Failed to load courses".
+   * `NEEDS_UUID_IDS` derives the requirement from the flags so the bad
+   * combination cannot be configured.
+   */
+  it("mints uuids whenever any local-write path is on", () => {
+    const { mintStoreOrderId, mintStoreSessionId, NEEDS_UUID_IDS } =
+      jest.requireActual("@/lib/localFirst/identity");
+
+    if (!NEEDS_UUID_IDS) {
+      // Flags off in this environment: the legacy shape is correct, and it
+      // must NOT look like a uuid or the guard would be vacuous.
+      expect(mintStoreOrderId()).toMatch(/^order_/);
+      return;
+    }
+    expect(mintStoreOrderId()).toMatch(UUID_RE);
+    expect(mintStoreSessionId()).toMatch(UUID_RE);
+  });
+
+  it("every id the local write API mints is a uuid", async () => {
+    // These go straight into p_order_id / p_item_id / p_session_id, so a
+    // non-uuid here is a guaranteed 22P02 at the database.
+    const order = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+    const item = await addLocalItem({
+      orderId: order.value!.orderId,
+      locationId: LOCATION,
+      itemName: "X",
+      quantity: 1,
+      unitPrice: 1,
+    });
+    const seat = await seatLocal({
+      tableIds: ["t-1"],
+      locationId: LOCATION,
+      merchantId: MERCHANT,
+      partySize: 2,
+      createOrder: true,
+      stationNumber: 1,
+    });
+
+    expect(order.value!.orderId).toMatch(UUID_RE);
+    expect(item.value!.itemId).toMatch(UUID_RE);
+    expect(seat.value!.sessionId).toMatch(UUID_RE);
+    expect(seat.value!.orderId).toMatch(UUID_RE);
+  });
+});
+
 describe("order numbers are per-station and monotonic", () => {
   it("does not reuse a number across orders on the same station", async () => {
     const numbers = new Set<string>();
@@ -299,6 +421,43 @@ describe("order numbers are per-station and monotonic", () => {
     // force create_order_v4 to renumber — recoverable, but it must not be the
     // normal case.
     expect(numbers.size).toBe(25);
+  });
+
+  it("does not burn the sequence when the caller already allocated a number", async () => {
+    // REGRESSION: startNewOrder mints a number for the optimistic order, then
+    // createLocalOrder minted a SECOND — so every "New Order" advanced the
+    // per-station counter by 2 and left a permanent gap in the day's numbering.
+    const first = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+
+    // Caller supplies its own number, exactly as the store does.
+    const supplied = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+      orderId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      orderNumber: "ORD-20260907-S1-9999",
+      displayNumber: "#S1-9999",
+    });
+    expect(supplied.value!.orderNumber).toBe("ORD-20260907-S1-9999");
+
+    // The next allocation must follow `first`, not skip over the supplied one.
+    const next = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+
+    const seqOf = (n: string) => parseInt(n.split("-").pop()!, 10);
+    expect(seqOf(next.value!.orderNumber)).toBe(
+      seqOf(first.value!.orderNumber) + 1,
+    );
   });
 
   it("keeps stations from colliding with each other", async () => {

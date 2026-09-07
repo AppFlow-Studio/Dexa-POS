@@ -36,6 +36,7 @@ import {
   calculateItemEffectiveCashPrice,
   getOrderStoreSupabaseClient,
   round2,
+  calculateOrderTotalsForOrder,
   useOrderStore,
 } from "./useOrderStore";
 type PaymentMethod = "Card" | "Cash" | "Split";
@@ -338,6 +339,40 @@ interface PaymentState {
   ) => Promise<boolean>;
   unlockOrderForPayment: (orderId: string) => Promise<void>;
   checkAndRefreshLock: () => Promise<boolean>; // Refresh lock if about to expire
+}
+
+/**
+ * Outstanding balances for the active order, computed on demand.
+ *
+ * §4.3 — replaces reads of `useOrderStore`'s mirrored
+ * `activeOrderOutstandingTotal` / `activeOrderOutstandingCash`, now deleted.
+ * Those were refreshed on a deferred microtask, so a split created in the same
+ * tick as an item change could size itself against a stale balance — which
+ * shows up as a guest under- or over-charged on a split.
+ *
+ * Uses the store's own wrapper, the same one `useActiveOrderTotals` calls, so
+ * imperative callers here and reactive components cannot drift apart.
+ */
+function activeOutstanding(): {
+  activeOrderOutstandingTotal: number;
+  activeOrderOutstandingCash: number;
+} {
+  const { activeOrderId, ordersById } = useOrderStore.getState();
+  const order = activeOrderId ? ordersById[activeOrderId] : undefined;
+  if (!order) {
+    return { activeOrderOutstandingTotal: 0, activeOrderOutstandingCash: 0 };
+  }
+  const totals = calculateOrderTotalsForOrder(
+    order.items ?? [],
+    order.checkDiscount ?? null,
+    order.payments ?? [],
+    useStoreSettingsStore.getState().taxRatesMap,
+    order,
+  );
+  return {
+    activeOrderOutstandingTotal: totals.outstanding_total ?? 0,
+    activeOrderOutstandingCash: totals.cash_outstanding_total ?? 0,
+  };
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -772,7 +807,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   // the same portion charges the higher card price if paid by card.
   updateSplitAmount: (splitId, cashAmount) => {
     const { activeOrderOutstandingTotal, activeOrderOutstandingCash } =
-      useOrderStore.getState();
+      activeOutstanding();
     set((state) => ({
       splits: state.splits.map((s) =>
         s.id === splitId
@@ -859,12 +894,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const { splits } = get();
 
     // Get order and tax rates for tax calculation
-    const {
-      activeOrderId,
-      ordersById,
-      activeOrderOutstandingTotal,
-      activeOrderOutstandingCash,
-    } = useOrderStore.getState();
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const { activeOrderOutstandingTotal, activeOrderOutstandingCash } =
+      activeOutstanding();
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     const taxRatesMap =
@@ -1391,12 +1423,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
     } else {
       // STANDARD FLOW (full payment)
-      const {
-        activeOrderOutstandingTotal,
-        activeOrderOutstandingCash,
-        ordersById,
-        sendNewItemsToKitchenForOrder,
-      } = useOrderStore.getState();
+      const { ordersById, sendNewItemsToKitchenForOrder } =
+        useOrderStore.getState();
+      const { activeOrderOutstandingTotal, activeOrderOutstandingCash } =
+        activeOutstanding();
       const currentOrder = ordersById[activeOrderId];
 
       // Use cash outstanding for cash payments, card outstanding for card payments

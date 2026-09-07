@@ -950,6 +950,36 @@ offline fallback; under Decision 0.1 the number is FINAL and server-stored, so a
 collide every order and force `create_order_v4` to renumber every one — the exact reconciliation
 problem that decision exists to avoid. A test generating 25 orders got 25 copies of number 1.
 
+### §4.3 complete — the ten mirrored totals fields are gone
+
+`activeOrderSubtotal`, `activeOrderTax`, `activeOrderTotal`, `activeOrderDiscount`,
+`activeOrderOutstandingSubtotal/Tax/Total`, `activeOrderTotalCash` and
+`activeOrderOutstandingCash` no longer exist. ~16 KB and 249 lines removed from `useOrderStore`.
+
+**The "143 references across 15 files" figure was wrong**, and worth correcting because it drove
+the earlier risk assessment. Most were *local variable names* in components that had already
+migrated to `useActiveOrderTotals()` and simply aliased its results. The real count was **13 store
+reads across 6 files** — `BillSection`, `SplitPaymentView`, `SplitByItemView`, `PayForItemsView`,
+`TableOrderView`, and the dev harness — plus `CFDProvider` and `usePaymentStore`, which only
+surfaced once the fields were deleted and `tsc` failed on them. Deleting first and letting the
+compiler find the consumers was what made this safe.
+
+**A duplicate was deleted too.** `hooks/orders/useOrderTotals.ts` (written earlier in this effort)
+reimplemented a hook that already existed as `useActiveOrderTotals` in
+`stores/selectors/orderSelectors.ts` — and the existing one is better: it subscribes to the
+service-charge rule, session party size and seat count, and warns on frontend/backend mismatch.
+The duplicate was removed and every call site points at the original.
+
+**Why this matters beyond re-renders.** The deleted fields were refreshed on a *deferred* microtask
+(`_scheduleTotalsRecompute`). Between an item mutation and that microtask firing, the cart and its
+total disagreed — and any surface reading a mirror rendered the stale number. On `CFDProvider` that
+is the wrong total shown to the guest; on `usePaymentStore` it is a split sized against a stale
+balance. Derived totals cannot drift, because there is nothing left to drift from.
+
+**Imperative callers** (`usePaymentStore.activeOutstanding()`, `TableOrderView`) use the store's own
+`calculateOrderTotalsForOrder` — the same function `useActiveOrderTotals` calls — so reactive and
+imperative paths are equivalent by construction rather than by inspection.
+
 ### ⚠️ The repo's SQL is not a complete mirror of the deployed database
 
 `add_order_item_v4` is called by `services/orderService.ts` and listed in `database.types.ts` but
@@ -974,8 +1004,8 @@ All three causes were in the tests, not the code — details in the two subsecti
 | **Phase 0 device validation** | Needs physical hardware. Still the gate before any flag defaults on. |
 | **§4.2 integer totals** | Deferred on evidence — see §4.2.1. Needs only the tap→paint p50/p95, which is already recorded in production as the Sentry transaction `pos.add_to_cart` (op `pos.interaction`, ended via double-RAF so it is a true tap→paint). The `addOns` blocker is resolved. |
 | ~~Wiring the drain to real RPCs~~ | ✅ Done — `services/localFirst/opHandlers.ts`. Calls v4/v5 directly rather than through `rpcWithIdempotency`, whose version-fallback chain would downgrade to an RPC that cannot accept a client id and mint a second identity. |
-| **`useOrderStore` as a projection** | 18.8k lines, 143 totals references across 15 files. The selector boundary exists and both blocking gates are wired; converting the store's own state to a SQLite projection is per-screen work that needs measurement per screen. |
-| **Migrating the 10 mirrored totals fields** | Same reason. Migration order documented in `useOrderTotals.ts`. |
+| **`useOrderStore` as a projection** | The mirrored-totals half is DONE (below). Converting `ordersById` itself to read from SQLite is the remaining piece, and it lands with the `EXPO_PUBLIC_LOCAL_WRITES_*` rollout rather than ahead of it. |
+| ~~Migrating the 10 mirrored totals fields~~ | ✅ **Done — the fields are deleted.** See below. |
 
 ### The calculator suite was already red on `bug-fixes`
 

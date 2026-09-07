@@ -36,7 +36,10 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import {
+  calculateOrderTotalsForOrder,
+  useOrderStore,
+} from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -715,7 +718,24 @@ const TableOrderView = React.forwardRef<
     const order = oid ? ordersById[oid] : null;
     if (!order || !currentTableId) return;
 
-    const totals = useOrderStore.getState().activeOrderOutstandingTotal ?? 0;
+    // §4.3 — computed from the order rather than read from the store's
+    // mirrored `activeOrderOutstandingTotal`. This is an imperative callback
+    // (no hook allowed), so it uses the store's own wrapper — the same
+    // function useActiveOrderTotals calls, so the two cannot drift.
+    const _o = useOrderStore.getState().activeOrderId
+      ? useOrderStore.getState().ordersById[
+          useOrderStore.getState().activeOrderId as string
+        ]
+      : null;
+    const totals = _o
+      ? (calculateOrderTotalsForOrder(
+          _o.items ?? [],
+          _o.checkDiscount ?? null,
+          _o.payments ?? [],
+          useStoreSettingsStore.getState().taxRatesMap,
+          _o,
+        ).outstanding_total ?? 0)
+      : 0;
     if (totals > 0.01) {
       show({
         title: "Cannot Close Check",

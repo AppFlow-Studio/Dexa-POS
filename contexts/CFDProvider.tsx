@@ -571,20 +571,21 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     clearOrderProcessingIdleTimer
   ])
 
-  const activeOrderSubtotal = useOrderStore(s => s.activeOrderSubtotal)
-  const activeOrderTax = useOrderStore(s => s.activeOrderTax)
-  const activeOrderTotal = useOrderStore(s => s.activeOrderTotal)
-  const activeOrderDiscount = useOrderStore(s => s.activeOrderDiscount)
-  const activeOrderOutstandingTotal = useOrderStore(
-    s => s.activeOrderOutstandingTotal
-  )
+  // §4.3 — derived from the item set. These were the store's mirrored
+  // `activeOrder*` fields, which are now deleted: they were a second source of
+  // truth for money, refreshed on a deferred microtask, so between an item
+  // mutation and that microtask the CFD could show the guest a stale total.
+  const cfdTotals = useActiveOrderTotals()
+  const activeOrderSubtotal = cfdTotals?.subtotal ?? 0
+  const activeOrderTax = cfdTotals?.tax ?? 0
+  const activeOrderTotal = cfdTotals?.total ?? 0
+  const activeOrderDiscount = cfdTotals?.discount ?? 0
+  const activeOrderOutstandingTotal = cfdTotals?.amountDue ?? 0
   // Cash-side outstanding. On a cash-discounted split the payment RPC can leave
   // the card-side outstanding at 0 while the cash side still owes a portion, so
   // a non-split CFD payload that reads only the card side shows $0 due. Use
   // whichever side still owes for the order-level (non-split) outstanding.
-  const activeOrderOutstandingCash = useOrderStore(
-    s => s.activeOrderOutstandingCash
-  )
+  const activeOrderOutstandingCash = cfdTotals?.cashAmountDue ?? 0
   const activeOrderOutstandingEffective = Math.max(
     activeOrderOutstandingTotal ?? 0,
     activeOrderOutstandingCash ?? 0

@@ -195,9 +195,16 @@ export async function commitLocalWrite(
   statements: LocalStatement[],
   ops: OutboxEntry[],
 ): Promise<CommitResult> {
-  if (!isLocalDbReady()) return { ok: false, error: "local db unavailable" };
-  const db = getDb();
-  if (!db) return { ok: false, error: "local db unavailable" };
+  if (!isLocalDbReady() || !getDb()) {
+    // The single most likely cause of "nothing syncs": the local database
+    // never opened, so every local write no-ops and no op is ever queued.
+    console.error(
+      "[LF] ✗ local DB NOT READY — local-first writes cannot work. " +
+        "Check initLocalDb() ran (PosSyncProvider) and that its flag is on.",
+    );
+    return { ok: false, error: "local db unavailable" };
+  }
+  const db = getDb()!;
 
   const deviceId = getDeviceId();
   const now = new Date().toISOString();
@@ -230,11 +237,34 @@ export async function commitLocalWrite(
         }
       });
     });
+    if (ops.length > 0) {
+      console.log(
+        `[LF] committed ${statements.length} row(s) + ${ops.length} op(s):`,
+        ops.map((o) => `${o.op}:${o.entityId.slice(0, 8)}`).join(" "),
+      );
+    }
+    // Ask the drain to run soon. Deliberately AFTER the commit and NOT
+    // awaited: the write is already durable, and making the caller wait on a
+    // network push would put the round trip back on the hot path.
+    try {
+      // Required lazily — services/ imports lib/, so a static import here
+      // would be a cycle.
+      const {
+        nudgeDrain,
+      } = require("@/services/localFirst/outboxDrain") as typeof import("@/services/localFirst/outboxDrain");
+      nudgeDrain();
+    } catch {
+      // The drain is an optimisation on top of a durable write. If it cannot
+      // even be reached, the interval still picks the ops up.
+    }
     return { ok: true };
   } catch (error) {
     // A rolled-back transaction leaves NOTHING behind — not the row, not the
     // op. That is the guarantee; the caller can retry the whole gesture.
-    console.warn("[Outbox] commit failed — nothing was written:", error);
+    console.error(
+      "[LF] ✗ LOCAL WRITE FAILED — nothing was written (row AND op rolled back):",
+      error,
+    );
     return { ok: false, error: String(error) };
   }
 }
@@ -267,6 +297,13 @@ interface OutboxRow {
 /**
  * Eligible ops, oldest first.
  *
+ * `status = 'pending'`, NOT `status != 'inflight'`. The looser predicate also
+ * matched 'failed', so every permanently-rejected op was re-claimed and
+ * re-pushed on EVERY drain — one tap replaying twenty dead ops, filling the
+ * log and hammering the server with calls that can never succeed. A rejection
+ * is parked for a human by definition; re-attempting it is exactly what
+ * markRejected exists to stop.
+ *
  * Reads on the READ connection so a drain scan never queues behind whatever
  * batch the delta sync is writing — under WAL a reader on a separate
  * connection never blocks on a writer and never sees a half-applied
@@ -280,7 +317,7 @@ export async function claimBatch(limit = 50): Promise<ClaimedOp[]> {
       `SELECT id, op, entity, entity_id, order_id, payload, base_version,
               lamport, device_id, attempts, created_at
          FROM outbox
-        WHERE status != 'inflight'
+        WHERE status = 'pending'
           AND (next_at IS NULL OR next_at <= ?)
         ORDER BY created_at ASC, rowid ASC
         LIMIT ?`,
@@ -478,6 +515,142 @@ export async function pendingOpCount(): Promise<number> {
     // The cost of a false positive is a blocked station switch; the cost of a
     // false negative is a destroyed order.
     return 1;
+  }
+}
+
+/**
+ * Drop ops that can NEVER succeed because their entity id is not a uuid.
+ *
+ * Rows written before the id fix carry `order_<ts>_<rand>` / composite cart
+ * keys, which `create_order_v4` and `add_order_item_v5` reject with 22P02 on
+ * every attempt. They are unsyncable by construction — the server cannot
+ * accept that identity and the identity is immutable — so parking them as
+ * "failed" would leave permanent noise in the health counters for orders the
+ * operator has long since finished.
+ *
+ * Runs once at startup. The LOCAL rows are left alone: they are still the
+ * device's record of those orders, they simply stop trying to sync.
+ */
+export async function purgeUnsyncableOps(): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  // GLOB, not LIKE: `?` is the single-character wildcard here. `_` is a
+  // LITERAL underscore in GLOB, so the underscore form matched only strings
+  // that actually contain underscores — purging the valid uuids and keeping
+  // the broken ones, precisely backwards.
+  const UUID = "????????-????-????-????-????????????";
+  try {
+    return await dbWriteMutex.runExclusive(async () => {
+      const res = await db.runAsync(
+        `DELETE FROM outbox WHERE entity_id NOT GLOB ?`,
+        [UUID],
+      );
+      const n = res.changes ?? 0;
+      if (n > 0) {
+        console.warn(
+          `[LF] purged ${n} unsyncable op(s) with non-uuid entity ids ` +
+            `(written before the id fix). Their local rows are untouched.`,
+        );
+      }
+      return n;
+    });
+  } catch (error) {
+    console.warn("[LF] purgeUnsyncableOps failed:", error);
+    return 0;
+  }
+}
+
+/**
+ * Give permanently-failed ops one more chance, once per app start.
+ *
+ * A rejection means "retrying with the same code cannot help" — which is true
+ * right up until a fix ships. Every bug found this way (the non-uuid item id,
+ * the un-flattened modifier payload) strands the ops that hit it, and without
+ * this they would sit as `failed` forever even though the very next build
+ * would push them successfully.
+ *
+ * Running at startup and ONLY at startup is what bounds it: a genuinely
+ * permanent rejection (an order locked for payment) is re-attempted once per
+ * launch rather than every 30 seconds, which is cheap and self-limiting. The
+ * attempt counter and last_error are preserved so the history stays visible.
+ */
+export async function requeueFailedOps(): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  try {
+    return await dbWriteMutex.runExclusive(async () => {
+      const res = await db.runAsync(
+        `UPDATE outbox SET status = 'pending', next_at = NULL
+          WHERE status = 'failed'`,
+      );
+      const n = res.changes ?? 0;
+      if (n > 0) {
+        console.warn(
+          `[LF] requeued ${n} previously-failed op(s) for one retry ` +
+            `(a fix may have shipped since they were parked)`,
+        );
+      }
+      return n;
+    });
+  } catch (error) {
+    console.warn("[LF] requeueFailedOps failed:", error);
+    return 0;
+  }
+}
+
+/**
+ * Ops for one order that the server does NOT have yet — 'pending' AND
+ * 'failed'.
+ *
+ * Counting only 'pending' was wrong in the way that matters: a REJECTED op is
+ * moved to 'failed', so the pending count drops to zero and any barrier built
+ * on it concludes "the server has everything" — while that item is, in fact,
+ * permanently absent server-side. That is precisely how
+ * `KITCHEN_ITEMS_UNRESOLVED requestedCount: 3, updatedCount: 2` happens: the
+ * barrier passed, and one item was never routed to the kitchen.
+ *
+ * "Not synced" is the question being asked, and failed is not synced.
+ */
+export async function unsyncedOpCountForOrder(
+  orderId: string,
+): Promise<{ pending: number; failed: number }> {
+  const db = getReadDb();
+  if (!db) return { pending: 0, failed: 0 };
+  try {
+    const row = await db.getFirstAsync<{ pending: number; failed: number }>(
+      `SELECT
+         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+         SUM(CASE WHEN status = 'failed'  THEN 1 ELSE 0 END) AS failed
+       FROM outbox
+       WHERE order_id = ? OR entity_id = ?`,
+      [orderId, orderId],
+    );
+    return { pending: row?.pending ?? 0, failed: row?.failed ?? 0 };
+  } catch {
+    return { pending: 0, failed: 0 };
+  }
+}
+
+/**
+ * Which of these item ids does the local DB NOT have as synced rows?
+ *
+ * The definitive answer to "why did the kitchen only resolve 4 of 6": an id
+ * present on the cart line but absent (or unsynced) here is an item the server
+ * cannot possibly route.
+ */
+export async function unsyncedItemIds(itemIds: string[]): Promise<string[]> {
+  const db = getReadDb();
+  if (!db || itemIds.length === 0) return [];
+  try {
+    const placeholders = itemIds.map(() => "?").join(",");
+    const rows = await db.getAllAsync<{ id: string; _sync_status: string }>(
+      `SELECT id, _sync_status FROM order_items WHERE id IN (${placeholders})`,
+      itemIds,
+    );
+    const byId = new Map(rows.map((r) => [r.id, r._sync_status]));
+    return itemIds.filter((id) => byId.get(id) !== "synced");
+  } catch {
+    return [];
   }
 }
 

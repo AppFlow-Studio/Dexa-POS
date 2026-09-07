@@ -5,6 +5,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  LOCAL_WRITES_ORDERS,
+  LOCAL_WRITES_SEATING,
+} from "@/services/localFirst/localWrites";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
@@ -344,6 +348,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   });
   const isTableSeating = useTableSessionStore((s) => {
     if (currentOrderType !== "dine_in") return false;
+    // Local-first seating commits the session AND its order in one SQLite
+    // transaction before the tap finishes, so the "seating" window this
+    // overlay covers does not exist. Mirrors isOrderTableStillSeating() in
+    // useOrderStore, which gates the same thing at the add-item call.
+    if (LOCAL_WRITES_SEATING) return false;
     const sessionIds = [
       currentOrderSessionId,
       currentOrderLocalSessionId,
@@ -378,8 +387,25 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const currentOrderExists = useOrderStore((s) =>
     s.activeOrderId ? !!s.ordersById[s.activeOrderId] : false,
   );
+  // ── Local-first order creation removes this overlay entirely. ───────────
+  //
+  // The gate's premise is "no db_order_id means the server hasn't created the
+  // order yet, so items have nowhere to land." Under EXPO_PUBLIC_CLIENT_IDS
+  // the order's own id IS its server primary key, and under
+  // EXPO_PUBLIC_LOCAL_WRITES_ORDERS the row is committed locally before the
+  // tap finishes — so `db_order_id` being unset says nothing about whether
+  // the order is usable.
+  //
+  // Leaving it in would be worse than cosmetic: with the add-item gate in
+  // useOrderStore already bypassed, nothing calls ensureActiveOrderCreated on
+  // demand any more, so if eager-create is off (autoCreateOrder OFF) this
+  // overlay would block the menu FOREVER while online.
   const isCreatingOrder =
-    isOnline && !!activeOrderId && !currentOrderDbId && currentOrderExists;
+    !LOCAL_WRITES_ORDERS &&
+    isOnline &&
+    !!activeOrderId &&
+    !currentOrderDbId &&
+    currentOrderExists;
   // No order to add to: activeOrderId unset (e.g. auto-create OFF before the
   // operator starts a ticket) or set but pruned from ordersById. BillSection
   // shows its "No Active Order" panel in this state — block the menu so item

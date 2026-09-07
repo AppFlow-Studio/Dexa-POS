@@ -37,6 +37,7 @@ import {
   markRejected,
   markRetry,
   markSynced,
+  unsyncedOpCountForOrder,
   type ClaimedOp,
   type OutboxOp,
 } from "@/lib/db/outbox";
@@ -125,6 +126,10 @@ export async function drainOnce(
   try {
     const ops = await claimBatch(options.limit ?? 50);
     if (ops.length === 0) return stats;
+    console.log(
+      `[LF] drain claimed ${ops.length}:`,
+      ops.map((o) => `${o.op}:${o.entityId.slice(0, 8)}(a${o.attempts})`).join(" "),
+    );
 
     // Group by serialization key, preserving the claim's oldest-first order
     // WITHIN each group. That order is the causal order.
@@ -197,6 +202,10 @@ export async function drainOnce(
       ),
     );
 
+    console.log(
+      `[LF] drain done synced=${stats.synced} retried=${stats.retried} ` +
+        `rejected=${stats.rejected} skipped=${stats.skipped}`,
+    );
     return stats;
   } finally {
     draining = false;
@@ -277,4 +286,152 @@ export function outcomeFromError(error: unknown): DrainOutcome {
 export function __resetDrainForTests(): void {
   orderLocks.clear();
   draining = false;
+}
+
+// ---------------------------------------------------------------------------
+// Prompt drain after a local write
+// ---------------------------------------------------------------------------
+
+/**
+ * A local write is durable the instant it commits, but it is not VISIBLE to
+ * the rest of the building until it drains — the KDS, the other stations and
+ * the online-orders board all read the server.
+ *
+ * Relying on the 30s interval alone would mean a ticket taking up to half a
+ * minute to reach the kitchen when the network is perfectly fine. That is a
+ * regression against the old online-first path, which fired the RPC
+ * immediately, and it is not what "local-first" is supposed to cost.
+ *
+ * So a write NUDGES the drain. The nudge is off the hot path — the caller does
+ * not await it — so the tap still returns as soon as SQLite commits.
+ *
+ * ── Debounce, with a max-wait ─────────────────────────────────────────────
+ *
+ * Ringing in a round of drinks fires one nudge per item. Coalescing them into
+ * one drain avoids a burst of overlapping pushes.
+ *
+ * But a plain trailing debounce STARVES under sustained input: while items
+ * keep arriving faster than the delay, every nudge reschedules the previous
+ * one and the drain never runs — reintroducing exactly the latency it was
+ * added to remove, hidden behind code that looks like it fixed it. MAX_WAIT
+ * forces a drain after that much continuous deferral regardless.
+ */
+const NUDGE_DEBOUNCE_MS = 300;
+const NUDGE_MAX_WAIT_MS = 2000;
+
+let drainRunner: (() => Promise<void>) | null = null;
+let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+let firstNudgeAt = 0;
+
+/** The drain hook registers its bound runner here. */
+export function registerDrainRunner(fn: (() => Promise<void>) | null): void {
+  drainRunner = fn;
+}
+
+/** Ask for a drain soon. Never throws, never blocks the caller. */
+export function nudgeDrain(): void {
+  if (!drainRunner) return;
+
+  const now = Date.now();
+  if (firstNudgeAt === 0) firstNudgeAt = now;
+
+  const fire = () => {
+    nudgeTimer = null;
+    firstNudgeAt = 0;
+    void drainRunner?.().catch(() => {
+      // A drain failure is a normal condition behind bad wifi; the ops stay
+      // queued with backoff and the interval will try again.
+    });
+  };
+
+  if (now - firstNudgeAt >= NUDGE_MAX_WAIT_MS) {
+    if (nudgeTimer) clearTimeout(nudgeTimer);
+    fire();
+    return;
+  }
+
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+  nudgeTimer = setTimeout(fire, NUDGE_DEBOUNCE_MS);
+}
+
+/** Test seam. */
+export function __resetNudgeForTests(): void {
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+  nudgeTimer = null;
+  firstNudgeAt = 0;
+  drainRunner = null;
+}
+
+// ---------------------------------------------------------------------------
+// Sync barrier
+// ---------------------------------------------------------------------------
+
+/**
+ * Wait until one order's queued writes have reached the server.
+ *
+ * ── The race this closes ───────────────────────────────────────────────────
+ *
+ * Local-first writes return as soon as SQLite commits, and the drain pushes
+ * them a moment later. Anything that asks the SERVER to act on those rows must
+ * not run in between.
+ *
+ * Send-to-kitchen is the case that found this: `send_items_to_kitchen`
+ * resolves the cart's items against `order_items` server-side, so items still
+ * sitting in the outbox simply are not there —
+ *
+ *     KITCHEN_ITEMS_UNRESOLVED  requestedCount: 6, updatedCount: 4
+ *
+ * i.e. two items never reached the kitchen. Silent, and exactly the class of
+ * failure ("items don't make it") this project exists to remove.
+ *
+ * Not a general "wait for sync": it is scoped to ONE order, so a stuck ticket
+ * on another check cannot block this one. Bounded by `timeoutMs`, and returns
+ * `false` rather than throwing on timeout — the caller decides whether to
+ * proceed degraded (offline, where queueing is correct) or to stop.
+ */
+export async function waitForOrderSynced(
+  orderId: string,
+  timeoutMs = 5000,
+): Promise<boolean> {
+  // Static import, not a dynamic one: this module already depends on
+  // lib/db/outbox at the top, so there is no cycle to dodge — and a dynamic
+  // import fails outright under Jest's default VM
+  // ("A dynamic import callback was invoked without --experimental-vm-modules"),
+  // which would make the barrier untestable.
+  const initial = await unsyncedOpCountForOrder(orderId);
+  if (initial.pending === 0 && initial.failed === 0) return true;
+
+  // A FAILED op will never clear on its own, so waiting out the timeout is
+  // pure delay for the operator. Report immediately and let the caller decide.
+  if (initial.pending === 0 && initial.failed > 0) {
+    console.error(
+      `[LF] ✗ order ${orderId} has ${initial.failed} op(s) the server REJECTED. ` +
+        `Those rows are NOT on the server and will not arrive without a fix — ` +
+        `expect KITCHEN_ITEMS_UNRESOLVED for them.`,
+    );
+    return false;
+  }
+
+  nudgeDrain();
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 150));
+    const now = await unsyncedOpCountForOrder(orderId);
+    if (now.pending === 0 && now.failed === 0) return true;
+    if (now.pending === 0 && now.failed > 0) {
+      console.error(
+        `[LF] ✗ order ${orderId}: ${now.failed} op(s) rejected during drain — ` +
+          `those items are missing server-side.`,
+      );
+      return false;
+    }
+  }
+
+  const left = await unsyncedOpCountForOrder(orderId);
+  console.warn(
+    `[LF] waitForOrderSynced timed out for ${orderId} — ` +
+      `${left.pending} pending, ${left.failed} failed`,
+  );
+  return false;
 }
