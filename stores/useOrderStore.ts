@@ -554,6 +554,11 @@ function flushItemBindings(): void {
   const batch = new Map(pendingItemBindings);
   pendingItemBindings.clear();
 
+  // Cart lines actually bound by this flush. Collected inside the reducer,
+  // applied to useSyncStatusStore after it commits — writing another store
+  // from inside a setState reducer is how you get a cascade mid-commit.
+  const boundCartIds: string[] = [];
+
   useOrderStore.setState((state) => {
     let nextOrders: typeof state.ordersById | null = null;
 
@@ -579,20 +584,38 @@ function flushItemBindings(): void {
       nextOrders = nextOrders ?? { ...state.ordersById };
       nextOrders[key] = {
         ...order,
-        items: order.items.map((i) =>
-          itemIds.has(i.id) && !i.db_order_item_id
-            ? {
-                ...i,
-                db_order_item_id: itemIds.get(i.id)!,
-                sync_status: "synced" as const,
-              }
-            : i,
-        ),
+        items: order.items.map((i) => {
+          if (!itemIds.has(i.id) || i.db_order_item_id) return i;
+          boundCartIds.push(i.id);
+          return {
+            ...i,
+            db_order_item_id: itemIds.get(i.id)!,
+            sync_status: "synced" as const,
+          };
+        }),
       };
     }
 
     return nextOrders ? { ordersById: nextOrders } : state;
   });
+
+  // ── Close out the sync-status entry too, not just the cart line. ─────────
+  //
+  // addItemToActiveOrder marks every added line 'pending' in
+  // useSyncStatusStore. On the LEGACY path addItemToBackend flips it to
+  // 'synced' when the RPC returns; the local-first branch returns before ever
+  // reaching that, so the entry stayed 'pending' for the life of the order.
+  //
+  // waitForPendingSyncs treats a 'pending' entry as an in-flight write, so
+  // every kitchen send sat out its full 5s timeout before doing anything —
+  // even once the drain had confirmed the row. This is the same fact the
+  // binding above records ("the server has this row"), so it belongs in the
+  // same place.
+  if (boundCartIds.length > 0) {
+    useSyncStatusStore.getState().setSyncStatusBatch(
+      boundCartIds.map((itemId) => ({ itemId, status: "synced" as const })),
+    );
+  }
 }
 
 /** Test seam. */
@@ -2093,7 +2116,7 @@ const addItemToBackend = async (
       seatNumber: item.seatNumber ?? null,
       stationId:
         useStoreSettingsStore.getState().selectedStation?.id ?? null,
-      // NOTE: deliberately NOT `item.id`.
+      // The ROW id is deliberately NOT `item.id`.
       //
       // A CartItem's id is a composite MERGE key built by generateCartItemId —
       // `<menuItemId>|modifiers:<groupId>:<optionId>_<ts>_<rand>` — so that
@@ -2103,6 +2126,17 @@ const addItemToBackend = async (
       // addLocalItem mints a proper uuid instead, and we store it back on the
       // cart line as db_order_item_id below — the same field the legacy path
       // fills from the RPC response.
+      //
+      // But the CART id still has to travel with the op, because it is the
+      // only way back to the line this row belongs to. Omitting it let
+      // addLocalItem default `cartItemId` to the freshly minted ROW uuid, so
+      // markItemSyncedFromDrain looked for a cart line whose id was that uuid,
+      // found none, and never set db_order_item_id. Every item then stayed
+      // "unbound" forever: the kitchen-send barrier burned its full 5s timeout
+      // and _commitKitchenSendForBatch saw zero sendable items, queued the
+      // whole batch as stragglers and reported "Kitchen send queued" — while
+      // nothing at all reached the kitchen.
+      cartItemId: item.id,
     });
 
     if (!res.ok) {

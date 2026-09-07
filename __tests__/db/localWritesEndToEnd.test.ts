@@ -661,3 +661,91 @@ describe("order numbers are per-station and monotonic", () => {
     expect(a.value!.orderNumber).not.toBe(b.value!.orderNumber);
   });
 });
+
+describe("the cart id actually reaches the drain", () => {
+  /**
+   * REGRESSION — "items take too long to send to kitchen", then
+   * "Kitchen send queued / Items will retry when the connection recovers".
+   *
+   * `addLocalItem` defaults `cartItemId` to the ROW uuid it just minted. The
+   * call site in `addItemToBackend` never passed the CART id, so the drain
+   * called markItemSyncedFromDrain(orderId, rowUuid, rowUuid), the sibling
+   * test above ("does nothing when only the row uuid is known") describes
+   * exactly what happened next, and db_order_item_id was never set.
+   *
+   * Downstream that reads as: waitForPendingSyncs sits out its full 5s
+   * timeout on every send, and _commitKitchenSendForBatch finds zero items
+   * with a db_order_item_id, so the whole batch is queued as stragglers and
+   * reported "queued" — while nothing reaches the kitchen at all.
+   */
+  it("addItemToBackend passes the CART id to addLocalItem", () => {
+    const { readFileSync } = require("fs") as typeof import("fs");
+    const { join } = require("path") as typeof import("path");
+    const src = readFileSync(
+      join(__dirname, "..", "..", "stores", "useOrderStore.ts"),
+      "utf8",
+    );
+
+    const start = src.indexOf("const res = await addLocalItem({");
+    expect(start).toBeGreaterThan(-1);
+    const call = src.slice(start, src.indexOf("});", start));
+    expect(call).toContain("cartItemId: item.id");
+  });
+
+  it("defaults cartItemId to the row uuid when the caller omits it", async () => {
+    // Proves the default is real — which is why the call site must be explicit.
+    const order = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+    const item = await addLocalItem({
+      orderId: order.value!.orderId,
+      locationId: LOCATION,
+      itemName: "Fries",
+      quantity: 1,
+      unitPrice: 3.5,
+    });
+
+    const db = getDb()!;
+    const row = await db.getFirstAsync<{ payload: string }>(
+      `SELECT payload FROM outbox WHERE op = 'add_item'`,
+    );
+    expect(JSON.parse(row!.payload).cartItemId).toBe(item.value!.itemId);
+  });
+
+  it("clears the item's pending sync status once the drain binds it", () => {
+    /**
+     * addItemToActiveOrder marks every line 'pending' in useSyncStatusStore.
+     * The legacy RPC path flipped it to 'synced'; the local-first branch
+     * returns before reaching that, so the entry stayed 'pending' forever and
+     * waitForPendingSyncs burned its whole timeout on every kitchen send.
+     */
+    const {
+      markItemSyncedFromDrain,
+      __flushItemBindingsForTests,
+      useOrderStore,
+    } = jest.requireActual("@/stores/useOrderStore");
+    const {
+      useSyncStatusStore,
+    } = jest.requireActual("@/stores/useSyncStatusStore");
+
+    const CART_ID = "6c846d6a|modifiers:aaa:bbb_1788800267074_zku6eh0d4";
+    const ROW_ID = "5cdf8324-9b5e-44a7-bf88-7502b35a9a53";
+
+    useOrderStore.setState({
+      ordersById: {
+        o11: { id: "o11", db_order_id: "o11", items: [{ id: CART_ID }] },
+      },
+    });
+    useSyncStatusStore.getState().setSyncStatus(CART_ID, "pending");
+
+    markItemSyncedFromDrain("o11", CART_ID, ROW_ID);
+    __flushItemBindingsForTests();
+
+    expect(useSyncStatusStore.getState().itemSyncStatus.get(CART_ID)).toBe(
+      "synced",
+    );
+  });
+});
