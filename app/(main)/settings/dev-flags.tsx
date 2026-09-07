@@ -54,6 +54,23 @@ const ALL_RPCS: { key: IdempotentRpc; label: string; description: string }[] = [
 ]
 
 export default function DevFlagsScreen () {
+  const [outboxTotal, setOutboxTotal] = useState<number | null>(null)
+  const [outboxFailed, setOutboxFailed] = useState<number>(0)
+
+  const refreshOutbox = React.useCallback(async () => {
+    try {
+      const { pendingOpCount, failedOpCount } = await import('@/lib/db/outbox')
+      setOutboxTotal(await pendingOpCount())
+      setOutboxFailed(await failedOpCount())
+    } catch {
+      setOutboxTotal(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshOutbox()
+  }, [refreshOutbox])
+
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
 
@@ -100,6 +117,52 @@ export default function DevFlagsScreen () {
       </View>
 
       {/* Master controls */}
+      <SettingsCard title='Local-First Outbox'>
+        {/*
+          Parked ops block unrelated work: send-to-kitchen waits on ANY unsynced
+          item for its order, so debris from a fixed bug stalls new tickets.
+          Discarding drops the sync intent only — the local rows stay, which is
+          why this is safe for finished orders and a judgement call otherwise.
+        */}
+        <Text style={{ color: colors.label, fontSize: s(12), marginBottom: s(8) }}>
+          {outboxTotal === null
+            ? 'Reading outbox…'
+            : `${outboxTotal} queued · ${outboxFailed} parked as failed`}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: s(8) }}>
+          <TouchableOpacity
+            onPress={refreshOutbox}
+            style={{
+              paddingVertical: s(8),
+              paddingHorizontal: s(14),
+              borderRadius: s(8),
+              backgroundColor: colors.muted,
+            }}
+          >
+            <Text style={{ color: colors.heading, fontSize: s(13) }}>Refresh</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            disabled={!outboxFailed}
+            onPress={async () => {
+              const { discardFailedOps } = await import('@/lib/db/outbox')
+              await discardFailedOps()
+              await refreshOutbox()
+            }}
+            style={{
+              paddingVertical: s(8),
+              paddingHorizontal: s(14),
+              borderRadius: s(8),
+              backgroundColor: outboxFailed ? colors.danger : colors.muted,
+              opacity: outboxFailed ? 1 : 0.5,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: s(13) }}>
+              Discard {outboxFailed} failed
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SettingsCard>
+
       <SettingsCard title='Master Controls'>
         <View style={{ flexDirection: 'row', gap: s(8), marginBottom: s(12) }}>
           <TouchableOpacity

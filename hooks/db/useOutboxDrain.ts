@@ -23,11 +23,13 @@
 import { useEffect, useRef } from "react";
 
 import {
+  failedOpCount,
+  failedOpReasons,
   pendingOpCount,
   purgeUnsyncableOps,
   requeueFailedOps,
 } from "@/lib/db/outbox";
-import { isLocalDbReady } from "@/lib/db/index";
+import { initLocalDb, isLocalDbReady } from "@/lib/db/index";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { makeOpHandlers } from "@/services/localFirst/opHandlers";
 import {
@@ -54,6 +56,8 @@ export function useOutboxDrain(): void {
   // a drain over a degraded link is how a struggling connection gets worse.
   const { isOnline } = useNetworkStatus();
   const runningRef = useRef(false);
+  // Last reported parked count, so the reason dump prints once per change.
+  const lastReportedFailedRef = useRef(-1);
 
   useEffect(() => {
     if (!ANY_LOCAL_WRITES) {
@@ -92,8 +96,11 @@ export function useOutboxDrain(): void {
     const run = async () => {
       if (cancelled || runningRef.current) return;
       if (!isLocalDbReady()) {
-        console.warn("[LF] drain skipped — local DB not ready");
-        return;
+        // Wait rather than skip. At mount the DB is still opening, and a
+        // plain skip meant the FIRST drain after launch never ran — the very
+        // one that should flush whatever the last session left queued.
+        const db = await initLocalDb();
+        if (!db || cancelled) return;
       }
       // Cheap guard: an indexed COUNT beats constructing a drain pass for an
       // empty outbox, which is the steady state.
@@ -102,8 +109,38 @@ export function useOutboxDrain(): void {
       runningRef.current = true;
       try {
         const stats = await drainOnce(handlers);
-        if (__DEV__ && stats.attempted > 0) {
-          console.log("[OutboxDrain]", stats);
+        if (stats.attempted > 0) {
+          const stillPending = await pendingOpCount();
+          const failed = await failedOpCount();
+          if (failed > 0) {
+            // Reported ONCE per session, not once per drain.
+            //
+            // Parked ops are by definition not retried, so their state does
+            // not change between drains — re-printing 22 error lines (each
+            // with a React Native stack trace) every 30 seconds buried the
+            // logs that actually describe live behaviour. The count is what
+            // matters continuously; the reasons only need saying once.
+            if (failed !== lastReportedFailedRef.current) {
+              lastReportedFailedRef.current = failed;
+              const reasons = await failedOpReasons();
+              const shown = reasons.slice(0, 5);
+              const lines = [
+                `[LF] ⚠ ${failed} op(s) parked as FAILED (not retried).`,
+                ...shown.map((r) => `   ${r.count}x ${r.op}: ${r.reason}`),
+              ];
+              if (reasons.length > shown.length) {
+                lines.push(`   ...and ${reasons.length - shown.length} more`);
+              }
+              lines.push(
+                `   discardFailedOps() clears them (drops the sync intent, keeps the local rows).`,
+              );
+              // ONE warn, not one per reason: each console call in RN carries a
+              // stack trace, and 22 of them every 30s buried the live logs.
+              console.warn(lines.join("\n"));
+            }
+          } else if (__DEV__) {
+            console.log("[OutboxDrain]", stats, `pending=${stillPending}`);
+          }
         }
       } finally {
         runningRef.current = false;
@@ -115,11 +152,27 @@ export function useOutboxDrain(): void {
     // on a perfectly good network.
     registerDrainRunner(run);
 
-    // One-time cleanup of ops that can never succeed (non-uuid entity ids from
-    // before the id fix). Without this they re-push on every drain forever.
+    // One-time startup cleanup, AFTER the database is actually open.
+    //
+    // This used to fire synchronously on mount. `initLocalDb()` had not
+    // resolved yet, so `getDb()` was null, both helpers returned 0 without
+    // touching anything, and the "one-time" cleanup silently never happened —
+    // which is why a stack of unsyncable ops survived every single restart
+    // while the log cheerfully reported "purged 0".
+    //
+    // Awaiting initLocalDb() is safe and idempotent: it returns the existing
+    // handle when already open, and every caller shares one in-flight promise.
+    //
     // Order matters: drop what can never work, THEN give the rest one retry.
     // Requeueing first would just re-attempt the unsyncable ones.
-    void purgeUnsyncableOps().then(() => requeueFailedOps());
+    void (async () => {
+      const db = await initLocalDb();
+      if (cancelled || !db) return;
+      await purgeUnsyncableOps();
+      await requeueFailedOps();
+      // Kick a drain now that the requeued ops are eligible.
+      if (isOnline) void run();
+    })();
 
     // Mount + whenever connectivity flips back on.
     if (isOnline) void run();

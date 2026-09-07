@@ -273,8 +273,12 @@ export interface AddLocalItemInput {
   courseNumber?: number | null;
   seatNumber?: number | null;
   stationId?: string | null;
-  /** Reuse the cart item's id, so the store key IS the row id. */
-  itemId?: string;
+  /**
+   * The CartItem's id — a composite merge key (`<menuItemId>|modifiers:…`),
+   * NOT a uuid. Carried through so the drain can bind the resulting row id
+   * back onto the correct cart line.
+   */
+  cartItemId?: string;
 }
 
 /**
@@ -285,7 +289,7 @@ export interface AddLocalItemInput {
 export async function addLocalItem(
   input: AddLocalItemInput,
 ): Promise<LocalWriteResult<{ itemId: string }>> {
-  const itemId = input.itemId ?? mintUuid();
+  const itemId = mintUuid();
   const deviceId = getDeviceId();
   const ts = nowIso();
 
@@ -308,6 +312,7 @@ export async function addLocalItem(
     courseNumber: input.courseNumber ?? 1,
     seatNumber: input.seatNumber ?? null,
     stationId: input.stationId ?? null,
+    cartItemId: input.cartItemId ?? itemId,
   };
 
   const statements = [

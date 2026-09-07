@@ -72,6 +72,14 @@ export interface AddItemPayload {
   courseNumber?: number | null;
   seatNumber?: number | null;
   stationId?: string | null;
+  /**
+   * The CartItem's id — a composite merge key, not the row uuid.
+   *
+   * Needed to bind db_order_item_id back onto the right cart line once the
+   * drain confirms the row. Matching on the row uuid alone found nothing,
+   * because that is not what the cart line is keyed by.
+   */
+  cartItemId?: string;
 }
 
 export interface SeatGuestsPayload {
@@ -219,6 +227,29 @@ export function makeOpHandlers(
         console.log(
           `[LF] ✓ add_order_item_v5 item=${op.entityId} order=${p.orderId} existed=${!!data?.already_existed}`,
         );
+
+        // NOW the server has the row, so the cart line may advertise it.
+        // Every downstream path (kitchen send, coursing, seat assignment)
+        // reads db_order_item_id as "the server has this" and fails hard if it
+        // lies — "Order item not found" (P0001) is what that looks like.
+        //
+        // Required lazily: stores/ imports services/, so a static import here
+        // would close a cycle.
+        try {
+          const {
+            markItemSyncedFromDrain,
+          } = require("@/stores/useOrderStore") as typeof import("@/stores/useOrderStore");
+          // (orderId, CART id, ROW uuid). The cart line is keyed by the
+          // composite cart id; the row it now points at is op.entityId.
+          markItemSyncedFromDrain(
+            p.orderId,
+            p.cartItemId ?? op.entityId,
+            op.entityId,
+          );
+        } catch (e) {
+          console.warn("[LF] could not bind synced item to cart:", e);
+        }
+
         return { kind: "synced", syncVersion: data?.sync_version ?? null };
       } catch (error) {
         return rpcError("add_order_item_v5", error);

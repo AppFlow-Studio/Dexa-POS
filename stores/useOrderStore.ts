@@ -500,6 +500,107 @@ function calculateOrderTotals(
  */
 export const calculateOrderTotalsForOrder = calculateOrderTotals;
 
+/**
+ * Called by the outbox drain once an item's row actually exists server-side.
+ *
+ * This is the ONLY writer of `db_order_item_id` on the local-first path. See
+ * the comment in addItemToBackend for why it cannot be set at write time.
+ *
+ * ── Batched, deliberately. ────────────────────────────────────────────────
+ *
+ * The drain confirms items ONE AT A TIME. Writing each one straight into the
+ * store produced a separate `set()` per item, and every one of those re-ran
+ * the coursing and seating effects — which key off `db_order_item_id` and
+ * issue their own RPCs. Ringing in six items meant six render passes and six
+ * rounds of course syncing, which is what made a table order feel laggy and
+ * made the course list appear, vanish and reappear while items were still
+ * being added.
+ *
+ * Coalescing into one microtask-flushed batch turns that back into a single
+ * commit: the effects run once, with every item already bound.
+ */
+const pendingItemBindings = new Map<string, Map<string, string>>();
+let bindingFlushScheduled = false;
+
+export function markItemSyncedFromDrain(
+  orderId: string,
+  cartItemId: string,
+  dbItemId: string,
+): void {
+  // Keyed by CART id, valued by ROW uuid.
+  //
+  // These are different strings and conflating them was the bug: a CartItem's
+  // id is a composite merge key (`<menuItemId>|modifiers:…_<ts>_<rand>`) so
+  // that re-tapping the same item collapses into one line, while the row id is
+  // a uuid minted in addLocalItem. Matching cart lines on the uuid found
+  // nothing, db_order_item_id was never set, and every item stayed "draining"
+  // forever even though the drain had synced it.
+  let map = pendingItemBindings.get(orderId);
+  if (!map) {
+    map = new Map();
+    pendingItemBindings.set(orderId, map);
+  }
+  map.set(cartItemId, dbItemId);
+
+  if (bindingFlushScheduled) return;
+  bindingFlushScheduled = true;
+  queueMicrotask(flushItemBindings);
+}
+
+function flushItemBindings(): void {
+  bindingFlushScheduled = false;
+  if (pendingItemBindings.size === 0) return;
+
+  const batch = new Map(pendingItemBindings);
+  pendingItemBindings.clear();
+
+  useOrderStore.setState((state) => {
+    let nextOrders: typeof state.ordersById | null = null;
+
+    for (const [orderId, itemIds] of batch) {
+      // The order may be keyed by either id during the rollout.
+      const key = state.ordersById[orderId]
+        ? orderId
+        : Object.keys(state.ordersById).find(
+            (k) => state.ordersById[k]?.db_order_id === orderId,
+          );
+      if (!key) continue;
+
+      const order = (nextOrders ?? state.ordersById)[key];
+      if (!order) continue;
+
+      // Skip entirely if nothing would change — a no-op set() still notifies
+      // every subscriber, which is the churn this batching exists to remove.
+      const needsBinding = order.items.some(
+        (i) => itemIds.has(i.id) && !i.db_order_item_id,
+      );
+      if (!needsBinding) continue;
+
+      nextOrders = nextOrders ?? { ...state.ordersById };
+      nextOrders[key] = {
+        ...order,
+        items: order.items.map((i) =>
+          itemIds.has(i.id) && !i.db_order_item_id
+            ? {
+                ...i,
+                db_order_item_id: itemIds.get(i.id)!,
+                sync_status: "synced" as const,
+              }
+            : i,
+        ),
+      };
+    }
+
+    return nextOrders ? { ordersById: nextOrders } : state;
+  });
+}
+
+/** Test seam. */
+export function __flushItemBindingsForTests(): void {
+  flushItemBindings();
+}
+
+
 // ============================================================================
 // HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
 // ============================================================================
@@ -819,6 +920,8 @@ async function _commitKitchenSendForBatch(
 }
 
 async function _commitKitchenSendForBatchInner(
+  // Reassigned after the sync barrier — see the re-read below.
+  // eslint-disable-next-line prefer-const
   freshOrder: OrderProfile,
   localOrderId: string,
   sentLocalIds: Set<string>,
@@ -849,6 +952,25 @@ async function _commitKitchenSendForBatchInner(
   // is slow is worse than a late server-side route.
   if (LOCAL_WRITES_ITEMS && isOnlineNow && freshOrder.db_order_id) {
     await waitForOrderSynced(freshOrder.db_order_id);
+
+    // RE-READ after the barrier. `freshOrder` was captured before it.
+    //
+    // The drain confirms items, then binds db_order_item_id through a
+    // MICROTASK-batched store commit (markItemSyncedFromDrain). So the outbox
+    // empties — and the barrier returns — a tick before the cart lines
+    // actually carry their ids. Using the pre-barrier snapshot meant those
+    // items still looked unbound, fell into `stragglerIds`, and got queued to
+    // the legacy path... which then reported, on every single send:
+    //
+    //     send_to_kitchen blocked on 1 item(s)
+    //
+    // Awaiting a macrotask lets the pending binding batch flush first, then we
+    // read the order the drain actually left behind.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const rebound =
+      useOrderStore.getState().ordersById[localOrderId] ??
+      useOrderStore.getState().ordersById[freshOrder.db_order_id];
+    if (rebound) freshOrder = rebound;
   }
 
   const freshItems = freshOrder.items ?? [];
@@ -1403,8 +1525,16 @@ const ensureOrderCreated = async (
       stationNumber:
         useStoreSettingsStore.getState().selectedStation?.station_number ?? null,
       stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
-      staffId: (order as any).created_by_staff_id ?? null,
-      tableNumber: (order as any).table_number ?? order.service_location_id ?? null,
+      // Same resolvers the legacy create_order path uses (see the
+      // createOrderParams block above). Reading `order.created_by_staff_id`
+      // instead was wrong twice over: OrderProfile has no such field, so it
+      // was always undefined — the order synced with a NULL creator and
+      // Previous Orders rendered "Server: Unknown" — and it bypassed the
+      // kiosk-safety rule that decides which staff id may be attributed.
+      staffId: getKioskSafeCreatorStaffId(),
+      // A table NUMBER, not the table's uuid. service_location_id is the
+      // floor-plan object id; the server stores the human-facing name.
+      tableNumber: resolveTableNameForOrder(order.service_location_id),
       sessionId: order.session_id ?? null,
       customerName: order.customer_name ?? null,
       customerPhone: order.customer_phone ?? null,
@@ -1909,6 +2039,18 @@ const addItemToBackend = async (
   // semantics the outbox does not carry yet — routing it here would silently
   // add a second line instead of increasing the first.
   if (LOCAL_WRITES_ITEMS && !isMerge) {
+    // Already written? Do nothing.
+    //
+    // addLocalItem mints a fresh row uuid per call, so a second call for the
+    // same cart line would create a SECOND order_items row — a duplicate on
+    // the guest's check. The cart line carrying a db_order_item_id is the
+    // proof it has already been written and bound by the drain.
+    if (item.db_order_item_id) {
+      console.log(
+        `[LF] addItem skipped — cart line already bound to ${item.db_order_item_id.slice(0, 8)}`,
+      );
+      return true;
+    }
     console.log(
       `[LF] addItem LOCAL path item=${item.id?.slice(0, 8)} name=${item.name}`,
     );
@@ -1969,34 +2111,24 @@ const addItemToBackend = async (
       return false;
     }
 
-    // Bind the cart line to its row id, exactly as the legacy path does with
-    // the RPC's returned order_item_id. Without this the line has no
-    // db_order_item_id and every later mutation (quantity, void, seat, course)
-    // has nothing to address.
-    const itemDbId = res.value!.itemId;
-    useOrderStore.setState((state) => {
-      const key = resolveOrderKey();
-      const target = state.ordersById[key];
-      if (!target) return state;
-      return {
-        ordersById: {
-          ...state.ordersById,
-          [key]: {
-            ...target,
-            items: target.items.map((i) =>
-              i.id === item.id
-                ? {
-                    ...i,
-                    db_order_item_id: itemDbId,
-                    sync_status: "synced" as const,
-                  }
-                : i,
-            ),
-          },
-        },
-      };
-    });
-
+    // ── db_order_item_id is set by the DRAIN, not here. ────────────────
+    //
+    // It is tempting to set it now — under client ids we already know the
+    // value. But across this codebase `db_order_item_id` does not mean "the
+    // id"; it means **the server has this row**. Dozens of paths gate on it:
+    //
+    //   _commitKitchenSendForBatchInner  → filters to items that have it,
+    //                                      queues the rest as stragglers
+    //   coursing sync                    → "Order item not found" (P0001)
+    //   seat assignment sync             → same
+    //
+    // Setting it at LOCAL write time told all of them the server was ready
+    // when it was not, turning a safe deferral into a hard failure. Letting
+    // the drain set it restores the exact timing contract those paths were
+    // written against — they defer, retry and queue correctly again, with no
+    // per-caller barrier needed.
+    //
+    // markItemSyncedFromDrain() below is the single place it gets written.
     onSyncComplete?.(resolveOrderKey());
     return true;
   }
@@ -2004,9 +2136,20 @@ const addItemToBackend = async (
   if (!LOCAL_WRITES_ITEMS) {
     console.log("[LF] addItem LEGACY path — EXPO_PUBLIC_LOCAL_WRITES_ITEMS off");
   } else if (isMerge) {
+    // A merge is an UPDATE against an existing row, addressed by
+    // db_order_item_id — which on the local-first path only exists once the
+    // drain has confirmed the original add. Tapping the same item twice in
+    // quick succession would otherwise fire update_item_quantity against a
+    // row the server does not have yet, losing the second tap's quantity.
+    //
+    // Wait for this order's writes to land first. Bounded, and on timeout we
+    // fall through to the legacy handling, which queues rather than drops.
     console.log(
       "[LF] addItem LEGACY path — this is a MERGE (quantity update), not a new item",
     );
+    if (isNetworkOnline && order.db_order_id) {
+      await waitForOrderSynced(order.db_order_id);
+    }
   }
 
   // ========================================================================
@@ -14383,8 +14526,46 @@ export const useOrderStore = create<OrderState>()(
               return; // No new items to send
             }
 
+            // ── Do not mark an item "sent" if it CANNOT be delivered. ─────
+            //
+            // The optimistic mark is correct offline-first: the op is queued
+            // and will deliver. It is a LIE for an item whose write the server
+            // permanently rejected — that op is parked, nothing will retry it,
+            // and the kitchen will never see the item. The operator then reads
+            // "sent" on screen, walks away, and the food is never made.
+            //
+            // The tell was that a reload flipped those items back to unsent:
+            // the local optimistic state said sent, the durable state said new,
+            // and the durable one was right.
+            //
+            // Items that are merely still draining are NOT excluded — those
+            // will arrive, and blocking the mark would make every fast send
+            // look failed.
+            let undeliverableIds = new Set<string>();
+            if (LOCAL_WRITES_ITEMS) {
+              try {
+                const { unsyncedItemIds, failedOpCount } = await import(
+                  "@/lib/db/outbox"
+                );
+                if ((await failedOpCount()) > 0) {
+                  const candidates = order.items
+                    .filter((i) => !i.kitchen_status || i.kitchen_status === "new")
+                    .map((i) => i.db_order_item_id ?? i.id);
+                  undeliverableIds = new Set(
+                    await unsyncedItemIds(candidates),
+                  );
+                }
+              } catch {
+                // Diagnostics unavailable — fall back to the optimistic mark
+                // rather than blocking a send that is probably fine.
+              }
+            }
+
             const updatedItems = order.items.map((item) => {
-              if (!item.kitchen_status || item.kitchen_status === "new") {
+              const isNew = !item.kitchen_status || item.kitchen_status === "new";
+              const undeliverable =
+                undeliverableIds.has(item.db_order_item_id ?? item.id);
+              if (isNew && !undeliverable) {
                 return {
                   ...item,
                   kitchen_status: getKitchenSentStatus() as any,
@@ -14393,6 +14574,19 @@ export const useOrderStore = create<OrderState>()(
               }
               return item;
             });
+
+            if (undeliverableIds.size > 0) {
+              console.error(
+                `[LF] ✗ ${undeliverableIds.size} item(s) left UNSENT — their ` +
+                  `writes were rejected by the server, so the kitchen cannot ` +
+                  `receive them. They stay "new" rather than falsely showing sent.`,
+              );
+              toastService.show({
+                title: "Some items could not be sent",
+                message: `${undeliverableIds.size} item(s) failed to sync and were not sent to the kitchen.`,
+                type: "error",
+              });
+            }
 
             // Check if the timer needs to be started
             const shouldStartTimer =

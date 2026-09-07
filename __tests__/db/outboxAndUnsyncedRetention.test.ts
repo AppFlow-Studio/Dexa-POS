@@ -28,12 +28,15 @@ import {
   markRejected,
   markRetry,
   markSynced,
+  failedOpCount,
   nextLamport,
   observeRemoteLamport,
   pendingOpCount,
   backoffMs,
   purgeUnsyncableOps,
   requeueFailedOps,
+  failedOpReasons,
+  discardFailedOps,
   unsyncedItemIds,
   __resetLamportForTests,
 } from "@/lib/db/outbox";
@@ -417,6 +420,42 @@ describe("drain bookkeeping", () => {
     expect(row?._sync_status).toBe("local");
   });
 
+  it("reports the stored reason each op was parked", async () => {
+    // A parked op from an earlier session is correctly NOT retried, so it
+    // emits no fresh error — the only symptom is a count that never drops.
+    // last_error was always stored; it just was never read back.
+    await seedOp("op-a");
+    await seedOp("op-b", "ord-2");
+    await markRejected("op-a", "modifier_group_name violates not-null", {
+      table: "orders",
+      id: "ord-1",
+    });
+    await markRejected("op-b", "modifier_group_name violates not-null", {
+      table: "orders",
+      id: "ord-2",
+    });
+
+    const reasons = await failedOpReasons();
+
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0].count).toBe(2);
+    expect(reasons[0].reason).toMatch(/modifier_group_name/);
+  });
+
+  it("discardFailedOps drops the intent but keeps the local rows", async () => {
+    const db = getDb()!;
+    await seedOp("op-dead2");
+    await markRejected("op-dead2", "unfixable", { table: "orders", id: "ord-1" });
+
+    const discarded = await discardFailedOps();
+
+    expect(discarded).toBe(1);
+    expect(await failedOpCount()).toBe(0);
+    // The order itself is untouched — this discards syncing, not data.
+    const row = await db.getFirstAsync(`SELECT id FROM orders WHERE id = 'ord-1'`);
+    expect(row).toBeTruthy();
+  });
+
   it("names exactly which items are not on the server", async () => {
     // The diagnostic behind KITCHEN_ITEMS_UNRESOLVED: an id on the cart line
     // whose row is still 'local' is an item the server cannot route.
@@ -499,9 +538,27 @@ describe("drain bookkeeping", () => {
       ],
     );
 
+    // An op whose ENTITY id is a valid uuid but whose ORDER id is legacy is
+    // just as unsyncable — the order can never exist server-side, so the push
+    // fails on p_order_id forever. Purging on entity_id alone left exactly
+    // these behind.
+    await commitLocalWrite(
+      [],
+      [
+        {
+          id: "op-legacy-order",
+          op: "add_item",
+          entity: "order_item",
+          entityId: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+          orderId: "order_1788799823504_fgvy5k",
+          payload: {},
+        },
+      ],
+    );
+
     const purged = await purgeUnsyncableOps();
 
-    expect(purged).toBe(1);
+    expect(purged).toBe(2);
     const left = await db.getAllAsync<{ id: string }>(
       `SELECT id FROM outbox ORDER BY id`,
     );

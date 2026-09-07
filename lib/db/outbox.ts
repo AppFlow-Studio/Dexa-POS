@@ -468,8 +468,14 @@ export async function markRejected(
   try {
     await dbWriteMutex.runExclusive(async () => {
       await db.withTransactionAsync(async () => {
+        // attempts is incremented here too, not just on retry. It is what
+        // bounds requeueFailedOps(): an op whose stored PAYLOAD is malformed
+        // (written by code that has since been fixed) fails identically on
+        // every launch, and without a ceiling it would be retried forever.
         await db.runAsync(
-          `UPDATE outbox SET status = 'failed', last_error = ? WHERE id = ?`,
+          `UPDATE outbox
+              SET status = 'failed', last_error = ?, attempts = attempts + 1
+            WHERE id = ?`,
           [reason.slice(0, 500), opId],
         );
         if (row) {
@@ -506,6 +512,9 @@ export async function pendingOpCount(): Promise<number> {
   const db = getReadDb();
   if (!db) return 0;
   try {
+    // Every row, failed included — this answers "does this device hold writes
+    // the server has not seen?", and a parked op is still one of those.
+    // Callers that need the split use failedOpCount() / failedOpReasons().
     const row = await db.getFirstAsync<{ n: number }>(
       `SELECT COUNT(*) AS n FROM outbox`,
     );
@@ -541,9 +550,18 @@ export async function purgeUnsyncableOps(): Promise<number> {
   const UUID = "????????-????-????-????-????????????";
   try {
     return await dbWriteMutex.runExclusive(async () => {
+      // Checks BOTH ids, not just entity_id.
+      //
+      // An `add_item` op can have a perfectly valid uuid entity_id while its
+      // order_id is a legacy `order_<ts>_<rand>` — the item is fine, the order
+      // it hangs off can never exist server-side, so the push fails with 22P02
+      // on p_order_id forever. Purging on entity_id alone left exactly those
+      // behind, which is why the parked count stayed at 22 across restarts.
       const res = await db.runAsync(
-        `DELETE FROM outbox WHERE entity_id NOT GLOB ?`,
-        [UUID],
+        `DELETE FROM outbox
+          WHERE entity_id NOT GLOB ?
+             OR (order_id IS NOT NULL AND order_id NOT GLOB ?)`,
+        [UUID, UUID],
       );
       const n = res.changes ?? 0;
       if (n > 0) {
@@ -574,14 +592,25 @@ export async function purgeUnsyncableOps(): Promise<number> {
  * launch rather than every 30 seconds, which is cheap and self-limiting. The
  * attempt counter and last_error are preserved so the history stays visible.
  */
+const REQUEUE_ATTEMPT_CEILING = 3;
+
 export async function requeueFailedOps(): Promise<number> {
   const db = getDb();
   if (!db) return 0;
   try {
     return await dbWriteMutex.runExclusive(async () => {
+      // Only ops that have not already burned their retries.
+      //
+      // A shipped fix can rescue an op whose failure was in the CODE. It can
+      // do nothing for one whose failure is in its own stored PAYLOAD — the
+      // two modifier ops written before the flatten fix carry the old nested
+      // cart shape, so they reproduce `null value in column
+      // "modifier_group_name"` on every single launch. Requeueing those
+      // forever is noise that hides real failures.
       const res = await db.runAsync(
         `UPDATE outbox SET status = 'pending', next_at = NULL
-          WHERE status = 'failed'`,
+          WHERE status = 'failed' AND attempts < ?`,
+        [REQUEUE_ATTEMPT_CEILING],
       );
       const n = res.changes ?? 0;
       if (n > 0) {
@@ -589,6 +618,15 @@ export async function requeueFailedOps(): Promise<number> {
           `[LF] requeued ${n} previously-failed op(s) for one retry ` +
             `(a fix may have shipped since they were parked)`,
         );
+      } else {
+        const exhausted = await failedOpCount();
+        if (exhausted > 0) {
+          console.warn(
+            `[LF] ${exhausted} parked op(s) have exhausted their retries — ` +
+              `their stored payload is malformed, not their code path. ` +
+              `discardFailedOps() is the only way out.`,
+          );
+        }
       }
       return n;
     });
@@ -651,6 +689,63 @@ export async function unsyncedItemIds(itemIds: string[]): Promise<string[]> {
     return itemIds.filter((id) => byId.get(id) !== "synced");
   } catch {
     return [];
+  }
+}
+
+/**
+ * The distinct reasons ops are parked, with counts.
+ *
+ * `last_error` is already stored on every failed op — it just was never read
+ * back. Without this, a parked op from an earlier session is invisible: it is
+ * correctly NOT retried, so it produces no fresh error line, and the only
+ * symptom is a count that never goes down.
+ */
+export async function failedOpReasons(): Promise<
+  { reason: string; count: number; op: string }[]
+> {
+  const db = getReadDb();
+  if (!db) return [];
+  try {
+    return await db.getAllAsync<{ reason: string; count: number; op: string }>(
+      `SELECT COALESCE(last_error, '(no reason recorded)') AS reason,
+              COUNT(*) AS count,
+              op
+         FROM outbox
+        WHERE status = 'failed'
+        GROUP BY reason, op
+        ORDER BY count DESC`,
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Delete every parked op. RECOVERY ONLY — this discards writes.
+ *
+ * The rows stay in the local DB; only the intent to sync them is dropped. Use
+ * when the parked ops were produced by a bug that has since been fixed and the
+ * orders they belong to are already finished, so replaying them is pointless
+ * and their presence blocks unrelated work (send-to-kitchen waits on any
+ * unsynced item for its order).
+ *
+ * NOT called automatically anywhere: the difference between "these are stale
+ * debris" and "these are a guest's unsent check" is a judgement only a person
+ * can make.
+ */
+export async function discardFailedOps(): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  try {
+    return await dbWriteMutex.runExclusive(async () => {
+      const res = await db.runAsync(`DELETE FROM outbox WHERE status = 'failed'`);
+      const n = res.changes ?? 0;
+      console.warn(`[LF] discarded ${n} parked op(s) — their rows remain local`);
+      return n;
+    });
+  } catch (error) {
+    console.warn("[LF] discardFailedOps failed:", error);
+    return 0;
   }
 }
 
