@@ -7,6 +7,7 @@ in the owning feature, engineering, quality, or handoff folder.
 
 | Date | Ticket | Status | Plan |
 | --- | --- | --- | --- |
+| 2026-09-08 | Kiosk Valor validation - shared adapter and payment safety | Confirmed code gaps implemented; 131 tests passed; draft review, physical QA, billing grace contract and deployment verification pending | `docs/features/kiosk/valor-validation.md` |
 | 2026-08-18 | P0 refund receipts - approval persistence, physical print, and reprint | POS code complete - migration, physical QA, and website hosted/email/SMS handoff remain | `docs/features/payments-terminals/refund-receipt-printing.md` |
 | 2026-08-21 | DEXA-00017 support-inbox POS fixes + combined refund/menu evidence | POS items 1-5 implemented; combined QA runbook ready; CFD and website tip-rule work remain | `docs/quality/qa-tracking/support-inbox-refund-menu-video-runbook-2026-08-21.md` |
 | 2026-08-18 | POS Orders provider chips use shared resolver | Code complete - tablet QA pending | `docs/features/orders/provider-chip-platform-resolver-regression.md` |

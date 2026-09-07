@@ -36,7 +36,6 @@ import {
   VALOR_CANCEL_PORT,
   VALOR_SUCCESS_STATE,
   VALOR_FAILED_STATE,
-  VALOR_CLEARED_STATE,
   VALOR_ACK_TIMEOUT_MS,
   VALOR_SALE_TIMEOUT_MS,
   VALOR_TERMINAL_QUERY_TIMEOUT_MS,
@@ -105,6 +104,7 @@ interface SendOpts {
 export class ValorService {
   private _transport: ITerminalTransport | null = null;
   private _config: ValorConnectionConfig | null = null;
+  private _connectedConfig: ValorConnectionConfig | null = null;
   private readonly _mutex = new Mutex();
   private _suspended = false;
 
@@ -119,9 +119,11 @@ export class ValorService {
   }
 
   async connect(config: ValorConnectionConfig): Promise<void> {
-    this._config = config;
     this._suspended = false;
-    await this._runExclusive(() => this._connectInner(config));
+    await this._runExclusive(async () => {
+      await this._connectInner(config);
+      this._config = config;
+    });
   }
 
   disconnect(): void {
@@ -167,19 +169,22 @@ export class ValorService {
     });
     await transport.connect();
     this._transport = transport;
+    this._connectedConfig = { ...config };
   }
 
   private _sameEndpoint(config: ValorConnectionConfig): boolean {
-    if (!this._config) return false;
+    const connected = this._connectedConfig;
+    if (!connected) return false;
+    if ((connected.connectionType ?? "local_socket") !== (config.connectionType ?? "local_socket") || connected.terminalId !== config.terminalId || connected.epi !== config.epi) return false;
     if ((config.connectionType ?? "local_socket") === "usb") return true;
     return (
-      this._config.host === config.host &&
-      (this._config.port ?? VALOR_DEFAULT_PORT) === (config.port ?? VALOR_DEFAULT_PORT)
+      connected.host === config.host &&
+      (connected.port ?? VALOR_DEFAULT_PORT) === (config.port ?? VALOR_DEFAULT_PORT) &&
+      (connected.cancelPort ?? VALOR_CANCEL_PORT) === (config.cancelPort ?? VALOR_CANCEL_PORT)
     );
   }
 
   private async _ensureConnectedInner(): Promise<void> {
-    if (this._transport?.isOpen) return;
     if (!this._config) throw new ValorCommandError("Not configured", "connect", null);
     await this._connectInner(this._config);
   }
@@ -239,8 +244,9 @@ export class ValorService {
           // unknown — leave indeterminate for the caller's manual-reconcile path.
           return { success: false, indeterminate: true, stan, error: err.message };
         }
-        // Pre-S2 failure — the request never reached card entry; safe to treat as a clean failure.
-        return { success: false, error: err.message };
+        // USB can skip ACK/STAN entirely while still collecting a card. A lost
+        // final response there cannot be classified as a clean no-charge failure.
+        return { success: false, indeterminate: this._config?.connectionType === "usb" && err.phase !== "connect", error: err.message };
       }
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -251,7 +257,7 @@ export class ValorService {
     const partial = String(final.PARTIAL ?? "0") === "1";
     const base = {
       raw: final,
-      terminalResponse: buildValorTerminalResponse(final, this._config?.terminalId),
+      terminalResponse: buildValorTerminalResponse({ ...final, STAN_NO: final.STAN_NO ?? stan ?? undefined }, this._config?.terminalId),
       stan: stan ?? (final.STAN_NO != null ? String(final.STAN_NO) : undefined),
       tranNo: final.TRAN_NO != null ? String(final.TRAN_NO) : undefined,
       rrn: final.RRN != null ? String(final.RRN) : undefined,
@@ -263,7 +269,7 @@ export class ValorService {
       }
       return { success: true, ...base };
     }
-    if (state === VALOR_CLEARED_STATE) {
+    if (state !== VALOR_FAILED_STATE) {
       // Final STATE "-2" — indeterminate; caller routes to manual reconcile.
       return { success: false, indeterminate: true, ...base };
     }
@@ -398,7 +404,7 @@ export class ValorService {
       if (msg.includes("not found") || msg.includes("no record") || final.ERROR_CODE) {
         return { outcome: "unknown", raw: final };
       }
-      return { outcome: "declined", raw: final };
+      return { outcome: state === VALOR_FAILED_STATE ? "declined" : "unknown", raw: final };
     } catch {
       // Could not reach the terminal to confirm — the caller falls back to manual reconcile.
       return { outcome: "unknown" };
@@ -812,7 +818,6 @@ export class ValorService {
               continue;
             }
           }
-          const captured = stan;
           if (opts.sendTrailingAck) {
             transport
               .write(toWire({ STATE: "0", MSG: "ACK" }))

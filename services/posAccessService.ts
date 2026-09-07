@@ -13,6 +13,7 @@ export function stationToSelectedStation(station: Station): SelectedStation {
     id: station.id,
     station_name: station.station_name,
     station_type: station.station_type,
+    kiosk_profile_id: station.kiosk_profile_id,
     station_number: station.station_number,
     view_scope: station.view_scope,
     can_create_orders: station.can_create_orders,
@@ -101,7 +102,7 @@ export async function refreshSelectedStationOperationalState(
   const stations = (Array.isArray(data) ? data : []) as Station[];
   const freshStation = stations.find((station) => station.id === selectedStation.id);
 
-  if (!freshStation) {
+  if (!freshStation || freshStation.is_active === false) {
     return { valid: false, failure: createStationInactiveFailure() };
   }
 

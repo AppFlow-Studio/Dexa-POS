@@ -1,4 +1,5 @@
 import appJson from "@/app.json";
+import { getKioskReviewOrder, resolveKioskReview } from "./checkoutGuard";
 import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -1190,6 +1191,30 @@ export function KioskDiagnosticsScreen({
 
   const renderOverview = () => (
     <>
+      {selectedStation?.id && getKioskReviewOrder(selectedStation.id) ? (
+        <Section title="Payment review required" Icon={CreditCard}>
+          <Row label="Order ID" value={getKioskReviewOrder(selectedStation.id) ?? ""} mono />
+          <TouchableOpacity
+            className="px-5 py-4"
+            onPress={() => Alert.alert(
+              "Confirm payment reconciliation",
+              "Check the Valor transaction and Supabase order/payment first. Record or resolve any captured payment and dispatch the paid order if needed. This only unlocks kiosk checkout; it does not refund, charge, or update payment records.",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Reconciled - unlock kiosk", onPress: () => {
+                  if (!resolveKioskReview(selectedStation.id)) {
+                    Alert.alert("Payment still running", "Wait for the terminal operation to finish.");
+                    return;
+                  }
+                  Alert.alert("Kiosk unlocked", "Close settings and start a new customer session.");
+                } },
+              ],
+            )}
+          >
+            <Text className="text-teal-700 font-bold">Resolve kiosk payment hold</Text>
+          </TouchableOpacity>
+        </Section>
+      ) : null}
       <Section
         title="Connectivity"
         Icon={rawIsOnline ? Wifi : WifiOff}
