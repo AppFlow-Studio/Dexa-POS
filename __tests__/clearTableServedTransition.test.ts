@@ -15,10 +15,9 @@ describe("clear table from served sessions", () => {
   });
 
   it("dispatches grouped table clear once after archiving remaining orders", () => {
-    for (const src of [
-      read("components/tables/ExpandedTableDetails.tsx"),
-      read("components/tables/TableListItem.tsx"),
-    ]) {
+    // The clear-table flow now lives only in ExpandedTableDetails; TableListItem
+    // was reduced to the void path and no longer dispatches CLEAR_TABLE.
+    for (const src of [read("components/tables/ExpandedTableDetails.tsx")]) {
       expect(src).toContain(
         "const [firstOrder, ...remainingOrders] = tableData.orders;",
       );

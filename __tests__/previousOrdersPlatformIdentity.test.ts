@@ -97,9 +97,16 @@ describe("row chip matches the provider filter chip", () => {
     ).toBe("grubhub");
   });
 
-  it("still says House for a genuine first-party order with no platform", () => {
+  it("shows no provider chip until a first-party platform is explicit", () => {
+    // Changed deliberately in 182d75b5 (#189) alongside the Grubhub/DoorDash
+    // precedence fix: House is no longer the fallback for "online order with
+    // no platform at all", because that swallowed unmapped marketplaces and
+    // labelled them as first-party. `buildProviderRoster` drops the null, so
+    // such an order contributes no chip. Mirrors the sibling assertion in
+    // `previousOrdersFilters.test.ts` ("requires an explicit first-party
+    // platform before showing House").
     expect(
       providerFor({ order_source: "online_store", delivery_platform: null }, []),
-    ).toBe("house");
+    ).toBeNull();
   });
 });

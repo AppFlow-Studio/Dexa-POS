@@ -22,6 +22,16 @@ jest.mock("@/services/offlineSyncService", () => ({
   getIsOnline: () => mockGetIsOnline(),
 }));
 
+// The optimistic accept status comes from `getOrderSentStatus()`, which reads
+// the KDS workflow mode: "preparing" in 2-step, "sent_to_kitchen" in 3-step.
+// Pin 3-step so the expectations below name one concrete status; the 2-step
+// value is exercised by `kitchenStatusUtils`' own tests.
+jest.mock("@/stores/useLocationConfigStore", () => ({
+  useLocationConfigStore: {
+    getState: () => ({ config: { kds: { workflowMode: "3-step" } } }),
+  },
+}));
+
 const mockAccept = jest.fn();
 const mockDecline = jest.fn();
 const mockMarkReady = jest.fn();
