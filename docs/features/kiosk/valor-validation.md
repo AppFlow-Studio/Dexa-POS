@@ -56,22 +56,21 @@ DexaPOS-Website edit.
 
 ## Shared Contracts / Deployment
 
-**Billing conflict requiring website/backend owner review:**
-`lib/posAccessControl.ts` includes `past_due`/`past-due` in its blocked status set.
-`normalizeMerchantBillingAccess` does not inspect grace expiry and does not allow
-`access_allowed: true` or `pos_access_allowed: true` to override that status.
-Thus a past-due account with valid grace can be blocked if the RPC returns that
-status. `fetchMerchantBillingAccess` consumes `get_merchant_subscription_status`.
-Confirm the deployed RPC's canonical access/grace fields and policy with billing
-owners. This branch deliberately does not change billing semantics or schema.
+**Billing contract follow-up implemented in POS:**
+`fetchMerchantBillingAccess` now consumes the shared location-aware
+`get_subscription_access_state` RPC. Explicit allow/deny is authoritative, so
+`billing_exempt` and `past_due_grace` remain accessible without inferring a
+denial from nested subscription rows. The website-owned migration must be
+deployed and POS Supabase types regenerated before E2E verification. See
+`docs/features/billing/billing-pos-suspended-access.md`.
 
 Deployment checks (read-only, authorized environment):
 
 - [ ] Confirm `get_location_stations_with_status` returns active assigned Valor
   terminal ID, `epi`, `ip_address`, `port`, `cancel_port`, `connection_type`.
   Canonical SQL: `utils/supabase/migrations/stations_and_devices/get_location_stations_with_status.sql`.
-- [ ] Confirm subscription RPC returns suspended/allowed states correctly and
-  resolve the grace contract above before claiming grace-period support.
+- [ ] Confirm deployed subscription RPC returns exemption, grace, suspension,
+  cancellation, and location-isolated entitlement states as documented.
 - [ ] Confirm `orders.card_total` is readable by kiosk session and equals the
   authoritative payable total after item synchronization.
 - [ ] Confirm deployed payment RPC accepts/persists Valor JSONB, terminal ID,

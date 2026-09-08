@@ -82,6 +82,21 @@ beforeEach(() => {
 });
 
 describe("kiosk checkout through the shared Valor adapter", () => {
+  it("keeps customer payment enforced when SaaS access is billing-exempt", async () => {
+    mockAccess.mockResolvedValue({
+      valid: true,
+      billingAccess: { allowed: true, status: "billing_exempt" },
+    });
+    const { result } = renderHook(() => useKioskCheckout());
+
+    await act(async () => { await result.current.payOrder(0); });
+
+    expect(mockAccess).toHaveBeenCalledTimes(2);
+    expect(mockSale).toHaveBeenCalledTimes(1);
+    expect(mockPay).toHaveBeenCalledTimes(1);
+    expect(mockOrderStore.sendNewItemsToKitchenForOrder).toHaveBeenCalledTimes(1);
+  });
+
   it.each([0, 2])("charges the authoritative total with tip %s and persists before one kitchen send", async (tip) => {
     const { result } = renderHook(() => useKioskCheckout());
     await act(async () => { await result.current.payOrder(tip); });
