@@ -15,15 +15,63 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import { useRouter } from 'expo-router'
+import { FlashList } from '@shopify/flash-list'
 import { Clock, UserPlus } from 'lucide-react-native'
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
-  ScrollView,
   Text,
   TouchableOpacity,
   View
 } from 'react-native'
+
+/**
+ * Unscaled height of a collapsed waitlist card. Only a first-pass hint for
+ * FlashList — expanded cards are typed separately via `getItemType` so the
+ * two sizes never recycle into each other's slots.
+ */
+const ESTIMATED_CARD_HEIGHT = 84
+
+/**
+ * Binds the panel's stable per-entry callbacks to one row so the card sees
+ * referentially stable props across re-renders and FlashList's recycling can
+ * bail out on rows whose own state did not change.
+ */
+const WaitlistRow = React.memo(function WaitlistRow({
+  entry,
+  isExpanded,
+  onToggle,
+  onSeat,
+  onNotify,
+  onDelete,
+  onEdit
+}: {
+  entry: WaitlistEntry
+  isExpanded: boolean
+  onToggle: (id: string) => void
+  onSeat: (entry: WaitlistEntry) => void
+  onNotify: (entry: WaitlistEntry) => void
+  onDelete: (entry: WaitlistEntry) => void
+  onEdit: (entry: WaitlistEntry) => void
+}) {
+  const toggle = useCallback(() => onToggle(entry.id), [onToggle, entry.id])
+  const seat = useCallback(() => onSeat(entry), [onSeat, entry])
+  const notify = useCallback(() => onNotify(entry), [onNotify, entry])
+  const remove = useCallback(() => onDelete(entry), [onDelete, entry])
+  const edit = useCallback(() => onEdit(entry), [onEdit, entry])
+
+  return (
+    <WaitlistCard
+      entry={entry}
+      isExpanded={isExpanded}
+      onToggle={toggle}
+      onSeat={seat}
+      onNotify={notify}
+      onDelete={remove}
+      onEdit={edit}
+    />
+  )
+})
 
 const WaitlistPanel: React.FC = () => {
   const uiScale = useUiScale()
@@ -120,6 +168,32 @@ const WaitlistPanel: React.FC = () => {
     }
     setNotifyTarget(entry)
   }, [])
+
+  // ─── List plumbing (declared after the row handlers it closes over) ───
+  const keyExtractor = useCallback((entry: WaitlistEntry) => entry.id, [])
+
+  // Expanded cards are much taller than collapsed ones; separate types keep
+  // FlashList from recycling one shape into the other's slot.
+  const getItemType = useCallback(
+    (entry: WaitlistEntry) =>
+      expandedId === entry.id ? 'expanded' : 'collapsed',
+    [expandedId]
+  )
+
+  const renderItem = useCallback(
+    ({ item }: { item: WaitlistEntry }) => (
+      <WaitlistRow
+        entry={item}
+        isExpanded={expandedId === item.id}
+        onToggle={handleToggle}
+        onSeat={handleSeat}
+        onNotify={handleNotify}
+        onDelete={setItemToDelete}
+        onEdit={setEntryToEdit}
+      />
+    ),
+    [expandedId, handleToggle, handleSeat, handleNotify]
+  )
 
   const notifyContext: NotifyContext | null = notifyTarget
     ? notifyTarget.status === 'notified'
@@ -295,56 +369,47 @@ const WaitlistPanel: React.FC = () => {
       </View>
 
       {/* Content */}
-      <ScrollView
-        style={{ flex: 1 }}
+      <FlashList
+        data={waitlist}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        getItemType={getItemType}
+        estimatedItemSize={s(ESTIMATED_CARD_HEIGHT)}
+        extraData={expandedId}
         contentContainerStyle={{ padding: s(8), paddingBottom: s(20) }}
-      >
-        {isLoading && waitlist.length === 0 ? (
-          <View
-            style={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingVertical: s(40)
-            }}
-          >
-            <ActivityIndicator size='small' color={colors.teal} />
-            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(8) }}>
-              Loading waitlist...
-            </Text>
-          </View>
-        ) : waitlist.length > 0 ? (
-          <View>
-            {waitlist.map(entry => (
-              <WaitlistCard
-                key={entry.id}
-                entry={entry}
-                isExpanded={expandedId === entry.id}
-                onToggle={() => handleToggle(entry.id)}
-                onSeat={() => handleSeat(entry)}
-                onNotify={() => handleNotify(entry)}
-                onDelete={() => setItemToDelete(entry)}
-                onEdit={() => setEntryToEdit(entry)}
-              />
-            ))}
-          </View>
-        ) : (
-          <View
-            style={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingVertical: s(40)
-            }}
-          >
-            <Clock size={s(28)} color={colors.muted} />
-            <Text style={{ fontSize: s(13), color: colors.label, marginTop: s(10) }}>
-              No parties waiting
-            </Text>
-            <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(4) }}>
-              Tap + to add someone
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+        ListEmptyComponent={
+          isLoading ? (
+            <View
+              style={{
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingVertical: s(40)
+              }}
+            >
+              <ActivityIndicator size='small' color={colors.teal} />
+              <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(8) }}>
+                Loading waitlist...
+              </Text>
+            </View>
+          ) : (
+            <View
+              style={{
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingVertical: s(40)
+              }}
+            >
+              <Clock size={s(28)} color={colors.muted} />
+              <Text style={{ fontSize: s(13), color: colors.label, marginTop: s(10) }}>
+                No parties waiting
+              </Text>
+              <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(4) }}>
+                Tap + to add someone
+              </Text>
+            </View>
+          )
+        }
+      />
 
       <AddWaitlistModal
         visible={showAddModal}
