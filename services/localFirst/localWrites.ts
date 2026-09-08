@@ -392,6 +392,22 @@ export interface SeatLocalInput {
   reservationId?: string | null;
   waitlistId?: string | null;
   tableNumber?: string | null;
+  /**
+   * Reuse the id and number the caller already minted, for the same reason
+   * createLocalOrder does.
+   *
+   * Every seat gesture creates its optimistic order FIRST — `startNewOrder`,
+   * either at the call site (tables screen, waitlist) or inside
+   * `seatGuests` — and that order is what `ordersById` is keyed by and what
+   * the operator is already looking at. Minting a second id and a second
+   * number here wrote a DIFFERENT order to SQLite and to the outbox: the
+   * session pointed at the new one, the store still held the old one, and the
+   * old one could never sync, never be reached and never give its number
+   * back. Seating burned two numbers and orphaned one order every time.
+   */
+  orderId?: string | null;
+  orderNumber?: string | null;
+  displayNumber?: string | null;
 }
 
 export interface SeatedLocal {
@@ -468,13 +484,21 @@ export async function seatLocal(
   });
 
   if (input.createOrder) {
-    orderId = mintUuid();
-    const generated = generateLocalOrderNumbers(
-      input.locationId,
-      input.stationNumber ?? null,
-    );
-    orderNumber = generated.orderNumber;
-    displayNumber = generated.displayNumber;
+    orderId = input.orderId ?? mintUuid();
+    // Both or neither: taking one and regenerating the other would leave the
+    // display number pointing at a different sequence than the order number.
+    const allocated =
+      input.orderNumber && input.displayNumber
+        ? {
+            orderNumber: input.orderNumber,
+            displayNumber: input.displayNumber,
+          }
+        : generateLocalOrderNumbers(
+            input.locationId,
+            input.stationNumber ?? null,
+          );
+    orderNumber = allocated.orderNumber;
+    displayNumber = allocated.displayNumber;
 
     statements.push({
       sql: `INSERT INTO orders (
@@ -483,7 +507,12 @@ export async function seatLocal(
               customer_phone, station_id, device_id, created_by_staff_id,
               created_at, updated_at, _sync_status, _device_id,
               _server_seen_at, payload
-            ) VALUES (?, ?, ?, ?, ?, 'dine_in', 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, 'dine_in', 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              session_id = excluded.session_id,
+              order_type = excluded.order_type,
+              table_number = excluded.table_number,
+              updated_at = excluded.updated_at`,
       args: [
         orderId,
         input.locationId,

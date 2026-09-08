@@ -7,11 +7,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { getDeviceId } from "@/lib/deviceId";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
-import {
-    findLatestReusableEmptyDraftId,
-    getRefreshedReusableDraftNumbers,
-    isReusableEmptyDraftOrder,
-} from "@/lib/reusableEmptyDraft";
+import { isReusableEmptyDraftOrder } from "@/lib/reusableEmptyDraft";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { CartItem } from "@/lib/types";
@@ -476,7 +472,7 @@ const BillSectionContent = ({
   );
 
   const {
-    startNewOrder,
+    startOrResumeOrder,
     sendNewItemsToKitchen,
     assignOrderToTable,
     setActiveOrder,
@@ -486,7 +482,7 @@ const BillSectionContent = ({
     updateActiveOrderDetails,
   } = useOrderStore(
     useShallow((s) => ({
-      startNewOrder: s.startNewOrder,
+      startOrResumeOrder: s.startOrResumeOrder,
       sendNewItemsToKitchen: s.sendNewItemsToKitchen,
       assignOrderToTable: s.assignOrderToTable,
       setActiveOrder: s.setActiveOrder,
@@ -1812,52 +1808,15 @@ const BillSectionContent = ({
       return;
     }
 
-    const {
-      activeOrderId: currentActiveOrderId,
-      orderIds,
-      ordersById,
-    } = useOrderStore.getState();
-    const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-      ordersById,
-      orderIds,
-      currentActiveOrderId,
-      selectedStation?.id ?? null,
-    );
-
-    if (reusableEmptyDraftId) {
-      useOrderStore.setState((state) => {
-        const draft = state.ordersById[reusableEmptyDraftId];
-        if (!draft) return;
-        // Reset any stale dine-in fields from a previous session.
-        draft.order_type = "takeout";
-        draft.service_location_id = null;
-        draft.session_id = undefined;
-        draft.local_session_id = undefined;
-        if (selectedStore) {
-          const refreshedNumbers = getRefreshedReusableDraftNumbers({
-            draftId: reusableEmptyDraftId,
-            ordersById,
-            orderIds,
-            locationId: selectedStore.id,
-            stationNumber: selectedStation?.station_number ?? null,
-          });
-          if (refreshedNumbers) {
-            draft.order_number = refreshedNumbers.orderNumber;
-            draft.display_number = refreshedNumbers.displayNumber;
-          }
-        }
-      });
-      setActiveOrder(reusableEmptyDraftId);
-      return;
-    }
-
-    const newOrder = startNewOrder();
-    setActiveOrder(newOrder.id);
+    startOrResumeOrder({
+      excludeOrderId: useOrderStore.getState().activeOrderId,
+      resetDineInFields: true,
+    });
   }, [
     activeOrder?.id,
     clearSelectedTable,
     isCurrentOrderEmptyDraft,
-    startNewOrder,
+    startOrResumeOrder,
     setActiveOrder,
   ]);
 
@@ -1948,41 +1907,7 @@ const BillSectionContent = ({
                 onPress={() => {
                   // Per-order PIN: fresh ticket must re-prompt (see handleStartNewOrder).
                   useEmployeeStore.getState().clearOrderAttributionStaff();
-                  const { orderIds, ordersById } = useOrderStore.getState();
-                  const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-                    ordersById,
-                    orderIds,
-                    null,
-                    selectedStation?.id ?? null,
-                  );
-
-                  if (reusableEmptyDraftId) {
-                    if (selectedStore) {
-                      const refreshedNumbers = getRefreshedReusableDraftNumbers(
-                        {
-                          draftId: reusableEmptyDraftId,
-                          ordersById,
-                          orderIds,
-                          locationId: selectedStore.id,
-                          stationNumber:
-                            selectedStation?.station_number ?? null,
-                        },
-                      );
-                      if (refreshedNumbers) {
-                        useOrderStore.setState((state) => {
-                          const draft = state.ordersById[reusableEmptyDraftId];
-                          if (!draft) return;
-                          draft.order_number = refreshedNumbers.orderNumber;
-                          draft.display_number = refreshedNumbers.displayNumber;
-                        });
-                      }
-                    }
-                    setActiveOrder(reusableEmptyDraftId);
-                    return;
-                  }
-
-                  const newOrder = startNewOrder();
-                  setActiveOrder(newOrder.id);
+                  startOrResumeOrder();
                 }}
               >
                 <Plus color={colors.onSolid} size={s(14)} />

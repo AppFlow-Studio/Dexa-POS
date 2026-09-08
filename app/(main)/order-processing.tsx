@@ -17,16 +17,8 @@ import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwn
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { getHeaderHeight } from "@/lib/headerHeight";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
-import {
-  forceSetLocalSequence,
-  parseSequenceFromDisplayNumber,
-} from "@/lib/localOrderSequence";
 import { markEnd } from "@/lib/perf";
-import {
-  findLatestReusableEmptyDraftId,
-  getRefreshedReusableDraftNumbers,
-  isReusableEmptyDraftOrder,
-} from "@/lib/reusableEmptyDraft";
+import { isReusableEmptyDraftOrder } from "@/lib/reusableEmptyDraft";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
@@ -165,7 +157,7 @@ const OrderProcessing = () => {
     (s) => s.orderAttributionOrderId,
   );
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
-  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const startOrResumeOrder = useOrderStore((s) => s.startOrResumeOrder);
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
@@ -297,13 +289,6 @@ const OrderProcessing = () => {
   const ordersSheetHeight = useSharedValue<number>(windowHeight);
   const dragStartHeightRef = useRef<number>(windowHeight);
 
-  const getDateKey = (date: Date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}${m}${d}`;
-  };
-
   // On mount: reuse the most recent empty draft if one exists; otherwise
   // create a brand-new empty order.
   useEffect(() => {
@@ -311,9 +296,6 @@ const OrderProcessing = () => {
     didInitializeOrderRef.current = true;
 
     const state = useOrderStore.getState();
-    const selectedStore = useStoreSettingsStore.getState().selectedStore;
-    const stationNumberFromOrderStore =
-      state.currentStation?.station_number ?? null;
 
     const currentActiveOrder = state.activeOrderId
       ? state.ordersById[state.activeOrderId]
@@ -347,25 +329,9 @@ const OrderProcessing = () => {
       currentActiveOrder &&
       isReusableEmptyDraftOrder(currentActiveOrder)
     ) {
-      if (selectedStore) {
-        const refreshedNumbers = getRefreshedReusableDraftNumbers({
-          draftId: currentActiveOrder.id,
-          ordersById: state.ordersById,
-          orderIds: state.orderIds,
-          locationId: selectedStore.id,
-          stationNumber: stationNumberFromOrderStore,
-        });
-
-        if (refreshedNumbers) {
-          useOrderStore.setState((storeState) => {
-            const draft = storeState.ordersById[currentActiveOrder.id];
-            if (!draft) return;
-            draft.order_number = refreshedNumbers.orderNumber;
-            draft.display_number = refreshedNumbers.displayNumber;
-          });
-        }
-      }
-
+      // Mounting the screen must not consume a number. The draft keeps the one
+      // it was born with — it is already committed to SQLite and to its outbox
+      // op, so anything else here would only change what this device shows.
       setActiveOrder(currentActiveOrder.id);
       return;
     }
@@ -378,106 +344,11 @@ const OrderProcessing = () => {
       return;
     }
 
-    const allOrders = state.orderIds
-      .map((id) => state.ordersById[id])
-      .filter(Boolean);
-
-    // Heal the local sequence counter from meaningful today/station orders.
-    // Empty placeholder drafts are excluded so stale highs (e.g. #109) don't
-    // poison the next local number.
-    let reliableHighestSeq = 0;
-    let highestSeenTodaySeq = 0;
-    if (selectedStore) {
-      const stationNumber = stationNumberFromOrderStore;
-      const stationPrefix = stationNumber != null ? `S${stationNumber}` : null;
-      const todayDateKey = getDateKey(new Date());
-      const todayOrderPrefix = `ORD-${todayDateKey}-`;
-
-      const isMeaningfulOrder = (o: OrderProfile) =>
-        o.items.length > 0 ||
-        o.service_location_id !== null ||
-        !!o.customer_name ||
-        !!o.customer_id ||
-        o.order_status !== "draft" ||
-        o.paid_status === "Paid";
-
-      for (const o of allOrders) {
-        const dn = o.display_number;
-        if (!dn) continue;
-
-        // Keep reseeding day-scoped. If we include prior days, a historical
-        // high sequence (e.g. #119) can incorrectly bump today's next order.
-        if (o.order_number) {
-          if (!o.order_number.startsWith(todayOrderPrefix)) continue;
-        } else if (o.opened_at) {
-          const openedAtDate = new Date(o.opened_at);
-          if (Number.isNaN(openedAtDate.getTime())) continue;
-          if (getDateKey(openedAtDate) !== todayDateKey) continue;
-        }
-
-        if (stationPrefix) {
-          if (!dn.startsWith(`#${stationPrefix}-`)) continue;
-        } else {
-          if (dn.match(/^#S\d+-/)) continue;
-        }
-
-        const seq = parseSequenceFromDisplayNumber(dn);
-        if (seq > highestSeenTodaySeq) highestSeenTodaySeq = seq;
-
-        if (!isMeaningfulOrder(o)) continue;
-        if (seq > reliableHighestSeq) reliableHighestSeq = seq;
-      }
-
-      // Never rewind below a sequence that is already visible locally today.
-      // Empty drafts still count here so we don't issue 4, 5, then 4 again.
-      const healedSequenceFloor = Math.max(
-        reliableHighestSeq,
-        highestSeenTodaySeq,
-      );
-      forceSetLocalSequence(
-        selectedStore.id,
-        stationNumber,
-        healedSequenceFloor,
-      );
-    }
-
-    const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-      state.ordersById,
-      state.orderIds,
-      null,
-      useStoreSettingsStore.getState().selectedStation?.id ?? null,
-    );
-
-    if (reusableEmptyDraftId) {
-      // Keep reusing the empty draft. Only refresh its local number when the
-      // existing number is missing, from another day, or collides with another
-      // visible order. Mounting alone should not consume a new sequence.
-      if (selectedStore) {
-        const refreshedNumbers = getRefreshedReusableDraftNumbers({
-          draftId: reusableEmptyDraftId,
-          ordersById: state.ordersById,
-          orderIds: state.orderIds,
-          locationId: selectedStore.id,
-          stationNumber: stationNumberFromOrderStore,
-        });
-
-        if (refreshedNumbers) {
-          useOrderStore.setState((storeState) => {
-            const draft = storeState.ordersById[reusableEmptyDraftId];
-            if (!draft) return;
-            draft.order_number = refreshedNumbers.orderNumber;
-            draft.display_number = refreshedNumbers.displayNumber;
-          });
-        }
-      }
-
-      setActiveOrder(reusableEmptyDraftId);
-      return;
-    }
-
-    const newOrder = startNewOrder();
-    setActiveOrder(newOrder.id);
-  }, [setActiveOrder, startNewOrder]);
+    // Resume the latest empty draft, or mint one. startOrResumeOrder floors
+    // the counter at the highest number still on this device, so the "heal the
+    // sequence" scan that used to live here is part of the allocation itself.
+    startOrResumeOrder();
+  }, [setActiveOrder, startOrResumeOrder]);
 
   // Eager backend create: whenever a local-only takeout order becomes active
   // (fresh order, or a reused empty draft), create its backend row immediately

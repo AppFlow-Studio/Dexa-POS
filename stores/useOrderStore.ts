@@ -97,7 +97,6 @@ import { useTableSessionStore } from "./useTableSessionStore";
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
 import {
     forceSetLocalSequence,
-    generateLocalOrderNumbers,
     parseSequenceFromDisplayNumber,
     seedLocalSequence,
 } from "@/lib/localOrderSequence";
@@ -136,7 +135,10 @@ import {
 } from "@/lib/order-calculator";
 import { snapshotTableName } from "@/lib/orderDisplay";
 import { resolveInboundToGo } from "@/lib/pendingToGo";
-import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
+import {
+    allocateOrderNumbers,
+    findLatestReusableEmptyDraftId,
+} from "@/lib/reusableEmptyDraft";
 import { aggregateTaxByCategory } from "@/utils/money";
 
 import { normalizePlatform } from "@/lib/platformAliases";
@@ -4431,6 +4433,26 @@ interface OrderState {
     orderId?: string; // Pre-generated order ID for optimistic seating
   }) => OrderProfile;
   /**
+   * "Give me the next order to ring on." THE entry point for every
+   * start-a-new-ticket gesture — the New Order button, the post-payment
+   * hand-off, the order-processing screen coming up with nothing active.
+   *
+   * Resumes the latest reusable empty draft when there is one (which is what
+   * keeps its number from being stranded) and only mints a brand-new order
+   * when there isn't. Sets the result active and returns it.
+   *
+   * Every caller went through its own copy of this before, and they had
+   * drifted: different exclusions, different renumbering, one reading a stale
+   * store snapshot. That drift IS the "we got order 3 and order 2 vanished"
+   * report, so there is one copy now.
+   */
+  startOrResumeOrder: (options?: {
+    /** Skip this order when looking for a draft to resume (usually the one just paid). */
+    excludeOrderId?: string | null;
+    /** Clear dine-in fields off the resumed draft (post-payment table clear). */
+    resetDineInFields?: boolean;
+  }) => OrderProfile | null;
+  /**
    * Eagerly create the backend row for an order that only exists locally
    * (no db_order_id yet). Used so takeout orders create on the backend
    * immediately — mirroring dine-in — instead of lazily on first item add.
@@ -8617,24 +8639,21 @@ export const useOrderStore = create<OrderState>()(
               ? null
               : activeEmployee?.profileId || null;
 
-            // Generate local order numbers (station-aware if station is set)
+            // Generate local order numbers (station-aware if station is set).
+            // allocateOrderNumbers is the ONLY minting path; it floors the
+            // counter at the highest number still visible on this device today
+            // so a fresh order can never be handed a number an existing draft
+            // is already displaying.
             const selectedStore =
               useStoreSettingsStore.getState().selectedStore;
             const stationNumber = currentStation?.station_number ?? null;
-            if (selectedStore) {
-              const reliableSequenceFloor = getReliableTodaySequenceFloor(
-                get().ordersById,
-                get().orderIds,
-                stationNumber,
-              );
-              forceSetLocalSequence(
-                selectedStore.id,
-                stationNumber,
-                reliableSequenceFloor,
-              );
-            }
             const localNumbers = selectedStore
-              ? generateLocalOrderNumbers(selectedStore.id, stationNumber)
+              ? allocateOrderNumbers({
+                  ordersById: get().ordersById,
+                  orderIds: get().orderIds,
+                  locationId: selectedStore.id,
+                  stationNumber,
+                })
               : undefined;
 
             const newOrder: OrderProfile = {
@@ -8688,6 +8707,48 @@ export const useOrderStore = create<OrderState>()(
               syncTableOrderIdIndexForOrder(state, newOrder.id);
             });
             return newOrder;
+          },
+
+          startOrResumeOrder: (options) => {
+            // Read fresh — callers reach here from setTimeout callbacks after
+            // a payment, by which point the snapshot they closed over is stale
+            // and the draft they should be resuming is missing from it.
+            const { ordersById, orderIds } = get();
+            const stationId =
+              useStoreSettingsStore.getState().selectedStation?.id ?? null;
+
+            const reusableId = findLatestReusableEmptyDraftId(
+              ordersById,
+              orderIds,
+              options?.excludeOrderId ?? null,
+              stationId,
+            );
+
+            if (reusableId) {
+              if (options?.resetDineInFields) {
+                set((state) => {
+                  const draft = state.ordersById[reusableId];
+                  if (!draft) return;
+                  const previous = current(draft);
+                  // Reset stale dine-in fields so the bill reads as a clean
+                  // new ticket after the table was cleared.
+                  draft.order_type = "takeout";
+                  draft.service_location_id = null;
+                  draft.session_id = undefined;
+                  draft.local_session_id = undefined;
+                  syncTableOrderIdIndexForOrder(state, reusableId, previous);
+                });
+              }
+              get().setActiveOrder(reusableId);
+              // The draft keeps the number it was born with. It is already in
+              // SQLite and in its outbox op; rewriting it here would only
+              // change what this device displays.
+              return get().ordersById[reusableId] ?? null;
+            }
+
+            const fresh = get().startNewOrder();
+            get().setActiveOrder(fresh.id);
+            return fresh;
           },
 
           ensureActiveOrderCreated: async (orderId) => {

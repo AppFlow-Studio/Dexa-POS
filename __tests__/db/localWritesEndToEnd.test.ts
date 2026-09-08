@@ -643,6 +643,67 @@ describe("order numbers are per-station and monotonic", () => {
     );
   });
 
+  it("seating adopts the caller's order instead of minting a second one", async () => {
+    // REGRESSION: every seat gesture creates its optimistic order first
+    // (startNewOrder) and then called seatLocal, which minted its OWN uuid and
+    // its OWN number. Two numbers were spent per seat and the order the
+    // operator was looking at was never written anywhere — unreachable, and
+    // its number gone for the day.
+    const db = getDb()!;
+    const ORDER_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+    const before = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+
+    const seat = await seatLocal({
+      tableIds: ["t-7"],
+      locationId: LOCATION,
+      merchantId: MERCHANT,
+      partySize: 2,
+      createOrder: true,
+      stationNumber: 1,
+      orderId: ORDER_ID,
+      orderNumber: "ORD-20260908-S1-0500",
+      displayNumber: "#S1-0500",
+    });
+
+    expect(seat.value!.orderId).toBe(ORDER_ID);
+    expect(seat.value!.orderNumber).toBe("ORD-20260908-S1-0500");
+    expect(seat.value!.displayNumber).toBe("#S1-0500");
+
+    const row = await db.getFirstAsync<{
+      id: string;
+      order_number: string;
+      session_id: string;
+    }>(`SELECT id, order_number, session_id FROM orders WHERE id = ?`, [
+      ORDER_ID,
+    ]);
+    expect(row?.order_number).toBe("ORD-20260908-S1-0500");
+    expect(row?.session_id).toBe(seat.value!.sessionId);
+
+    // Exactly one order row was written by the seat, not two.
+    const count = await db.getFirstAsync<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM orders`,
+    );
+    expect(count?.n).toBe(2); // the takeout order above + the seated one
+
+    // And the seat consumed no sequence number of its own.
+    const after = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+    const seqOf = (n: string) => parseInt(n.split("-").pop()!, 10);
+    expect(seqOf(after.value!.orderNumber)).toBe(
+      seqOf(before.value!.orderNumber) + 1,
+    );
+  });
+
   it("keeps stations from colliding with each other", async () => {
     const a = await createLocalOrder({
       merchantId: MERCHANT,

@@ -28,12 +28,56 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { getDb } from "@/lib/db/index";
+import { dbWriteMutex } from "@/lib/db/mutex";
 import type { ClaimedOp } from "@/lib/db/outbox";
 import {
   outcomeFromError,
   type DrainOutcome,
   type OpHandlers,
 } from "@/services/localFirst/outboxDrain";
+
+/**
+ * Take the server's number after a collision renumber (§6.3).
+ *
+ * The id never moves, so this is a pure field update in both places that hold
+ * the number: the local row and whatever the operator is looking at. Best
+ * effort — a failure here leaves a stale number on one device, which the next
+ * header sync corrects, and must never fail the op that already succeeded.
+ */
+async function adoptServerOrderNumber(
+  orderId: string,
+  orderNumber: string,
+  displayNumber: string | null,
+): Promise<void> {
+  try {
+    const db = getDb();
+    if (db) {
+      await dbWriteMutex.runExclusive(async () => {
+        await db.runAsync(
+          `UPDATE orders SET order_number = ?, display_number = ? WHERE id = ?`,
+          [orderNumber, displayNumber, orderId],
+        );
+      });
+    }
+  } catch (err) {
+    console.warn("[Drain] renumber: local row not updated:", err);
+  }
+
+  try {
+    const { useOrderStore } =
+      require("@/stores/useOrderStore") as typeof import("@/stores/useOrderStore");
+    useOrderStore.setState((state: any) => {
+      const key = state.dbOrderIdIndex?.[orderId] ?? orderId;
+      const order = state.ordersById?.[key];
+      if (!order) return;
+      order.order_number = orderNumber;
+      if (displayNumber) order.display_number = displayNumber;
+    });
+  } catch (err) {
+    console.warn("[Drain] renumber: store not updated:", err);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Payload shapes — what commitLocalWrite() stored alongside each row.
@@ -177,11 +221,18 @@ export function makeOpHandlers(
 
         // §6.3 — the server renumbered us because our locally minted number
         // collided. The ID is unchanged (identity is sacred); only the number
-        // moved, and the device must correct what it displays.
-        if (data?.order_number_reassigned) {
+        // moved, and the device must correct what it displays. Logging it and
+        // leaving the old number on screen is how a guest ends up holding a
+        // receipt for a number that belongs to somebody else's order.
+        if (data?.order_number_reassigned && data?.order_number) {
           console.warn(
             `[Drain] order ${op.entityId} was renumbered by the server: ` +
               `${p.orderNumber} -> ${data.order_number}`,
+          );
+          await adoptServerOrderNumber(
+            op.entityId,
+            data.order_number as string,
+            (data.display_number as string | null) ?? null,
           );
         }
         return { kind: "synced" };

@@ -5,10 +5,6 @@ import { isOrderReadOnly } from "@/lib/orderAccessControl";
 import { hasOrderBalanceDue } from "@/lib/orderBalance";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
-import {
-  findLatestReusableEmptyDraftId,
-  getRefreshedReusableDraftNumbers,
-} from "@/lib/reusableEmptyDraft";
 import { toastService } from "@/lib/toastService";
 import {
   CartItem,
@@ -611,13 +607,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   // checks still due, no session), the helper is a no-op and the active
   // (paid) order is preserved so the operator can interact with it.
   handleSuccessClose: () => {
-    const {
-      activeOrderId,
-      ordersById,
-      orderIds,
-      startNewOrder,
-      setActiveOrder,
-    } = useOrderStore.getState();
+    const { activeOrderId, ordersById } = useOrderStore.getState();
 
     // Per-order PIN attribution: the order is now fully paid/closed. Drop the
     // verified staff so the NEXT order re-opens the PIN gate. Held through
@@ -668,53 +658,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
 
     // For quick service / takeout (or a dine-in clear that just ran),
-    // start a new order immediately.
+    // start a new order immediately. startOrResumeOrder reads the store when
+    // it runs, not when this closure was built — the archive that just fired
+    // makes the snapshot above 100ms out of date, and resuming against a stale
+    // one missed the empty draft and minted a fresh number over it.
     setTimeout(() => {
-      const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-        ordersById,
-        orderIds,
-        activeOrderId,
-        useStoreSettingsStore.getState().selectedStation?.id ?? null,
-      );
-
-      if (reusableEmptyDraftId) {
-        const selectedStore = useStoreSettingsStore.getState().selectedStore;
-        const stationNumber =
-          useStoreSettingsStore.getState().selectedStation?.station_number ??
-          null;
-
-        useOrderStore.setState((state) => {
-          const draft = state.ordersById[reusableEmptyDraftId];
-          if (!draft) return;
-          // After a dine-in auto-clear, reset stale dine-in fields so the
-          // bill shows as a clean new order on the order-processing screen.
-          if (dineInCleared) {
-            draft.order_type = "takeout";
-            draft.service_location_id = null;
-            draft.session_id = undefined;
-            draft.local_session_id = undefined;
-          }
-          if (selectedStore) {
-            const refreshedNumbers = getRefreshedReusableDraftNumbers({
-              draftId: reusableEmptyDraftId,
-              ordersById,
-              orderIds,
-              locationId: selectedStore.id,
-              stationNumber,
-            });
-            if (refreshedNumbers) {
-              draft.order_number = refreshedNumbers.orderNumber;
-              draft.display_number = refreshedNumbers.displayNumber;
-            }
-          }
-        });
-
-        setActiveOrder(reusableEmptyDraftId);
-        return;
-      }
-
-      const newOrder = startNewOrder();
-      setActiveOrder(newOrder.id);
+      useOrderStore.getState().startOrResumeOrder({
+        excludeOrderId: activeOrderId,
+        resetDineInFields: dineInCleared,
+      });
     }, 100);
 
     get().close();

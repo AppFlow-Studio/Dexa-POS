@@ -1357,14 +1357,25 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // ── 4a. LOCAL-FIRST SEATING ────────────────────────────────────
           //
           // Writes the session, its table links and (optionally) the order in
-          // ONE SQLite transaction, with both ids minted here. Runs
-          // regardless of connectivity — that is the point: seating a table
-          // must not depend on the network, and the drain pushes it to
-          // seat_guests_v4 (idempotent on the session id) when there is one.
+          // ONE SQLite transaction. Runs regardless of connectivity — that is
+          // the point: seating a table must not depend on the network, and the
+          // drain pushes it to seat_guests_v4 (idempotent on the session id)
+          // when there is one.
           //
           // This is what makes `isOrderTableStillSeating()` return false:
           // there is no window between the tap and a usable order.
+          //
+          // The ORDER id and number come from the optimistic order above, not
+          // from seatLocal. That order is what `ordersById` is keyed by and
+          // what the operator is already looking at; letting seatLocal mint
+          // its own wrote a second, different order to SQLite and left the
+          // first one orphaned with its number permanently spent.
           if (LOCAL_WRITES_SEATING) {
+            const { useOrderStore } = require("@/stores/useOrderStore");
+            const optimisticOrder = shouldCreateOrder
+              ? useOrderStore.getState().ordersById[localOrderId]
+              : undefined;
+
             const seated = await seatLocal({
               tableIds: params.tableIds,
               locationId: storeSettings.selectedStore?.id ?? "",
@@ -1380,6 +1391,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               guestPhone: params.guestPhone ?? null,
               reservationId: params.reservationId ?? null,
               waitlistId: params.waitlistId ?? null,
+              tableNumber:
+                useFloorPlanStore.getState().tablesById[params.tableIds[0]]
+                  ?.name ?? null,
+              orderId: shouldCreateOrder ? localOrderId : null,
+              orderNumber: optimisticOrder?.order_number ?? null,
+              displayNumber: optimisticOrder?.display_number ?? null,
             });
 
             if (seated.ok && seated.value) {
@@ -1402,6 +1419,30 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                   action: { type: "SET" as const, session: realSession },
                 })),
               );
+
+              // Same id in and out, so this links the session and marks the
+              // order written without rekeying anything. The number is only
+              // written back when the optimistic order had none (no
+              // selectedStore at the time) — that is the one case seatLocal
+              // still mints, and overwriting an existing number here would put
+              // the store out of step with the row that was just committed.
+              if (seated.value.orderId) {
+                const orderWasNumbered =
+                  !!optimisticOrder?.order_number &&
+                  !!optimisticOrder?.display_number;
+                useOrderStore.getState().hydrateOrderFromSeat({
+                  localOrderId: seated.value.orderId,
+                  dbOrderId: seated.value.orderId,
+                  sessionId: seated.value.sessionId,
+                  orderNumber: orderWasNumbered
+                    ? undefined
+                    : (seated.value.orderNumber ?? undefined),
+                  displayNumber: orderWasNumbered
+                    ? undefined
+                    : (seated.value.displayNumber ?? undefined),
+                });
+              }
+
               return {
                 sessionId: seated.value.sessionId,
                 orderId: seated.value.orderId ?? undefined,
