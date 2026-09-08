@@ -214,6 +214,47 @@ describe("a fresh number is never one an order on this device already holds", ()
 
     expect(seq(store.startNewOrder())).toBe(1);
   });
+
+  it("seeds today's counter from today's floor, not from old open orders", () => {
+    // initializeOrders REGRESSION: its seed loop used to count every open
+    // order the fetch returned (station-filtered only, no day check). A table
+    // left open from a previous service day — #S1-0076, born yesterday —
+    // force-lifted TODAY's counter to 76, so the next order came out 77 even
+    // though the operator was only on #24. The seed must use the same
+    // day-aware floor as the mint path.
+    const store = makeStore();
+
+    // What the store looks like right after an initializeOrders fetch+merge:
+    // today's active orders PLUS old open tables from prior days.
+    store.add({
+      id: "old-open-table",
+      service_location_id: "table-4",
+      order_status: "sent_to_kitchen" as OrderProfile["order_status"],
+      order_number: `ORD-${todayKey(-1)}-S1-0076`,
+      display_number: "#S1-0076",
+      opened_at: new Date(Date.now() - 86_400_000).toISOString(),
+    });
+    store.add({
+      id: "today-active",
+      order_status: "draft" as OrderProfile["order_status"],
+      order_number: `ORD-${todayKey()}-S1-0024`,
+      display_number: "#S1-0024",
+    });
+
+    const seedValue = getTodaySequenceFloor(
+      store.ordersById,
+      store.orderIds,
+      STATION,
+    );
+    expect(seedValue).toBe(24);
+
+    // Cleared MMKV — the seed is the only thing protecting the sequence.
+    __resetLocalSequencesForTests();
+    seedLocalSequence(LOCATION, STATION, seedValue);
+
+    const next = store.startNewOrder();
+    expect(seq(next)).toBe(25);
+  });
 });
 
 describe("stale drafts", () => {

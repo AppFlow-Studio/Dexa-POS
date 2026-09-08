@@ -86,6 +86,32 @@ a device that *was* renumbered kept displaying the number it lost.
       resuming against a 100 ms-stale `ordersById` snapshot taken before the
       archive fired.
 
+## Follow-up defect: the startup seed still counted every open order
+
+Reported after the above shipped: "I was on order 24, went to tables (lots of
+older open orders), created a new order — it was 77."
+
+Root cause was NOT in the mint path (which was fixed above and is day-aware) —
+it was the leftover seed loop inside `useOrderStore.initializeOrders`. That
+loop computed `highestSeq` from every open order the server fetch returned,
+filtered by station prefix only, with **no day check**, and fed it to
+`seedLocalSequence` (up-only). Tables still open from a previous service day
+carry their own day's numbers (`#S1-0076` born yesterday), so the seed
+force-lifted TODAY's MMKV counter to 76 and the next minted order was 77. The
+day-aware floor (`getTodaySequenceFloor`) was only wired into `startNewOrder`;
+the seed never got the same treatment.
+
+Fix: `initializeOrders` now seeds from `getTodaySequenceFloor` over the merged
+store — the exact scan the mint path uses — so seed and mint cannot disagree
+about what "visible today" means. Covered by
+`__tests__/orderNumberAllocation.test.ts` ("seeds today's counter from today's
+floor, not from old open orders").
+
+Note: `seedLocalSequence` is deliberately up-only, so a device whose counter
+was already polluted by the old code keeps the inflated value for the rest of
+that local day. The counter key is per-day, so the next business day (or a
+cleared MMKV / reinstall) starts clean.
+
 ## Invariant
 
 > A number is allocated exactly once, when the order row is created, from

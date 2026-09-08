@@ -143,6 +143,7 @@ import { resolveInboundToGo } from "@/lib/pendingToGo";
 import {
     allocateOrderNumbers,
     findLatestReusableEmptyDraftId,
+    getTodaySequenceFloor,
 } from "@/lib/reusableEmptyDraft";
 import { aggregateTaxByCategory } from "@/utils/money";
 
@@ -17399,32 +17400,32 @@ export const useOrderStore = create<OrderState>()(
                 `[initializeOrders] Loaded ${newOrderIds.length} orders`,
               );
 
-              // Seed local order sequence counters from backend data
+              // Seed local order sequence counters from backend data.
+              //
+              // The seed value must be the SAME scan the mint path uses: the
+              // highest number still VISIBLE today for this station
+              // (getTodaySequenceFloor). The previous loop counted every open
+              // order the fetch returned with no regard for which day it was
+              // minted in, so a table still open from a previous service day
+              // (e.g. #S1-0076, born yesterday) force-lifted TODAY's counter
+              // to 76 and the next order came out as 77 — numbers that belong
+              // to that old order's day, not this one. Reusing the floor keeps
+              // seed and mint from disagreeing about what "visible today"
+              // means.
               try {
                 const { currentStation } = get();
                 const stationNumber = currentStation?.station_number ?? null;
                 const stationPrefix =
                   stationNumber != null ? `S${stationNumber}` : null;
-                let highestSeq = 0;
 
-                for (const serverOrder of data) {
-                  const dn = serverOrder.display_number as string | null;
-                  if (!dn) continue;
-
-                  // Only count orders matching our station prefix
-                  if (stationPrefix) {
-                    if (!dn.startsWith(`#${stationPrefix}-`)) continue;
-                  } else {
-                    // Global counter — skip station-prefixed numbers
-                    if (dn.match(/^#S\d+-/)) continue;
-                  }
-
-                  const seqMatch = dn.match(/(\d+)$/);
-                  if (seqMatch) {
-                    const seq = parseInt(seqMatch[1], 10);
-                    if (seq > highestSeq) highestSeq = seq;
-                  }
-                }
+                // The store was just rebuilt above (preserved + server
+                // orders), so scan it — exactly the orders this device sees.
+                const { ordersById, orderIds } = get();
+                const highestSeq = getTodaySequenceFloor(
+                  ordersById,
+                  orderIds,
+                  stationNumber,
+                );
 
                 if (highestSeq > 0) {
                   seedLocalSequence(locationId, stationNumber, highestSeq);
