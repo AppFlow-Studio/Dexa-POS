@@ -319,6 +319,27 @@ export function __resetDrainForTests(): void {
 const NUDGE_DEBOUNCE_MS = 300;
 const NUDGE_MAX_WAIT_MS = 2000;
 
+/**
+ * Is there a network worth pushing over?
+ *
+ * Lazily required rather than imported at the top: `offlineSyncService` is a
+ * large module with its own NetInfo subscription and lifecycle registration,
+ * and pulling it into every consumer of the outbox (including the tests that
+ * exercise the drain with a fake Supabase) would drag all of that along.
+ * Missing it is not fatal — an unknown network is treated as usable, which is
+ * the pre-existing behaviour.
+ */
+function isNetworkUsable(): boolean {
+  try {
+    const {
+      getIsOnline,
+    } = require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
+    return getIsOnline();
+  } catch {
+    return true;
+  }
+}
+
 let drainRunner: (() => Promise<void>) | null = null;
 let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
 let firstNudgeAt = 0;
@@ -328,9 +349,34 @@ export function registerDrainRunner(fn: (() => Promise<void>) | null): void {
   drainRunner = fn;
 }
 
-/** Ask for a drain soon. Never throws, never blocks the caller. */
+/**
+ * Ask for a drain soon. Never throws, never blocks the caller.
+ *
+ * ── Why this refuses to run while offline ─────────────────────────────────
+ *
+ * `commitLocalWrite` nudges after EVERY local write, which is right: online,
+ * a ticket should reach the kitchen in milliseconds, not on the 30s interval.
+ *
+ * Offline it was actively harmful. Every tap ran a full drain, every RPC in it
+ * failed on the network, and `markRetry` incremented `attempts` and pushed
+ * `next_at` out exponentially for every op in the batch. Ringing in ten items
+ * during an outage left the FIRST op at ten attempts — past
+ * REQUEUE_ATTEMPT_CEILING, and scheduled at the 5-minute backoff ceiling.
+ *
+ * So the punishment for being offline was: nothing syncs for up to five
+ * minutes AFTER the network comes back, and the ops are no longer eligible for
+ * the startup requeue that exists to rescue them. That is the "orders don't
+ * sync when we get signal back" report, manufactured entirely by the retry
+ * accounting of pushes that never had any chance of succeeding.
+ *
+ * A write while offline is durable the moment SQLite commits. There is
+ * nothing to gain by proving the network is still down, so we don't ask.
+ * `useOutboxDrain` runs the drain on reconnect (after clearing the backoff)
+ * and on its interval.
+ */
 export function nudgeDrain(): void {
   if (!drainRunner) return;
+  if (!isNetworkUsable()) return;
 
   const now = Date.now();
   if (firstNudgeAt === 0) firstNudgeAt = now;
@@ -411,6 +457,12 @@ export async function waitForOrderSynced(
     );
     return false;
   }
+
+  // Offline there is nothing to wait FOR: the drain cannot run, so the count
+  // cannot fall. Polling out the full timeout would just freeze the gesture
+  // for five seconds before the caller proceeds degraded — which is the
+  // correct outcome, and is available immediately.
+  if (!isNetworkUsable()) return false;
 
   nudgeDrain();
 

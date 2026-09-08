@@ -56,9 +56,11 @@ export type OutboxOp =
   | "create_order"
   | "add_item"
   | "update_item_quantity"
+  | "replace_modifiers"
   | "void_item"
   | "remove_item"
   | "set_item_seat"
+  | "send_to_kitchen"
   | "seat_guests"
   | "update_session_status";
 
@@ -488,6 +490,176 @@ export async function markRejected(
     });
   } catch (error) {
     console.warn("[Outbox] markRejected failed:", error);
+  }
+}
+
+/**
+ * Clear the backoff schedule for every pending op. Called when the network
+ * comes BACK.
+ *
+ * ── The stall this removes ────────────────────────────────────────────────
+ *
+ * `markRetry` schedules `next_at` with exponential backoff, which is right for
+ * a server that is refusing us and wrong for a device that was simply offline.
+ * An offline service period leaves every op sitting at the 5-minute ceiling,
+ * so the moment wifi returns the drain claims NOTHING for up to five minutes —
+ * the exact window in which the operator is watching the orders "not sync".
+ *
+ * A reconnect is new information: the reason those attempts failed is gone.
+ * `attempts` is deliberately preserved (it is the history, and what bounds
+ * requeueFailedOps); only the schedule is cleared.
+ */
+export async function resetBackoffForReconnect(): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  try {
+    return await dbWriteMutex.runExclusive(async () => {
+      const res = await db.runAsync(
+        `UPDATE outbox SET next_at = NULL
+          WHERE status = 'pending' AND next_at IS NOT NULL`,
+      );
+      const n = res.changes ?? 0;
+      if (n > 0) {
+        console.log(`[LF] reconnect: ${n} op(s) made eligible immediately`);
+      }
+      return n;
+    });
+  } catch (error) {
+    console.warn("[LF] resetBackoffForReconnect failed:", error);
+    return 0;
+  }
+}
+
+export interface CancelledOps {
+  /** How many ops were dropped. */
+  deleted: number;
+  /** True when an `add_item`/`create_order` for this entity was among them. */
+  hadUnsentCreate: boolean;
+}
+
+/**
+ * Drop every op for an entity the device has since destroyed.
+ *
+ * ── The resurrection this removes ─────────────────────────────────────────
+ *
+ * Add an item offline, then remove it before the network returns. The row is
+ * gone locally, but its `add_item` op is not — so the drain faithfully pushes
+ * an item the operator already deleted, and it reappears on the check via
+ * realtime. The legacy queue had `cancelPendingByEntity` for exactly this; the
+ * outbox needs its own, because it is a different queue.
+ *
+ * Only `status = 'pending'` ops with `attempts = 0` are cancellable. One that
+ * has been ATTEMPTED may already have reached the server (a response can be
+ * lost after the write commits), so its create must stand and be undone by a
+ * real `remove_item` instead of quietly dropped.
+ */
+export async function cancelPendingOpsForEntity(
+  entityId: string,
+): Promise<CancelledOps> {
+  const db = getDb();
+  if (!db) return { deleted: 0, hadUnsentCreate: false };
+  try {
+    return await dbWriteMutex.runExclusive(async () => {
+      const rows = await db.getAllAsync<{ op: string }>(
+        `SELECT op FROM outbox
+          WHERE entity_id = ? AND status = 'pending' AND attempts = 0`,
+        [entityId],
+      );
+      if (rows.length === 0) return { deleted: 0, hadUnsentCreate: false };
+      await db.runAsync(
+        `DELETE FROM outbox
+          WHERE entity_id = ? AND status = 'pending' AND attempts = 0`,
+        [entityId],
+      );
+      const hadUnsentCreate = rows.some(
+        (r) => r.op === "add_item" || r.op === "create_order",
+      );
+      console.log(
+        `[LF] cancelled ${rows.length} unsent op(s) for ${entityId.slice(0, 8)}` +
+          (hadUnsentCreate ? " (including its create — nothing to undo)" : ""),
+      );
+      return { deleted: rows.length, hadUnsentCreate };
+    });
+  } catch (error) {
+    console.warn("[LF] cancelPendingOpsForEntity failed:", error);
+    return { deleted: 0, hadUnsentCreate: false };
+  }
+}
+
+/**
+ * Merge fields into the payload of an op that has NOT been sent yet.
+ *
+ * ── Why amend rather than append ──────────────────────────────────────────
+ *
+ * Edit an item before its `add_item` reaches the server — change the
+ * quantity, swap a modifier, add a note — and appending an update op means
+ * the server sees a create followed immediately by a correction to something
+ * nobody ever saw. Worse, each of those corrections is a separate round trip
+ * on a connection that is, by definition, not working.
+ *
+ * The create has not left the device. There is nothing to correct: the right
+ * move is to change what it will say. The legacy queue did exactly this (it
+ * rewrote its pending `add_item` params); the outbox had no equivalent, so
+ * every edit made before the drain confirmed the row was silently discarded.
+ *
+ * Only `attempts = 0` ops qualify — one that has been tried may have landed
+ * despite a lost response, and rewriting its payload would then mean the
+ * server holds a version of the row nobody asked for. Those take a real
+ * update op instead, which is what the `false` return tells the caller.
+ */
+export async function amendPendingOpPayload(
+  entityId: string,
+  op: OutboxOp,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    return await dbWriteMutex.runExclusive(async () => {
+      const row = await db.getFirstAsync<{ id: string; payload: string }>(
+        `SELECT id, payload FROM outbox
+          WHERE entity_id = ? AND op = ? AND status = 'pending' AND attempts = 0
+          ORDER BY created_at DESC, rowid DESC
+          LIMIT 1`,
+        [entityId, op],
+      );
+      if (!row) return false;
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(row.payload) as Record<string, unknown>;
+      } catch {
+        return false;
+      }
+      const merged = JSON.stringify({ ...payload, ...patch });
+      await db.runAsync(`UPDATE outbox SET payload = ? WHERE id = ?`, [
+        merged,
+        row.id,
+      ]);
+      return true;
+    });
+  } catch (error) {
+    console.warn("[LF] amendPendingOpPayload failed:", error);
+    return false;
+  }
+}
+
+/**
+ * Session ids the server has not confirmed yet — pending AND failed.
+ *
+ * Read once at startup to seed the in-memory guard in
+ * `services/localFirst/unsyncedSessions.ts`. See that file for why a
+ * SYNCHRONOUS guard is what the floor-plan reducers need.
+ */
+export async function unsyncedSessionIds(): Promise<string[]> {
+  const db = getReadDb();
+  if (!db) return [];
+  try {
+    const rows = await db.getAllAsync<{ entity_id: string }>(
+      `SELECT DISTINCT entity_id FROM outbox WHERE entity = 'table_session'`,
+    );
+    return rows.map((r) => r.entity_id);
+  } catch {
+    return [];
   }
 }
 

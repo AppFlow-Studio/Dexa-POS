@@ -27,15 +27,27 @@
  * and queueing separately. That dual write is the thing that loses orders.
  */
 import { getReadDb } from "@/lib/db/index";
-import { commitLocalWrite, type OutboxEntry } from "@/lib/db/outbox";
+import {
+  amendPendingOpPayload,
+  cancelPendingOpsForEntity,
+  commitLocalWrite,
+  type OutboxEntry,
+} from "@/lib/db/outbox";
 import { getDeviceId } from "@/lib/deviceId";
 import { generateLocalOrderNumbers } from "@/lib/localOrderSequence";
+import { markSessionUnsynced } from "@/lib/localFirst/unsyncedSessions";
 import { v4 as uuidv4 } from "uuid";
 
 import type {
   AddItemPayload,
   CreateOrderPayload,
+  RemoveItemPayload,
+  ReplaceModifiersPayload,
   SeatGuestsPayload,
+  SendToKitchenPayload,
+  SetItemSeatPayload,
+  UpdateItemQuantityPayload,
+  VoidItemPayload,
 } from "@/services/localFirst/opHandlers";
 
 /** `EXPO_PUBLIC_LOCAL_WRITES_*` gate each phase independently. */
@@ -573,8 +585,460 @@ export async function seatLocal(
   ]);
 
   if (!result.ok) return { ok: false, error: result.error };
+  // Guard this session against the floor-plan CLEAR sweep until the drain
+  // confirms it. See lib/localFirst/unsyncedSessions.ts — without it, the
+  // first authoritative snapshot after an offline seat frees the table the
+  // guests are sitting at.
+  markSessionUnsynced(sessionId);
   return {
     ok: true,
     value: { sessionId, orderId, orderNumber, displayNumber },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Item mutations
+// ---------------------------------------------------------------------------
+//
+// ── Why these exist at all ────────────────────────────────────────────────
+//
+// Creating an order and adding items were made local-first; everything you do
+// to an item AFTERWARDS was not. Those paths all gate on `db_order_item_id`,
+// which by design is only written once the drain confirms the row — so with no
+// network it is null forever, and each of them fell through to the legacy MMKV
+// queue addressed by the CART id.
+//
+// That queue cannot resolve a cart id for a local-first item: `resolveItemId`
+// reads `offlineIdRegistry`, which only the legacy add path populates. The op
+// therefore returns OpBlocked("item_not_synced") on every pass, forever, and
+// is eventually dead-lettered. A quantity change, a void, a seat assignment
+// made during an outage simply never reached the server — silently, with the
+// device showing the operator the change they made.
+//
+// The row uuid, meanwhile, has existed since `addLocalItem` minted it. These
+// functions address the row by that id, so the mutation is expressible the
+// instant it happens, and the outbox's per-order FIFO guarantees the
+// `add_item` that creates the row drains before anything that modifies it.
+
+export interface UpdateLocalItemQuantityInput {
+  orderId: string;
+  /** The `order_items` row uuid — NOT the CartItem's composite id. */
+  itemId: string;
+  quantity: number;
+}
+
+/** Change an item's quantity. Works identically online and off. */
+export async function updateLocalItemQuantity(
+  input: UpdateLocalItemQuantityInput,
+): Promise<LocalWriteResult<void>> {
+  const ts = nowIso();
+  const payload: UpdateItemQuantityPayload = {
+    orderId: input.orderId,
+    itemId: input.itemId,
+    quantity: input.quantity,
+  };
+
+  const result = await commitLocalWrite(
+    [
+      {
+        sql: `UPDATE order_items SET quantity = ?, updated_at = ?, _sync_status = 'local' WHERE id = ?`,
+        args: [input.quantity, ts, input.itemId],
+      },
+      { sql: `UPDATE orders SET updated_at = ? WHERE id = ?`, args: [ts, input.orderId] },
+    ],
+    [
+      {
+        id: uuidv4(),
+        op: "update_item_quantity",
+        entity: "order_item",
+        entityId: input.itemId,
+        orderId: input.orderId,
+        payload,
+      },
+    ],
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
+}
+
+export interface VoidLocalItemInput {
+  orderId: string;
+  itemId: string;
+  reason: string;
+}
+
+/**
+ * Void an item — the soft delete used once a line has been sent to the
+ * kitchen, so the record (and the kitchen's copy) survives.
+ */
+export async function voidLocalItem(
+  input: VoidLocalItemInput,
+): Promise<LocalWriteResult<void>> {
+  const ts = nowIso();
+  const payload: VoidItemPayload = {
+    orderId: input.orderId,
+    itemId: input.itemId,
+    reason: input.reason,
+  };
+
+  const result = await commitLocalWrite(
+    [
+      {
+        sql: `UPDATE order_items
+                 SET is_voided = 1, void_reason = ?, voided_at = ?,
+                     updated_at = ?, _sync_status = 'local'
+               WHERE id = ?`,
+        args: [input.reason, ts, ts, input.itemId],
+      },
+      { sql: `UPDATE orders SET updated_at = ? WHERE id = ?`, args: [ts, input.orderId] },
+    ],
+    [
+      {
+        id: uuidv4(),
+        op: "void_item",
+        entity: "order_item",
+        entityId: input.itemId,
+        orderId: input.orderId,
+        payload,
+      },
+    ],
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
+}
+
+export interface RemoveLocalItemInput {
+  orderId: string;
+  itemId: string;
+}
+
+export interface RemovedLocalItem {
+  /** True when the add was cancelled instead of being pushed and undone. */
+  cancelledBeforeSend: boolean;
+}
+
+/**
+ * Remove an item — the hard delete for a line the kitchen never saw.
+ *
+ * ── The resurrection this closes ──────────────────────────────────────────
+ *
+ * Add an item offline, change your mind, remove it. The row goes, but its
+ * `add_item` op does not, so the drain dutifully creates the item on the
+ * server the moment the network returns and realtime puts it straight back on
+ * the check. The legacy queue had `cancelPendingByEntity` for exactly this;
+ * the outbox is a DIFFERENT queue and had no equivalent, so cancelling the
+ * legacy op protected nothing.
+ *
+ * If the add never left the device we drop it and say nothing to the server —
+ * there is no row to remove. If it HAS been attempted we must assume it
+ * landed (a response can be lost after the write commits) and send a real
+ * `remove_item`, which is idempotent on an id the server may or may not have.
+ */
+export async function removeLocalItem(
+  input: RemoveLocalItemInput,
+): Promise<LocalWriteResult<RemovedLocalItem>> {
+  const cancelled = await cancelPendingOpsForEntity(input.itemId);
+  const ts = nowIso();
+
+  const statements = [
+    { sql: `DELETE FROM order_items WHERE id = ?`, args: [input.itemId] },
+    { sql: `UPDATE orders SET updated_at = ? WHERE id = ?`, args: [ts, input.orderId] },
+  ];
+
+  if (cancelled.hadUnsentCreate) {
+    const result = await commitLocalWrite(statements, []);
+    if (!result.ok) return { ok: false, error: result.error };
+    return { ok: true, value: { cancelledBeforeSend: true } };
+  }
+
+  const payload: RemoveItemPayload = {
+    orderId: input.orderId,
+    itemId: input.itemId,
+  };
+  const result = await commitLocalWrite(statements, [
+    {
+      id: uuidv4(),
+      op: "remove_item",
+      entity: "order_item",
+      entityId: input.itemId,
+      orderId: input.orderId,
+      payload,
+    },
+  ]);
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, value: { cancelledBeforeSend: false } };
+}
+
+export interface SetLocalItemSeatInput {
+  orderId: string;
+  itemId: string;
+  seatNumber: number | null;
+}
+
+/** Assign (or clear) an item's seat. */
+export async function setLocalItemSeat(
+  input: SetLocalItemSeatInput,
+): Promise<LocalWriteResult<void>> {
+  const ts = nowIso();
+  const payload: SetItemSeatPayload = {
+    orderId: input.orderId,
+    itemId: input.itemId,
+    seatNumber: input.seatNumber,
+  };
+
+  const result = await commitLocalWrite(
+    [
+      {
+        sql: `UPDATE order_items SET seat_number = ?, updated_at = ?, _sync_status = 'local' WHERE id = ?`,
+        args: [input.seatNumber, ts, input.itemId],
+      },
+    ],
+    [
+      {
+        id: uuidv4(),
+        op: "set_item_seat",
+        entity: "order_item",
+        entityId: input.itemId,
+        orderId: input.orderId,
+        payload,
+      },
+    ],
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
+}
+
+export interface ReplaceLocalItemModifiersInput {
+  orderId: string;
+  itemId: string;
+  /** Already FLATTENED to the row shape the RPC inserts. */
+  modifiers: unknown[];
+}
+
+/** Replace an item's modifier set wholesale. */
+export async function replaceLocalItemModifiers(
+  input: ReplaceLocalItemModifiersInput,
+): Promise<LocalWriteResult<void>> {
+  const ts = nowIso();
+  const payload: ReplaceModifiersPayload = {
+    orderId: input.orderId,
+    itemId: input.itemId,
+    modifiers: input.modifiers,
+  };
+
+  const result = await commitLocalWrite(
+    [
+      {
+        sql: `UPDATE order_items SET updated_at = ?, _sync_status = 'local' WHERE id = ?`,
+        args: [ts, input.itemId],
+      },
+    ],
+    [
+      {
+        id: uuidv4(),
+        op: "replace_modifiers",
+        entity: "order_item",
+        entityId: input.itemId,
+        orderId: input.orderId,
+        payload,
+      },
+    ],
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
+}
+
+export interface EditLocalItemInput {
+  orderId: string;
+  itemId: string;
+  quantity?: number;
+  specialInstructions?: string | null;
+  /** Already FLATTENED to the row shape the RPC inserts. */
+  modifiers?: unknown[];
+}
+
+/**
+ * Apply an edit to an item, choosing the cheapest correct expression of it.
+ *
+ * ── What used to happen instead ───────────────────────────────────────────
+ *
+ * `updateItemInActiveOrder` syncs an edit only when the line carries a
+ * `db_order_item_id`; otherwise it looks for a pending LEGACY `add_item` op
+ * and rewrites its params. Under local-first there is no legacy op to find —
+ * the add lives in the outbox — so the whole else-branch was a no-op. Change
+ * an item's modifiers or notes before the drain confirms it (which offline is
+ * always) and the edit existed only on the tablet.
+ *
+ * If the add has not been sent, the edit is folded INTO it: one create with
+ * the right contents, no correction, no extra round trip on a link that is
+ * already failing. If it has been sent, real update ops are queued, ordered
+ * behind it by the per-order FIFO.
+ */
+export async function editLocalItem(
+  input: EditLocalItemInput,
+): Promise<LocalWriteResult<{ amended: boolean }>> {
+  const ts = nowIso();
+  const patch: Record<string, unknown> = {};
+  if (input.quantity != null) patch.quantity = input.quantity;
+  if (input.specialInstructions !== undefined) {
+    patch.specialInstructions = input.specialInstructions;
+  }
+  if (input.modifiers !== undefined) patch.modifiers = input.modifiers;
+  if (Object.keys(patch).length === 0) {
+    return { ok: true, value: { amended: false } };
+  }
+
+  const amended = await amendPendingOpPayload(input.itemId, "add_item", patch);
+
+  // The local row is updated either way — it is this device's record of the
+  // check, not a mirror of the outbox.
+  const rowUpdates: { sql: string; args: (string | number | null)[] }[] = [];
+  if (input.quantity != null) {
+    rowUpdates.push({
+      sql: `UPDATE order_items SET quantity = ?, updated_at = ? WHERE id = ?`,
+      args: [input.quantity, ts, input.itemId],
+    });
+  }
+  if (input.specialInstructions !== undefined) {
+    rowUpdates.push({
+      sql: `UPDATE order_items SET special_instructions = ?, updated_at = ? WHERE id = ?`,
+      args: [input.specialInstructions ?? null, ts, input.itemId],
+    });
+  }
+
+  if (amended) {
+    if (rowUpdates.length > 0) {
+      const res = await commitLocalWrite(rowUpdates, []);
+      if (!res.ok) return { ok: false, error: res.error };
+    }
+    return { ok: true, value: { amended: true } };
+  }
+
+  // The add is already on its way — express the edit as its own ops.
+  const ops: OutboxEntry[] = [];
+  if (input.quantity != null) {
+    const payload: UpdateItemQuantityPayload = {
+      orderId: input.orderId,
+      itemId: input.itemId,
+      quantity: input.quantity,
+    };
+    ops.push({
+      id: uuidv4(),
+      op: "update_item_quantity",
+      entity: "order_item",
+      entityId: input.itemId,
+      orderId: input.orderId,
+      payload,
+    });
+  }
+  if (input.modifiers !== undefined) {
+    const payload: ReplaceModifiersPayload = {
+      orderId: input.orderId,
+      itemId: input.itemId,
+      modifiers: input.modifiers ?? [],
+    };
+    ops.push({
+      id: uuidv4(),
+      op: "replace_modifiers",
+      entity: "order_item",
+      entityId: input.itemId,
+      orderId: input.orderId,
+      payload,
+    });
+  }
+
+  if (ops.length === 0 && rowUpdates.length === 0) {
+    return { ok: true, value: { amended: false } };
+  }
+  const res = await commitLocalWrite(rowUpdates, ops);
+  if (!res.ok) return { ok: false, error: res.error };
+  return { ok: true, value: { amended: false } };
+}
+
+// ---------------------------------------------------------------------------
+// Send to kitchen
+// ---------------------------------------------------------------------------
+
+export interface SendLocalToKitchenInput {
+  orderId: string;
+  /** `order_items` row uuids. */
+  itemIds: string[];
+  orderStatus: string;
+  itemStatus: string;
+  staffId?: string | null;
+  stationId?: string | null;
+  deviceId?: string | null;
+  /** Reuse the caller's keys so a replay is the SAME send, not a second one. */
+  sendIdempotencyKey?: string | null;
+  itemsIdempotencyKey?: string | null;
+}
+
+/**
+ * Fire a batch to the kitchen.
+ *
+ * ── Why this belongs in the outbox and not the legacy queue ───────────────
+ *
+ * Offline, `_commitKitchenSendForBatch` found zero items carrying a
+ * `db_order_item_id` (the drain sets it, and the drain has not run), declared
+ * the whole batch "stragglers", and handed them to the legacy queue keyed by
+ * CART id. That queue then spent up to an hour returning
+ * OpBlocked("items_not_synced") before dead-lettering, because it has no way
+ * to map a composite cart key to a row. The send reported "queued" and nothing
+ * ever reached the kitchen.
+ *
+ * Here the batch is addressed by row uuids that already exist, and the
+ * outbox's per-order FIFO puts it strictly after the `add_item` ops for those
+ * same rows. There is nothing left to resolve and nothing to wait for: when
+ * the network returns, the items are created and then routed, in that order,
+ * without a barrier or a straggler list.
+ */
+export async function sendLocalToKitchen(
+  input: SendLocalToKitchenInput,
+): Promise<LocalWriteResult<void>> {
+  if (input.itemIds.length === 0) return { ok: true };
+  const ts = nowIso();
+  const placeholders = input.itemIds.map(() => "?").join(",");
+
+  const payload: SendToKitchenPayload = {
+    orderId: input.orderId,
+    itemIds: input.itemIds,
+    orderStatus: input.orderStatus,
+    itemStatus: input.itemStatus,
+    staffId: input.staffId ?? null,
+    stationId: input.stationId ?? null,
+    deviceId: input.deviceId ?? getDeviceId(),
+    sendIdempotencyKey: input.sendIdempotencyKey ?? null,
+    itemsIdempotencyKey: input.itemsIdempotencyKey ?? null,
+  };
+
+  const result = await commitLocalWrite(
+    [
+      {
+        sql: `UPDATE order_items
+                 SET kitchen_status = ?, updated_at = ?
+               WHERE id IN (${placeholders})`,
+        args: [input.itemStatus, ts, ...input.itemIds],
+      },
+      {
+        sql: `UPDATE orders SET status = ?, updated_at = ? WHERE id = ?`,
+        args: [input.orderStatus, ts, input.orderId],
+      },
+    ],
+    [
+      {
+        // Keyed on the ORDER, not an item: this is one gesture against one
+        // check, and `send_order_to_kitchen_v1` applies it atomically. Keying
+        // it to an item would also make `cancelPendingOpsForEntity` drop the
+        // whole send when that single item is removed.
+        id: uuidv4(),
+        op: "send_to_kitchen",
+        entity: "order",
+        entityId: input.orderId,
+        orderId: input.orderId,
+        payload,
+      },
+    ],
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
 }

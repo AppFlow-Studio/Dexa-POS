@@ -31,6 +31,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDb } from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/mutex";
 import type { ClaimedOp } from "@/lib/db/outbox";
+import { isTerminalKitchenMutationError } from "@/lib/kdsSendTraceability";
+import { markSessionSynced } from "@/lib/localFirst/unsyncedSessions";
 import {
   outcomeFromError,
   type DrainOutcome,
@@ -126,6 +128,53 @@ export interface AddItemPayload {
   cartItemId?: string;
 }
 
+/**
+ * Every item-mutation payload addresses the row by `itemId` — the uuid minted
+ * in `addLocalItem`, which exists from the first frame. It is deliberately NOT
+ * the CartItem's id: that is a composite merge key, and it is what the legacy
+ * queue tried (and permanently failed) to resolve.
+ */
+export interface UpdateItemQuantityPayload {
+  orderId: string;
+  itemId: string;
+  quantity: number;
+}
+
+export interface VoidItemPayload {
+  orderId: string;
+  itemId: string;
+  reason: string;
+}
+
+export interface RemoveItemPayload {
+  orderId: string;
+  itemId: string;
+}
+
+export interface SetItemSeatPayload {
+  orderId: string;
+  itemId: string;
+  seatNumber: number | null;
+}
+
+export interface ReplaceModifiersPayload {
+  orderId: string;
+  itemId: string;
+  modifiers: unknown[];
+}
+
+export interface SendToKitchenPayload {
+  orderId: string;
+  itemIds: string[];
+  orderStatus: string;
+  itemStatus: string;
+  staffId?: string | null;
+  stationId?: string | null;
+  deviceId?: string | null;
+  sendIdempotencyKey?: string | null;
+  itemsIdempotencyKey?: string | null;
+}
+
 export interface SeatGuestsPayload {
   tableIds: string[];
   partySize: number;
@@ -177,6 +226,41 @@ function rpcError(rpc: string, error: unknown): DrainOutcome {
     );
   } else {
     console.error(`[LF] ✗ ${rpc} ${outcome.kind}:`, text);
+  }
+  return outcome;
+}
+
+/**
+ * A destructive op whose target is already gone has SUCCEEDED.
+ *
+ * `remove_order_item` and `void_order_item` both raise
+ * "Order item not found or access denied" for a row that is not there, and
+ * `classifyError` correctly reads that as permanent. For a DELETE that
+ * classification is right about the retry and wrong about the meaning: the
+ * intent was "this item must not be on the check", and it is not. Parking the
+ * op leaves a red conflict flag and a scary log line describing a state the
+ * operator asked for.
+ *
+ * This happens legitimately: an add can fail server-side (a rejected op, a
+ * lost response) and the remove that follows it then addresses a row that was
+ * never created. The end state is identical either way.
+ */
+function absentIsDone(
+  outcome: DrainOutcome,
+  rpc: string,
+  itemId: string,
+): DrainOutcome {
+  if (
+    // Deliberately NOT matching "does not exist": that is what a MISSING RPC
+    // reports, and swallowing it here would turn "the migration was never
+    // applied" into a silent success on every void and remove.
+    outcome.kind === "rejected" &&
+    /not found|no rows/i.test(outcome.reason)
+  ) {
+    console.log(
+      `[LF] ✓ ${rpc} item=${itemId} — already absent server-side, nothing to undo`,
+    );
+    return { kind: "synced" };
   }
   return outcome;
 }
@@ -307,6 +391,166 @@ export function makeOpHandlers(
       }
     },
 
+    update_item_quantity: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as UpdateItemQuantityPayload;
+      console.log(
+        `[LF] → update_order_item_quantity_v3 item=${p.itemId} qty=${p.quantity}`,
+      );
+      try {
+        const { error } = await client.rpc("update_order_item_quantity_v3", {
+          p_order_item_id: p.itemId,
+          p_quantity: p.quantity,
+          p_idempotency_key: op.id,
+        });
+        if (error) return rpcError("update_order_item_quantity_v3", error);
+        return { kind: "synced" };
+      } catch (error) {
+        return rpcError("update_order_item_quantity_v3", error);
+      }
+    },
+
+    replace_modifiers: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as ReplaceModifiersPayload;
+      console.log(`[LF] → replace_order_item_modifiers_v2 item=${p.itemId}`);
+      try {
+        const { error } = await client.rpc("replace_order_item_modifiers_v2", {
+          p_order_item_id: p.itemId,
+          p_modifiers: p.modifiers,
+          p_idempotency_key: op.id,
+        });
+        if (error) return rpcError("replace_order_item_modifiers_v2", error);
+        return { kind: "synced" };
+      } catch (error) {
+        return rpcError("replace_order_item_modifiers_v2", error);
+      }
+    },
+
+    void_item: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as VoidItemPayload;
+      console.log(`[LF] → void_order_item item=${p.itemId}`);
+      try {
+        const { error } = await client.rpc("void_order_item", {
+          p_order_item_id: p.itemId,
+          p_void_reason: p.reason,
+        });
+        if (error) {
+          const outcome = rpcError("void_order_item", error);
+          return absentIsDone(outcome, "void_order_item", p.itemId);
+        }
+        return { kind: "synced" };
+      } catch (error) {
+        return absentIsDone(
+          rpcError("void_order_item", error),
+          "void_order_item",
+          p.itemId,
+        );
+      }
+    },
+
+    remove_item: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as RemoveItemPayload;
+      console.log(`[LF] → remove_order_item item=${p.itemId}`);
+      try {
+        const { error } = await client.rpc("remove_order_item", {
+          p_order_item_id: p.itemId,
+        });
+        if (error) {
+          const outcome = rpcError("remove_order_item", error);
+          return absentIsDone(outcome, "remove_order_item", p.itemId);
+        }
+        return { kind: "synced" };
+      } catch (error) {
+        return absentIsDone(
+          rpcError("remove_order_item", error),
+          "remove_order_item",
+          p.itemId,
+        );
+      }
+    },
+
+    set_item_seat: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as SetItemSeatPayload;
+      console.log(`[LF] → set_item_seat item=${p.itemId} seat=${p.seatNumber}`);
+      try {
+        const { error } = await client.rpc("set_item_seat", {
+          p_order_item_id: p.itemId,
+          p_seat_number: p.seatNumber,
+        });
+        if (error) return rpcError("set_item_seat", error);
+        return { kind: "synced" };
+      } catch (error) {
+        return rpcError("set_item_seat", error);
+      }
+    },
+
+    send_to_kitchen: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as SendToKitchenPayload;
+      console.log(
+        `[LF] → send_order_to_kitchen_v1 order=${p.orderId} items=${p.itemIds.length}`,
+      );
+      if (p.itemIds.length === 0) return { kind: "synced" };
+      try {
+        // Via OrderService rather than a bare client.rpc: it owns
+        // `validateKitchenMutationResult`, which is what turns a server that
+        // routed 4 of 6 items into a NAMED failure instead of a success. That
+        // check is the whole reason "sent to the kitchen, food never came" was
+        // findable, and the drain needs it at least as much as the live path.
+        const { OrderService } =
+          require("@/services/orderService") as typeof import("@/services/orderService");
+        const { error } = await OrderService.sendOrderToKitchen(
+          client,
+          p.orderId,
+          p.itemIds,
+          p.orderStatus as never,
+          p.itemStatus as never,
+          {
+            staffId: p.staffId ?? null,
+            stationId: p.stationId ?? null,
+            deviceId: p.deviceId ?? null,
+            // The op id is the send's identity. Reusing the caller's key when
+            // it has one keeps a replay the SAME send rather than a second
+            // one, which on the KDS is the difference between a re-fire and a
+            // duplicate ticket.
+            idempotencyKey: p.sendIdempotencyKey ?? op.id,
+            itemsIdempotencyKey: p.itemsIdempotencyKey ?? op.id,
+            replay: true,
+          },
+        );
+        if (error) {
+          // A traceability failure cannot be retried into correctness. Either
+          // the server resolved fewer items than we asked for (the ones it
+          // could not find are absent because an earlier op for them was
+          // rejected — the same list will resolve the same subset), or it
+          // answered without the row counts at all, which means the routing
+          // migration is not applied and no amount of retrying will apply it.
+          //
+          // Both would otherwise classify as "unrecognised" and therefore
+          // transient, and loop in the background forever. The live path
+          // already treats this family as terminal; the drain must agree, or
+          // the same send behaves differently depending on whether it went out
+          // immediately or through the queue.
+          if (isTerminalKitchenMutationError(error)) {
+            console.error(
+              `[LF] ✗ send_to_kitchen order=${p.orderId} not fully applied — ` +
+                `${error.code}. ${error.hint ?? ""}`,
+              error,
+            );
+            return {
+              kind: "rejected",
+              reason: `${error.code}: ${error.message} (order ${p.orderId})`,
+            };
+          }
+          return rpcError("send_order_to_kitchen_v1", error);
+        }
+        console.log(
+          `[LF] ✓ send_order_to_kitchen_v1 order=${p.orderId} items=${p.itemIds.length}`,
+        );
+        return { kind: "synced" };
+      } catch (error) {
+        return rpcError("send_order_to_kitchen_v1", error);
+      }
+    },
+
     seat_guests: async (op: ClaimedOp): Promise<DrainOutcome> => {
       const p = op.payload as SeatGuestsPayload;
       console.log(`[LF] → seat_guests_v4 session=${op.entityId}`);
@@ -340,6 +584,11 @@ export function makeOpHandlers(
         // plain rejection without escalating would strand a real check with
         // real food on it.
         if (data && data.success === false && data.error === "table_occupied") {
+          // Release the floor-plan guard. Our session lost the table, so the
+          // server's view of it is now the correct one and must be allowed
+          // through — continuing to protect a session that does not own the
+          // table would hide the check that does.
+          markSessionSynced(op.entityId);
           deps.onTableOccupied?.({
             kind: "table_occupied",
             occupiedBySessionId: data.occupied_by_session_id,
@@ -359,6 +608,9 @@ export function makeOpHandlers(
         console.log(
           `[LF] ✓ seat_guests_v4 session=${op.entityId} order=${data?.order_id}`,
         );
+        // The server has it now, so a floor-plan snapshot that omits this
+        // table is real information rather than a stale read.
+        markSessionSynced(op.entityId);
         return { kind: "synced" };
       } catch (error) {
         return rpcError("seat_guests_v4", error);

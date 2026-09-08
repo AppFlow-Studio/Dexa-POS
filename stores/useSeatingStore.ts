@@ -1,10 +1,39 @@
 import { DEADLINES } from "@/lib/network/deadlines";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
+import { setLocalItemSeat } from "@/services/localFirst/localWrites";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { isValidUUID } from "@/utils/orderIdHelpers";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+
+/**
+ * The `order_items` row uuid for a cart line, from the order store.
+ *
+ * Lazily required: `useOrderStore` imports THIS module, so a static import
+ * would close a cycle. Returns undefined for anything it cannot find, which
+ * leaves the caller on its pre-existing path.
+ */
+function resolveItemRowId(
+  orderId: string,
+  cartItemId: string,
+): string | undefined {
+  try {
+    const {
+      useOrderStore,
+    } = require("@/stores/useOrderStore") as typeof import("@/stores/useOrderStore");
+    const state = useOrderStore.getState();
+    const order =
+      state.ordersById[orderId] ??
+      Object.values(state.ordersById).find(
+        (o: any) => o?.db_order_id === orderId,
+      );
+    const line = (order as any)?.items?.find((i: any) => i.id === cartItemId);
+    return line?.db_order_item_id ?? line?.item_row_id;
+  } catch {
+    return undefined;
+  }
+}
 
 // ============================================================================
 // SUPABASE CLIENT (Global pattern like useCoursingStore)
@@ -255,7 +284,21 @@ export const useSeatingStore = create<SeatingState>()(
 
       const dbOrderId = orderData.dbOrderId;
 
-      if (!dbItemId || !isValidUUID(dbItemId)) {
+      // ── The row id, even before the server has the row. ─────────────────
+      //
+      // Callers pass `db_order_item_id`, which the outbox drain writes only
+      // once the item exists server-side — so offline it is always undefined
+      // and both branches below queued a `set_item_seat` op keyed by the CART
+      // id. That op can never resolve (`resolveItemId` reads
+      // `offlineIdRegistry`, which the local-first add path does not
+      // populate), so a seat assigned during an outage was silently dropped
+      // and the check came back unsplittable.
+      //
+      // `item_row_id` is the id the row already carries. Resolved here rather
+      // than at each call site so ModifierScreen keeps its existing signature.
+      const rowId = dbItemId ?? resolveItemRowId(orderId, itemId);
+
+      if (!rowId || !isValidUUID(rowId)) {
         queueOperation({
           type: "set_item_seat",
           params: { dbItemId: dbItemId ?? null, seatNumber, localOrderId: orderId, localItemId: itemId },
@@ -264,11 +307,23 @@ export const useSeatingStore = create<SeatingState>()(
         return;
       }
 
-      if (!getIsOnline()) {
-        queueOperation({
-          type: "set_item_seat",
-          params: { dbItemId, seatNumber },
-          localOrderId: orderId,
+      if (!getIsOnline() || !dbItemId) {
+        // Offline, or online with a row the drain has not confirmed yet:
+        // either way the write belongs in the outbox, whose per-order FIFO
+        // guarantees the `add_item` that creates this row drains first.
+        void setLocalItemSeat({
+          orderId: dbOrderId ?? orderId,
+          itemId: rowId,
+          seatNumber,
+        }).then((res) => {
+          if (!res.ok) {
+            console.error("[LF] ✗ setLocalItemSeat failed:", res.error);
+            queueOperation({
+              type: "set_item_seat",
+              params: { dbItemId: rowId, seatNumber },
+              localOrderId: orderId,
+            });
+          }
         });
         return;
       }

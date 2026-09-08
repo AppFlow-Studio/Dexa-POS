@@ -16,6 +16,7 @@
 
 import { markOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
 import { mintStoreSessionId } from "@/lib/localFirst/identity";
+import { hasUnsyncedSession } from "@/lib/localFirst/unsyncedSessions";
 import {
   LOCAL_WRITES_SEATING,
   seatLocal,
@@ -874,6 +875,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               if (existing && isLocalOnlyStatus(existing.status)) {
                 continue;
               }
+              // A session the server has never seen is not "freed" — it is
+              // simply not there yet. See _patchSessionsFromTables for the
+              // full account of what clearing it destroys.
+              if (existing && hasUnsyncedSession(existing.id)) {
+                continue;
+              }
               actions.push({ tableId, action: { type: "CLEAR" } });
             }
           }
@@ -965,6 +972,25 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               if (!snapshotTableIds.has(tableId)) continue;
               const existing = currentSessions[tableId];
               if (existing && isLocalOnlyStatus(existing.status)) {
+                continue;
+              }
+              // ── A locally-seated session is not a freed table. ──────────
+              //
+              // `isLocalOnlyStatus` covers seating/ordering/paying/closing.
+              // It does NOT cover 'seated', and `seatLocal` writes exactly
+              // that — correctly, because the table genuinely IS seated the
+              // moment the operator taps.
+              //
+              // So until the `seat_guests` op drains, an authoritative
+              // snapshot reports that table free, this sweep believes it, and
+              // the session is CLEARed: the table flips to available with
+              // guests sitting at it, and its order detaches. Offline that is
+              // permanent; online it is a race the drain usually but not
+              // always wins.
+              //
+              // The outbox is the authority on "has the server seen this",
+              // and that is precisely the question being asked here.
+              if (existing && hasUnsyncedSession(existing.id)) {
                 continue;
               }
               // A table in the authoritative snapshot missing its session

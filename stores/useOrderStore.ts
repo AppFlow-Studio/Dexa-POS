@@ -109,6 +109,11 @@ import {
   LOCAL_WRITES_SEATING,
   addLocalItem,
   createLocalOrder,
+  editLocalItem,
+  removeLocalItem,
+  sendLocalToKitchen,
+  updateLocalItemQuantity,
+  voidLocalItem,
 } from "@/services/localFirst/localWrites";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
@@ -1018,6 +1023,63 @@ async function _commitKitchenSendForBatchInner(
         missing,
       );
     }
+  }
+
+  // ── OFFLINE: send through the outbox, not the legacy queue. ─────────────
+  //
+  // Offline, `freshSentItems` is EMPTY — it filters on `db_order_item_id`,
+  // which only the drain writes. So every item became a "straggler", the whole
+  // batch went to the legacy queue addressed by CART id, and that queue spent
+  // up to an hour returning OpBlocked("items_not_synced") before dead-lettering
+  // it: `resolveItemId` reads `offlineIdRegistry`, which the local-first add
+  // path does not populate. The send reported "queued" and the kitchen got
+  // nothing, ever.
+  //
+  // `item_row_id` is the id the rows already have. Queued as ONE outbox op
+  // against this order, the per-order FIFO puts it strictly after the
+  // `add_item` ops for those same rows — so on reconnect the items are created
+  // and then routed, in that order, with nothing left to resolve.
+  if (LOCAL_WRITES_ITEMS && !isOnlineNow && freshOrder.db_order_id) {
+    const batchItems = freshItems.filter((i) => sentLocalIds.has(i.id));
+    const rowIds = batchItems
+      .map((i) => i.db_order_item_id ?? i.item_row_id)
+      .filter((id): id is string => !!id);
+    // Lines with neither id predate local-first writes; the legacy queue is
+    // still the only thing that knows how to chase them.
+    const unaddressable = batchItems
+      .filter((i) => !i.db_order_item_id && !i.item_row_id)
+      .map((i) => i.id);
+
+    if (rowIds.length > 0) {
+      const ctx = createCurrentKitchenSendContext();
+      const res = await sendLocalToKitchen({
+        orderId: freshOrder.db_order_id,
+        itemIds: rowIds,
+        orderStatus: getOrderSentStatus(),
+        itemStatus: getKitchenSentStatus(),
+        staffId: ctx.staffId,
+        stationId: ctx.stationId,
+        deviceId: ctx.deviceId,
+        sendIdempotencyKey: ctx.sendIdempotencyKey,
+        itemsIdempotencyKey: ctx.itemsIdempotencyKey,
+      });
+      if (!res.ok) {
+        console.error("[LF] ✗ sendLocalToKitchen failed:", res.error);
+      } else {
+        console.log(
+          `[LF] kitchen send queued locally: ${rowIds.length} item(s) on order ${freshOrder.db_order_id.slice(0, 8)}`,
+        );
+      }
+    }
+    if (unaddressable.length > 0) {
+      await queueKitchenSend(
+        localOrderId,
+        unaddressable,
+        createCurrentKitchenSendContext(),
+        { offline_batch: true },
+      );
+    }
+    return { status: "queued" };
   }
 
   // Stragglers: batch items that STILL have no db_order_item_id after the wait.
@@ -2059,10 +2121,50 @@ const addItemToBackend = async (
   // there is a network: write the row and its outbox op in one SQLite
   // transaction, return, and let the drain push it.
   //
-  // Merges still go down the legacy path. A merge is an UPDATE to an existing
-  // item's quantity, not a create, so it needs `update_item_quantity`
-  // semantics the outbox does not carry yet — routing it here would silently
-  // add a second line instead of increasing the first.
+  // A MERGE is an UPDATE to an existing line's quantity, not a create, so it
+  // takes the quantity op rather than the add.
+  //
+  // ── The duplicate this removes ─────────────────────────────────────────
+  //
+  // Merges used to be sent down the legacy path wholesale. Offline that path
+  // reads `isMerge && item.db_order_item_id` — and offline the second half is
+  // ALWAYS false, because only the drain writes that field. So the merge fell
+  // into the legacy branch's `else`, which queues a full `add_item`: the
+  // outbox created the line with the first tap's quantity, and the legacy
+  // queue created a SECOND line for the same product. Tapping an item twice
+  // during an outage put two of it on the guest's check.
+  //
+  // `item_row_id` is the id the row already has, so the increase is
+  // expressible immediately and the outbox's per-order FIFO puts it after the
+  // add that created the row.
+  if (LOCAL_WRITES_ITEMS && isMerge) {
+    const rowId = item.db_order_item_id ?? item.item_row_id;
+    if (rowId) {
+      const orderId = await ensureOrderCreated(order, setOrderDbId);
+      if (!orderId) {
+        markItemFailed(item.id, "Could not create order locally");
+        return false;
+      }
+      console.log(
+        `[LF] merge LOCAL path item=${rowId.slice(0, 8)} qty=${item.quantity}`,
+      );
+      const res = await updateLocalItemQuantity({
+        orderId,
+        itemId: rowId,
+        quantity: item.quantity,
+      });
+      if (!res.ok) {
+        console.error("[LF] ✗ updateLocalItemQuantity failed:", res.error);
+        markItemFailed(item.id, res.error ?? "Local write failed");
+        return false;
+      }
+      onSyncComplete?.(resolveOrderKey());
+      return true;
+    }
+    // No row id at all — a line that predates local-first writes. The legacy
+    // path below still knows how to address it.
+  }
+
   if (LOCAL_WRITES_ITEMS && !isMerge) {
     // Already written? Do nothing.
     //
@@ -2145,6 +2247,30 @@ const addItemToBackend = async (
       console.error("[LF] ✗ addLocalItem failed:", res.error);
       markItemFailed(item.id, res.error ?? "Local write failed");
       return false;
+    }
+
+    // ── The row's IDENTITY, recorded now. ──────────────────────────────
+    //
+    // Not the same statement as "the server has it" (that is
+    // db_order_item_id, below) and not a shortcut to it. This is the primary
+    // key the row was just written under, and it is what every LATER mutation
+    // to this line has to address: a quantity change, a void, a seat, a
+    // kitchen send.
+    //
+    // Without it those paths had no id to use while offline, so they queued
+    // the CART id — a composite merge key — into the legacy queue, which
+    // resolves ids through `offlineIdRegistry` and therefore never resolved
+    // it. Every one of those ops returned "item_not_synced" on every pass
+    // until it was dead-lettered, and the operator's change never left the
+    // device.
+    if (res.value?.itemId) {
+      const rowId = res.value.itemId;
+      useOrderStore.setState((state) => {
+        const currentOrder = state.ordersById[resolveOrderKey()];
+        if (!currentOrder) return;
+        const line = currentOrder.items.find((i) => i.id === item.id);
+        if (line && !line.item_row_id) line.item_row_id = rowId;
+      });
     }
 
     // ── db_order_item_id is set by the DRAIN, not here. ────────────────
@@ -8261,14 +8387,39 @@ export const useOrderStore = create<OrderState>()(
                 ? order.items.filter((item) => itemIdFilter.has(item.id))
                 : order.items;
 
+              // ── Offline, the question changes. ───────────────────────────
+              //
+              // Both checks below ask "has the server got this yet?", via
+              // `db_order_item_id` and the sync-status entry — and BOTH are
+              // only ever cleared by the outbox drain. With no network neither
+              // can become true, so this barrier burned its full timeout
+              // (DEADLINES.sendToKitchen for a table send) on every single
+              // offline send before proceeding anyway.
+              //
+              // What a caller actually needs before firing is that the local
+              // WRITE has committed, so the row exists and its op is queued
+              // ahead of whatever comes next. `item_row_id` is exactly that
+              // fact, set the moment addLocalItem's transaction lands.
+              //
+              // Only offline: online, "the server has it" is still the right
+              // and reachable question, and the table path has no second
+              // barrier behind this one.
+              const offlineNow = !getIsOnline();
+              const locallyCommitted = (item: (typeof relevantItems)[number]) =>
+                offlineNow && !!item.item_row_id;
+
               // Check 1: any item missing db_order_item_id (still being added to backend)
               const hasUnsynced = relevantItems.some(
-                (item) => !item.isDraft && !item.db_order_item_id,
+                (item) =>
+                  !item.isDraft &&
+                  !item.db_order_item_id &&
+                  !locallyCommitted(item),
               );
 
               // Check 2: any item with pending/syncing status (quantity updates etc)
               const hasPendingStatus = relevantItems.some((item) => {
                 if (item.isDraft) return false;
+                if (locallyCommitted(item)) return false;
                 const status = syncStore.itemSyncStatus.get(item.id);
                 return status === "pending" || status === "syncing";
               });
@@ -9902,6 +10053,52 @@ export const useOrderStore = create<OrderState>()(
                       });
                     });
                 }
+              } else if (LOCAL_WRITES_ITEMS && updatedItem.item_row_id) {
+                // ── The edit has a row to land on. ─────────────────────────
+                //
+                // The legacy branch below rewrites a pending LEGACY `add_item`
+                // op. Under local-first that op does not exist — the add is in
+                // the outbox — so `pendingOps.find(...)` returned undefined and
+                // the entire else-branch was a no-op. Editing an item's
+                // quantity, notes or modifiers before the drain confirmed it
+                // (offline: always) changed the tablet and nothing else.
+                //
+                // `editLocalItem` folds the change into the unsent add when it
+                // can, and queues real update ops when the add is already on
+                // its way. Only the fields that actually changed are sent, so
+                // a notes edit does not also re-push the quantity.
+                const editedQuantity =
+                  originalItem && updatedItem.quantity !== originalItem.quantity
+                    ? updatedItem.quantity
+                    : undefined;
+                const notesChanged =
+                  (originalItem?.customizations?.notes ?? null) !==
+                  (updatedItem.customizations?.notes ?? null);
+                const modsChanged =
+                  JSON.stringify({
+                    mods: originalItem?.customizations?.modifiers,
+                    addons: originalItem?.customizations?.addOns,
+                  }) !==
+                  JSON.stringify({
+                    mods: updatedItem.customizations?.modifiers,
+                    addons: updatedItem.customizations?.addOns,
+                  });
+
+                void editLocalItem({
+                  orderId: order.db_order_id ?? activeOrderId,
+                  itemId: updatedItem.item_row_id,
+                  quantity: editedQuantity,
+                  specialInstructions: notesChanged
+                    ? (updatedItem.customizations?.notes ?? null)
+                    : undefined,
+                  modifiers: modsChanged
+                    ? (flattenModifiersForRpc(updatedItem) ?? [])
+                    : undefined,
+                }).then((res) => {
+                  if (!res.ok) {
+                    console.error("[LF] ✗ editLocalItem failed:", res.error);
+                  }
+                });
               } else {
                 // Item not yet synced to backend — update the pending add_item op
                 // in the offline queue so it creates the item with the latest data
@@ -10626,6 +10823,51 @@ export const useOrderStore = create<OrderState>()(
               });
             }
 
+            // ── LOCAL-FIRST VOID / REMOVE ─────────────────────────────────
+            //
+            // Two separate failures lived in the `db_order_item_id` gate
+            // below, and offline that field is ALWAYS null:
+            //
+            //   1. Nothing was queued at all. The item vanished from the
+            //      tablet and stayed on the server, so it came back on the
+            //      next sync, was charged for, and — if it had been fired —
+            //      was cooked.
+            //   2. `cancelPendingByEntity` above cancels the LEGACY op. The
+            //      outbox is a different queue, so its `add_item` survived and
+            //      the drain re-created the item on reconnect.
+            //
+            // `removeLocalItem` handles both: it cancels the unsent outbox op
+            // AND deletes the row in one transaction, and only sends a
+            // `remove_item` when the add has actually been attempted (i.e.
+            // may already exist server-side).
+            const rowIdForRemoval =
+              itemToHandle?.db_order_item_id ?? itemToHandle?.item_row_id;
+            if (LOCAL_WRITES_ITEMS && rowIdForRemoval && !itemToHandle?.db_order_item_id) {
+              const orderIdForRemoval = order.db_order_id ?? activeOrderId;
+              // Same guard the live path uses: a broadcast arriving while the
+              // removal is being written must not put the line back. Under
+              // client ids the row id IS the id a broadcast carries, so the
+              // existing mechanism works unchanged.
+              markItemPendingRemoval(rowIdForRemoval);
+              const done = (label: string) => (res: { ok: boolean; error?: string }) => {
+                if (!res.ok) console.error(`[LF] ✗ ${label} failed:`, res.error);
+                clearItemPendingRemoval(rowIdForRemoval);
+              };
+              if (isKitchenItem) {
+                void voidLocalItem({
+                  orderId: orderIdForRemoval,
+                  itemId: rowIdForRemoval,
+                  reason: voidReason || "User voided",
+                }).then(done("voidLocalItem"));
+              } else {
+                void removeLocalItem({
+                  orderId: orderIdForRemoval,
+                  itemId: rowIdForRemoval,
+                }).then(done("removeLocalItem"));
+              }
+              return;
+            }
+
             // Background sync (fire-and-forget)
             if (itemToHandle?.db_order_item_id && _supabaseClient) {
               const dbItemId = itemToHandle.db_order_item_id;
@@ -10818,6 +11060,35 @@ export const useOrderStore = create<OrderState>()(
                     queuedQty: newQuantity,
                   },
                 );
+              // ── The row exists locally; address it. ────────────────────
+              //
+              // This branch is reached constantly on the local-first path,
+              // because `db_order_item_id` is only written once the drain
+              // confirms the row — so for the entire window between adding an
+              // item and it syncing (which offline is *forever*) it is null.
+              //
+              // The legacy queue below cannot help here: it was given the CART
+              // id, which `resolveItemId` looks up in `offlineIdRegistry`, a
+              // map only the legacy add path populates. The op returned
+              // OpBlocked("item_not_synced") on every pass until it was
+              // dead-lettered. Every quantity change made offline was lost,
+              // while the tablet showed the operator the new number.
+              const rowId = dbItemId ?? item.item_row_id;
+              if (LOCAL_WRITES_ITEMS && rowId) {
+                void updateLocalItemQuantity({
+                  orderId: order.db_order_id ?? activeOrderId,
+                  itemId: rowId,
+                  quantity: newQuantity,
+                }).then((res) => {
+                  if (!res.ok) {
+                    console.error(
+                      "[LF] ✗ setItemQuantity local write failed:",
+                      res.error,
+                    );
+                  }
+                });
+                return;
+              }
               // Item not synced to DB yet — queue for when it is
               queueOperation({
                 type: "update_item_quantity",

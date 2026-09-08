@@ -28,7 +28,9 @@ import {
   pendingOpCount,
   purgeUnsyncableOps,
   requeueFailedOps,
+  resetBackoffForReconnect,
 } from "@/lib/db/outbox";
+import { seedUnsyncedSessions } from "@/lib/localFirst/unsyncedSessions";
 import { initLocalDb, isLocalDbReady } from "@/lib/db/index";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { makeOpHandlers } from "@/services/localFirst/opHandlers";
@@ -95,6 +97,11 @@ export function useOutboxDrain(): void {
 
     const run = async () => {
       if (cancelled || runningRef.current) return;
+      // Never push while offline. `nudgeDrain` fires on every local write, and
+      // a drain with no network turns each one into a failed attempt with an
+      // exponentially longer `next_at` — see nudgeDrain's header. The write is
+      // already durable; the reconnect path below is what pushes it.
+      if (!isOnline) return;
       if (!isLocalDbReady()) {
         // Wait rather than skip. At mount the DB is still opening, and a
         // plain skip meant the FIRST drain after launch never ran — the very
@@ -170,12 +177,31 @@ export function useOutboxDrain(): void {
       if (cancelled || !db) return;
       await purgeUnsyncableOps();
       await requeueFailedOps();
+      // Protect sessions seated in a PREVIOUS run of the app from being
+      // cleared by the first floor-plan snapshot of this one.
+      await seedUnsyncedSessions();
       // Kick a drain now that the requeued ops are eligible.
       if (isOnline) void run();
     })();
 
     // Mount + whenever connectivity flips back on.
-    if (isOnline) void run();
+    //
+    // The backoff reset is what makes reconnect actually mean "now". Ops
+    // parked at the 5-minute ceiling by failed offline pushes would otherwise
+    // stay ineligible for minutes after the wifi returns, which reads to an
+    // operator as sync being broken rather than merely slow. A reconnect
+    // invalidates the reason those attempts failed, so it invalidates their
+    // schedule too. Runs BEFORE the drain, or the drain claims nothing.
+    if (isOnline) {
+      void (async () => {
+        if (!isLocalDbReady()) {
+          const db = await initLocalDb();
+          if (!db || cancelled) return;
+        }
+        await resetBackoffForReconnect();
+        if (!cancelled) void run();
+      })();
+    }
 
     const timer = setInterval(() => {
       if (isOnline) void run();
