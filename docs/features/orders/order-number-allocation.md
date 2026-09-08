@@ -19,7 +19,7 @@ Four defects, all in the allocation path.
 1. **The counter cache was read-preferred but write-partial.**
    `lib/localOrderSequence.ts` kept an in-process `Map` seeded from MMKV, and
    `nextSequence` read it in preference to MMKV. But `seedLocalSequence` and
-   `forceSetLocalSequence` wrote MMKV *only*. After the first number of a
+   `forceSetLocalSequence` wrote MMKV _only_. After the first number of a
    session, every "heal the counter back to N" call in the app was inert.
 
    The visible damage was the inverse of the intent: the reused-empty-draft
@@ -31,13 +31,13 @@ Four defects, all in the allocation path.
 2. **Seating minted the order twice.** Every seat gesture creates its
    optimistic order first (`startNewOrder`, at the call site or inside
    `seatGuests`). `seatLocal` then minted its OWN uuid and its OWN number and
-   wrote *that* order to SQLite and the outbox. The session pointed at the new
+   wrote _that_ order to SQLite and the outbox. The session pointed at the new
    row; the store still held the old one, which could never sync, never be
    reached, and never give its number back. Two numbers per seat, one order
    orphaned.
 
 3. **A fresh order's floor ignored empty drafts.** `startNewOrder` floored the
-   counter at the highest *meaningful* order (drafts excluded), which can sit
+   counter at the highest _meaningful_ order (drafts excluded), which can sit
    below a number a draft on screen is still displaying — so a new order could
    be handed a duplicate of it. `order-processing.tsx` had already worked
    around this locally with `max(reliable, highestSeenToday)`; the store had
@@ -49,7 +49,7 @@ Four defects, all in the allocation path.
    number in the Zustand store alone, with nothing propagating it.
 
 Plus: `create_order_v4`'s collision renumber (§6.3) was logged and dropped, so
-a device that *was* renumbered kept displaying the number it lost.
+a device that _was_ renumbered kept displaying the number it lost.
 
 ## Changes
 
@@ -68,7 +68,7 @@ a device that *was* renumbered kept displaying the number it lost.
       number is already on the server, so it is replaced rather than rewritten.
 - [x] `stores/useOrderStore.ts` — `startNewOrder` mints via
       `allocateOrderNumbers`. New `startOrResumeOrder({ excludeOrderId,
-      resetDineInFields })` action: resume the latest reusable empty draft, else
+    resetDineInFields })` action: resume the latest reusable empty draft, else
       mint; sets the result active; reads the store when it runs.
 - [x] `services/localFirst/localWrites.ts` — `seatLocal` accepts
       `orderId`/`orderNumber`/`displayNumber` and only mints when the caller

@@ -16,17 +16,17 @@
  *      could sit BELOW a number a draft on screen was still displaying.
  */
 import {
-  __resetLocalSequencesForTests,
-  forceSetLocalSequence,
-  generateLocalOrderNumbers,
-  parseSequenceFromDisplayNumber,
-  seedLocalSequence,
+    __resetLocalSequencesForTests,
+    forceSetLocalSequence,
+    generateLocalOrderNumbers,
+    parseSequenceFromDisplayNumber,
+    seedLocalSequence,
 } from "@/lib/localOrderSequence";
 import {
-  allocateOrderNumbers,
-  findLatestReusableEmptyDraftId,
-  getTodaySequenceFloor,
-  isReusableEmptyDraftOrder,
+    allocateOrderNumbers,
+    findLatestReusableEmptyDraftId,
+    getTodaySequenceFloor,
+    isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
 import type { OrderProfile } from "@/lib/types";
 
@@ -197,9 +197,9 @@ describe("a fresh number is never one an order on this device already holds", ()
       display_number: "#S2-0009",
     });
 
-    expect(getTodaySequenceFloor(store.ordersById, store.orderIds, STATION)).toBe(
-      0,
-    );
+    expect(
+      getTodaySequenceFloor(store.ordersById, store.orderIds, STATION),
+    ).toBe(0);
     expect(seq(store.startNewOrder())).toBe(1);
   });
 

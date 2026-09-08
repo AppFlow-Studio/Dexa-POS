@@ -1,18 +1,18 @@
 import { getDeviceId } from "@/lib/deviceId";
 import {
-    buildKitchenSendQueueParams,
-    clearKitchenSendInFlight,
-    clearKitchenSendInFlightIfCaughtUp,
-    createKitchenSendContext,
-    isKitchenSendInFlight,
-    isTerminalKitchenMutationError,
-    markKitchenSendInFlight,
-    type KitchenSendContext,
+  buildKitchenSendQueueParams,
+  clearKitchenSendInFlight,
+  clearKitchenSendInFlightIfCaughtUp,
+  createKitchenSendContext,
+  isKitchenSendInFlight,
+  isTerminalKitchenMutationError,
+  markKitchenSendInFlight,
+  type KitchenSendContext,
 } from "@/lib/kdsSendTraceability";
 import {
-    getKitchenSentStatus,
-    getOrderSentStatus,
-    isKitchenItemSent,
+  getKitchenSentStatus,
+  getOrderSentStatus,
+  isKitchenItemSent,
 } from "@/lib/kitchenStatusUtils";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
@@ -21,51 +21,51 @@ import { toDbPaymentMethod } from "@/lib/paymentMethod";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
+  createLazyPersistStorage,
+  getSyncJSON,
+  setSyncJSON,
+} from "@/lib/storage";
+import {
   KEY_RPC_GET_ORDER_DETAILS,
   KEY_RT_OWN_ECHO,
   KEY_RT_OWN_ECHO_SLIP,
 } from "@/lib/telemetry/keys";
 import { internKey, recordCount } from "@/lib/telemetry/registry";
-import {
-    createLazyPersistStorage,
-    getSyncJSON,
-    setSyncJSON,
-} from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import {
-    CartItem,
-    Discount,
-    OrderAppliedDiscount,
-    OrderPaymentItemCoverage,
-    OrderPaymentTransactionDetails,
-    OrderProfile,
-    OrderProfilePayment,
-    PaymentType,
+  CartItem,
+  Discount,
+  OrderAppliedDiscount,
+  OrderPaymentItemCoverage,
+  OrderPaymentTransactionDetails,
+  OrderProfile,
+  OrderProfilePayment,
+  PaymentType,
 } from "@/lib/types";
 import {
-    decrementDiscountUsage,
-    incrementDiscountUsage,
+  decrementDiscountUsage,
+  incrementDiscountUsage,
 } from "@/services/discountUsageTracker";
 import { OrderService } from "@/services/orderService";
 import {
-    completePaymentJournal,
-    failPaymentJournal,
-    getJournalById,
-    updatePaymentJournal,
-    writePaymentJournal,
+  completePaymentJournal,
+  failPaymentJournal,
+  getJournalById,
+  updatePaymentJournal,
+  writePaymentJournal,
 } from "@/services/paymentJournal";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import type {
-    AddOrderItemParams,
-    CreateOrderParams,
-    OrderStatus as DbOrderStatus,
-    OrderType as DbOrderType,
+  AddOrderItemParams,
+  CreateOrderParams,
+  OrderStatus as DbOrderStatus,
+  OrderType as DbOrderType,
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
 import type {
-    ItemPaymentAllocation,
-    OrderTotals,
+  ItemPaymentAllocation,
+  OrderTotals,
 } from "@/types/order-calculations";
 import type { Station } from "@/types/station";
 import * as Sentry from "@sentry/react-native";
@@ -95,14 +95,43 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
-import {
-    forceSetLocalSequence,
-    parseSequenceFromDisplayNumber,
-    seedLocalSequence,
-} from "@/lib/localOrderSequence";
-import { mintStoreOrderId } from "@/lib/localFirst/identity";
 import { unsyncedItemIds } from "@/lib/db/outbox";
-import { waitForOrderSynced } from "@/services/localFirst/outboxDrain";
+import { mintStoreOrderId } from "@/lib/localFirst/identity";
+import {
+  forceSetLocalSequence,
+  parseSequenceFromDisplayNumber,
+  seedLocalSequence,
+} from "@/lib/localOrderSequence";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
+import {
+  rpcWithIdempotency,
+  toBulkUpdateStatusKey,
+  toIdempotencyKey,
+  toUpdateItemKey,
+  toUpdateQuantityKey,
+} from "@/lib/network/idempotencyKey";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
+import { withDeadline } from "@/lib/network/withDeadline";
+import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
+import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
+import {
+  applyPaymentToItems,
+  calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
+  calculateOrderTotals as calculateOrderTotalsFromModule,
+  calculatePaidStatus,
+  distributeDiscountToItems as distributeDiscountToItemsFromModule,
+  invalidateCalculationCache,
+  round2,
+  scheduleCalculationCacheInvalidation,
+} from "@/lib/order-calculator";
+import { snapshotTableName } from "@/lib/orderDisplay";
+import { resolveInboundToGo } from "@/lib/pendingToGo";
+import {
+  allocateOrderNumbers,
+  findLatestReusableEmptyDraftId,
+  getTodaySequenceFloor,
+} from "@/lib/reusableEmptyDraft";
 import {
   LOCAL_WRITES_ITEMS,
   LOCAL_WRITES_ORDERS,
@@ -115,78 +144,49 @@ import {
   updateLocalItemQuantity,
   voidLocalItem,
 } from "@/services/localFirst/localWrites";
-import { DEADLINES } from "@/lib/network/deadlines";
-import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
-import {
-    rpcWithIdempotency,
-    toBulkUpdateStatusKey,
-    toIdempotencyKey,
-    toUpdateItemKey,
-    toUpdateQuantityKey,
-} from "@/lib/network/idempotencyKey";
-import { runWithDeadline } from "@/lib/network/runWithDeadline";
-import { withDeadline } from "@/lib/network/withDeadline";
-import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
-import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
-import {
-    applyPaymentToItems,
-    calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
-    calculateOrderTotals as calculateOrderTotalsFromModule,
-    calculatePaidStatus,
-    distributeDiscountToItems as distributeDiscountToItemsFromModule,
-    invalidateCalculationCache,
-    round2,
-    scheduleCalculationCacheInvalidation,
-} from "@/lib/order-calculator";
-import { snapshotTableName } from "@/lib/orderDisplay";
-import { resolveInboundToGo } from "@/lib/pendingToGo";
-import {
-    allocateOrderNumbers,
-    findLatestReusableEmptyDraftId,
-    getTodaySequenceFloor,
-} from "@/lib/reusableEmptyDraft";
+import { waitForOrderSynced } from "@/services/localFirst/outboxDrain";
 import { aggregateTaxByCategory } from "@/utils/money";
 
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
-    cancelOrderOperations,
-    cancelPendingByEntity,
-    dropQueuedOpsForItem,
-    getDeadLetterOperations,
-    getIsOnline,
-    getOperationsForOrder,
-    getOrderCreationOperationId,
-    getPendingOperations,
-    processQueueNow,
-    queueOperation,
-    registerPersistSubsetCheck,
-    removeOperation,
-    retryDeadLetterOperation,
-    retrySyncForItem as retrySyncForItemQueue,
-    updateOperationParams,
+  cancelOrderOperations,
+  cancelPendingByEntity,
+  dropQueuedOpsForItem,
+  getDeadLetterOperations,
+  getIsOnline,
+  getOperationsForOrder,
+  getOrderCreationOperationId,
+  getPendingOperations,
+  processQueueNow,
+  queueOperation,
+  registerPersistSubsetCheck,
+  removeOperation,
+  retryDeadLetterOperation,
+  retrySyncForItem as retrySyncForItemQueue,
+  updateOperationParams,
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 import {
-    deriveCashSavings,
-    isHeaderOnlyBroadcast,
-    mapBackendItemToCartItem,
-    mapOrderType,
-    mapPaymentStatus,
-    normalizeFetchedOrder,
-    transformBroadcastItems,
-    transformBroadcastPaymentsToProfile,
-    transformBroadcastToOrder,
-    type BackendItemInput,
-    type FetchedOrderData,
+  deriveCashSavings,
+  isHeaderOnlyBroadcast,
+  mapBackendItemToCartItem,
+  mapOrderType,
+  mapPaymentStatus,
+  normalizeFetchedOrder,
+  transformBroadcastItems,
+  transformBroadcastPaymentsToProfile,
+  transformBroadcastToOrder,
+  type BackendItemInput,
+  type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { useSyncStatusStore } from "./useSyncStatusStore";
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import {
-    BroadcastOrderData,
-    OrderBroadcastPayload,
+  BroadcastOrderData,
+  OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
@@ -195,21 +195,21 @@ import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
 import { isOrderReadOnly, isOwnershipError } from "@/lib/orderAccessControl";
 import {
-    clearItemPendingRemoval,
-    isItemPendingRemoval,
-    markItemPendingRemoval,
+  clearItemPendingRemoval,
+  isItemPendingRemoval,
+  markItemPendingRemoval,
 } from "@/lib/pendingItemRemovals";
 import {
-    clearOrderPendingVoid,
-    isOrderPendingVoid,
+  clearOrderPendingVoid,
+  isOrderPendingVoid,
 } from "@/lib/pendingVoidOrderIds";
 import { maybeFireTakeoverToast } from "@/lib/takeoverToast";
 import { detectConflict } from "@/services/conflictDetectionService";
 import { autoPrintKitchenTicketsIfEnabled } from "@/services/printing/autoPrintKitchen";
 import { useConflictStore } from "@/stores/useConflictStore";
 import {
-    generateConflictToast,
-    isConflictCritical,
+  generateConflictToast,
+  isConflictCritical,
 } from "@/types/conflict-resolution";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
@@ -620,9 +620,11 @@ function flushItemBindings(): void {
   // binding above records ("the server has this row"), so it belongs in the
   // same place.
   if (boundCartIds.length > 0) {
-    useSyncStatusStore.getState().setSyncStatusBatch(
-      boundCartIds.map((itemId) => ({ itemId, status: "synced" as const })),
-    );
+    useSyncStatusStore
+      .getState()
+      .setSyncStatusBatch(
+        boundCartIds.map((itemId) => ({ itemId, status: "synced" as const })),
+      );
   }
 }
 
@@ -630,7 +632,6 @@ function flushItemBindings(): void {
 export function __flushItemBindingsForTests(): void {
   flushItemBindings();
 }
-
 
 // ============================================================================
 // HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
@@ -860,8 +861,7 @@ export const getOrderStoreSupabaseClient = () => _supabaseClient;
 
 function createCurrentKitchenSendContext(): KitchenSendContext {
   return createKitchenSendContext({
-    stationId:
-      useStoreSettingsStore.getState().selectedStation?.id ?? null,
+    stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
     deviceId: getDeviceId(),
     staffId: getKioskSafeCreatorStaffId(),
   });
@@ -1145,12 +1145,10 @@ async function _commitKitchenSendForBatchInner(
         return { status: "rejected", error: result.error };
       }
 
-      await queueKitchenSend(
-        localOrderId,
-        localItemIds,
-        sendContext,
-        { resolvedItemIds: dbItemIds, unresolvedLocalItemIds: [] },
-      );
+      await queueKitchenSend(localOrderId, localItemIds, sendContext, {
+        resolvedItemIds: dbItemIds,
+        unresolvedLocalItemIds: [],
+      });
       return { status: "queued", error: result.error };
     }
     useSyncStatusStore.getState().clearAllForOrder(localItemIds);
@@ -1611,7 +1609,8 @@ const ensureOrderCreated = async (
       locationId: selectedStore.id,
       orderType: order.order_type ?? "take_out",
       stationNumber:
-        useStoreSettingsStore.getState().selectedStation?.station_number ?? null,
+        useStoreSettingsStore.getState().selectedStation?.station_number ??
+        null,
       stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
       // Same resolvers the legacy create_order path uses (see the
       // createOrderParams block above). Reading `order.created_by_staff_id`
@@ -1692,7 +1691,8 @@ const ensureOrderCreated = async (
     if (__DEV__) console.log(`[ensureOrderCreated] Order ID: ${order.id}`);
     if (__DEV__)
       console.log(`[ensureOrderCreated] Order Type: ${order.order_type}`);
-    if (__DEV__) console.log(`[ensureOrderCreated] Store: ${selectedStore?.id}`);
+    if (__DEV__)
+      console.log(`[ensureOrderCreated] Store: ${selectedStore?.id}`);
 
     // Check if we've already queued this order
     const existingQueuedOrder = pendingOrderCreations.get(order.id);
@@ -2053,9 +2053,7 @@ const ensureOrderCreated = async (
       pendingOrderCreations.delete(order.id);
       orderCreationTimestamps.delete(order.id);
       if (__DEV__)
-        console.log(
-          `[ensureOrderCreated] Released lock for order ${order.id}`,
-        );
+        console.log(`[ensureOrderCreated] Released lock for order ${order.id}`);
     }
   })();
 
@@ -2219,8 +2217,7 @@ const addItemToBackend = async (
       specialInstructions: item.customizations?.notes ?? null,
       courseNumber: item.courseNumber ?? 1,
       seatNumber: item.seatNumber ?? null,
-      stationId:
-        useStoreSettingsStore.getState().selectedStation?.id ?? null,
+      stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
       // The ROW id is deliberately NOT `item.id`.
       //
       // A CartItem's id is a composite MERGE key built by generateCartItemId —
@@ -2297,7 +2294,9 @@ const addItemToBackend = async (
   }
 
   if (!LOCAL_WRITES_ITEMS) {
-    console.log("[LF] addItem LEGACY path — EXPO_PUBLIC_LOCAL_WRITES_ITEMS off");
+    console.log(
+      "[LF] addItem LEGACY path — EXPO_PUBLIC_LOCAL_WRITES_ITEMS off",
+    );
   } else if (isMerge) {
     // A merge is an UPDATE against an existing row, addressed by
     // db_order_item_id — which on the local-first path only exists once the
@@ -4975,7 +4974,8 @@ export function shouldSuppressOwnEchoBroadcast(
   }
   const localRank =
     ORDER_STATUS_RANK_FOR_ECHO[localOrder.order_status ?? ""] ?? 0;
-  const backendRank = ORDER_STATUS_RANK_FOR_ECHO[backendOrder.status ?? ""] ?? 0;
+  const backendRank =
+    ORDER_STATUS_RANK_FOR_ECHO[backendOrder.status ?? ""] ?? 0;
   return backendRank <= localRank;
 }
 
@@ -5116,10 +5116,8 @@ function mergeTransactionDetails(
       broadcast.castlesTransaction ?? local.castlesTransaction,
     dejavooTransaction:
       broadcast.dejavooTransaction ?? local.dejavooTransaction,
-    valorTransaction:
-      broadcast.valorTransaction ?? local.valorTransaction,
-    atomTransaction:
-      broadcast.atomTransaction ?? local.atomTransaction,
+    valorTransaction: broadcast.valorTransaction ?? local.valorTransaction,
+    atomTransaction: broadcast.atomTransaction ?? local.atomTransaction,
   };
 }
 
@@ -6944,8 +6942,7 @@ export const useOrderStore = create<OrderState>()(
                           // Active order derived state (if applicable)
                           ...(localOrderId === get().activeOrderId
                             ? {
-                                _queuedActiveOrderState: {
-                                },
+                                _queuedActiveOrderState: {},
                               }
                             : {}),
                         },
@@ -8369,9 +8366,7 @@ export const useOrderStore = create<OrderState>()(
             // Phase 6 (S4): when itemIds is provided the barrier only waits on
             // the batch being fired. The order-wide form stays for payment,
             // where the whole order is the right question.
-            const itemIdFilter = opts?.itemIds
-              ? new Set(opts.itemIds)
-              : null;
+            const itemIdFilter = opts?.itemIds ? new Set(opts.itemIds) : null;
 
             // Wait until every non-draft item in scope has a db_order_item_id
             // (meaning addItemToBackend has completed for it) AND no item has a
@@ -8809,9 +8804,7 @@ export const useOrderStore = create<OrderState>()(
               : undefined;
 
             const newOrder: OrderProfile = {
-              id:
-                details?.orderId ||
-                mintStoreOrderId(),
+              id: details?.orderId || mintStoreOrderId(),
               service_location_id: details?.tableId || null,
               service_location_name: snapshotTableName(details?.tableId),
               order_status: "draft",
@@ -10843,17 +10836,23 @@ export const useOrderStore = create<OrderState>()(
             // may already exist server-side).
             const rowIdForRemoval =
               itemToHandle?.db_order_item_id ?? itemToHandle?.item_row_id;
-            if (LOCAL_WRITES_ITEMS && rowIdForRemoval && !itemToHandle?.db_order_item_id) {
+            if (
+              LOCAL_WRITES_ITEMS &&
+              rowIdForRemoval &&
+              !itemToHandle?.db_order_item_id
+            ) {
               const orderIdForRemoval = order.db_order_id ?? activeOrderId;
               // Same guard the live path uses: a broadcast arriving while the
               // removal is being written must not put the line back. Under
               // client ids the row id IS the id a broadcast carries, so the
               // existing mechanism works unchanged.
               markItemPendingRemoval(rowIdForRemoval);
-              const done = (label: string) => (res: { ok: boolean; error?: string }) => {
-                if (!res.ok) console.error(`[LF] ✗ ${label} failed:`, res.error);
-                clearItemPendingRemoval(rowIdForRemoval);
-              };
+              const done =
+                (label: string) => (res: { ok: boolean; error?: string }) => {
+                  if (!res.ok)
+                    console.error(`[LF] ✗ ${label} failed:`, res.error);
+                  clearItemPendingRemoval(rowIdForRemoval);
+                };
               if (isKitchenItem) {
                 void voidLocalItem({
                   orderId: orderIdForRemoval,
@@ -14712,7 +14711,8 @@ export const useOrderStore = create<OrderState>()(
                 } else if (sendResult.status === "queued") {
                   toastService.show({
                     title: "Kitchen send queued",
-                    message: "The order will retry when the connection recovers.",
+                    message:
+                      "The order will retry when the connection recovers.",
                     type: "warning",
                   });
                 } else if (sendResult.status === "skipped") {
@@ -14911,16 +14911,15 @@ export const useOrderStore = create<OrderState>()(
             let undeliverableIds = new Set<string>();
             if (LOCAL_WRITES_ITEMS) {
               try {
-                const { unsyncedItemIds, failedOpCount } = await import(
-                  "@/lib/db/outbox"
-                );
+                const { unsyncedItemIds, failedOpCount } =
+                  await import("@/lib/db/outbox");
                 if ((await failedOpCount()) > 0) {
                   const candidates = order.items
-                    .filter((i) => !i.kitchen_status || i.kitchen_status === "new")
+                    .filter(
+                      (i) => !i.kitchen_status || i.kitchen_status === "new",
+                    )
                     .map((i) => i.db_order_item_id ?? i.id);
-                  undeliverableIds = new Set(
-                    await unsyncedItemIds(candidates),
-                  );
+                  undeliverableIds = new Set(await unsyncedItemIds(candidates));
                 }
               } catch {
                 // Diagnostics unavailable — fall back to the optimistic mark
@@ -14929,9 +14928,11 @@ export const useOrderStore = create<OrderState>()(
             }
 
             const updatedItems = order.items.map((item) => {
-              const isNew = !item.kitchen_status || item.kitchen_status === "new";
-              const undeliverable =
-                undeliverableIds.has(item.db_order_item_id ?? item.id);
+              const isNew =
+                !item.kitchen_status || item.kitchen_status === "new";
+              const undeliverable = undeliverableIds.has(
+                item.db_order_item_id ?? item.id,
+              );
               if (isNew && !undeliverable) {
                 return {
                   ...item,
@@ -16161,7 +16162,8 @@ export const useOrderStore = create<OrderState>()(
                 const reversalsData = (data.reversals ?? []) as any[];
                 const orderRefundItemsData = (data.order_refund_items ??
                   []) as any[];
-                const orderDiscountsData = (data.order_discounts ?? []) as any[];
+                const orderDiscountsData = (data.order_discounts ??
+                  []) as any[];
 
                 // Per-payment item coverage lives in the order_payment_items
                 // junction (C2) — the old mapper read a non-existent `item_ids`
@@ -16436,145 +16438,155 @@ export const useOrderStore = create<OrderState>()(
                   const syncedPayments: OrderProfilePayment[] =
                     dbPayments && dbPayments.length > 0
                       ? dbPayments.map((p) => {
-                      // Proper status mapping — preserve authorized for pre-auth.
-                      // C1: the DB writes status='void' (not 'voided') and the
-                      // RPC's payments subquery has no is_voided filter, so voided
-                      // rows now arrive here — key off is_voided / both spellings
-                      // or a voided payment resurrects as a live "pending" one.
-                      const status: OrderProfilePayment["status"] =
-                        p.is_voided === true ||
-                        p.status === "void" ||
-                        p.status === "voided"
-                          ? "voided"
-                          : p.status === "refunded"
-                            ? "refunded"
-                            : p.status === "authorized"
-                              ? "authorized"
-                              : p.status === "captured"
-                                ? "captured"
-                                : "pending";
+                          // Proper status mapping — preserve authorized for pre-auth.
+                          // C1: the DB writes status='void' (not 'voided') and the
+                          // RPC's payments subquery has no is_voided filter, so voided
+                          // rows now arrive here — key off is_voided / both spellings
+                          // or a voided payment resurrects as a live "pending" one.
+                          const status: OrderProfilePayment["status"] =
+                            p.is_voided === true ||
+                            p.status === "void" ||
+                            p.status === "voided"
+                              ? "voided"
+                              : p.status === "refunded"
+                                ? "refunded"
+                                : p.status === "authorized"
+                                  ? "authorized"
+                                  : p.status === "captured"
+                                    ? "captured"
+                                    : "pending";
 
-                      const isPreAuth = p.status === "authorized";
-                      const terminalResponse = (p as any).terminal_response as
-                        Record<string, any> | undefined;
-                      const castlesTxn =
-                        terminalResponse?.castles_transaction as
-                          Record<string, any> | undefined;
-                      // Valor blob lives in processor_response; read both columns.
-                      const valorTxn = ((p as any).processor_response
-                        ?.valor_transaction ??
-                        terminalResponse?.valor_transaction) as
-                          Record<string, any> | undefined;
-                      const terminalVendor = (terminalResponse?.terminal_vendor ??
-                        (p as any).processor_response?.terminal_vendor) as
-                          string | undefined;
+                          const isPreAuth = p.status === "authorized";
+                          const terminalResponse = (p as any)
+                            .terminal_response as
+                            Record<string, any> | undefined;
+                          const castlesTxn =
+                            terminalResponse?.castles_transaction as
+                              Record<string, any> | undefined;
+                          // Valor blob lives in processor_response; read both columns.
+                          const valorTxn = ((p as any).processor_response
+                            ?.valor_transaction ??
+                            terminalResponse?.valor_transaction) as
+                            Record<string, any> | undefined;
+                          const terminalVendor =
+                            (terminalResponse?.terminal_vendor ??
+                              (p as any).processor_response
+                                ?.terminal_vendor) as string | undefined;
 
-                      // Refund evidence: take max across DB + local. Apply
-                      // refund didn't always advance `status`, so we have to
-                      // carry refunded_amount + is_returned explicitly.
-                      const localPmt = localPaymentsByDbId.get(p.id);
-                      const dbRefunded =
-                        Number((p as any).refunded_amount) || 0;
-                      const localRefunded = localPmt?.refundedAmount ?? 0;
-                      const localHasMoreRefund = localRefunded > dbRefunded;
-                      const mergedRefundedAmount = Math.max(
-                        dbRefunded,
-                        localRefunded,
-                      );
+                          // Refund evidence: take max across DB + local. Apply
+                          // refund didn't always advance `status`, so we have to
+                          // carry refunded_amount + is_returned explicitly.
+                          const localPmt = localPaymentsByDbId.get(p.id);
+                          const dbRefunded =
+                            Number((p as any).refunded_amount) || 0;
+                          const localRefunded = localPmt?.refundedAmount ?? 0;
+                          const localHasMoreRefund = localRefunded > dbRefunded;
+                          const mergedRefundedAmount = Math.max(
+                            dbRefunded,
+                            localRefunded,
+                          );
 
-                      return {
-                        id: p.id,
-                        db_payment_id: p.id,
-                        amount: p.amount,
-                        method: (p.payment_method === "card"
-                          ? "Card"
-                          : "Cash") as PaymentType,
-                        cardBrand: p.card_type,
-                        last4: p.card_last_four,
-                        tip_amount: p.tip_amount || 0,
-                        total_collected: p.amount + (p.tip_amount || 0),
-                        // C2: per-payment coverage from the order_payment_items
-                        // junction (the old `p.item_ids` column does not exist, so
-                        // coverage was always empty and the per-item PAID badge dead).
-                        itemsCovered: (
-                          paymentItemsByPaymentId.get(p.id) ?? []
-                        ).map((pi: any) => ({
-                          itemId: pi.order_item_id,
-                          itemName:
-                            dbItems.find(
-                              (it: any) => it.id === pi.order_item_id,
-                            )?.item_name ?? "Item",
-                          quantity: pi.quantity_paid,
-                          unitPrice: pi.unit_price_paid,
-                          subtotal: pi.subtotal_paid,
-                        })),
-                        timestamp: p.created_at,
-                        status,
-                        isVoided:
-                          p.is_voided === true ||
-                          p.status === "void" ||
-                          p.status === "voided",
-                        sync_status: "synced" as const,
-                        sync_attempt_count: 0,
-                        // Cash pricing fields — falls back to order-level ratio when original_amount is missing
-                        isCashPriced: (p as any).is_cash_priced ?? undefined,
-                        cashSavings: deriveCashSavings(
-                          {
-                            is_cash_priced: (p as any).is_cash_priced,
-                            original_amount: (p as any).original_amount,
+                          return {
+                            id: p.id,
+                            db_payment_id: p.id,
                             amount: p.amount,
-                          },
-                          dbOrder.card_total ?? dbOrder.total_amount,
-                          dbOrder.cash_total,
-                        ),
-                        // Refund / return tracking — preserve via monotonic merge
-                        // so a stale fetch right after apply_refund_to_payment
-                        // can't clobber the chip back to "Paid".
-                        refundedAmount: mergedRefundedAmount,
-                        refundedAt: localHasMoreRefund
-                          ? (localPmt?.refundedAt ?? (p as any).refunded_at)
-                          : ((p as any).refunded_at ?? localPmt?.refundedAt),
-                        isReturned: localHasMoreRefund
-                          ? (localPmt?.isReturned ?? (p as any).is_returned)
-                          : ((p as any).is_returned ?? localPmt?.isReturned),
-                        returnedAt: localHasMoreRefund
-                          ? (localPmt?.returnedAt ?? (p as any).returned_at)
-                          : ((p as any).returned_at ?? localPmt?.returnedAt),
-                        returnedBy: localHasMoreRefund
-                          ? (localPmt?.returnedBy ?? (p as any).returned_by)
-                          : ((p as any).returned_by ?? localPmt?.returnedBy),
-                        returnAmount: Math.max(
-                          Number((p as any).return_amount) || 0,
-                          localPmt?.returnAmount ?? 0,
-                        ),
-                        // Pre-auth fields
-                        isPreAuth,
-                        ...(isPreAuth
-                          ? {
-                              preAuthAmount: p.amount,
-                              preAuthRrn:
-                                (p as any).rrn || castlesTxn?.rrn || valorTxn?.rrn,
-                              preAuthStan: castlesTxn?.stan,
-                              preAuthTranNo:
-                                valorTxn?.tranNo || (p as any).transaction_id,
-                              preAuthAuthCode:
-                                (p as any).authorization_code ||
-                                castlesTxn?.approvalCode ||
-                                valorTxn?.approvalCode,
-                              preAuthReferenceId:
-                                (p as any).reference_number ||
-                                castlesTxn?.referenceId ||
-                                valorTxn?.reqTxnId,
-                              preAuthTerminalType:
-                                (terminalVendor === "castles"
-                                  ? "castles"
-                                  : terminalVendor === "valor"
-                                  ? "valor"
-                                  : "dejavoo") as
-                                  "dejavoo" | "castles" | "valor" | undefined,
-                            }
-                          : {}),
-                      };
+                            method: (p.payment_method === "card"
+                              ? "Card"
+                              : "Cash") as PaymentType,
+                            cardBrand: p.card_type,
+                            last4: p.card_last_four,
+                            tip_amount: p.tip_amount || 0,
+                            total_collected: p.amount + (p.tip_amount || 0),
+                            // C2: per-payment coverage from the order_payment_items
+                            // junction (the old `p.item_ids` column does not exist, so
+                            // coverage was always empty and the per-item PAID badge dead).
+                            itemsCovered: (
+                              paymentItemsByPaymentId.get(p.id) ?? []
+                            ).map((pi: any) => ({
+                              itemId: pi.order_item_id,
+                              itemName:
+                                dbItems.find(
+                                  (it: any) => it.id === pi.order_item_id,
+                                )?.item_name ?? "Item",
+                              quantity: pi.quantity_paid,
+                              unitPrice: pi.unit_price_paid,
+                              subtotal: pi.subtotal_paid,
+                            })),
+                            timestamp: p.created_at,
+                            status,
+                            isVoided:
+                              p.is_voided === true ||
+                              p.status === "void" ||
+                              p.status === "voided",
+                            sync_status: "synced" as const,
+                            sync_attempt_count: 0,
+                            // Cash pricing fields — falls back to order-level ratio when original_amount is missing
+                            isCashPriced:
+                              (p as any).is_cash_priced ?? undefined,
+                            cashSavings: deriveCashSavings(
+                              {
+                                is_cash_priced: (p as any).is_cash_priced,
+                                original_amount: (p as any).original_amount,
+                                amount: p.amount,
+                              },
+                              dbOrder.card_total ?? dbOrder.total_amount,
+                              dbOrder.cash_total,
+                            ),
+                            // Refund / return tracking — preserve via monotonic merge
+                            // so a stale fetch right after apply_refund_to_payment
+                            // can't clobber the chip back to "Paid".
+                            refundedAmount: mergedRefundedAmount,
+                            refundedAt: localHasMoreRefund
+                              ? (localPmt?.refundedAt ?? (p as any).refunded_at)
+                              : ((p as any).refunded_at ??
+                                localPmt?.refundedAt),
+                            isReturned: localHasMoreRefund
+                              ? (localPmt?.isReturned ?? (p as any).is_returned)
+                              : ((p as any).is_returned ??
+                                localPmt?.isReturned),
+                            returnedAt: localHasMoreRefund
+                              ? (localPmt?.returnedAt ?? (p as any).returned_at)
+                              : ((p as any).returned_at ??
+                                localPmt?.returnedAt),
+                            returnedBy: localHasMoreRefund
+                              ? (localPmt?.returnedBy ?? (p as any).returned_by)
+                              : ((p as any).returned_by ??
+                                localPmt?.returnedBy),
+                            returnAmount: Math.max(
+                              Number((p as any).return_amount) || 0,
+                              localPmt?.returnAmount ?? 0,
+                            ),
+                            // Pre-auth fields
+                            isPreAuth,
+                            ...(isPreAuth
+                              ? {
+                                  preAuthAmount: p.amount,
+                                  preAuthRrn:
+                                    (p as any).rrn ||
+                                    castlesTxn?.rrn ||
+                                    valorTxn?.rrn,
+                                  preAuthStan: castlesTxn?.stan,
+                                  preAuthTranNo:
+                                    valorTxn?.tranNo ||
+                                    (p as any).transaction_id,
+                                  preAuthAuthCode:
+                                    (p as any).authorization_code ||
+                                    castlesTxn?.approvalCode ||
+                                    valorTxn?.approvalCode,
+                                  preAuthReferenceId:
+                                    (p as any).reference_number ||
+                                    castlesTxn?.referenceId ||
+                                    valorTxn?.reqTxnId,
+                                  preAuthTerminalType: (terminalVendor ===
+                                  "castles"
+                                    ? "castles"
+                                    : terminalVendor === "valor"
+                                      ? "valor"
+                                      : "dejavoo") as
+                                    "dejavoo" | "castles" | "valor" | undefined,
+                                }
+                              : {}),
+                          };
                         })
                       : (localOrder?.payments ?? []);
 
@@ -16649,10 +16661,10 @@ export const useOrderStore = create<OrderState>()(
                     // when a just-committed payment raced this read (above).
                     amount_paid: keepLocalFinancials
                       ? (localOrder?.amount_paid ?? dbOrder.amount_paid ?? 0)
-                      : (dbOrder.amount_paid || 0),
+                      : dbOrder.amount_paid || 0,
                     amount_due: keepLocalFinancials
                       ? (localOrder?.amount_due ?? dbOrder.amount_due ?? 0)
-                      : (dbOrder.amount_due || 0),
+                      : dbOrder.amount_due || 0,
                     cash_amount_due: keepLocalFinancials
                       ? (localOrder?.cash_amount_due ?? dbOrder.cash_amount_due)
                       : dbOrder.cash_amount_due,
@@ -16914,13 +16926,12 @@ export const useOrderStore = create<OrderState>()(
                             (p as any).reference_number ||
                             castlesTxn?.referenceId ||
                             valorTxn?.reqTxnId,
-                          preAuthTerminalType:
-                            (terminalVendor === "castles"
-                              ? "castles"
-                              : terminalVendor === "valor"
+                          preAuthTerminalType: (terminalVendor === "castles"
+                            ? "castles"
+                            : terminalVendor === "valor"
                               ? "valor"
                               : "dejavoo") as
-                              "dejavoo" | "castles" | "valor" | undefined,
+                            "dejavoo" | "castles" | "valor" | undefined,
                         }
                       : {}),
                   };
@@ -18206,8 +18217,8 @@ export const useOrderStore = create<OrderState>()(
                             "castles"
                               ? "castles"
                               : payment.terminal_type === "valor" || valorTxn
-                              ? "valor"
-                              : "dejavoo") as "castles" | "dejavoo" | "valor",
+                                ? "valor"
+                                : "dejavoo") as "castles" | "dejavoo" | "valor",
                           }
                         : {}),
 
@@ -18490,7 +18501,10 @@ export const useOrderStore = create<OrderState>()(
                   const localPendingPayments =
                     currentOrder.payments?.filter((p) => {
                       // Already represented by a backend row → mergedPayments owns it.
-                      if (p.db_payment_id && backendPaymentDbIds.has(p.db_payment_id))
+                      if (
+                        p.db_payment_id &&
+                        backendPaymentDbIds.has(p.db_payment_id)
+                      )
                         return false;
                       // Unsynced optimistic payment (pre-auth mid-sync, etc.) — unless
                       // its committed twin already landed in this read (dup guard).
@@ -18500,7 +18514,9 @@ export const useOrderStore = create<OrderState>()(
                       const isActivePreAuth =
                         p.isPreAuth && p.status === "authorized" && !p.isVoided;
                       const isLocalCapture =
-                        !!p.db_payment_id && p.status === "captured" && !p.isVoided;
+                        !!p.db_payment_id &&
+                        p.status === "captured" &&
+                        !p.isVoided;
                       return isActivePreAuth || isLocalCapture;
                     }) ?? [];
 
@@ -18535,7 +18551,10 @@ export const useOrderStore = create<OrderState>()(
                       const localPaid = localItem.paidQuantity ?? 0;
                       const backendPaid = ti.paidQuantity ?? 0;
                       if (localPaid > backendPaid) {
-                        transformedItems[i] = { ...ti, paidQuantity: localPaid };
+                        transformedItems[i] = {
+                          ...ti,
+                          paidQuantity: localPaid,
+                        };
                       }
                     }
                   }
