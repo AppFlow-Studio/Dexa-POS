@@ -399,6 +399,92 @@ describe("ValorService request framing by transport", () => {
   });
 });
 
+describe("Valor kiosk payment safety", () => {
+  it("does not reuse an old socket when resume changes the endpoint", async () => {
+    let creations = 0;
+    const transports: ScriptedTransport[] = [];
+    mockTransportImpl.current = () => {
+      creations++;
+      const transport = new ScriptedTransport();
+      transport.onWrite = (_body, emit) => emit(encodeValorFrame({ STATE: "0", TXN_ID: "resume-sale" }));
+      transports.push(transport);
+      return transport;
+    };
+    const svc = newService();
+    await svc.connect(CONFIG);
+    svc.resume({ ...CONFIG, host: "192.0.2.2" });
+    const result = await svc.processSale({ amount: 1000, referenceId: "resume-1" });
+    expect(result.success).toBe(true);
+    expect(creations).toBe(2);
+    expect(transports[0].isOpen).toBe(false);
+    expect(transports[0].raws).toHaveLength(0);
+  });
+
+  it("reconnects when the assigned endpoint or transport changes", async () => {
+    const first = new ScriptedTransport();
+    const second = new ScriptedTransport();
+    let creations = 0;
+    mockTransportImpl.current = () => (++creations === 1 ? first : second);
+    const svc = newService();
+    await svc.connect(CONFIG);
+    await svc.connect({ ...CONFIG });
+    expect(creations).toBe(1);
+    await svc.connect({ ...CONFIG, host: "192.0.2.2", terminalId: "terminal-2" });
+    expect(creations).toBe(2);
+    expect(first.isOpen).toBe(false);
+    await svc.connect({ connectionType: "usb", terminalId: "terminal-3" });
+    expect(creations).toBe(3);
+  });
+
+  it("preserves handshake STAN when the approval omits it", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "0", MSG: "Payload Request Received", STAN_NO: "42" }));
+      emit(encodeValorFrame({ STATE: "0", TRAN_NO: "20", RRN: "123" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const result = await svc.processSale({ amount: 2500, tipAmount: 200, referenceId: "ref" });
+    expect(result.terminalResponse).toMatchObject({ valor_transaction: { stanNo: "42" } });
+    expect(scripted.raws[0]).toContain('"AMOUNT":"2500"');
+    expect(scripted.raws[0]).toContain('"TIP_AMOUNT":"200"');
+  });
+
+  it("holds a USB timeout without STAN for staff instead of permitting another sale", async () => {
+    const scripted = new ScriptedTransport();
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ connectionType: "usb", timeout: 30 });
+    const result = await svc.processSale({ amount: 2500, referenceId: "ref" });
+    expect(result).toMatchObject({ success: false, indeterminate: true });
+  });
+
+  it("unknown recovery STATE remains unknown", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => emit(encodeValorFrame({ STATE: "-2" }));
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    expect((await svc.transactionStatus("42")).outcome).toBe("unknown");
+  });
+
+  it("final timeout after STAN issues status mode 90, never a second sale", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (body, emit) => {
+      if (String(body.TRAN_MODE) === "90") emit(encodeValorFrame({ STATE: "0", TRAN_NO: "20" }));
+      else emit(encodeValorFrame({ STATE: "0", MSG: "Payload Request Received", STAN_NO: "42" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, timeout: 30 });
+    expect((await svc.processSale({ amount: 2500, referenceId: "ref" })).success).toBe(true);
+    const commands = scripted.raws.map((raw) => JSON.parse(raw));
+    expect(commands.filter((body) => body.TRAN_CODE === "1")).toHaveLength(1);
+    expect(commands).toContainEqual({ TRAN_MODE: "90", STAN_NO: "42" });
+  });
+});
+
 describe("ValorService.processPreAuth — CREDIT PREAUTH (TRAN_MODE 1 / TRAN_CODE 3)", () => {
   const preAuthReplies = (body: any, emit: (f: string) => void) => {
     const ref = String(body.REQ_TXN_ID ?? "");

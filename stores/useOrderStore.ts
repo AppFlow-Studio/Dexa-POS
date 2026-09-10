@@ -4700,7 +4700,7 @@ interface OrderState {
   ) => string;
   fireActiveOrderToKitchen: () => void;
   sendNewItemsToKitchen: () => Promise<void>;
-  sendNewItemsToKitchenForOrder: (orderId: string) => Promise<void>;
+  sendNewItemsToKitchenForOrder: (orderId: string) => Promise<KitchenSendCommitResult>;
   transferOrderToTable: (orderId: string, newTableId: string) => void;
   generateCartItemId: (
     menuItemId: string,
@@ -14890,7 +14890,7 @@ export const useOrderStore = create<OrderState>()(
                 (item) => !item.kitchen_status || item.kitchen_status === "new",
               ).length === 0
             ) {
-              return; // No new items to send
+              return { status: "skipped" }; // No new items to send
             }
 
             // ── Do not mark an item "sent" if it CANNOT be delivered. ─────
@@ -15022,7 +15022,10 @@ export const useOrderStore = create<OrderState>()(
                   type: "warning",
                 });
               }
+              return sendResult;
             }
+
+            return { status: "skipped" };
 
             // Show toast after the state update
             // toastService.show({

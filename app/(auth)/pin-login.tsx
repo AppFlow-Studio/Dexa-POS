@@ -193,6 +193,7 @@ const PinLoginScreen = () => {
       const access = await fetchMerchantBillingAccess(
         supabase,
         selectedStore.merchant_id,
+        selectedStore.id,
       );
       setBillingAccess(access);
 
@@ -203,11 +204,23 @@ const PinLoginScreen = () => {
       }
     } catch (error) {
       console.warn("[PinLogin] Billing access precheck failed:", error);
-      // Let pos_staff_login_v2 remain the final gate if this precheck is unavailable.
+      triggerShakeAnimation();
+      showDialog(
+        "Unable to Verify Access",
+        "POS could not verify this location's subscription access. Check the connection and try again.",
+        "error",
+      );
+      return false;
     }
 
     return true;
-  }, [isOnline, selectedStore?.merchant_id, setBillingAccess, supabase]);
+  }, [
+    isOnline,
+    selectedStore?.id,
+    selectedStore?.merchant_id,
+    setBillingAccess,
+    supabase,
+  ]);
 
   // Handle takeover when user confirms
   const handleTakeover = async () => {
