@@ -174,7 +174,16 @@ export function KioskCheckoutView({
         gap: kioskPx(20, scale),
       }}
     >
-      {status === "error" ? (
+      {status === "assistance" ? (
+        <>
+          <Text style={{ fontSize: kioskPx(24, scale), fontWeight: "800", color: config.textColor }}>
+            Please see a staff member
+          </Text>
+          <Text style={{ fontSize: kioskPx(16, scale), color: muted, textAlign: "center" }}>
+            {error}
+          </Text>
+        </>
+      ) : status === "error" ? (
         <>
           <Text
             style={{

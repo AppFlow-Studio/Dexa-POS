@@ -4157,7 +4157,7 @@ interface OrderState {
   ) => string;
   fireActiveOrderToKitchen: () => void;
   sendNewItemsToKitchen: () => Promise<void>;
-  sendNewItemsToKitchenForOrder: (orderId: string) => Promise<void>;
+  sendNewItemsToKitchenForOrder: (orderId: string) => Promise<KitchenSendCommitResult>;
   transferOrderToTable: (orderId: string, newTableId: string) => void;
   generateCartItemId: (
     menuItemId: string,
@@ -14317,7 +14317,7 @@ export const useOrderStore = create<OrderState>()(
             // ================================================================
             // OFFLINE-FIRST: Update local state immediately
             // ================================================================
-            if (!_checkCartEditable(get(), orderId)) return;
+            if (!_checkCartEditable(get(), orderId)) return { status: "skipped" };
             // Kitchen operations work with local state - no need to wait for sync
             // Backend status update is queued for later (fire-and-forget)
 
@@ -14328,7 +14328,7 @@ export const useOrderStore = create<OrderState>()(
                 (item) => !item.kitchen_status || item.kitchen_status === "new",
               ).length === 0
             ) {
-              return; // No new items to send
+              return { status: "skipped" }; // No new items to send
             }
 
             const updatedItems = order.items.map((item) => {
@@ -14408,7 +14408,10 @@ export const useOrderStore = create<OrderState>()(
                   type: "warning",
                 });
               }
+              return sendResult;
             }
+
+            return { status: "skipped" };
 
             // Show toast after the state update
             // toastService.show({

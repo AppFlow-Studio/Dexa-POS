@@ -25,16 +25,45 @@
 
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { useOverlayTelemetry } from "@/hooks/useOverlayTelemetry";
+import { colors, spinnerColor } from "@/lib/theme";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import React, { Suspense, useImperativeHandle } from "react";
+import { ActivityIndicator, Modal, Text, View } from "react-native";
 
 const PaymentDetailBottomSheetBody = React.lazy(
   () => import("./PaymentDetailBottomSheetBody"),
 );
 
+function PaymentDetailLoadingFallback() {
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={() => usePaymentDetailSheetStore.getState().close()}
+      presentationStyle="overFullScreen"
+      transparent
+      visible
+    >
+      <View className="flex-1 items-center justify-center bg-black/45">
+        <View
+          className="min-w-64 items-center rounded-2xl border p-6"
+          style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+        >
+          <ActivityIndicator color={spinnerColor} size="large" />
+          <Text
+            className="mt-3 text-base font-semibold"
+            style={{ color: colors.heading }}
+          >
+            Opening payment details...
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const PaymentDetailBottomSheetController: React.ForwardRefRenderFunction<
   BottomSheetMethods,
-  {}
+  Record<string, never>
 > = (_props, ref) => {
   // The ONLY subscription this component may take. Anything else here is paid
   // on every POS screen, forever — put it in the body instead.
@@ -64,12 +93,10 @@ const PaymentDetailBottomSheetController: React.ForwardRefRenderFunction<
 
   if (!isOpen) return null;
 
-  // `fallback={null}` is correct here rather than a spinner: the body renders
-  // its own full-screen Modal with a scrim, and a bare frame of nothing looks
-  // better than a flash of loader over the previous screen. After the first
-  // open the module is already resolved and there is no fallback frame at all.
+  // Keep immediate feedback on a cold open while the large detail module is
+  // loaded. Reopens normally skip this frame because the module is cached.
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<PaymentDetailLoadingFallback />}>
       <PaymentDetailBottomSheetBody onBodyMounted={onBodyMounted} />
     </Suspense>
   );

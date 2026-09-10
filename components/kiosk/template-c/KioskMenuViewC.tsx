@@ -8,6 +8,7 @@ import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
 import { kioskBannerHeight } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
+import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
 import type { Category, MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
@@ -55,6 +56,7 @@ export function KioskMenuViewC({
     const seen = new Set<string>();
     const entries: { key: string; name: string; category: Category }[] = [];
     for (const m of menus) {
+      if (!isMenuVisibleOnChannel(m, "kiosk")) continue;
       if (!isMenuAvailableNow(m.id)) continue;
       for (const c of m.categories as Category[]) {
         if (!c.isActive || !isCategoryAvailableNow(c.name)) continue;

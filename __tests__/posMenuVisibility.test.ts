@@ -27,4 +27,21 @@ describe("POS order-entry menu visibility", () => {
       activeWholeMenu,
     );
   });
+
+  it("hides a POS-disabled menu without deactivating other channels", () => {
+    const channelScoped = [
+      {
+        id: "whole-menu",
+        name: "Whole Menu",
+        isActive: true,
+        channelVisibility: { pos: false, kiosk: true, online: true },
+      },
+    ];
+
+    expect(filterPosOrderEntryMenus(channelScoped, [])).toEqual([]);
+  });
+
+  it("keeps legacy snapshots visible when channel metadata is absent", () => {
+    expect(filterPosOrderEntryMenus([menus[0]], [])).toEqual([menus[0]]);
+  });
 });

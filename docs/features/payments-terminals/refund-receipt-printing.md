@@ -52,6 +52,8 @@ shared migration in this ticket creates the reversal linkage that work needs.
 - [x] Shared migration implemented.
 - [x] Physical refund receipt implemented.
 - [x] Auto-print and reprint implemented.
+- [x] Added immediate cold-open feedback to the lazy payment-detail sheet so
+      Previous Orders > Process Refund cannot appear to ignore the first tap.
 - [x] Hybrid customer-facing layout applied (2026-08-19): `REFUND RECEIPT`
       title, Date/time, Receipt # / Original Receipt #, Cashier + POS, positive
       line amounts, Subtotal/Tax, thank-you + "3-5 business days" footer, and a
@@ -59,7 +61,7 @@ shared migration in this ticket creates the reversal linkage that work needs.
       moving deep audit (Terminal, Original RRN, Reason, balances, signature) to
       the merchant copy. A single document adapts across full / per-item /
       custom-amount refunds and card vs cash tender.
-- [x] Targeted automated verification complete: 30 tests passed (3 suites).
+- [x] Targeted automated verification complete: 47 tests passed (6 suites).
 - [x] Migration applied to staging (2026-08-19): identity trigger/function, XOR
       constraint, FK, both unique indexes present; all 74 completed refunds have
       `refund_number` + `receipt_token` (backfill 0 missing); 12 refund
@@ -71,11 +73,11 @@ shared migration in this ticket creates the reversal linkage that work needs.
 
 ### Automated
 
-Completed on 2026-08-18:
+Latest targeted run completed on 2026-08-21:
 
 ```text
-Test Suites: 3 passed, 3 total
-Tests:       27 passed, 27 total
+Test Suites: 6 passed, 6 total
+Tests:       47 passed, 47 total
 ```
 
 - Castles nested `castles_transaction` fields resolve to RRN, authorization,
@@ -84,6 +86,8 @@ Tests:       27 passed, 27 total
 - Item-return and amount/full paths pass identical normalized approval values.
 - Refund document suppresses absent optional rows and marks reprints.
 - The renderer uses only precomputed monetary values.
+- The lazy payment-detail controller keeps visible cold-open feedback and cannot
+  regress to a null Suspense fallback.
 
 ### Supabase
 
@@ -100,18 +104,20 @@ Tests:       27 passed, 27 total
 
 ### POS / Physical
 
-1. Card full refund: approve on terminal; confirm one customer refund receipt
+1. From Previous Orders, tap Process Refund on a paid test order and confirm an
+   `Opening payment details...` modal appears immediately on a cold first open.
+2. Card full refund: approve on terminal; confirm one customer refund receipt
    auto-queues and prints.
-2. Card custom partial refund: confirm amount validation blocks values above the
+3. Card custom partial refund: confirm amount validation blocks values above the
    remaining balance before terminal activity; approve a valid amount.
-3. Item refund: confirm refunded items and negative line totals print.
-4. Cash refund: confirm no card-only statement-credit or processor rows print.
-5. Previous Orders > order > Refunds: tap Reprint and confirm `REPRINT` appears.
-6. Repeat on Star Micronics and Landi built-in printers.
-7. Verify the paper includes refund/original dates, refund and order numbers,
+4. Item refund: confirm refunded items and negative line totals print.
+5. Cash refund: confirm no card-only statement-credit or processor rows print.
+6. Previous Orders > order > Refunds: tap Reprint and confirm `REPRINT` appears.
+7. Repeat on Star Micronics and Landi built-in printers.
+8. Verify the paper includes refund/original dates, refund and order numbers,
    total refunded, payment/card data when applicable, refund RRN, batch,
    invoice, original RRN, reason, and remaining refundable balance.
-8. Confirm normal void and sale receipt paths are unchanged.
+9. Confirm normal void and sale receipt paths are unchanged.
 
 ### Website Handoff
 
@@ -128,6 +134,7 @@ Tests:       27 passed, 27 total
 ## Files
 
 - `services/refundService.ts`
+- `components/menu/PaymentDetailBottomSheet.tsx`
 - `lib/refundApproval.ts`
 - `services/refundReceiptService.ts`
 - `services/printing/PrinterService.ts`
