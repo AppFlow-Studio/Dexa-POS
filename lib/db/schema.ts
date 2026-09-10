@@ -80,14 +80,79 @@
  * At Phase 6 this becomes a forward-only migration ladder and this comment,
  * along with `rebuildIsSafe`, has to go.
  */
-export const SCHEMA_VERSION = 11;
+/**
+ * v12 — the write track's tables: `outbox`, `table_sessions`,
+ * `table_session_tables`, `order_seats`, plus id-immutability triggers for
+ * order_items and table_sessions.
+ *
+ * Still a pure projection at v12: nothing writes to the outbox until
+ * EXPO_PUBLIC_LOCAL_WRITES_ITEMS is on, so a v11 -> v12 rebuild is as safe as
+ * every rebuild before it.
+ */
+export const SCHEMA_VERSION = 12;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
  * runner to decide "drop and rebuild" vs "refuse and demand a migration".
- * Flip to false in the same commit that flips PRAGMA synchronous to FULL.
+ *
+ * ── SEQUENCING. DO NOT FLIP THIS IN THE SAME COMMIT AS A VERSION BUMP. ──────
+ *
+ * The plan (§7.5) says to flip this to false together with
+ * `PRAGMA synchronous = FULL`, in one reviewed commit, at the moment local
+ * writes turn on. That is right about the two SETTINGS travelling together and
+ * wrong about them travelling with a schema bump, because `applySchema()`
+ * THROWS when `current !== SCHEMA_VERSION` and rebuild is not safe.
+ *
+ * Shipping v12 and `false` together would therefore brick every device still
+ * on v11 at boot — the schema check runs before anything can heal it.
+ *
+ * The order has to be:
+ *   1. Ship v12 with this still `true`. Devices rebuild v11 -> v12 harmlessly;
+ *      the mirror holds nothing the server doesn't have.
+ *   2. Once v12 is everywhere, and BEFORE any EXPO_PUBLIC_LOCAL_WRITES_* flag
+ *      is enabled for real traffic, flip this to `false` and `synchronous` to
+ *      `FULL` in one commit that changes nothing else.
+ *
+ * Step 2 is the moment the local database stops being a cache.
  */
 export const SCHEMA_REBUILD_IS_SAFE = true;
+
+/**
+ * Version upgrades that are PURELY ADDITIVE — new tables, indexes or triggers
+ * only, with no change to an existing table's columns.
+ *
+ * ── Why this exists ────────────────────────────────────────────────────────
+ *
+ * `applySchema()` resolves any version mismatch by DROP + rebuild, which was
+ * free while the mirror was an unshipped projection. It stopped being free the
+ * moment Track A shipped to production: every tablet now holds a populated
+ * mirror, and a drop forces a full cold re-sync of up to the 20,000-order
+ * retention cap, on the update that ships the new version. That is minutes of
+ * "Syncing order history…" on every device in every store, for no benefit.
+ *
+ * v11 -> v12 adds `outbox`, `table_sessions`, `table_session_tables`,
+ * `order_seats` and two triggers. It changes nothing that already exists, and
+ * every DDL statement is `CREATE ... IF NOT EXISTS`, so simply re-running them
+ * brings a v11 file to v12 with the data intact.
+ *
+ * ── Why `to` is part of the entry, not just `from` ─────────────────────────
+ *
+ * The check requires `to === SCHEMA_VERSION`. So the day someone bumps to v13
+ * with a destructive change, this entry stops matching and the upgrade falls
+ * back to drop-and-rebuild automatically. A bare set of "safe from" versions
+ * would go stale silently and skip a rebuild that was actually required —
+ * leaving a v12 file claiming to be v13 with the wrong columns.
+ */
+export const ADDITIVE_UPGRADES: ReadonlyArray<{ from: number; to: number }> = [
+  { from: 11, to: 12 },
+];
+
+/** True when `current` can reach SCHEMA_VERSION without dropping anything. */
+export function isAdditiveUpgrade(current: number): boolean {
+  return ADDITIVE_UPGRADES.some(
+    (u) => u.from === current && u.to === SCHEMA_VERSION,
+  );
+}
 
 /** Tables in dependency order (parents first) — DROP walks this in reverse. */
 export const TABLES = [
@@ -105,9 +170,35 @@ export const TABLES = [
   "customers",
   "staff",
   "sync_state",
+  // v12 — the write track. `outbox` is last on purpose: it references nothing,
+  // and DROP walks this list in reverse, so it goes first and can never be
+  // held up by a foreign key.
+  "table_sessions",
+  "table_session_tables",
+  "order_seats",
+  "outbox",
 ] as const;
 
 export type TableName = (typeof TABLES)[number];
+
+/**
+ * Tables carrying `_sync_status` — i.e. the ones that can hold a row the
+ * server has never seen.
+ *
+ * Declared rather than probed with `PRAGMA table_info`. A runtime probe has to
+ * decide what to do when it fails, and both answers are bad: assume the column
+ * exists and the retention DELETE becomes invalid SQL that rolls back the whole
+ * sync batch; assume it doesn't and retention silently deletes unsent orders.
+ * The set is a static fact about the schema, so it belongs next to the schema.
+ *
+ * A test asserts this matches the DDL, so adding `_sync_status` to a new table
+ * without listing it here fails CI rather than losing data in the field.
+ */
+export const TABLES_WITH_SYNC_STATUS: ReadonlySet<string> = new Set([
+  "orders",
+  "order_items",
+  "table_sessions",
+]);
 
 /**
  * Conflict target for the upsert in lib/db/write.ts, for tables whose primary
@@ -138,6 +229,10 @@ export const TABLE_CONFLICT_KEYS: Partial<Record<TableName, readonly string[]>> 
     vendors: ["location_id", "id"],
     customers: ["location_id", "id"],
     sync_state: ["entity", "location_id"],
+    // v12 — composite PKs, so they must be declared here or the upsert would
+    // conflict on their first column and silently roll the batch back.
+    table_session_tables: ["session_id", "table_id"],
+    order_seats: ["order_id", "item_id"],
   };
 
 /**
@@ -750,10 +845,128 @@ export const SCHEMA_STATEMENTS: string[] = [
     retention_cap    INTEGER,
     PRIMARY KEY (entity, location_id)
   )`,
+
+  // ==========================================================================
+  // v12 — THE WRITE TRACK
+  // docs/engineering/architecture/local-first-orders-seating.md §7.1, §9.1
+  // ==========================================================================
+
+  // THE TRANSACTIONAL OUTBOX — the load-bearing piece of the whole design.
+  //
+  // Today's write path is a dual write: Zustand set() persisted to MMKV on a
+  // debounce, plus a separate queue append to a different MMKV key. A crash
+  // between them loses one side, and no transaction can span two storage
+  // systems. That is why "local row created, server row didn't" happens.
+  //
+  // Writing the row and its sync intent in ONE SQLite transaction makes that
+  // state unrepresentable rather than merely unlikely.
+  `CREATE TABLE IF NOT EXISTS outbox (
+    id           TEXT PRIMARY KEY NOT NULL,
+    op           TEXT NOT NULL,
+    entity       TEXT NOT NULL,
+    entity_id    TEXT NOT NULL,
+    -- The order this op belongs to. Drains are serialized per order (a check's
+    -- ops must apply in order) but parallel across orders, and this column is
+    -- what makes that grouping a cheap indexed read rather than a JSON probe.
+    order_id     TEXT,
+    payload      TEXT NOT NULL,
+    base_version INTEGER,
+    lamport      INTEGER NOT NULL DEFAULT 0,
+    device_id    TEXT,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    -- ISO timestamp this op becomes eligible again. NULL = eligible now.
+    next_at      TEXT,
+    last_error   TEXT,
+    -- 'pending' | 'inflight' | 'failed'. Rows are DELETED on success rather
+    -- than marked done: a drained outbox should be an empty table, so its size
+    -- is a health metric on its own.
+    status       TEXT NOT NULL DEFAULT 'pending',
+    created_at   TEXT NOT NULL
+  )`,
+  // The drain's exact query shape: eligible rows, oldest first.
+  `CREATE INDEX IF NOT EXISTS idx_outbox_drain
+     ON outbox(status, next_at, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_outbox_order ON outbox(order_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_outbox_entity ON outbox(entity, entity_id)`,
+
+  // The Identity Invariant, extended to items and sessions. `orders` already
+  // had this from Phase 1; these two are the entities the reported sync
+  // failures actually happen on, so they matter more, not less.
+  `CREATE TRIGGER IF NOT EXISTS no_order_item_id_rewrite
+     BEFORE UPDATE OF id ON order_items
+     BEGIN SELECT RAISE(ABORT, 'order_item id is immutable'); END`,
+
+  // TABLE SESSIONS — seating has no local representation before v12 at all.
+  `CREATE TABLE IF NOT EXISTS table_sessions (
+    id                  TEXT PRIMARY KEY NOT NULL,
+    location_id         TEXT NOT NULL,
+    merchant_id         TEXT,
+    order_id            TEXT,
+    party_size          INTEGER,
+    guest_name          TEXT,
+    guest_phone         TEXT,
+    guest_notes         TEXT,
+    reservation_id      TEXT,
+    waitlist_id         TEXT,
+    server_staff_id     TEXT,
+    server_user_id      TEXT,
+    status              TEXT,
+    is_active           INTEGER,
+    seated_at           TEXT,
+    closed_at           TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    sync_version        INTEGER,
+    _sync_status        TEXT NOT NULL DEFAULT 'synced',
+    _base_version       INTEGER,
+    _lamport            INTEGER NOT NULL DEFAULT 0,
+    _device_id          TEXT,
+    _server_seen_at     TEXT,
+    payload             TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ts_loc_active
+     ON table_sessions(location_id, is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_ts_order ON table_sessions(order_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_ts_unsynced ON table_sessions(_sync_status)
+     WHERE _sync_status != 'synced'`,
+  `CREATE TRIGGER IF NOT EXISTS no_session_id_rewrite
+     BEFORE UPDATE OF id ON table_sessions
+     BEGIN SELECT RAISE(ABORT, 'table_session id is immutable'); END`,
+
+  // Which tables a session occupies. Composite PK, so it needs an entry in
+  // TABLE_CONFLICT_KEYS below — a test asserts that, because getting it wrong
+  // is silent (a swallowed constraint error looks like "the mirror is empty").
+  `CREATE TABLE IF NOT EXISTS table_session_tables (
+    session_id  TEXT NOT NULL REFERENCES table_sessions(id) ON DELETE CASCADE,
+    table_id    TEXT NOT NULL,
+    location_id TEXT,
+    is_primary  INTEGER,
+    seated_position INTEGER,
+    _lamport    INTEGER NOT NULL DEFAULT 0,
+    _device_id  TEXT,
+    PRIMARY KEY (session_id, table_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_tst_table ON table_session_tables(table_id)`,
+
+  // Per-item seat assignment. Local-first because seat tagging is a pure UI
+  // gesture that must never wait on a round trip.
+  `CREATE TABLE IF NOT EXISTS order_seats (
+    order_id    TEXT NOT NULL,
+    item_id     TEXT NOT NULL,
+    seat_number INTEGER,
+    _lamport    INTEGER NOT NULL DEFAULT 0,
+    _device_id  TEXT,
+    updated_at  TEXT,
+    PRIMARY KEY (order_id, item_id)
+  )`,
 ];
 
 /** Reverse dependency order so FK constraints never block the drop. */
 export const DROP_STATEMENTS: string[] = [
   "DROP TRIGGER IF EXISTS no_order_id_rewrite",
+  // v12 triggers. Dropped before their tables for the same reason the original
+  // is: a trigger left behind on a recreated table is a silent landmine.
+  "DROP TRIGGER IF EXISTS no_order_item_id_rewrite",
+  "DROP TRIGGER IF EXISTS no_session_id_rewrite",
   ...[...TABLES].reverse().map((t) => `DROP TABLE IF EXISTS ${t}`),
 ];

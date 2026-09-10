@@ -95,6 +95,19 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
 
+/**
+ * How long a send_to_kitchen may sit "blocked" before we stop retrying it.
+ *
+ * Blocking preserves the retry budget, which is right for the seconds an item
+ * spends draining and wrong forever after: a straggler queued in an earlier
+ * session, whose cart ids no longer map to anything, would otherwise re-log on
+ * every cycle and keep that order's kitchen send permanently pending.
+ *
+ * An hour is far past any legitimate drain (the outbox backs off to a 5-minute
+ * ceiling), so beyond it the items are genuinely unresolvable.
+ */
+const SEND_TO_KITCHEN_BLOCK_MAX_MS = 60 * 60 * 1000;
+
 const resolveTableNameForOrder = (
   tableIdOrName?: string | null,
 ): string | null => {
@@ -2920,7 +2933,69 @@ async function executeQueuedOperation(
                 console.log(
                   `[OfflineSync:send_to_kitchen] No items resolved yet, waiting`,
                 );
-                return OpBlocked("items_not_synced");
+                // Why are they unsynced? "Blocked" preserves the retry budget,
+              // so a permanently-rejected item op blocks this send FOREVER,
+              // silently. Name the cause once rather than letting it loop.
+              void (async () => {
+                try {
+                  const { unsyncedItemIds, failedOpCount } = await import(
+                    "@/lib/db/outbox"
+                  );
+                  const failed = await failedOpCount();
+                  // Only worth a warning when something is actually WEDGED.
+                  //
+                  // These are CART ids (composite merge keys), not row uuids,
+                  // so looking them up in order_items always "found nothing" —
+                  // the old message reported that as if it were a fault on
+                  // every single send. A block with zero parked ops is the
+                  // normal case: the item is still draining and the next
+                  // retry will resolve it.
+                  if (failed > 0) {
+                    const stuck = await unsyncedItemIds(unresolvedLocalItemIds);
+                    console.warn(
+                      `[LF] send_to_kitchen blocked on ${unresolvedLocalItemIds.length} item(s) ` +
+                        `and ${failed} op(s) are parked as FAILED — those items will never ` +
+                        `sync without a fix. ${stuck.length} have no synced local row. ` +
+                        `Clear them in Settings → Dev Flags → Local-First Outbox.`,
+                    );
+                  } else if (__DEV__) {
+                    console.log(
+                      `[LF] send_to_kitchen waiting on ${unresolvedLocalItemIds.length} item(s) still draining`,
+                    );
+                  }
+                } catch {
+                  /* diagnostics only */
+                }
+              })();
+              // ── Give up on a send that can never resolve. ───────────────
+              //
+              // "Blocked" preserves the retry budget, so an op whose items
+              // will never resolve retries FOREVER. That is right for a few
+              // seconds of drain latency and wrong for a straggler queued in
+              // an earlier session, whose cart ids no longer map to anything —
+              // it just re-logs on every cycle and keeps that order's kitchen
+              // send perpetually pending.
+              //
+              // An hour is far beyond any legitimate drain (the outbox retries
+              // with a 5-minute ceiling), so past it the items are genuinely
+              // unresolvable and the op should stop rather than pretend.
+              const blockedAgeMs =
+                Date.now() - new Date(op.timestamp).getTime();
+              if (blockedAgeMs > SEND_TO_KITCHEN_BLOCK_MAX_MS) {
+                console.error(
+                  `[LF] ✗ giving up on a send_to_kitchen queued ${Math.round(
+                    blockedAgeMs / 60000,
+                  )} min ago — its ${unresolvedLocalItemIds.length} item(s) never resolved. ` +
+                    `Re-send the order from the POS if the kitchen still needs it.`,
+                );
+                return OpTerminal(
+                  "ITEMS_NEVER_RESOLVED",
+                  "Items for this kitchen send never synced to the server.",
+                  "Re-send the order from the POS if the kitchen still needs it.",
+                );
+              }
+
+              return OpBlocked("items_not_synced");
               }
               // Resolved via live store — clear unresolved list so we don't re-queue them
               unresolvedLocalItemIds = stillUnresolvedLocalItemIds;
@@ -2946,6 +3021,68 @@ async function executeQueuedOperation(
               console.log(
                 "[OfflineSync:send_to_kitchen] Fired items exist but item IDs are not synced yet, waiting",
               );
+              // Why are they unsynced? "Blocked" preserves the retry budget,
+              // so a permanently-rejected item op blocks this send FOREVER,
+              // silently. Name the cause once rather than letting it loop.
+              void (async () => {
+                try {
+                  const { unsyncedItemIds, failedOpCount } = await import(
+                    "@/lib/db/outbox"
+                  );
+                  const failed = await failedOpCount();
+                  // Only worth a warning when something is actually WEDGED.
+                  //
+                  // These are CART ids (composite merge keys), not row uuids,
+                  // so looking them up in order_items always "found nothing" —
+                  // the old message reported that as if it were a fault on
+                  // every single send. A block with zero parked ops is the
+                  // normal case: the item is still draining and the next
+                  // retry will resolve it.
+                  if (failed > 0) {
+                    const stuck = await unsyncedItemIds(unresolvedLocalItemIds);
+                    console.warn(
+                      `[LF] send_to_kitchen blocked on ${unresolvedLocalItemIds.length} item(s) ` +
+                        `and ${failed} op(s) are parked as FAILED — those items will never ` +
+                        `sync without a fix. ${stuck.length} have no synced local row. ` +
+                        `Clear them in Settings → Dev Flags → Local-First Outbox.`,
+                    );
+                  } else if (__DEV__) {
+                    console.log(
+                      `[LF] send_to_kitchen waiting on ${unresolvedLocalItemIds.length} item(s) still draining`,
+                    );
+                  }
+                } catch {
+                  /* diagnostics only */
+                }
+              })();
+              // ── Give up on a send that can never resolve. ───────────────
+              //
+              // "Blocked" preserves the retry budget, so an op whose items
+              // will never resolve retries FOREVER. That is right for a few
+              // seconds of drain latency and wrong for a straggler queued in
+              // an earlier session, whose cart ids no longer map to anything —
+              // it just re-logs on every cycle and keeps that order's kitchen
+              // send perpetually pending.
+              //
+              // An hour is far beyond any legitimate drain (the outbox retries
+              // with a 5-minute ceiling), so past it the items are genuinely
+              // unresolvable and the op should stop rather than pretend.
+              const blockedAgeMs =
+                Date.now() - new Date(op.timestamp).getTime();
+              if (blockedAgeMs > SEND_TO_KITCHEN_BLOCK_MAX_MS) {
+                console.error(
+                  `[LF] ✗ giving up on a send_to_kitchen queued ${Math.round(
+                    blockedAgeMs / 60000,
+                  )} min ago — its ${unresolvedLocalItemIds.length} item(s) never resolved. ` +
+                    `Re-send the order from the POS if the kitchen still needs it.`,
+                );
+                return OpTerminal(
+                  "ITEMS_NEVER_RESOLVED",
+                  "Items for this kitchen send never synced to the server.",
+                  "Re-send the order from the POS if the kitchen still needs it.",
+                );
+              }
+
               return OpBlocked("items_not_synced");
             }
 

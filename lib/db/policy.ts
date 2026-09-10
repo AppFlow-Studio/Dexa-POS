@@ -54,7 +54,22 @@ const POLICY: Record<StationKind, ReadonlySet<TableName>> = {
     "customers",
     "staff",
     "sync_state",
+    // v12 — the write track. Only a POS station originates orders and seating,
+    // so only a POS station holds an outbox.
+    "table_sessions",
+    "table_session_tables",
+    "order_seats",
+    "outbox",
   ]),
+  // A kiosk DOES create orders (station_type "self_service"), but it does not
+  // store them locally today and this plan does not change that: its scope is
+  // POS order processing and the tables section. Giving a kiosk an `outbox`
+  // without `orders` would be worse than useless — ops referencing rows the
+  // device may not hold.
+  //
+  // ⚠️ Whoever takes kiosk local-first next: adding `outbox` here means adding
+  // `orders` and `order_items` too, and re-deciding the PII question that
+  // keeps history off dining-room hardware in the first place.
   kiosk: new Set<TableName>([
     "menu_bootstrap",
     "menus",
@@ -81,7 +96,21 @@ export function canStore(kind: StationKind, table: TableName): boolean {
   return POLICY[kind].has(table);
 }
 
-/** Tables this station kind must NOT hold — the purge list on station change. */
+/**
+ * Tables this station kind must NOT hold — the purge list on station change.
+ *
+ * ⚠️ DATA-LOSS HAZARD from v12 onward. This list now includes `outbox`,
+ * `orders` and `table_sessions` for kiosk/KDS, which means switching a POS
+ * tablet into kiosk or KDS mode PURGES them. Before v12 that was always safe:
+ * every row was a projection of something the server already had.
+ *
+ * It is no longer safe. A POS device with a non-empty outbox is holding orders
+ * the server has never seen, and purging is unrecoverable data loss — a guest's
+ * check, gone.
+ *
+ * Callers MUST drain the outbox (or refuse the station change) before acting on
+ * this list. `hasUnsyncedWrites()` in lib/db/outbox.ts is the check.
+ */
 export function forbiddenTables(kind: StationKind): TableName[] {
   const allowed = POLICY[kind];
   return ([...POLICY.pos] as TableName[]).filter((t) => !allowed.has(t));

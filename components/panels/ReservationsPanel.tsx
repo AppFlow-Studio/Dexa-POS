@@ -45,6 +45,7 @@ import {
     View,
 } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
+import { FlashList } from "@shopify/flash-list";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -2234,6 +2235,94 @@ const ReservationCard: React.FC<{
   );
 };
 
+/**
+ * Unscaled height of a collapsed reservation card. First-pass hint only;
+ * expanded cards get their own `getItemType` bucket so FlashList never
+ * recycles a tall card into a short slot.
+ */
+const ESTIMATED_CARD_HEIGHT = 96;
+
+/**
+ * Memoized row wrapper. Derives the per-reservation table names and occupancy
+ * flag inside the memo boundary — computing them in the parent's renderItem
+ * would allocate a fresh `tableNames` array on every parent render and defeat
+ * the card's own memoization under FlashList recycling.
+ */
+const ReservationRow = React.memo(function ReservationRow({
+  reservation,
+  isExpanded,
+  tableNameById,
+  availableTables,
+  onToggle,
+  onEdit,
+  onConfirm,
+  onMarkArrived,
+  onSeat,
+  onCancel,
+}: {
+  reservation: Reservation;
+  isExpanded: boolean;
+  tableNameById: Record<string, string>;
+  availableTables: any[];
+  onToggle: (id: string) => void;
+  onEdit: (r: Reservation) => void;
+  onConfirm: (id: string) => void;
+  onMarkArrived: (id: string) => void;
+  onSeat: (r: Reservation) => void;
+  onCancel: (r: Reservation) => void;
+}) {
+  // Depend on the raw field, not on a `?? []` fallback — that fallback would
+  // be a fresh array identity each render and invalidate both memos.
+  const assignedIds = reservation.assigned_table_ids;
+
+  const tableNames = useMemo(
+    () => (assignedIds ?? []).map((id) => tableNameById[id]).filter(Boolean),
+    [assignedIds, tableNameById],
+  );
+
+  const hasOccupiedTable = useMemo(
+    () =>
+      (assignedIds ?? [])
+        .map((id) => availableTables.find((t) => t.id === id))
+        .some((t: any) => t?.occupied),
+    [assignedIds, availableTables],
+  );
+
+  const toggle = useCallback(
+    () => onToggle(reservation.id),
+    [onToggle, reservation.id],
+  );
+  const edit = useCallback(() => onEdit(reservation), [onEdit, reservation]);
+  const confirm = useCallback(
+    () => onConfirm(reservation.id),
+    [onConfirm, reservation.id],
+  );
+  const markArrived = useCallback(
+    () => onMarkArrived(reservation.id),
+    [onMarkArrived, reservation.id],
+  );
+  const seat = useCallback(() => onSeat(reservation), [onSeat, reservation]);
+  const cancel = useCallback(
+    () => onCancel(reservation),
+    [onCancel, reservation],
+  );
+
+  return (
+    <ReservationCard
+      reservation={reservation}
+      isExpanded={isExpanded}
+      onToggle={toggle}
+      onEdit={edit}
+      onConfirm={confirm}
+      onMarkArrived={markArrived}
+      onSeat={seat}
+      onCancel={cancel}
+      tableNames={tableNames}
+      hasOccupiedTable={hasOccupiedTable}
+    />
+  );
+});
+
 // ─── ReservationsPanel ────────────────────────────────────────────────────────
 
 const ReservationsPanel: React.FC = () => {
@@ -2681,6 +2770,42 @@ const ReservationsPanel: React.FC = () => {
     return map;
   }, [tables]);
 
+  // ─── List plumbing (after every handler and lookup it closes over) ───
+  const keyExtractor = useCallback((r: Reservation) => r.id, []);
+
+  // Expanded cards are much taller than collapsed ones; separate item types
+  // keep FlashList from recycling one shape into the other's slot.
+  const getItemType = useCallback(
+    (r: Reservation) => (expandedId === r.id ? "expanded" : "collapsed"),
+    [expandedId],
+  );
+
+  const renderReservation = useCallback(
+    ({ item }: { item: Reservation }) => (
+      <ReservationRow
+        reservation={item}
+        isExpanded={expandedId === item.id}
+        tableNameById={tableNameById}
+        availableTables={availableTables}
+        onToggle={handleToggle}
+        onEdit={setEditingReservation}
+        onConfirm={handleConfirm}
+        onMarkArrived={handleMarkArrived}
+        onSeat={handleSeat}
+        onCancel={setReservationToCancel}
+      />
+    ),
+    [
+      expandedId,
+      tableNameById,
+      availableTables,
+      handleToggle,
+      handleConfirm,
+      handleMarkArrived,
+      handleSeat,
+    ],
+  );
+
   return (
     <View
       style={{
@@ -2794,70 +2919,47 @@ const ReservationsPanel: React.FC = () => {
       </View>
 
       {/* List */}
-      <ScrollView
-        style={{ flex: 1 }}
+      <FlashList
+        data={dateReservations}
+        keyExtractor={keyExtractor}
+        renderItem={renderReservation}
+        getItemType={getItemType}
+        estimatedItemSize={s(ESTIMATED_CARD_HEIGHT)}
+        extraData={expandedId}
         contentContainerStyle={{ padding: s(8), paddingBottom: s(20) }}
-      >
-        {isLoading && reservations.length === 0 ? (
-          <View
-            style={{
-              alignItems: "center",
-              justifyContent: "center",
-              paddingVertical: s(40),
-            }}
-          >
-            <ActivityIndicator size="small" color={colors.teal} />
-            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(8) }}>
-              Loading reservations...
-            </Text>
-          </View>
-        ) : dateReservations.length > 0 ? (
-          dateReservations.map((r) => {
-            const tableNames = (r.assigned_table_ids ?? [])
-              .map((id) => tableNameById[id])
-              .filter(Boolean);
-            // Check if any assigned tables are occupied
-            const assignedTableObjects = (r.assigned_table_ids ?? [])
-              .map((id) => availableTables.find((t) => t.id === id))
-              .filter(Boolean);
-            const hasOccupiedTable = assignedTableObjects.some(
-              (t: any) => t?.occupied,
-            );
-
-            return (
-              <ReservationCard
-                key={r.id}
-                reservation={r}
-                isExpanded={expandedId === r.id}
-                onToggle={() => handleToggle(r.id)}
-                onEdit={() => setEditingReservation(r)}
-                onConfirm={() => handleConfirm(r.id)}
-                onMarkArrived={() => handleMarkArrived(r.id)}
-                onSeat={() => handleSeat(r)}
-                onCancel={() => setReservationToCancel(r)}
-                tableNames={tableNames}
-                hasOccupiedTable={hasOccupiedTable}
-              />
-            );
-          })
-        ) : (
-          <View
-            style={{
-              alignItems: "center",
-              justifyContent: "center",
-              paddingVertical: s(40),
-            }}
-          >
-            <CalendarClock size={s(28)} color={colors.muted} />
-            <Text style={{ fontSize: s(13), color: colors.label, marginTop: s(10) }}>
-              No reservations {formatDateLabel(selectedDate).toLowerCase()}
-            </Text>
-            <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(4) }}>
-              Tap + to add one
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+        ListEmptyComponent={
+          isLoading && reservations.length === 0 ? (
+            <View
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: s(40),
+              }}
+            >
+              <ActivityIndicator size="small" color={colors.teal} />
+              <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(8) }}>
+                Loading reservations...
+              </Text>
+            </View>
+          ) : (
+            <View
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: s(40),
+              }}
+            >
+              <CalendarClock size={s(28)} color={colors.muted} />
+              <Text style={{ fontSize: s(13), color: colors.label, marginTop: s(10) }}>
+                No reservations {formatDateLabel(selectedDate).toLowerCase()}
+              </Text>
+              <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(4) }}>
+                Tap + to add one
+              </Text>
+            </View>
+          )
+        }
+      />
 
       <AddReservationModal
         visible={showAddModal}

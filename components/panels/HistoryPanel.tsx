@@ -2,18 +2,25 @@ import { PreviousOrder } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { colors } from "@/lib/theme";
+import { FlashList } from "@shopify/flash-list";
 import { Users } from "lucide-react-native";
-import React, { useMemo } from "react";
-import { FlatList, Text, View } from "react-native";
+import React, { useCallback, useMemo } from "react";
+import { Text, View } from "react-native";
+
+/**
+ * Card height hint for FlashList's first layout pass: 16px vertical padding +
+ * three text rows + the divider, plus the 16px bottom margin on the row.
+ */
+const ESTIMATED_CARD_HEIGHT = 116;
 
 // History Card Component
-const HistoryCard = ({
+const HistoryCard = React.memo(function HistoryCard({
   order,
   tableName,
 }: {
   order: PreviousOrder;
   tableName: string;
-}) => {
+}) {
   return (
     <View className="flex-row relative mb-4">
       <View className="absolute left-2 top-2 w-4 h-4 rounded-full bg-panel border-2 border-gray-700 z-10" />
@@ -40,17 +47,35 @@ const HistoryCard = ({
       </View>
     </View>
   );
-};
+});
 
 const HistoryPanel = () => {
   const { previousOrders } = usePreviousOrdersStore();
   const tablesById = useFloorPlanStore((s) => s.tablesById);
 
-  const getTableName = (tableId: string | undefined) => {
-    if (!tableId) return "N/A";
-    const table = tablesById[tableId];
-    return table ? table.name : "N/A";
-  };
+  const getTableName = useCallback(
+    (tableId: string | undefined) => {
+      if (!tableId) return "N/A";
+      const table = tablesById[tableId];
+      return table ? table.name : "N/A";
+    },
+    [tablesById],
+  );
+
+  const keyExtractor = useCallback(
+    (item: PreviousOrder) => item.orderId,
+    [],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: PreviousOrder }) => (
+      <HistoryCard
+        order={item}
+        tableName={getTableName(item.service_location_id)}
+      />
+    ),
+    [getTableName],
+  );
 
   return (
     <View className="h-full flex-col bg-panel">
@@ -62,23 +87,25 @@ const HistoryPanel = () => {
 
       <View className="flex-1 relative pl-6">
         <View className="absolute left-[20px] top-4 bottom-4 w-[2px] bg-gray-700" />
-        <FlatList
+        <FlashList
           data={previousOrders}
-          keyExtractor={(item) => item.orderId}
-          renderItem={({ item }) => (
-            <HistoryCard
-              order={item}
-              tableName={getTableName(item.service_location_id)}
-            />
-          )}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          estimatedItemSize={ESTIMATED_CARD_HEIGHT}
           contentContainerStyle={{ paddingVertical: 16 }}
-          ListEmptyComponent={() => (
-            <View className="flex-1 items-center justify-center p-8">
+          ListEmptyComponent={
+            // FlashList lays the empty component out in a normal (non-flex)
+            // slot, so it needs an explicit height to centre in — `flex-1`
+            // collapses to zero here the way it did not under FlatList.
+            <View
+              style={{ height: 240 }}
+              className="items-center justify-center p-8"
+            >
               <Text className="text-gray-400 text-center">
                 No recent activity.
               </Text>
             </View>
-          )}
+          }
         />
       </View>
     </View>

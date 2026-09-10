@@ -1,18 +1,18 @@
 import { getDeviceId } from "@/lib/deviceId";
 import {
-    buildKitchenSendQueueParams,
-    clearKitchenSendInFlight,
-    clearKitchenSendInFlightIfCaughtUp,
-    createKitchenSendContext,
-    isKitchenSendInFlight,
-    isTerminalKitchenMutationError,
-    markKitchenSendInFlight,
-    type KitchenSendContext,
+  buildKitchenSendQueueParams,
+  clearKitchenSendInFlight,
+  clearKitchenSendInFlightIfCaughtUp,
+  createKitchenSendContext,
+  isKitchenSendInFlight,
+  isTerminalKitchenMutationError,
+  markKitchenSendInFlight,
+  type KitchenSendContext,
 } from "@/lib/kdsSendTraceability";
 import {
-    getKitchenSentStatus,
-    getOrderSentStatus,
-    isKitchenItemSent,
+  getKitchenSentStatus,
+  getOrderSentStatus,
+  isKitchenItemSent,
 } from "@/lib/kitchenStatusUtils";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
@@ -21,51 +21,51 @@ import { toDbPaymentMethod } from "@/lib/paymentMethod";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
+  createLazyPersistStorage,
+  getSyncJSON,
+  setSyncJSON,
+} from "@/lib/storage";
+import {
   KEY_RPC_GET_ORDER_DETAILS,
   KEY_RT_OWN_ECHO,
   KEY_RT_OWN_ECHO_SLIP,
 } from "@/lib/telemetry/keys";
 import { internKey, recordCount } from "@/lib/telemetry/registry";
-import {
-    createLazyPersistStorage,
-    getSyncJSON,
-    setSyncJSON,
-} from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import {
-    CartItem,
-    Discount,
-    OrderAppliedDiscount,
-    OrderPaymentItemCoverage,
-    OrderPaymentTransactionDetails,
-    OrderProfile,
-    OrderProfilePayment,
-    PaymentType,
+  CartItem,
+  Discount,
+  OrderAppliedDiscount,
+  OrderPaymentItemCoverage,
+  OrderPaymentTransactionDetails,
+  OrderProfile,
+  OrderProfilePayment,
+  PaymentType,
 } from "@/lib/types";
 import {
-    decrementDiscountUsage,
-    incrementDiscountUsage,
+  decrementDiscountUsage,
+  incrementDiscountUsage,
 } from "@/services/discountUsageTracker";
 import { OrderService } from "@/services/orderService";
 import {
-    completePaymentJournal,
-    failPaymentJournal,
-    getJournalById,
-    updatePaymentJournal,
-    writePaymentJournal,
+  completePaymentJournal,
+  failPaymentJournal,
+  getJournalById,
+  updatePaymentJournal,
+  writePaymentJournal,
 } from "@/services/paymentJournal";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import type {
-    AddOrderItemParams,
-    CreateOrderParams,
-    OrderStatus as DbOrderStatus,
-    OrderType as DbOrderType,
+  AddOrderItemParams,
+  CreateOrderParams,
+  OrderStatus as DbOrderStatus,
+  OrderType as DbOrderType,
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
 import type {
-    ItemPaymentAllocation,
-    OrderTotals,
+  ItemPaymentAllocation,
+  OrderTotals,
 } from "@/types/order-calculations";
 import type { Station } from "@/types/station";
 import * as Sentry from "@sentry/react-native";
@@ -95,80 +95,98 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
+import { unsyncedItemIds } from "@/lib/db/outbox";
+import { mintStoreOrderId } from "@/lib/localFirst/identity";
 import {
-    forceSetLocalSequence,
-    generateLocalOrderNumbers,
-    parseSequenceFromDisplayNumber,
-    seedLocalSequence,
+  forceSetLocalSequence,
+  parseSequenceFromDisplayNumber,
+  seedLocalSequence,
 } from "@/lib/localOrderSequence";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
-    rpcWithIdempotency,
-    toBulkUpdateStatusKey,
-    toIdempotencyKey,
-    toUpdateItemKey,
-    toUpdateQuantityKey,
+  rpcWithIdempotency,
+  toBulkUpdateStatusKey,
+  toIdempotencyKey,
+  toUpdateItemKey,
+  toUpdateQuantityKey,
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
 import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
 import {
-    applyPaymentToItems,
-    calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
-    calculateOrderTotals as calculateOrderTotalsFromModule,
-    calculatePaidStatus,
-    distributeDiscountToItems as distributeDiscountToItemsFromModule,
-    invalidateCalculationCache,
-    round2,
-    scheduleCalculationCacheInvalidation,
+  applyPaymentToItems,
+  calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
+  calculateOrderTotals as calculateOrderTotalsFromModule,
+  calculatePaidStatus,
+  distributeDiscountToItems as distributeDiscountToItemsFromModule,
+  invalidateCalculationCache,
+  round2,
+  scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
 import { snapshotTableName } from "@/lib/orderDisplay";
 import { resolveInboundToGo } from "@/lib/pendingToGo";
-import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
+import {
+  allocateOrderNumbers,
+  findLatestReusableEmptyDraftId,
+  getTodaySequenceFloor,
+} from "@/lib/reusableEmptyDraft";
+import {
+  LOCAL_WRITES_ITEMS,
+  LOCAL_WRITES_ORDERS,
+  LOCAL_WRITES_SEATING,
+  addLocalItem,
+  createLocalOrder,
+  editLocalItem,
+  removeLocalItem,
+  sendLocalToKitchen,
+  updateLocalItemQuantity,
+  voidLocalItem,
+} from "@/services/localFirst/localWrites";
+import { waitForOrderSynced } from "@/services/localFirst/outboxDrain";
 import { aggregateTaxByCategory } from "@/utils/money";
 
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
-    cancelOrderOperations,
-    cancelPendingByEntity,
-    dropQueuedOpsForItem,
-    getDeadLetterOperations,
-    getIsOnline,
-    getOperationsForOrder,
-    getOrderCreationOperationId,
-    getPendingOperations,
-    processQueueNow,
-    queueOperation,
-    registerPersistSubsetCheck,
-    removeOperation,
-    retryDeadLetterOperation,
-    retrySyncForItem as retrySyncForItemQueue,
-    updateOperationParams,
+  cancelOrderOperations,
+  cancelPendingByEntity,
+  dropQueuedOpsForItem,
+  getDeadLetterOperations,
+  getIsOnline,
+  getOperationsForOrder,
+  getOrderCreationOperationId,
+  getPendingOperations,
+  processQueueNow,
+  queueOperation,
+  registerPersistSubsetCheck,
+  removeOperation,
+  retryDeadLetterOperation,
+  retrySyncForItem as retrySyncForItemQueue,
+  updateOperationParams,
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 import {
-    deriveCashSavings,
-    isHeaderOnlyBroadcast,
-    mapBackendItemToCartItem,
-    mapOrderType,
-    mapPaymentStatus,
-    normalizeFetchedOrder,
-    transformBroadcastItems,
-    transformBroadcastPaymentsToProfile,
-    transformBroadcastToOrder,
-    type BackendItemInput,
-    type FetchedOrderData,
+  deriveCashSavings,
+  isHeaderOnlyBroadcast,
+  mapBackendItemToCartItem,
+  mapOrderType,
+  mapPaymentStatus,
+  normalizeFetchedOrder,
+  transformBroadcastItems,
+  transformBroadcastPaymentsToProfile,
+  transformBroadcastToOrder,
+  type BackendItemInput,
+  type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { useSyncStatusStore } from "./useSyncStatusStore";
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import {
-    BroadcastOrderData,
-    OrderBroadcastPayload,
+  BroadcastOrderData,
+  OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
@@ -177,21 +195,21 @@ import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
 import { isOrderReadOnly, isOwnershipError } from "@/lib/orderAccessControl";
 import {
-    clearItemPendingRemoval,
-    isItemPendingRemoval,
-    markItemPendingRemoval,
+  clearItemPendingRemoval,
+  isItemPendingRemoval,
+  markItemPendingRemoval,
 } from "@/lib/pendingItemRemovals";
 import {
-    clearOrderPendingVoid,
-    isOrderPendingVoid,
+  clearOrderPendingVoid,
+  isOrderPendingVoid,
 } from "@/lib/pendingVoidOrderIds";
 import { maybeFireTakeoverToast } from "@/lib/takeoverToast";
 import { detectConflict } from "@/services/conflictDetectionService";
 import { autoPrintKitchenTicketsIfEnabled } from "@/services/printing/autoPrintKitchen";
 import { useConflictStore } from "@/stores/useConflictStore";
 import {
-    generateConflictToast,
-    isConflictCritical,
+  generateConflictToast,
+  isConflictCritical,
 } from "@/types/conflict-resolution";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
@@ -220,6 +238,22 @@ const resolveTableNameForOrder = (
 
 function isOrderTableStillSeating(order?: OrderProfile | null): boolean {
   if (!order || order.order_type !== "dine_in") return false;
+
+  // ── Local-first seating removes the window this guard describes. ─────────
+  //
+  // The "seating" status exists to cover the gap between tapping "Seat" and
+  // seat_guests_v3 returning the session id and order id. During that gap the
+  // order has no identity, so items cannot safely be attached to it — hence
+  // the "Seating in progress — please wait" toast at the call site.
+  //
+  // With EXPO_PUBLIC_LOCAL_WRITES_SEATING on, seatLocal() mints both ids and
+  // commits the session, its tables and the order in ONE SQLite transaction
+  // before the tap finishes. There is no gap left to guard: the order is
+  // real, addressable and ready for items on the very next frame.
+  //
+  // Gated rather than deleted because the flag is the rollback. Once local
+  // seating is the only path, this whole function goes (Phase 6).
+  if (LOCAL_WRITES_SEATING) return false;
 
   const sessionStore = useTableSessionStore.getState();
   if (order.session_id) {
@@ -474,6 +508,131 @@ function calculateOrderTotals(
  */
 export const calculateOrderTotalsForOrder = calculateOrderTotals;
 
+/**
+ * Called by the outbox drain once an item's row actually exists server-side.
+ *
+ * This is the ONLY writer of `db_order_item_id` on the local-first path. See
+ * the comment in addItemToBackend for why it cannot be set at write time.
+ *
+ * ── Batched, deliberately. ────────────────────────────────────────────────
+ *
+ * The drain confirms items ONE AT A TIME. Writing each one straight into the
+ * store produced a separate `set()` per item, and every one of those re-ran
+ * the coursing and seating effects — which key off `db_order_item_id` and
+ * issue their own RPCs. Ringing in six items meant six render passes and six
+ * rounds of course syncing, which is what made a table order feel laggy and
+ * made the course list appear, vanish and reappear while items were still
+ * being added.
+ *
+ * Coalescing into one microtask-flushed batch turns that back into a single
+ * commit: the effects run once, with every item already bound.
+ */
+const pendingItemBindings = new Map<string, Map<string, string>>();
+let bindingFlushScheduled = false;
+
+export function markItemSyncedFromDrain(
+  orderId: string,
+  cartItemId: string,
+  dbItemId: string,
+): void {
+  // Keyed by CART id, valued by ROW uuid.
+  //
+  // These are different strings and conflating them was the bug: a CartItem's
+  // id is a composite merge key (`<menuItemId>|modifiers:…_<ts>_<rand>`) so
+  // that re-tapping the same item collapses into one line, while the row id is
+  // a uuid minted in addLocalItem. Matching cart lines on the uuid found
+  // nothing, db_order_item_id was never set, and every item stayed "draining"
+  // forever even though the drain had synced it.
+  let map = pendingItemBindings.get(orderId);
+  if (!map) {
+    map = new Map();
+    pendingItemBindings.set(orderId, map);
+  }
+  map.set(cartItemId, dbItemId);
+
+  if (bindingFlushScheduled) return;
+  bindingFlushScheduled = true;
+  queueMicrotask(flushItemBindings);
+}
+
+function flushItemBindings(): void {
+  bindingFlushScheduled = false;
+  if (pendingItemBindings.size === 0) return;
+
+  const batch = new Map(pendingItemBindings);
+  pendingItemBindings.clear();
+
+  // Cart lines actually bound by this flush. Collected inside the reducer,
+  // applied to useSyncStatusStore after it commits — writing another store
+  // from inside a setState reducer is how you get a cascade mid-commit.
+  const boundCartIds: string[] = [];
+
+  useOrderStore.setState((state) => {
+    let nextOrders: typeof state.ordersById | null = null;
+
+    for (const [orderId, itemIds] of batch) {
+      // The order may be keyed by either id during the rollout.
+      const key = state.ordersById[orderId]
+        ? orderId
+        : Object.keys(state.ordersById).find(
+            (k) => state.ordersById[k]?.db_order_id === orderId,
+          );
+      if (!key) continue;
+
+      const order = (nextOrders ?? state.ordersById)[key];
+      if (!order) continue;
+
+      // Skip entirely if nothing would change — a no-op set() still notifies
+      // every subscriber, which is the churn this batching exists to remove.
+      const needsBinding = order.items.some(
+        (i) => itemIds.has(i.id) && !i.db_order_item_id,
+      );
+      if (!needsBinding) continue;
+
+      nextOrders = nextOrders ?? { ...state.ordersById };
+      nextOrders[key] = {
+        ...order,
+        items: order.items.map((i) => {
+          if (!itemIds.has(i.id) || i.db_order_item_id) return i;
+          boundCartIds.push(i.id);
+          return {
+            ...i,
+            db_order_item_id: itemIds.get(i.id)!,
+            sync_status: "synced" as const,
+          };
+        }),
+      };
+    }
+
+    return nextOrders ? { ordersById: nextOrders } : state;
+  });
+
+  // ── Close out the sync-status entry too, not just the cart line. ─────────
+  //
+  // addItemToActiveOrder marks every added line 'pending' in
+  // useSyncStatusStore. On the LEGACY path addItemToBackend flips it to
+  // 'synced' when the RPC returns; the local-first branch returns before ever
+  // reaching that, so the entry stayed 'pending' for the life of the order.
+  //
+  // waitForPendingSyncs treats a 'pending' entry as an in-flight write, so
+  // every kitchen send sat out its full 5s timeout before doing anything —
+  // even once the drain had confirmed the row. This is the same fact the
+  // binding above records ("the server has this row"), so it belongs in the
+  // same place.
+  if (boundCartIds.length > 0) {
+    useSyncStatusStore
+      .getState()
+      .setSyncStatusBatch(
+        boundCartIds.map((itemId) => ({ itemId, status: "synced" as const })),
+      );
+  }
+}
+
+/** Test seam. */
+export function __flushItemBindingsForTests(): void {
+  flushItemBindings();
+}
+
 // ============================================================================
 // HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
 // ============================================================================
@@ -497,6 +656,45 @@ function isCustomModifierGroup(categoryId: string | undefined | null): boolean {
  * Handles type conversions between DB format and local state format.
  */
 // restoreDiscountsFromBackend extracted to @/utils/discountUtils.ts
+
+/**
+ * CartItem modifiers -> the flat row shape add_order_item_v5 inserts.
+ *
+ * The inverse of transformBackendModifiers below. Add-ons ride along too:
+ * they are priced by the calculator, so they must reach the server as
+ * modifier rows or the server-side total would disagree with the cart's.
+ */
+function flattenModifiersForRpc(item: CartItem): unknown[] | null {
+  const rows: unknown[] = [];
+
+  for (const group of item.customizations?.modifiers ?? []) {
+    for (const opt of group.options ?? []) {
+      rows.push({
+        modifier_group_id: group.categoryId ?? null,
+        modifier_item_id: opt.id ?? null,
+        modifier_group_name: group.categoryName ?? "Modifiers",
+        modifier_name: opt.name ?? "",
+        price_modifier: opt.price ?? 0,
+        quantity: 1,
+        is_no: (opt as { isNo?: boolean }).isNo ?? false,
+      });
+    }
+  }
+
+  for (const addOn of item.customizations?.addOns ?? []) {
+    rows.push({
+      modifier_group_id: null,
+      modifier_item_id: addOn.id ?? null,
+      modifier_group_name: "Add-ons",
+      modifier_name: addOn.name ?? "",
+      price_modifier: addOn.price ?? 0,
+      quantity: 1,
+      is_no: false,
+    });
+  }
+
+  return rows.length > 0 ? rows : null;
+}
 
 /**
  * Transform backend OrderItemModifier[] to CartItem modifiers format.
@@ -663,8 +861,7 @@ export const getOrderStoreSupabaseClient = () => _supabaseClient;
 
 function createCurrentKitchenSendContext(): KitchenSendContext {
   return createKitchenSendContext({
-    stationId:
-      useStoreSettingsStore.getState().selectedStation?.id ?? null,
+    stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
     deviceId: getDeviceId(),
     staffId: getKioskSafeCreatorStaffId(),
   });
@@ -754,12 +951,58 @@ async function _commitKitchenSendForBatch(
 }
 
 async function _commitKitchenSendForBatchInner(
+  // Reassigned after the sync barrier — see the re-read below.
+  // eslint-disable-next-line prefer-const
   freshOrder: OrderProfile,
   localOrderId: string,
   sentLocalIds: Set<string>,
 ): Promise<KitchenSendCommitResult> {
   const supabase = getOrderStoreSupabaseClient();
   const isOnlineNow = getIsOnline();
+
+  // ── Barrier: the server must HAVE the items before we ask it to route
+  //    them to the kitchen. ────────────────────────────────────────────────
+  //
+  // `send_order_to_kitchen_v1` receives `db_order_item_id`s and resolves them
+  // against `order_items` SERVER-SIDE. Under local-first, that id is minted on
+  // the device and set on the cart line the moment the LOCAL write commits —
+  // so an item can look perfectly ready here while its row is still in the
+  // outbox. The RPC then silently under-reports:
+  //
+  //     KITCHEN_ITEMS_UNRESOLVED  requestedCount: 6, updatedCount: 4
+  //
+  // i.e. two items that never reached the kitchen.
+  //
+  // Placed HERE, not in sendNewItemsToKitchenForOrder: this inner helper is
+  // the single choke point every kitchen send passes through (the store
+  // action, the straggler retry, and the offline replay all funnel into it),
+  // so one barrier covers them all instead of one per caller.
+  //
+  // On timeout we proceed anyway — the local state is already correct and the
+  // ops stay queued, and blocking an operator from sending food because sync
+  // is slow is worse than a late server-side route.
+  if (LOCAL_WRITES_ITEMS && isOnlineNow && freshOrder.db_order_id) {
+    await waitForOrderSynced(freshOrder.db_order_id);
+
+    // RE-READ after the barrier. `freshOrder` was captured before it.
+    //
+    // The drain confirms items, then binds db_order_item_id through a
+    // MICROTASK-batched store commit (markItemSyncedFromDrain). So the outbox
+    // empties — and the barrier returns — a tick before the cart lines
+    // actually carry their ids. Using the pre-barrier snapshot meant those
+    // items still looked unbound, fell into `stragglerIds`, and got queued to
+    // the legacy path... which then reported, on every single send:
+    //
+    //     send_to_kitchen blocked on 1 item(s)
+    //
+    // Awaiting a macrotask lets the pending binding batch flush first, then we
+    // read the order the drain actually left behind.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const rebound =
+      useOrderStore.getState().ordersById[localOrderId] ??
+      useOrderStore.getState().ordersById[freshOrder.db_order_id];
+    if (rebound) freshOrder = rebound;
+  }
 
   const freshItems = freshOrder.items ?? [];
   const freshSentItems = freshItems.filter(
@@ -768,6 +1011,77 @@ async function _commitKitchenSendForBatchInner(
   const dbItemIds = freshSentItems
     .map((i) => i.db_order_item_id)
     .filter((id): id is string => !!id);
+
+  // Name the items the server cannot route, BEFORE calling it. Without this
+  // the only symptom is a count mismatch with no way to tell which lines were
+  // dropped.
+  if (LOCAL_WRITES_ITEMS && dbItemIds.length > 0) {
+    const missing = await unsyncedItemIds(dbItemIds);
+    if (missing.length > 0) {
+      console.error(
+        `[LF] ✗ kitchen send: ${missing.length}/${dbItemIds.length} item(s) not synced ` +
+          `to the server — these will NOT reach the kitchen:`,
+        missing,
+      );
+    }
+  }
+
+  // ── OFFLINE: send through the outbox, not the legacy queue. ─────────────
+  //
+  // Offline, `freshSentItems` is EMPTY — it filters on `db_order_item_id`,
+  // which only the drain writes. So every item became a "straggler", the whole
+  // batch went to the legacy queue addressed by CART id, and that queue spent
+  // up to an hour returning OpBlocked("items_not_synced") before dead-lettering
+  // it: `resolveItemId` reads `offlineIdRegistry`, which the local-first add
+  // path does not populate. The send reported "queued" and the kitchen got
+  // nothing, ever.
+  //
+  // `item_row_id` is the id the rows already have. Queued as ONE outbox op
+  // against this order, the per-order FIFO puts it strictly after the
+  // `add_item` ops for those same rows — so on reconnect the items are created
+  // and then routed, in that order, with nothing left to resolve.
+  if (LOCAL_WRITES_ITEMS && !isOnlineNow && freshOrder.db_order_id) {
+    const batchItems = freshItems.filter((i) => sentLocalIds.has(i.id));
+    const rowIds = batchItems
+      .map((i) => i.db_order_item_id ?? i.item_row_id)
+      .filter((id): id is string => !!id);
+    // Lines with neither id predate local-first writes; the legacy queue is
+    // still the only thing that knows how to chase them.
+    const unaddressable = batchItems
+      .filter((i) => !i.db_order_item_id && !i.item_row_id)
+      .map((i) => i.id);
+
+    if (rowIds.length > 0) {
+      const ctx = createCurrentKitchenSendContext();
+      const res = await sendLocalToKitchen({
+        orderId: freshOrder.db_order_id,
+        itemIds: rowIds,
+        orderStatus: getOrderSentStatus(),
+        itemStatus: getKitchenSentStatus(),
+        staffId: ctx.staffId,
+        stationId: ctx.stationId,
+        deviceId: ctx.deviceId,
+        sendIdempotencyKey: ctx.sendIdempotencyKey,
+        itemsIdempotencyKey: ctx.itemsIdempotencyKey,
+      });
+      if (!res.ok) {
+        console.error("[LF] ✗ sendLocalToKitchen failed:", res.error);
+      } else {
+        console.log(
+          `[LF] kitchen send queued locally: ${rowIds.length} item(s) on order ${freshOrder.db_order_id.slice(0, 8)}`,
+        );
+      }
+    }
+    if (unaddressable.length > 0) {
+      await queueKitchenSend(
+        localOrderId,
+        unaddressable,
+        createCurrentKitchenSendContext(),
+        { offline_batch: true },
+      );
+    }
+    return { status: "queued" };
+  }
 
   // Stragglers: batch items that STILL have no db_order_item_id after the wait.
   // Hand them to the offline queue (offline_batch), which replays the send once
@@ -831,12 +1145,10 @@ async function _commitKitchenSendForBatchInner(
         return { status: "rejected", error: result.error };
       }
 
-      await queueKitchenSend(
-        localOrderId,
-        localItemIds,
-        sendContext,
-        { resolvedItemIds: dbItemIds, unresolvedLocalItemIds: [] },
-      );
+      await queueKitchenSend(localOrderId, localItemIds, sendContext, {
+        resolvedItemIds: dbItemIds,
+        unresolvedLocalItemIds: [],
+      });
       return { status: "queued", error: result.error };
     }
     useSyncStatusStore.getState().clearAllForOrder(localItemIds);
@@ -1280,6 +1592,65 @@ const ensureOrderCreated = async (
     }
   }
 
+  // ── LOCAL-FIRST ORDER CREATION ──────────────────────────────────────────
+  //
+  // The order's id is ALREADY its server primary key (mintStoreOrderId under
+  // EXPO_PUBLIC_CLIENT_IDS), so there is no server round trip to wait for and
+  // nothing to rekey. Write the row plus its outbox op in one SQLite
+  // transaction and return immediately; the drain pushes it to
+  // create_order_v4, which is idempotent on that same id.
+  //
+  // `db_order_id` is set to the order's OWN id — under client ids the two are
+  // the same value, which is precisely the invariant that makes every
+  // "has the server seen this yet?" check downstream stop mattering.
+  if (LOCAL_WRITES_ORDERS) {
+    const res = await createLocalOrder({
+      merchantId: selectedStore.merchant_id ?? "",
+      locationId: selectedStore.id,
+      orderType: order.order_type ?? "take_out",
+      stationNumber:
+        useStoreSettingsStore.getState().selectedStation?.station_number ??
+        null,
+      stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
+      // Same resolvers the legacy create_order path uses (see the
+      // createOrderParams block above). Reading `order.created_by_staff_id`
+      // instead was wrong twice over: OrderProfile has no such field, so it
+      // was always undefined — the order synced with a NULL creator and
+      // Previous Orders rendered "Server: Unknown" — and it bypassed the
+      // kiosk-safety rule that decides which staff id may be attributed.
+      staffId: getKioskSafeCreatorStaffId(),
+      // A table NUMBER, not the table's uuid. service_location_id is the
+      // floor-plan object id; the server stores the human-facing name.
+      tableNumber: resolveTableNameForOrder(order.service_location_id),
+      sessionId: order.session_id ?? null,
+      customerName: order.customer_name ?? null,
+      customerPhone: order.customer_phone ?? null,
+      orderId: order.id,
+      // The store already allocated these in startNewOrder. Letting
+      // createLocalOrder mint its own burned the per-station sequence twice,
+      // so every new order advanced the counter by 2.
+      orderNumber: order.order_number ?? undefined,
+      displayNumber: order.display_number ?? undefined,
+    });
+
+    if (!res.ok || !res.value) {
+      // A failed LOCAL write is fatal to the gesture — there is no server to
+      // fall back to and no row anywhere. Surface it rather than returning a
+      // db id that does not exist.
+      console.error("[ensureOrderCreated] local write failed:", res.error);
+      return null;
+    }
+
+    setOrderDbId(
+      order.id,
+      res.value.orderId,
+      res.value.orderNumber,
+      res.value.displayNumber,
+      new Date().toISOString(),
+    );
+    return res.value.orderId;
+  }
+
   // ========================================================================
   // PER-ORDER PIN ATTRIBUTION GUARD
   // ========================================================================
@@ -1320,7 +1691,8 @@ const ensureOrderCreated = async (
     if (__DEV__) console.log(`[ensureOrderCreated] Order ID: ${order.id}`);
     if (__DEV__)
       console.log(`[ensureOrderCreated] Order Type: ${order.order_type}`);
-    if (__DEV__) console.log(`[ensureOrderCreated] Store: ${selectedStore?.id}`);
+    if (__DEV__)
+      console.log(`[ensureOrderCreated] Store: ${selectedStore?.id}`);
 
     // Check if we've already queued this order
     const existingQueuedOrder = pendingOrderCreations.get(order.id);
@@ -1681,9 +2053,7 @@ const ensureOrderCreated = async (
       pendingOrderCreations.delete(order.id);
       orderCreationTimestamps.delete(order.id);
       if (__DEV__)
-        console.log(
-          `[ensureOrderCreated] Released lock for order ${order.id}`,
-        );
+        console.log(`[ensureOrderCreated] Released lock for order ${order.id}`);
     }
   })();
 
@@ -1739,6 +2109,209 @@ const addItemToBackend = async (
   if (item.isDraft) {
     if (__DEV__) console.log("Backend sync skipped: Item is draft");
     return true;
+  }
+
+  // ========================================================================
+  // LOCAL-FIRST ITEM WRITE
+  // ========================================================================
+  //
+  // Replaces BOTH branches below (the online add_order_item RPC and the
+  // offline queue) with one path that behaves identically whether or not
+  // there is a network: write the row and its outbox op in one SQLite
+  // transaction, return, and let the drain push it.
+  //
+  // A MERGE is an UPDATE to an existing line's quantity, not a create, so it
+  // takes the quantity op rather than the add.
+  //
+  // ── The duplicate this removes ─────────────────────────────────────────
+  //
+  // Merges used to be sent down the legacy path wholesale. Offline that path
+  // reads `isMerge && item.db_order_item_id` — and offline the second half is
+  // ALWAYS false, because only the drain writes that field. So the merge fell
+  // into the legacy branch's `else`, which queues a full `add_item`: the
+  // outbox created the line with the first tap's quantity, and the legacy
+  // queue created a SECOND line for the same product. Tapping an item twice
+  // during an outage put two of it on the guest's check.
+  //
+  // `item_row_id` is the id the row already has, so the increase is
+  // expressible immediately and the outbox's per-order FIFO puts it after the
+  // add that created the row.
+  if (LOCAL_WRITES_ITEMS && isMerge) {
+    const rowId = item.db_order_item_id ?? item.item_row_id;
+    if (rowId) {
+      const orderId = await ensureOrderCreated(order, setOrderDbId);
+      if (!orderId) {
+        markItemFailed(item.id, "Could not create order locally");
+        return false;
+      }
+      console.log(
+        `[LF] merge LOCAL path item=${rowId.slice(0, 8)} qty=${item.quantity}`,
+      );
+      const res = await updateLocalItemQuantity({
+        orderId,
+        itemId: rowId,
+        quantity: item.quantity,
+      });
+      if (!res.ok) {
+        console.error("[LF] ✗ updateLocalItemQuantity failed:", res.error);
+        markItemFailed(item.id, res.error ?? "Local write failed");
+        return false;
+      }
+      onSyncComplete?.(resolveOrderKey());
+      return true;
+    }
+    // No row id at all — a line that predates local-first writes. The legacy
+    // path below still knows how to address it.
+  }
+
+  if (LOCAL_WRITES_ITEMS && !isMerge) {
+    // Already written? Do nothing.
+    //
+    // addLocalItem mints a fresh row uuid per call, so a second call for the
+    // same cart line would create a SECOND order_items row — a duplicate on
+    // the guest's check. The cart line carrying a db_order_item_id is the
+    // proof it has already been written and bound by the drain.
+    if (item.db_order_item_id) {
+      console.log(
+        `[LF] addItem skipped — cart line already bound to ${item.db_order_item_id.slice(0, 8)}`,
+      );
+      return true;
+    }
+    console.log(
+      `[LF] addItem LOCAL path item=${item.id?.slice(0, 8)} name=${item.name}`,
+    );
+    const orderId = await ensureOrderCreated(order, setOrderDbId);
+    if (!orderId) {
+      markItemFailed(item.id, "Could not create order locally");
+      return false;
+    }
+
+    const res = await addLocalItem({
+      orderId,
+      locationId: selectedStore.id,
+      menuItemId: item.menuItemId ?? null,
+      itemName: item.name,
+      quantity: item.quantity,
+      unitPrice: item.baseCardPrice ?? item.unitPrice ?? item.price ?? 0,
+      cashUnitPrice: item.baseCashPrice ?? item.cashPrice ?? null,
+      categoryId: (item as any).categoryId ?? null,
+      categoryName: (item as any).categoryName ?? null,
+      menuId: (item as any).menuId ?? null,
+      menuName: (item as any).menuName ?? null,
+      selectedSizeId: item.customizations?.size?.id ?? null,
+      selectedSizeName: item.customizations?.size?.name ?? null,
+      sizePriceModifier: item.customizations?.size?.priceModifier ?? 0,
+      // FLATTENED, not the cart shape.
+      //
+      // CartItem modifiers are nested groups —
+      // `[{ categoryId, categoryName, options: [{id,name,price}] }]` — but
+      // add_order_item_v5 inserts each element of p_modifiers straight into
+      // order_item_modifiers, reading `modifier_group_name` / `modifier_name`
+      // off each one. Passing the nested shape through made every one of those
+      // NULL and the insert died on
+      // `null value in column "modifier_group_name" ... violates not-null`.
+      //
+      // Same flatten the legacy open-item path uses for
+      // replace_order_item_modifiers_v2.
+      modifiers: flattenModifiersForRpc(item),
+      specialInstructions: item.customizations?.notes ?? null,
+      courseNumber: item.courseNumber ?? 1,
+      seatNumber: item.seatNumber ?? null,
+      stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
+      // The ROW id is deliberately NOT `item.id`.
+      //
+      // A CartItem's id is a composite MERGE key built by generateCartItemId —
+      // `<menuItemId>|modifiers:<groupId>:<optionId>_<ts>_<rand>` — so that
+      // tapping the same item+modifiers twice collapses into one line. It is
+      // not a row identity and it is not a uuid, so passing it as p_item_id
+      // failed every push with `22P02 invalid input syntax for type uuid`.
+      // addLocalItem mints a proper uuid instead, and we store it back on the
+      // cart line as db_order_item_id below — the same field the legacy path
+      // fills from the RPC response.
+      //
+      // But the CART id still has to travel with the op, because it is the
+      // only way back to the line this row belongs to. Omitting it let
+      // addLocalItem default `cartItemId` to the freshly minted ROW uuid, so
+      // markItemSyncedFromDrain looked for a cart line whose id was that uuid,
+      // found none, and never set db_order_item_id. Every item then stayed
+      // "unbound" forever: the kitchen-send barrier burned its full 5s timeout
+      // and _commitKitchenSendForBatch saw zero sendable items, queued the
+      // whole batch as stragglers and reported "Kitchen send queued" — while
+      // nothing at all reached the kitchen.
+      cartItemId: item.id,
+    });
+
+    if (!res.ok) {
+      console.error("[LF] ✗ addLocalItem failed:", res.error);
+      markItemFailed(item.id, res.error ?? "Local write failed");
+      return false;
+    }
+
+    // ── The row's IDENTITY, recorded now. ──────────────────────────────
+    //
+    // Not the same statement as "the server has it" (that is
+    // db_order_item_id, below) and not a shortcut to it. This is the primary
+    // key the row was just written under, and it is what every LATER mutation
+    // to this line has to address: a quantity change, a void, a seat, a
+    // kitchen send.
+    //
+    // Without it those paths had no id to use while offline, so they queued
+    // the CART id — a composite merge key — into the legacy queue, which
+    // resolves ids through `offlineIdRegistry` and therefore never resolved
+    // it. Every one of those ops returned "item_not_synced" on every pass
+    // until it was dead-lettered, and the operator's change never left the
+    // device.
+    if (res.value?.itemId) {
+      const rowId = res.value.itemId;
+      useOrderStore.setState((state) => {
+        const currentOrder = state.ordersById[resolveOrderKey()];
+        if (!currentOrder) return;
+        const line = currentOrder.items.find((i) => i.id === item.id);
+        if (line && !line.item_row_id) line.item_row_id = rowId;
+      });
+    }
+
+    // ── db_order_item_id is set by the DRAIN, not here. ────────────────
+    //
+    // It is tempting to set it now — under client ids we already know the
+    // value. But across this codebase `db_order_item_id` does not mean "the
+    // id"; it means **the server has this row**. Dozens of paths gate on it:
+    //
+    //   _commitKitchenSendForBatchInner  → filters to items that have it,
+    //                                      queues the rest as stragglers
+    //   coursing sync                    → "Order item not found" (P0001)
+    //   seat assignment sync             → same
+    //
+    // Setting it at LOCAL write time told all of them the server was ready
+    // when it was not, turning a safe deferral into a hard failure. Letting
+    // the drain set it restores the exact timing contract those paths were
+    // written against — they defer, retry and queue correctly again, with no
+    // per-caller barrier needed.
+    //
+    // markItemSyncedFromDrain() below is the single place it gets written.
+    onSyncComplete?.(resolveOrderKey());
+    return true;
+  }
+
+  if (!LOCAL_WRITES_ITEMS) {
+    console.log(
+      "[LF] addItem LEGACY path — EXPO_PUBLIC_LOCAL_WRITES_ITEMS off",
+    );
+  } else if (isMerge) {
+    // A merge is an UPDATE against an existing row, addressed by
+    // db_order_item_id — which on the local-first path only exists once the
+    // drain has confirmed the original add. Tapping the same item twice in
+    // quick succession would otherwise fire update_item_quantity against a
+    // row the server does not have yet, losing the second tap's quantity.
+    //
+    // Wait for this order's writes to land first. Bounded, and on timeout we
+    // fall through to the legacy handling, which queues rather than drops.
+    console.log(
+      "[LF] addItem LEGACY path — this is a MERGE (quantity update), not a new item",
+    );
+    if (isNetworkOnline && order.db_order_id) {
+      await waitForOrderSynced(order.db_order_id);
+    }
   }
 
   // ========================================================================
@@ -2927,15 +3500,6 @@ const addItemToBackend = async (
 // Interface for capturing previous state for rollback on sync failure
 interface PaymentRollbackState {
   order: OrderProfile;
-  activeOrderSubtotal: number;
-  activeOrderTax: number;
-  activeOrderTotal: number;
-  activeOrderDiscount: number;
-  activeOrderOutstandingSubtotal: number;
-  activeOrderOutstandingTax: number;
-  activeOrderOutstandingTotal: number;
-  activeOrderTotalCash: number;
-  activeOrderOutstandingCash: number;
 }
 
 // Backend sync helper - processes payment using process_payment_v2
@@ -3257,19 +3821,6 @@ const syncPaymentToBackend = async (
           useOrderStore.setState((state) => {
             state.ordersById[order.id] = rollbackState.order;
             if (order.id === activeOrderId) {
-              state.activeOrderSubtotal = rollbackState.activeOrderSubtotal;
-              state.activeOrderTax = rollbackState.activeOrderTax;
-              state.activeOrderTotal = rollbackState.activeOrderTotal;
-              state.activeOrderDiscount = rollbackState.activeOrderDiscount;
-              state.activeOrderOutstandingSubtotal =
-                rollbackState.activeOrderOutstandingSubtotal;
-              state.activeOrderOutstandingTax =
-                rollbackState.activeOrderOutstandingTax;
-              state.activeOrderOutstandingTotal =
-                rollbackState.activeOrderOutstandingTotal;
-              state.activeOrderTotalCash = rollbackState.activeOrderTotalCash;
-              state.activeOrderOutstandingCash =
-                rollbackState.activeOrderOutstandingCash;
             }
           });
         }
@@ -3629,12 +4180,6 @@ const syncPaymentToBackend = async (
 
         // Update outstanding totals if this is the active order
         if (order.id === activeOrderId) {
-          state.activeOrderOutstandingTotal =
-            data.unpaid_card_total ?? data.order_amount_due;
-          state.activeOrderOutstandingCash =
-            data.order_cash_amount_due ??
-            data.unpaid_cash_total ??
-            data.order_amount_due;
         }
       });
 
@@ -3820,19 +4365,6 @@ const syncPaymentToBackend = async (
         state.ordersById[order.id] = rollbackState.order;
         // Revert active order totals if this was the active order
         if (order.id === activeOrderId) {
-          state.activeOrderSubtotal = rollbackState.activeOrderSubtotal;
-          state.activeOrderTax = rollbackState.activeOrderTax;
-          state.activeOrderTotal = rollbackState.activeOrderTotal;
-          state.activeOrderDiscount = rollbackState.activeOrderDiscount;
-          state.activeOrderOutstandingSubtotal =
-            rollbackState.activeOrderOutstandingSubtotal;
-          state.activeOrderOutstandingTax =
-            rollbackState.activeOrderOutstandingTax;
-          state.activeOrderOutstandingTotal =
-            rollbackState.activeOrderOutstandingTotal;
-          state.activeOrderTotalCash = rollbackState.activeOrderTotalCash;
-          state.activeOrderOutstandingCash =
-            rollbackState.activeOrderOutstandingCash;
         }
       });
     }
@@ -3912,18 +4444,9 @@ interface OrderState {
 
   // --- DERIVED STATE (Totals for the ACTIVE order) ---
   // These values will be automatically updated by the store's actions.
-  activeOrderSubtotal: number;
-  activeOrderTax: number;
-  activeOrderTotal: number;
-  activeOrderDiscount: number;
   // Outstanding (unpaid) totals for the ACTIVE order
-  activeOrderOutstandingSubtotal: number;
-  activeOrderOutstandingTax: number;
-  activeOrderOutstandingTotal: number;
   // Cash pricing total (using cash prices + modifiers + add-ons)
-  activeOrderTotalCash: number;
   // Outstanding cash totals (unpaid items using cash pricing)
-  activeOrderOutstandingCash: number;
 
   // --- PENDING TABLE SELECTION ---
   pendingTableSelection: string | null; // Store pending table selection
@@ -4035,6 +4558,26 @@ interface OrderState {
     localSessionId?: string; // Local session ID for offline
     orderId?: string; // Pre-generated order ID for optimistic seating
   }) => OrderProfile;
+  /**
+   * "Give me the next order to ring on." THE entry point for every
+   * start-a-new-ticket gesture — the New Order button, the post-payment
+   * hand-off, the order-processing screen coming up with nothing active.
+   *
+   * Resumes the latest reusable empty draft when there is one (which is what
+   * keeps its number from being stranded) and only mints a brand-new order
+   * when there isn't. Sets the result active and returns it.
+   *
+   * Every caller went through its own copy of this before, and they had
+   * drifted: different exclusions, different renumbering, one reading a stale
+   * store snapshot. That drift IS the "we got order 3 and order 2 vanished"
+   * report, so there is one copy now.
+   */
+  startOrResumeOrder: (options?: {
+    /** Skip this order when looking for a draft to resume (usually the one just paid). */
+    excludeOrderId?: string | null;
+    /** Clear dine-in fields off the resumed draft (post-payment table clear). */
+    resetDineInFields?: boolean;
+  }) => OrderProfile | null;
   /**
    * Eagerly create the backend row for an order that only exists locally
    * (no db_order_id yet). Used so takeout orders create on the backend
@@ -4431,7 +4974,8 @@ export function shouldSuppressOwnEchoBroadcast(
   }
   const localRank =
     ORDER_STATUS_RANK_FOR_ECHO[localOrder.order_status ?? ""] ?? 0;
-  const backendRank = ORDER_STATUS_RANK_FOR_ECHO[backendOrder.status ?? ""] ?? 0;
+  const backendRank =
+    ORDER_STATUS_RANK_FOR_ECHO[backendOrder.status ?? ""] ?? 0;
   return backendRank <= localRank;
 }
 
@@ -4572,10 +5116,8 @@ function mergeTransactionDetails(
       broadcast.castlesTransaction ?? local.castlesTransaction,
     dejavooTransaction:
       broadcast.dejavooTransaction ?? local.dejavooTransaction,
-    valorTransaction:
-      broadcast.valorTransaction ?? local.valorTransaction,
-    atomTransaction:
-      broadcast.atomTransaction ?? local.atomTransaction,
+    valorTransaction: broadcast.valorTransaction ?? local.valorTransaction,
+    atomTransaction: broadcast.atomTransaction ?? local.atomTransaction,
   };
 }
 
@@ -5022,15 +5564,6 @@ export const useOrderStore = create<OrderState>()(
           isInitializing: false,
           // Queued backend updates (Phase 3: Race Condition Prevention)
           pendingBackendUpdates: {},
-          activeOrderSubtotal: 0,
-          activeOrderTax: 0,
-          activeOrderTotal: 0,
-          activeOrderDiscount: 0,
-          activeOrderOutstandingSubtotal: 0,
-          activeOrderOutstandingTax: 0,
-          activeOrderOutstandingTotal: 0,
-          activeOrderTotalCash: 0,
-          activeOrderOutstandingCash: 0,
           pendingTableSelection: null,
 
           // === STATION CONTEXT ===
@@ -5170,17 +5703,6 @@ export const useOrderStore = create<OrderState>()(
               }
 
               if (state.activeOrderId === orderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
 
@@ -6349,21 +6871,8 @@ export const useOrderStore = create<OrderState>()(
                         localOrderId === state.activeOrderId &&
                         !hasPendingChanges
                       ) {
-                        state.activeOrderTotal = backendOrder.card_total;
-                        state.activeOrderTax = backendOrder.card_tax_amount;
-                        state.activeOrderSubtotal = backendOrder.card_subtotal;
-                        state.activeOrderDiscount =
-                          backendOrder.discount_amount === 0 &&
-                          localHasConfirmedDiscounts
-                            ? (existingOrder.total_discount ?? 0)
-                            : backendOrder.discount_amount;
                         if (!isPaymentLocallyAhead) {
-                          state.activeOrderOutstandingTotal =
-                            backendOrder.amount_due;
                         }
-                        state.activeOrderOutstandingCash =
-                          backendOrder.cash_amount_due;
-                        state.activeOrderTotalCash = backendOrder.cash_total;
                       }
                     });
 
@@ -6433,19 +6942,7 @@ export const useOrderStore = create<OrderState>()(
                           // Active order derived state (if applicable)
                           ...(localOrderId === get().activeOrderId
                             ? {
-                                _queuedActiveOrderState: {
-                                  activeOrderTotal: backendOrder.card_total,
-                                  activeOrderTax: backendOrder.card_tax_amount,
-                                  activeOrderSubtotal:
-                                    backendOrder.card_subtotal,
-                                  activeOrderDiscount:
-                                    backendOrder.discount_amount,
-                                  activeOrderOutstandingTotal:
-                                    backendOrder.amount_due,
-                                  activeOrderOutstandingCash:
-                                    backendOrder.cash_amount_due,
-                                  activeOrderTotalCash: backendOrder.cash_total,
-                                },
+                                _queuedActiveOrderState: {},
                               }
                             : {}),
                         },
@@ -7869,9 +8366,7 @@ export const useOrderStore = create<OrderState>()(
             // Phase 6 (S4): when itemIds is provided the barrier only waits on
             // the batch being fired. The order-wide form stays for payment,
             // where the whole order is the right question.
-            const itemIdFilter = opts?.itemIds
-              ? new Set(opts.itemIds)
-              : null;
+            const itemIdFilter = opts?.itemIds ? new Set(opts.itemIds) : null;
 
             // Wait until every non-draft item in scope has a db_order_item_id
             // (meaning addItemToBackend has completed for it) AND no item has a
@@ -7888,14 +8383,39 @@ export const useOrderStore = create<OrderState>()(
                 ? order.items.filter((item) => itemIdFilter.has(item.id))
                 : order.items;
 
+              // ── Offline, the question changes. ───────────────────────────
+              //
+              // Both checks below ask "has the server got this yet?", via
+              // `db_order_item_id` and the sync-status entry — and BOTH are
+              // only ever cleared by the outbox drain. With no network neither
+              // can become true, so this barrier burned its full timeout
+              // (DEADLINES.sendToKitchen for a table send) on every single
+              // offline send before proceeding anyway.
+              //
+              // What a caller actually needs before firing is that the local
+              // WRITE has committed, so the row exists and its op is queued
+              // ahead of whatever comes next. `item_row_id` is exactly that
+              // fact, set the moment addLocalItem's transaction lands.
+              //
+              // Only offline: online, "the server has it" is still the right
+              // and reachable question, and the table path has no second
+              // barrier behind this one.
+              const offlineNow = !getIsOnline();
+              const locallyCommitted = (item: (typeof relevantItems)[number]) =>
+                offlineNow && !!item.item_row_id;
+
               // Check 1: any item missing db_order_item_id (still being added to backend)
               const hasUnsynced = relevantItems.some(
-                (item) => !item.isDraft && !item.db_order_item_id,
+                (item) =>
+                  !item.isDraft &&
+                  !item.db_order_item_id &&
+                  !locallyCommitted(item),
               );
 
               // Check 2: any item with pending/syncing status (quantity updates etc)
               const hasPendingStatus = relevantItems.some((item) => {
                 if (item.isDraft) return false;
+                if (locallyCommitted(item)) return false;
                 const status = syncStore.itemSyncStatus.get(item.id);
                 return status === "pending" || status === "syncing";
               });
@@ -8026,15 +8546,6 @@ export const useOrderStore = create<OrderState>()(
             if (!orderId) {
               set({
                 activeOrderId: null,
-                activeOrderSubtotal: 0,
-                activeOrderTax: 0,
-                activeOrderTotal: 0,
-                activeOrderDiscount: 0,
-                activeOrderOutstandingSubtotal: 0,
-                activeOrderOutstandingTax: 0,
-                activeOrderOutstandingTotal: 0,
-                activeOrderTotalCash: 0,
-                activeOrderOutstandingCash: 0,
               });
               return;
             }
@@ -8275,30 +8786,25 @@ export const useOrderStore = create<OrderState>()(
               ? null
               : activeEmployee?.profileId || null;
 
-            // Generate local order numbers (station-aware if station is set)
+            // Generate local order numbers (station-aware if station is set).
+            // allocateOrderNumbers is the ONLY minting path; it floors the
+            // counter at the highest number still visible on this device today
+            // so a fresh order can never be handed a number an existing draft
+            // is already displaying.
             const selectedStore =
               useStoreSettingsStore.getState().selectedStore;
             const stationNumber = currentStation?.station_number ?? null;
-            if (selectedStore) {
-              const reliableSequenceFloor = getReliableTodaySequenceFloor(
-                get().ordersById,
-                get().orderIds,
-                stationNumber,
-              );
-              forceSetLocalSequence(
-                selectedStore.id,
-                stationNumber,
-                reliableSequenceFloor,
-              );
-            }
             const localNumbers = selectedStore
-              ? generateLocalOrderNumbers(selectedStore.id, stationNumber)
+              ? allocateOrderNumbers({
+                  ordersById: get().ordersById,
+                  orderIds: get().orderIds,
+                  locationId: selectedStore.id,
+                  stationNumber,
+                })
               : undefined;
 
             const newOrder: OrderProfile = {
-              id:
-                details?.orderId ||
-                `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              id: details?.orderId || mintStoreOrderId(),
               service_location_id: details?.tableId || null,
               service_location_name: snapshotTableName(details?.tableId),
               order_status: "draft",
@@ -8348,6 +8854,48 @@ export const useOrderStore = create<OrderState>()(
             return newOrder;
           },
 
+          startOrResumeOrder: (options) => {
+            // Read fresh — callers reach here from setTimeout callbacks after
+            // a payment, by which point the snapshot they closed over is stale
+            // and the draft they should be resuming is missing from it.
+            const { ordersById, orderIds } = get();
+            const stationId =
+              useStoreSettingsStore.getState().selectedStation?.id ?? null;
+
+            const reusableId = findLatestReusableEmptyDraftId(
+              ordersById,
+              orderIds,
+              options?.excludeOrderId ?? null,
+              stationId,
+            );
+
+            if (reusableId) {
+              if (options?.resetDineInFields) {
+                set((state) => {
+                  const draft = state.ordersById[reusableId];
+                  if (!draft) return;
+                  const previous = current(draft);
+                  // Reset stale dine-in fields so the bill reads as a clean
+                  // new ticket after the table was cleared.
+                  draft.order_type = "takeout";
+                  draft.service_location_id = null;
+                  draft.session_id = undefined;
+                  draft.local_session_id = undefined;
+                  syncTableOrderIdIndexForOrder(state, reusableId, previous);
+                });
+              }
+              get().setActiveOrder(reusableId);
+              // The draft keeps the number it was born with. It is already in
+              // SQLite and in its outbox op; rewriting it here would only
+              // change what this device displays.
+              return get().ordersById[reusableId] ?? null;
+            }
+
+            const fresh = get().startNewOrder();
+            get().setActiveOrder(fresh.id);
+            return fresh;
+          },
+
           ensureActiveOrderCreated: async (orderId) => {
             const order = get().ordersById[orderId];
             if (!order) return null;
@@ -8389,7 +8937,23 @@ export const useOrderStore = create<OrderState>()(
             // so items must proceed locally (offline-first). Blocking offline would
             // strand the user permanently. The queued-create check also lets adds
             // through once the create op is registered, even on a flaky connection.
+            // ── Local-first order creation removes this wait entirely. ──────
+            //
+            // This gate blocks adds until the order has a `db_order_id`, i.e.
+            // until create_order_v3 has replied — that round trip IS the
+            // "Creating order — please wait" toast below.
+            //
+            // With EXPO_PUBLIC_LOCAL_WRITES_ORDERS on, createLocalOrder()
+            // mints a v4 UUID and a final order number and commits the row
+            // with its outbox op in one SQLite transaction. The order has a
+            // real, server-acceptable identity from the first frame, so there
+            // is nothing to wait for and nothing to gate. `db_order_id` stops
+            // being a meaningful signal at all — the id IS the db id.
+            //
+            // Gated rather than deleted because the flag is the rollback; the
+            // gate and `ensureActiveOrderCreated` both go in Phase 6.
             if (
+              !LOCAL_WRITES_ORDERS &&
               getIsOnline() &&
               !activeOrder.db_order_id &&
               !getOrderCreationOperationId(activeOrder.id)
@@ -8924,16 +9488,6 @@ export const useOrderStore = create<OrderState>()(
               order.total_discount = totals.discount_amount;
               order.amount_due = totals.outstanding_total;
               order.cash_amount_due = totals.cash_outstanding_total;
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
             });
 
             // Track mutation for own-station broadcast guard
@@ -9493,6 +10047,52 @@ export const useOrderStore = create<OrderState>()(
                       });
                     });
                 }
+              } else if (LOCAL_WRITES_ITEMS && updatedItem.item_row_id) {
+                // ── The edit has a row to land on. ─────────────────────────
+                //
+                // The legacy branch below rewrites a pending LEGACY `add_item`
+                // op. Under local-first that op does not exist — the add is in
+                // the outbox — so `pendingOps.find(...)` returned undefined and
+                // the entire else-branch was a no-op. Editing an item's
+                // quantity, notes or modifiers before the drain confirmed it
+                // (offline: always) changed the tablet and nothing else.
+                //
+                // `editLocalItem` folds the change into the unsent add when it
+                // can, and queues real update ops when the add is already on
+                // its way. Only the fields that actually changed are sent, so
+                // a notes edit does not also re-push the quantity.
+                const editedQuantity =
+                  originalItem && updatedItem.quantity !== originalItem.quantity
+                    ? updatedItem.quantity
+                    : undefined;
+                const notesChanged =
+                  (originalItem?.customizations?.notes ?? null) !==
+                  (updatedItem.customizations?.notes ?? null);
+                const modsChanged =
+                  JSON.stringify({
+                    mods: originalItem?.customizations?.modifiers,
+                    addons: originalItem?.customizations?.addOns,
+                  }) !==
+                  JSON.stringify({
+                    mods: updatedItem.customizations?.modifiers,
+                    addons: updatedItem.customizations?.addOns,
+                  });
+
+                void editLocalItem({
+                  orderId: order.db_order_id ?? activeOrderId,
+                  itemId: updatedItem.item_row_id,
+                  quantity: editedQuantity,
+                  specialInstructions: notesChanged
+                    ? (updatedItem.customizations?.notes ?? null)
+                    : undefined,
+                  modifiers: modsChanged
+                    ? (flattenModifiersForRpc(updatedItem) ?? [])
+                    : undefined,
+                }).then((res) => {
+                  if (!res.ok) {
+                    console.error("[LF] ✗ editLocalItem failed:", res.error);
+                  }
+                });
               } else {
                 // Item not yet synced to backend — update the pending add_item op
                 // in the offline queue so it creates the item with the latest data
@@ -9783,16 +10383,6 @@ export const useOrderStore = create<OrderState>()(
               }
 
               // Update derived active order state
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
             });
 
             console.log(
@@ -10202,16 +10792,6 @@ export const useOrderStore = create<OrderState>()(
               order.total_discount = totals.discount_amount;
               order.amount_due = totals.outstanding_total;
               order.cash_amount_due = totals.cash_outstanding_total;
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
             });
 
             // Track mutation for own-station broadcast guard
@@ -10235,6 +10815,57 @@ export const useOrderStore = create<OrderState>()(
                   );
                 }
               });
+            }
+
+            // ── LOCAL-FIRST VOID / REMOVE ─────────────────────────────────
+            //
+            // Two separate failures lived in the `db_order_item_id` gate
+            // below, and offline that field is ALWAYS null:
+            //
+            //   1. Nothing was queued at all. The item vanished from the
+            //      tablet and stayed on the server, so it came back on the
+            //      next sync, was charged for, and — if it had been fired —
+            //      was cooked.
+            //   2. `cancelPendingByEntity` above cancels the LEGACY op. The
+            //      outbox is a different queue, so its `add_item` survived and
+            //      the drain re-created the item on reconnect.
+            //
+            // `removeLocalItem` handles both: it cancels the unsent outbox op
+            // AND deletes the row in one transaction, and only sends a
+            // `remove_item` when the add has actually been attempted (i.e.
+            // may already exist server-side).
+            const rowIdForRemoval =
+              itemToHandle?.db_order_item_id ?? itemToHandle?.item_row_id;
+            if (
+              LOCAL_WRITES_ITEMS &&
+              rowIdForRemoval &&
+              !itemToHandle?.db_order_item_id
+            ) {
+              const orderIdForRemoval = order.db_order_id ?? activeOrderId;
+              // Same guard the live path uses: a broadcast arriving while the
+              // removal is being written must not put the line back. Under
+              // client ids the row id IS the id a broadcast carries, so the
+              // existing mechanism works unchanged.
+              markItemPendingRemoval(rowIdForRemoval);
+              const done =
+                (label: string) => (res: { ok: boolean; error?: string }) => {
+                  if (!res.ok)
+                    console.error(`[LF] ✗ ${label} failed:`, res.error);
+                  clearItemPendingRemoval(rowIdForRemoval);
+                };
+              if (isKitchenItem) {
+                void voidLocalItem({
+                  orderId: orderIdForRemoval,
+                  itemId: rowIdForRemoval,
+                  reason: voidReason || "User voided",
+                }).then(done("voidLocalItem"));
+              } else {
+                void removeLocalItem({
+                  orderId: orderIdForRemoval,
+                  itemId: rowIdForRemoval,
+                }).then(done("removeLocalItem"));
+              }
+              return;
             }
 
             // Background sync (fire-and-forget)
@@ -10429,6 +11060,35 @@ export const useOrderStore = create<OrderState>()(
                     queuedQty: newQuantity,
                   },
                 );
+              // ── The row exists locally; address it. ────────────────────
+              //
+              // This branch is reached constantly on the local-first path,
+              // because `db_order_item_id` is only written once the drain
+              // confirms the row — so for the entire window between adding an
+              // item and it syncing (which offline is *forever*) it is null.
+              //
+              // The legacy queue below cannot help here: it was given the CART
+              // id, which `resolveItemId` looks up in `offlineIdRegistry`, a
+              // map only the legacy add path populates. The op returned
+              // OpBlocked("item_not_synced") on every pass until it was
+              // dead-lettered. Every quantity change made offline was lost,
+              // while the tablet showed the operator the new number.
+              const rowId = dbItemId ?? item.item_row_id;
+              if (LOCAL_WRITES_ITEMS && rowId) {
+                void updateLocalItemQuantity({
+                  orderId: order.db_order_id ?? activeOrderId,
+                  itemId: rowId,
+                  quantity: newQuantity,
+                }).then((res) => {
+                  if (!res.ok) {
+                    console.error(
+                      "[LF] ✗ setItemQuantity local write failed:",
+                      res.error,
+                    );
+                  }
+                });
+                return;
+              }
               // Item not synced to DB yet — queue for when it is
               queueOperation({
                 type: "update_item_quantity",
@@ -10742,16 +11402,6 @@ export const useOrderStore = create<OrderState>()(
               order.total_discount = totals.discount_amount;
               order.amount_due = totals.outstanding_total;
               order.cash_amount_due = totals.cash_outstanding_total;
-              state.activeOrderSubtotal = totals.subtotal;
-              state.activeOrderTax = totals.tax_amount;
-              state.activeOrderTotal = totals.total_amount;
-              state.activeOrderDiscount = totals.discount_amount;
-              state.activeOrderOutstandingSubtotal =
-                totals.outstanding_subtotal;
-              state.activeOrderOutstandingTax = totals.outstanding_tax;
-              state.activeOrderOutstandingTotal = totals.outstanding_total;
-              state.activeOrderTotalCash = totals.cash_total_amount;
-              state.activeOrderOutstandingCash = totals.cash_outstanding_total;
             });
 
             // Phase 7D: Set pending status in sync store for BillItem indicator
@@ -11135,17 +11785,6 @@ export const useOrderStore = create<OrderState>()(
               order.cash_amount_due = totals.cash_outstanding_total;
 
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
 
@@ -11533,17 +12172,6 @@ export const useOrderStore = create<OrderState>()(
               o.cash_amount_due = totals.cash_outstanding_total;
 
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
 
@@ -11741,17 +12369,6 @@ export const useOrderStore = create<OrderState>()(
               o.cash_amount_due = totals.cash_outstanding_total;
 
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
           },
@@ -11786,17 +12403,6 @@ export const useOrderStore = create<OrderState>()(
               o.cash_amount_due = totals.cash_outstanding_total;
 
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
           },
@@ -11890,7 +12496,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Create new order for next customer
             const newGlobalOrder: OrderProfile = {
-              id: `order_${Date.now()}`,
+              id: mintStoreOrderId(),
               service_location_id: null,
               order_status: "draft",
               check_status: "Opened",
@@ -11918,14 +12524,6 @@ export const useOrderStore = create<OrderState>()(
               syncTableOrderIdIndexForOrder(state, newGlobalOrder.id);
               state.activeOrderId = newGlobalOrder.id;
               // Reset active order totals for new empty order
-              state.activeOrderSubtotal = 0;
-              state.activeOrderTax = 0;
-              state.activeOrderTotal = 0;
-              state.activeOrderDiscount = 0;
-              state.activeOrderOutstandingSubtotal = 0;
-              state.activeOrderOutstandingTax = 0;
-              state.activeOrderOutstandingTotal = 0;
-              state.activeOrderTotalCash = 0;
             });
 
             // Background sync
@@ -12305,16 +12903,6 @@ export const useOrderStore = create<OrderState>()(
             // ================================================================
             const rollbackState: PaymentRollbackState = {
               order: { ...order },
-              activeOrderSubtotal: get().activeOrderSubtotal,
-              activeOrderTax: get().activeOrderTax,
-              activeOrderTotal: get().activeOrderTotal,
-              activeOrderDiscount: get().activeOrderDiscount,
-              activeOrderOutstandingSubtotal:
-                get().activeOrderOutstandingSubtotal,
-              activeOrderOutstandingTax: get().activeOrderOutstandingTax,
-              activeOrderOutstandingTotal: get().activeOrderOutstandingTotal,
-              activeOrderTotalCash: get().activeOrderTotalCash,
-              activeOrderOutstandingCash: get().activeOrderOutstandingCash,
             };
 
             // Generate unique local ID and timestamp for this payment
@@ -12743,17 +13331,6 @@ export const useOrderStore = create<OrderState>()(
 
               // Add active order updates if applicable
               if (orderId === get().activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
 
               // Ensure order is persisted while it has unsynced payment data
@@ -12821,7 +13398,7 @@ export const useOrderStore = create<OrderState>()(
           },
 
           markOrderAsPaid: (orderId: string) => {
-            const { ordersById, activeOrderDiscount } = get();
+            const { ordersById } = get();
             const order = ordersById[orderId]; // O(1) lookup
             if (!order) return;
 
@@ -13021,15 +13598,6 @@ export const useOrderStore = create<OrderState>()(
               if (wasActiveOrder) {
                 state.activeOrderId = null;
                 // Reset derived state if this was the active order
-                state.activeOrderSubtotal = 0;
-                state.activeOrderTax = 0;
-                state.activeOrderTotal = 0;
-                state.activeOrderDiscount = 0;
-                state.activeOrderOutstandingSubtotal = 0;
-                state.activeOrderOutstandingTax = 0;
-                state.activeOrderOutstandingTotal = 0;
-                state.activeOrderTotalCash = 0;
-                state.activeOrderOutstandingCash = 0;
               }
             });
 
@@ -14011,7 +14579,7 @@ export const useOrderStore = create<OrderState>()(
             );
 
             const newMergedOrderData = {
-              id: `order_${Date.now()}`,
+              id: mintStoreOrderId(),
               service_location_id: primaryTableId,
               service_location_name: snapshotTableName(primaryTableId),
               order_status: "preparing" as const,
@@ -14094,7 +14662,7 @@ export const useOrderStore = create<OrderState>()(
             };
 
             const newOrder: OrderProfile = {
-              id: `order_${Date.now()}`,
+              id: mintStoreOrderId(),
               service_location_id: null,
               order_status: "draft",
               check_status: "Opened",
@@ -14109,14 +14677,6 @@ export const useOrderStore = create<OrderState>()(
               state.orderIds.push(newOrder.id);
               state.activeOrderId = newOrder.id;
               // Reset totals synchronously for the new empty order
-              state.activeOrderSubtotal = 0;
-              state.activeOrderTax = 0;
-              state.activeOrderTotal = 0;
-              state.activeOrderDiscount = 0;
-              state.activeOrderOutstandingSubtotal = 0;
-              state.activeOrderOutstandingTax = 0;
-              state.activeOrderOutstandingTotal = 0;
-              state.activeOrderTotalCash = 0;
             });
 
             // Sync to backend with the hardened batch send (mirrors
@@ -14151,7 +14711,8 @@ export const useOrderStore = create<OrderState>()(
                 } else if (sendResult.status === "queued") {
                   toastService.show({
                     title: "Kitchen send queued",
-                    message: "The order will retry when the connection recovers.",
+                    message:
+                      "The order will retry when the connection recovers.",
                     type: "warning",
                   });
                 } else if (sendResult.status === "skipped") {
@@ -14317,7 +14878,8 @@ export const useOrderStore = create<OrderState>()(
             // ================================================================
             // OFFLINE-FIRST: Update local state immediately
             // ================================================================
-            if (!_checkCartEditable(get(), orderId)) return { status: "skipped" };
+            if (!_checkCartEditable(get(), orderId)) return;
+
             // Kitchen operations work with local state - no need to wait for sync
             // Backend status update is queued for later (fire-and-forget)
 
@@ -14331,8 +14893,47 @@ export const useOrderStore = create<OrderState>()(
               return { status: "skipped" }; // No new items to send
             }
 
+            // ── Do not mark an item "sent" if it CANNOT be delivered. ─────
+            //
+            // The optimistic mark is correct offline-first: the op is queued
+            // and will deliver. It is a LIE for an item whose write the server
+            // permanently rejected — that op is parked, nothing will retry it,
+            // and the kitchen will never see the item. The operator then reads
+            // "sent" on screen, walks away, and the food is never made.
+            //
+            // The tell was that a reload flipped those items back to unsent:
+            // the local optimistic state said sent, the durable state said new,
+            // and the durable one was right.
+            //
+            // Items that are merely still draining are NOT excluded — those
+            // will arrive, and blocking the mark would make every fast send
+            // look failed.
+            let undeliverableIds = new Set<string>();
+            if (LOCAL_WRITES_ITEMS) {
+              try {
+                const { unsyncedItemIds, failedOpCount } =
+                  await import("@/lib/db/outbox");
+                if ((await failedOpCount()) > 0) {
+                  const candidates = order.items
+                    .filter(
+                      (i) => !i.kitchen_status || i.kitchen_status === "new",
+                    )
+                    .map((i) => i.db_order_item_id ?? i.id);
+                  undeliverableIds = new Set(await unsyncedItemIds(candidates));
+                }
+              } catch {
+                // Diagnostics unavailable — fall back to the optimistic mark
+                // rather than blocking a send that is probably fine.
+              }
+            }
+
             const updatedItems = order.items.map((item) => {
-              if (!item.kitchen_status || item.kitchen_status === "new") {
+              const isNew =
+                !item.kitchen_status || item.kitchen_status === "new";
+              const undeliverable = undeliverableIds.has(
+                item.db_order_item_id ?? item.id,
+              );
+              if (isNew && !undeliverable) {
                 return {
                   ...item,
                   kitchen_status: getKitchenSentStatus() as any,
@@ -14341,6 +14942,19 @@ export const useOrderStore = create<OrderState>()(
               }
               return item;
             });
+
+            if (undeliverableIds.size > 0) {
+              console.error(
+                `[LF] ✗ ${undeliverableIds.size} item(s) left UNSENT — their ` +
+                  `writes were rejected by the server, so the kitchen cannot ` +
+                  `receive them. They stay "new" rather than falsely showing sent.`,
+              );
+              toastService.show({
+                title: "Some items could not be sent",
+                message: `${undeliverableIds.size} item(s) failed to sync and were not sent to the kitchen.`,
+                type: "error",
+              });
+            }
 
             // Check if the timer needs to be started
             const shouldStartTimer =
@@ -14509,10 +15123,6 @@ export const useOrderStore = create<OrderState>()(
 
               if (state.activeOrderId === orderId) {
                 state.activeOrderId = null;
-                state.activeOrderSubtotal = 0;
-                state.activeOrderTax = 0;
-                state.activeOrderTotal = 0;
-                state.activeOrderDiscount = 0;
               }
             });
 
@@ -14682,12 +15292,6 @@ export const useOrderStore = create<OrderState>()(
 
               // Update active order totals if this is the active order
               if (orderId === activeOrderId) {
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
 
@@ -14954,12 +15558,6 @@ export const useOrderStore = create<OrderState>()(
                 : ("Opened" as const);
               if (updatedPayments.length === 0) o.split_payment_path = null;
               if (orderId === activeOrderId) {
-                state.activeOrderOutstandingTotal = totals.outstanding_total;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingCash =
-                  totals.cash_outstanding_total;
               }
             });
           },
@@ -15502,9 +16100,7 @@ export const useOrderStore = create<OrderState>()(
                   /* non-fatal */
                 }
                 // No existing order — create new
-                localOrderId = `order_${Date.now()}_${Math.random()
-                  .toString(36)
-                  .substr(2, 9)}`;
+                localOrderId = mintStoreOrderId();
                 isNewOrder = true;
               }
 
@@ -15569,7 +16165,8 @@ export const useOrderStore = create<OrderState>()(
                 const reversalsData = (data.reversals ?? []) as any[];
                 const orderRefundItemsData = (data.order_refund_items ??
                   []) as any[];
-                const orderDiscountsData = (data.order_discounts ?? []) as any[];
+                const orderDiscountsData = (data.order_discounts ??
+                  []) as any[];
 
                 // Per-payment item coverage lives in the order_payment_items
                 // junction (C2) — the old mapper read a non-existent `item_ids`
@@ -15844,145 +16441,155 @@ export const useOrderStore = create<OrderState>()(
                   const syncedPayments: OrderProfilePayment[] =
                     dbPayments && dbPayments.length > 0
                       ? dbPayments.map((p) => {
-                      // Proper status mapping — preserve authorized for pre-auth.
-                      // C1: the DB writes status='void' (not 'voided') and the
-                      // RPC's payments subquery has no is_voided filter, so voided
-                      // rows now arrive here — key off is_voided / both spellings
-                      // or a voided payment resurrects as a live "pending" one.
-                      const status: OrderProfilePayment["status"] =
-                        p.is_voided === true ||
-                        p.status === "void" ||
-                        p.status === "voided"
-                          ? "voided"
-                          : p.status === "refunded"
-                            ? "refunded"
-                            : p.status === "authorized"
-                              ? "authorized"
-                              : p.status === "captured"
-                                ? "captured"
-                                : "pending";
+                          // Proper status mapping — preserve authorized for pre-auth.
+                          // C1: the DB writes status='void' (not 'voided') and the
+                          // RPC's payments subquery has no is_voided filter, so voided
+                          // rows now arrive here — key off is_voided / both spellings
+                          // or a voided payment resurrects as a live "pending" one.
+                          const status: OrderProfilePayment["status"] =
+                            p.is_voided === true ||
+                            p.status === "void" ||
+                            p.status === "voided"
+                              ? "voided"
+                              : p.status === "refunded"
+                                ? "refunded"
+                                : p.status === "authorized"
+                                  ? "authorized"
+                                  : p.status === "captured"
+                                    ? "captured"
+                                    : "pending";
 
-                      const isPreAuth = p.status === "authorized";
-                      const terminalResponse = (p as any).terminal_response as
-                        Record<string, any> | undefined;
-                      const castlesTxn =
-                        terminalResponse?.castles_transaction as
-                          Record<string, any> | undefined;
-                      // Valor blob lives in processor_response; read both columns.
-                      const valorTxn = ((p as any).processor_response
-                        ?.valor_transaction ??
-                        terminalResponse?.valor_transaction) as
-                          Record<string, any> | undefined;
-                      const terminalVendor = (terminalResponse?.terminal_vendor ??
-                        (p as any).processor_response?.terminal_vendor) as
-                          string | undefined;
+                          const isPreAuth = p.status === "authorized";
+                          const terminalResponse = (p as any)
+                            .terminal_response as
+                            Record<string, any> | undefined;
+                          const castlesTxn =
+                            terminalResponse?.castles_transaction as
+                              Record<string, any> | undefined;
+                          // Valor blob lives in processor_response; read both columns.
+                          const valorTxn = ((p as any).processor_response
+                            ?.valor_transaction ??
+                            terminalResponse?.valor_transaction) as
+                            Record<string, any> | undefined;
+                          const terminalVendor =
+                            (terminalResponse?.terminal_vendor ??
+                              (p as any).processor_response
+                                ?.terminal_vendor) as string | undefined;
 
-                      // Refund evidence: take max across DB + local. Apply
-                      // refund didn't always advance `status`, so we have to
-                      // carry refunded_amount + is_returned explicitly.
-                      const localPmt = localPaymentsByDbId.get(p.id);
-                      const dbRefunded =
-                        Number((p as any).refunded_amount) || 0;
-                      const localRefunded = localPmt?.refundedAmount ?? 0;
-                      const localHasMoreRefund = localRefunded > dbRefunded;
-                      const mergedRefundedAmount = Math.max(
-                        dbRefunded,
-                        localRefunded,
-                      );
+                          // Refund evidence: take max across DB + local. Apply
+                          // refund didn't always advance `status`, so we have to
+                          // carry refunded_amount + is_returned explicitly.
+                          const localPmt = localPaymentsByDbId.get(p.id);
+                          const dbRefunded =
+                            Number((p as any).refunded_amount) || 0;
+                          const localRefunded = localPmt?.refundedAmount ?? 0;
+                          const localHasMoreRefund = localRefunded > dbRefunded;
+                          const mergedRefundedAmount = Math.max(
+                            dbRefunded,
+                            localRefunded,
+                          );
 
-                      return {
-                        id: p.id,
-                        db_payment_id: p.id,
-                        amount: p.amount,
-                        method: (p.payment_method === "card"
-                          ? "Card"
-                          : "Cash") as PaymentType,
-                        cardBrand: p.card_type,
-                        last4: p.card_last_four,
-                        tip_amount: p.tip_amount || 0,
-                        total_collected: p.amount + (p.tip_amount || 0),
-                        // C2: per-payment coverage from the order_payment_items
-                        // junction (the old `p.item_ids` column does not exist, so
-                        // coverage was always empty and the per-item PAID badge dead).
-                        itemsCovered: (
-                          paymentItemsByPaymentId.get(p.id) ?? []
-                        ).map((pi: any) => ({
-                          itemId: pi.order_item_id,
-                          itemName:
-                            dbItems.find(
-                              (it: any) => it.id === pi.order_item_id,
-                            )?.item_name ?? "Item",
-                          quantity: pi.quantity_paid,
-                          unitPrice: pi.unit_price_paid,
-                          subtotal: pi.subtotal_paid,
-                        })),
-                        timestamp: p.created_at,
-                        status,
-                        isVoided:
-                          p.is_voided === true ||
-                          p.status === "void" ||
-                          p.status === "voided",
-                        sync_status: "synced" as const,
-                        sync_attempt_count: 0,
-                        // Cash pricing fields — falls back to order-level ratio when original_amount is missing
-                        isCashPriced: (p as any).is_cash_priced ?? undefined,
-                        cashSavings: deriveCashSavings(
-                          {
-                            is_cash_priced: (p as any).is_cash_priced,
-                            original_amount: (p as any).original_amount,
+                          return {
+                            id: p.id,
+                            db_payment_id: p.id,
                             amount: p.amount,
-                          },
-                          dbOrder.card_total ?? dbOrder.total_amount,
-                          dbOrder.cash_total,
-                        ),
-                        // Refund / return tracking — preserve via monotonic merge
-                        // so a stale fetch right after apply_refund_to_payment
-                        // can't clobber the chip back to "Paid".
-                        refundedAmount: mergedRefundedAmount,
-                        refundedAt: localHasMoreRefund
-                          ? (localPmt?.refundedAt ?? (p as any).refunded_at)
-                          : ((p as any).refunded_at ?? localPmt?.refundedAt),
-                        isReturned: localHasMoreRefund
-                          ? (localPmt?.isReturned ?? (p as any).is_returned)
-                          : ((p as any).is_returned ?? localPmt?.isReturned),
-                        returnedAt: localHasMoreRefund
-                          ? (localPmt?.returnedAt ?? (p as any).returned_at)
-                          : ((p as any).returned_at ?? localPmt?.returnedAt),
-                        returnedBy: localHasMoreRefund
-                          ? (localPmt?.returnedBy ?? (p as any).returned_by)
-                          : ((p as any).returned_by ?? localPmt?.returnedBy),
-                        returnAmount: Math.max(
-                          Number((p as any).return_amount) || 0,
-                          localPmt?.returnAmount ?? 0,
-                        ),
-                        // Pre-auth fields
-                        isPreAuth,
-                        ...(isPreAuth
-                          ? {
-                              preAuthAmount: p.amount,
-                              preAuthRrn:
-                                (p as any).rrn || castlesTxn?.rrn || valorTxn?.rrn,
-                              preAuthStan: castlesTxn?.stan,
-                              preAuthTranNo:
-                                valorTxn?.tranNo || (p as any).transaction_id,
-                              preAuthAuthCode:
-                                (p as any).authorization_code ||
-                                castlesTxn?.approvalCode ||
-                                valorTxn?.approvalCode,
-                              preAuthReferenceId:
-                                (p as any).reference_number ||
-                                castlesTxn?.referenceId ||
-                                valorTxn?.reqTxnId,
-                              preAuthTerminalType:
-                                (terminalVendor === "castles"
-                                  ? "castles"
-                                  : terminalVendor === "valor"
-                                  ? "valor"
-                                  : "dejavoo") as
-                                  "dejavoo" | "castles" | "valor" | undefined,
-                            }
-                          : {}),
-                      };
+                            method: (p.payment_method === "card"
+                              ? "Card"
+                              : "Cash") as PaymentType,
+                            cardBrand: p.card_type,
+                            last4: p.card_last_four,
+                            tip_amount: p.tip_amount || 0,
+                            total_collected: p.amount + (p.tip_amount || 0),
+                            // C2: per-payment coverage from the order_payment_items
+                            // junction (the old `p.item_ids` column does not exist, so
+                            // coverage was always empty and the per-item PAID badge dead).
+                            itemsCovered: (
+                              paymentItemsByPaymentId.get(p.id) ?? []
+                            ).map((pi: any) => ({
+                              itemId: pi.order_item_id,
+                              itemName:
+                                dbItems.find(
+                                  (it: any) => it.id === pi.order_item_id,
+                                )?.item_name ?? "Item",
+                              quantity: pi.quantity_paid,
+                              unitPrice: pi.unit_price_paid,
+                              subtotal: pi.subtotal_paid,
+                            })),
+                            timestamp: p.created_at,
+                            status,
+                            isVoided:
+                              p.is_voided === true ||
+                              p.status === "void" ||
+                              p.status === "voided",
+                            sync_status: "synced" as const,
+                            sync_attempt_count: 0,
+                            // Cash pricing fields — falls back to order-level ratio when original_amount is missing
+                            isCashPriced:
+                              (p as any).is_cash_priced ?? undefined,
+                            cashSavings: deriveCashSavings(
+                              {
+                                is_cash_priced: (p as any).is_cash_priced,
+                                original_amount: (p as any).original_amount,
+                                amount: p.amount,
+                              },
+                              dbOrder.card_total ?? dbOrder.total_amount,
+                              dbOrder.cash_total,
+                            ),
+                            // Refund / return tracking — preserve via monotonic merge
+                            // so a stale fetch right after apply_refund_to_payment
+                            // can't clobber the chip back to "Paid".
+                            refundedAmount: mergedRefundedAmount,
+                            refundedAt: localHasMoreRefund
+                              ? (localPmt?.refundedAt ?? (p as any).refunded_at)
+                              : ((p as any).refunded_at ??
+                                localPmt?.refundedAt),
+                            isReturned: localHasMoreRefund
+                              ? (localPmt?.isReturned ?? (p as any).is_returned)
+                              : ((p as any).is_returned ??
+                                localPmt?.isReturned),
+                            returnedAt: localHasMoreRefund
+                              ? (localPmt?.returnedAt ?? (p as any).returned_at)
+                              : ((p as any).returned_at ??
+                                localPmt?.returnedAt),
+                            returnedBy: localHasMoreRefund
+                              ? (localPmt?.returnedBy ?? (p as any).returned_by)
+                              : ((p as any).returned_by ??
+                                localPmt?.returnedBy),
+                            returnAmount: Math.max(
+                              Number((p as any).return_amount) || 0,
+                              localPmt?.returnAmount ?? 0,
+                            ),
+                            // Pre-auth fields
+                            isPreAuth,
+                            ...(isPreAuth
+                              ? {
+                                  preAuthAmount: p.amount,
+                                  preAuthRrn:
+                                    (p as any).rrn ||
+                                    castlesTxn?.rrn ||
+                                    valorTxn?.rrn,
+                                  preAuthStan: castlesTxn?.stan,
+                                  preAuthTranNo:
+                                    valorTxn?.tranNo ||
+                                    (p as any).transaction_id,
+                                  preAuthAuthCode:
+                                    (p as any).authorization_code ||
+                                    castlesTxn?.approvalCode ||
+                                    valorTxn?.approvalCode,
+                                  preAuthReferenceId:
+                                    (p as any).reference_number ||
+                                    castlesTxn?.referenceId ||
+                                    valorTxn?.reqTxnId,
+                                  preAuthTerminalType: (terminalVendor ===
+                                  "castles"
+                                    ? "castles"
+                                    : terminalVendor === "valor"
+                                      ? "valor"
+                                      : "dejavoo") as
+                                    "dejavoo" | "castles" | "valor" | undefined,
+                                }
+                              : {}),
+                          };
                         })
                       : (localOrder?.payments ?? []);
 
@@ -16057,10 +16664,10 @@ export const useOrderStore = create<OrderState>()(
                     // when a just-committed payment raced this read (above).
                     amount_paid: keepLocalFinancials
                       ? (localOrder?.amount_paid ?? dbOrder.amount_paid ?? 0)
-                      : (dbOrder.amount_paid || 0),
+                      : dbOrder.amount_paid || 0,
                     amount_due: keepLocalFinancials
                       ? (localOrder?.amount_due ?? dbOrder.amount_due ?? 0)
-                      : (dbOrder.amount_due || 0),
+                      : dbOrder.amount_due || 0,
                     cash_amount_due: keepLocalFinancials
                       ? (localOrder?.cash_amount_due ?? dbOrder.cash_amount_due)
                       : dbOrder.cash_amount_due,
@@ -16123,19 +16730,7 @@ export const useOrderStore = create<OrderState>()(
 
                   // Update outstanding totals if this is the active order
                   if (localOrderId === state.activeOrderId) {
-                    state.activeOrderOutstandingTotal = dbOrder.amount_due || 0;
                     // Priority: backend cash_amount_due > current local value > card amount_due
-                    state.activeOrderOutstandingCash =
-                      dbOrder.cash_amount_due ??
-                      state.activeOrderOutstandingCash ??
-                      dbOrder.amount_due ??
-                      0;
-                    state.activeOrderTotal =
-                      dbOrder.card_total || dbOrder.total_amount || 0;
-                    state.activeOrderTax =
-                      dbOrder.card_tax_amount || dbOrder.tax_amount || 0;
-                    state.activeOrderSubtotal =
-                      dbOrder.card_subtotal || dbOrder.subtotal || 0;
                   }
                 });
 
@@ -16334,13 +16929,12 @@ export const useOrderStore = create<OrderState>()(
                             (p as any).reference_number ||
                             castlesTxn?.referenceId ||
                             valorTxn?.reqTxnId,
-                          preAuthTerminalType:
-                            (terminalVendor === "castles"
-                              ? "castles"
-                              : terminalVendor === "valor"
+                          preAuthTerminalType: (terminalVendor === "castles"
+                            ? "castles"
+                            : terminalVendor === "valor"
                               ? "valor"
                               : "dejavoo") as
-                              "dejavoo" | "castles" | "valor" | undefined,
+                            "dejavoo" | "castles" | "valor" | undefined,
                         }
                       : {}),
                   };
@@ -16379,8 +16973,6 @@ export const useOrderStore = create<OrderState>()(
 
                 // Update outstanding totals if this is the active order
                 if (orderId === state.activeOrderId) {
-                  state.activeOrderOutstandingTotal = dbOrder.amount_due ?? 0;
-                  state.activeOrderOutstandingCash = dbOrder.cash_amount_due;
                 }
               });
 
@@ -16822,32 +17414,32 @@ export const useOrderStore = create<OrderState>()(
                 `[initializeOrders] Loaded ${newOrderIds.length} orders`,
               );
 
-              // Seed local order sequence counters from backend data
+              // Seed local order sequence counters from backend data.
+              //
+              // The seed value must be the SAME scan the mint path uses: the
+              // highest number still VISIBLE today for this station
+              // (getTodaySequenceFloor). The previous loop counted every open
+              // order the fetch returned with no regard for which day it was
+              // minted in, so a table still open from a previous service day
+              // (e.g. #S1-0076, born yesterday) force-lifted TODAY's counter
+              // to 76 and the next order came out as 77 — numbers that belong
+              // to that old order's day, not this one. Reusing the floor keeps
+              // seed and mint from disagreeing about what "visible today"
+              // means.
               try {
                 const { currentStation } = get();
                 const stationNumber = currentStation?.station_number ?? null;
                 const stationPrefix =
                   stationNumber != null ? `S${stationNumber}` : null;
-                let highestSeq = 0;
 
-                for (const serverOrder of data) {
-                  const dn = serverOrder.display_number as string | null;
-                  if (!dn) continue;
-
-                  // Only count orders matching our station prefix
-                  if (stationPrefix) {
-                    if (!dn.startsWith(`#${stationPrefix}-`)) continue;
-                  } else {
-                    // Global counter — skip station-prefixed numbers
-                    if (dn.match(/^#S\d+-/)) continue;
-                  }
-
-                  const seqMatch = dn.match(/(\d+)$/);
-                  if (seqMatch) {
-                    const seq = parseInt(seqMatch[1], 10);
-                    if (seq > highestSeq) highestSeq = seq;
-                  }
-                }
+                // The store was just rebuilt above (preserved + server
+                // orders), so scan it — exactly the orders this device sees.
+                const { ordersById, orderIds } = get();
+                const highestSeq = getTodaySequenceFloor(
+                  ordersById,
+                  orderIds,
+                  stationNumber,
+                );
 
                 if (highestSeq > 0) {
                   seedLocalSequence(locationId, stationNumber, highestSeq);
@@ -17054,18 +17646,6 @@ export const useOrderStore = create<OrderState>()(
 
               // Update active order derived state if this is the active order
               if (orderId === state.activeOrderId) {
-                state.activeOrderSubtotal = totals.subtotal;
-                state.activeOrderTax = totals.tax_amount;
-                state.activeOrderTotal = totals.total_amount;
-                state.activeOrderDiscount = preserveBackendDiscount
-                  ? o.total_discount!
-                  : totals.discount_amount;
-                state.activeOrderOutstandingSubtotal =
-                  totals.outstanding_subtotal;
-                state.activeOrderOutstandingTax = totals.outstanding_tax;
-                state.activeOrderOutstandingTotal = finalOutstandingTotal;
-                state.activeOrderTotalCash = totals.cash_total_amount;
-                state.activeOrderOutstandingCash = finalCashOutstandingTotal;
               }
             });
 
@@ -17640,8 +18220,8 @@ export const useOrderStore = create<OrderState>()(
                             "castles"
                               ? "castles"
                               : payment.terminal_type === "valor" || valorTxn
-                              ? "valor"
-                              : "dejavoo") as "castles" | "dejavoo" | "valor",
+                                ? "valor"
+                                : "dejavoo") as "castles" | "dejavoo" | "valor",
                           }
                         : {}),
 
@@ -17924,7 +18504,10 @@ export const useOrderStore = create<OrderState>()(
                   const localPendingPayments =
                     currentOrder.payments?.filter((p) => {
                       // Already represented by a backend row → mergedPayments owns it.
-                      if (p.db_payment_id && backendPaymentDbIds.has(p.db_payment_id))
+                      if (
+                        p.db_payment_id &&
+                        backendPaymentDbIds.has(p.db_payment_id)
+                      )
                         return false;
                       // Unsynced optimistic payment (pre-auth mid-sync, etc.) — unless
                       // its committed twin already landed in this read (dup guard).
@@ -17934,7 +18517,9 @@ export const useOrderStore = create<OrderState>()(
                       const isActivePreAuth =
                         p.isPreAuth && p.status === "authorized" && !p.isVoided;
                       const isLocalCapture =
-                        !!p.db_payment_id && p.status === "captured" && !p.isVoided;
+                        !!p.db_payment_id &&
+                        p.status === "captured" &&
+                        !p.isVoided;
                       return isActivePreAuth || isLocalCapture;
                     }) ?? [];
 
@@ -17969,7 +18554,10 @@ export const useOrderStore = create<OrderState>()(
                       const localPaid = localItem.paidQuantity ?? 0;
                       const backendPaid = ti.paidQuantity ?? 0;
                       if (localPaid > backendPaid) {
-                        transformedItems[i] = { ...ti, paidQuantity: localPaid };
+                        transformedItems[i] = {
+                          ...ti,
+                          paidQuantity: localPaid,
+                        };
                       }
                     }
                   }
@@ -18296,16 +18884,6 @@ export const useOrderStore = create<OrderState>()(
                   syncTableOrderIdIndexForOrder(state, storeKey, currentOrder);
                   // Update active order derived state if this is the active order
                   if (storeKey === state.activeOrderId) {
-                    state.activeOrderTotal =
-                      orderData.card_total ?? orderData.total_amount;
-                    state.activeOrderTax = orderData.tax_amount;
-                    state.activeOrderDiscount = orderData.discount_amount;
-                    state.activeOrderOutstandingTotal =
-                      hasLocalAdvancedPayments && !isServerPaidUpgrade
-                        ? (currentOrder.amount_due ?? orderData.amount_due)
-                        : orderData.amount_due;
-                    state.activeOrderOutstandingCash =
-                      orderData.cash_amount_due;
                   }
                 });
 

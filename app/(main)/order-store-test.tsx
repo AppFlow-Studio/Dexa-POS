@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/contexts/ToastContext";
 import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
 import {
@@ -58,13 +59,16 @@ const OrderStoreTest = () => {
     const orders = useOrderStore((state) => Object.values(state.ordersById));
     const isOnline = useOrderStore((state) => state.isOnline);
     const pendingSyncCount = useOrderStore((state) => state.pendingSyncCount);
-    const activeOrderSubtotal = useOrderStore((state) => state.activeOrderSubtotal);
-    const activeOrderTax = useOrderStore((state) => state.activeOrderTax);
-    const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
-    const activeOrderDiscount = useOrderStore((state) => state.activeOrderDiscount);
-    const activeOrderOutstandingSubtotal = useOrderStore((state) => state.activeOrderOutstandingSubtotal);
-    const activeOrderOutstandingTax = useOrderStore((state) => state.activeOrderOutstandingTax);
-    const activeOrderOutstandingTotal = useOrderStore((state) => state.activeOrderOutstandingTotal);
+    // §4.3 — derived, not the store's mirrored fields. This is a dev harness,
+    // so it should exercise the same path production screens use.
+    const _t = useActiveOrderTotals();
+    const activeOrderSubtotal = _t?.subtotal ?? 0;
+    const activeOrderTax = _t?.tax ?? 0;
+    const activeOrderTotal = _t?.total ?? 0;
+    const activeOrderDiscount = _t?.discount ?? 0;
+    const activeOrderOutstandingSubtotal = _t?.outstandingSubtotal ?? 0;
+    const activeOrderOutstandingTax = _t?.outstandingTax ?? 0;
+    const activeOrderOutstandingTotal = _t?.amountDue ?? 0;
     const pendingTableSelection = useOrderStore((state) => state.pendingTableSelection);
 
     // Get store actions - these are stable references, so we can use the object form

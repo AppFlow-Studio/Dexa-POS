@@ -2149,6 +2149,20 @@ local-first-server-corrected rule as ③ above; this closes a UX flicker in it, 
 
 ### Track B — the write database _(needs the Identity Gate)_
 
+> **⚠️ SUPERSEDED for orders and seating.** Phases 6–9 below are kept for their reasoning, but the
+> plan of record for order creation, order items, seating and order totals is now
+> [`local-first-orders-seating.md`](local-first-orders-seating.md). Two things changed:
+>
+> 1. **The Identity Gate is not an external blocker.** `create_order_v3.sql` and
+>    `seat_guests_v3.sql` live in `utils/supabase/migrations/` — this team owns the SQL. Adding
+>    `p_order_id` is ~15 lines per function, not a ticket to file and wait on.
+> 2. **Order numbering is decided** (Phase 8's "decide before, not during"): the locally minted
+>    `ORD-<date>-S<n>-NNNN` is **final**, not provisional. `lib/localOrderSequence.ts` already
+>    produces it.
+>
+> The new plan also adds an instant-totals phase that Track B never covered, and a tables track —
+> `table_sessions` has no local representation at all today.
+
 #### Phase 6 · Stable identity _(still fully online — no behavior change)_
 
 **Flag:** `EXPO_PUBLIC_CLIENT_IDS` · rollback falls back to `create_order_v3`.

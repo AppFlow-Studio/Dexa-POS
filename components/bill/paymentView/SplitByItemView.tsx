@@ -7,7 +7,10 @@ import {
   calculateItemEffectiveCashPrice,
   useOrderStore,
 } from "@/stores/useOrderStore";
-import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import {
+  useActiveOrder,
+  useActiveOrderTotals,
+} from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -161,12 +164,10 @@ const SplitByItemView = () => {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const activeOrderOutstandingTotal = useOrderStore(
-    (state) => state.activeOrderOutstandingTotal,
-  );
-  const activeOrderOutstandingCash = useOrderStore(
-    (state) => state.activeOrderOutstandingCash,
-  );
+  // §4.3 — derived, not the store's mirrored fields. See BillSection.
+  const splitTotals = useActiveOrderTotals();
+  const activeOrderOutstandingTotal = splitTotals?.amountDue ?? 0;
+  const activeOrderOutstandingCash = splitTotals?.cashAmountDue ?? 0;
   const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
   const splits = usePaymentStore((s) => s.splits);

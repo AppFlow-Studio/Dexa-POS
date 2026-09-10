@@ -18,9 +18,10 @@ const orderSelectorsSrc = read('stores/selectors/orderSelectors.ts')
 const reopenEffectSrc = read('services/sessionEffects/reopenCheckEffect.ts')
 
 describe('table ordering reopen-check wiring', () => {
-  it('does not render a Reopen action while check reopening is disabled', () => {
-    expect(actionBarSrc).not.toContain('>Reopen</Text>')
-    expect(actionBarSrc).not.toContain('<RotateCcw')
+  it('renders the Reopen action gated on canReopenClosedCheck', () => {
+    // Reopening is enabled; the guard is the gate, not the absence of the UI.
+    expect(actionBarSrc).toContain('>Reopen</Text>')
+    expect(actionBarSrc).toContain('canReopenClosedCheck')
   })
 
   it('awaits the reopen RPC before applying the local lifecycle update', () => {
@@ -36,19 +37,17 @@ describe('table ordering reopen-check wiring', () => {
     expect(tableOrderViewSrc).toContain('backendAlreadySynced: true')
   })
 
-  it('does not expose a reopen confirmation modal', () => {
-    expect(tableAlertDialogsSrc).not.toContain('Reopen Check?')
-    expect(tableAlertDialogsSrc).not.toContain('onConfirmReopen')
-    expect(tableAlertDialogsSrc).not.toContain('onReopenFromWarning')
+  it('routes the reopen confirmation through TableAlertDialogs', () => {
+    expect(tableAlertDialogsSrc).toContain('onConfirmReopen')
   })
 
   it('lets the confirmation modal unmount before opening the global loader', () => {
     const dismissIndex = tableOrderViewSrc.indexOf('closeDialog()')
-    const nextFrameIndex = tableOrderViewSrc.indexOf(
-      'await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))'
+    const nextFrameIndex = tableOrderViewSrc.search(
+      /new Promise<void>\(\s*\(?resolve\)?\s*=>\s*requestAnimationFrame/
     )
-    const loadingIndex = tableOrderViewSrc.indexOf(
-      "showLoading('Reopening check...')"
+    const loadingIndex = tableOrderViewSrc.search(
+      /showLoading\(['"]Reopening check\.\.\.['"]\)/
     )
 
     expect(dismissIndex).toBeGreaterThan(-1)
@@ -69,11 +68,11 @@ describe('table ordering reopen-check wiring', () => {
   })
 
   it('keeps kitchen send actions driven by unsent items after a course has fired', () => {
-    expect(courseAccordionSrc).toContain('{hasUnsentItems && (')
-    expect(tableBillSectionSrc).toContain('{hasUnsentItems && onSend && (')
+    expect(courseAccordionSrc).toMatch(/\{hasUnsentItems && \(/)
+    expect(tableBillSectionSrc).toMatch(/\{hasUnsentItems && onSend && /)
     expect(tableBillSectionSrc).not.toContain('if (enableCoursing) return null')
     expect(tableOrderViewSrc).toMatch(
-      /\.filter\(i => !i\.is_voided && isKitchenItemUnsent\(i\)\)/
+      /\.filter\(\s*\(?i\)?\s*=>\s*!i\.is_voided && isKitchenItemUnsent\(i\),?\s*\)/
     )
   })
 
@@ -129,11 +128,13 @@ describe('table ordering reopen-check wiring', () => {
 
   it('disables table menu taps when a closed check cannot be reopened', () => {
     expect(tableOrderViewSrc).toContain('isClosedCheckMenuDisabled')
-    expect(tableOrderViewSrc).toContain(
-      "pointerEvents={isMenuDisabled ? 'none' : 'auto'}"
+    expect(tableOrderViewSrc).toMatch(
+      /pointerEvents=\{isMenuDisabled \? ['"]none['"] : ['"]auto['"]\}/
     )
-    expect(tableOrderViewSrc).toContain(
-      'isMenuDisabled={isClosedCheckMenuDisabled}'
+    // The prop is fed from isClosedCheckMenuDisabled via isMenuPanelDisabled.
+    expect(tableOrderViewSrc).toMatch(
+      /const isMenuPanelDisabled = isClosedCheckMenuDisabled/
     )
+    expect(tableOrderViewSrc).toMatch(/isMenuDisabled=\{isMenuPanelDisabled\}/)
   })
 })

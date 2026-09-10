@@ -1,5 +1,6 @@
 import { queryClient } from "@/contexts/TanstackProvider";
 import { useDeltaSync } from "@/hooks/db/useDeltaSync";
+import { useOutboxDrain } from "@/hooks/db/useOutboxDrain";
 import { useAutoSettlementScheduler } from "@/hooks/pos/useAutoSettlementScheduler";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
@@ -690,6 +691,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     locationId: selectedStore?.id ?? null,
     station: stationKind(selectedStation?.station_type),
   });
+
+  // Pushes locally-committed order/item/seating writes to the server. No-ops
+  // entirely unless an EXPO_PUBLIC_LOCAL_WRITES_* flag is on.
+  useOutboxDrain();
 
   // Watermark of the menu currently applied to the store, scoped to the
   // location it came from. Drives the version reconcile below.

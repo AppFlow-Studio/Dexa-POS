@@ -130,7 +130,7 @@ describe('Wave 2.4 — OrderService.updateOrderDetails wiring', () => {
   it('exists and calls the `update_order_details_v1` RPC name', () => {
     expect(orderServiceSrc).toMatch(/static async updateOrderDetails/)
     expect(orderServiceSrc).toMatch(
-      /client\.rpc\(['"]update_order_details_v1['"]/
+      /client\s*\.rpc\(\s*['"]update_order_details_v1['"]/
     )
   })
 
@@ -160,7 +160,8 @@ describe('Wave 2.4 — OrderService.updateOrderDetails wiring', () => {
     // Pre-Wave 2.4 the four raw updates had no deadline. The new RPC must
     // reuse the same deadline budget as `add_order_item_v3` etc., else a
     // stalled Supabase response would hang updateActiveOrderDetails.
-    const fnIdx = orderServiceSrc.indexOf('updateOrderDetails (')
+    const fnIdx = orderServiceSrc.search(/updateOrderDetails\s*\(/)
+    expect(fnIdx).toBeGreaterThan(-1)
     const fnBody = orderServiceSrc.slice(fnIdx, fnIdx + 2000)
     expect(fnBody).toMatch(/_runWithDeadline/)
     expect(fnBody).toMatch(/DEADLINES\.hotMutation/)
@@ -173,8 +174,8 @@ describe('Wave 2.4 — useOrderStore.updateActiveOrderDetails refactor', () => {
     // unrelated to updateActiveOrderDetails (e.g., voidAllPayments line
     // 11883 clearing split_payment_path — handled separately when Wave
     // 2.3.2 lands the void_payment guard).
-    const updateActiveIdx = orderStoreSrc.indexOf(
-      'updateActiveOrderDetails: async details =>'
+    const updateActiveIdx = orderStoreSrc.search(
+      /updateActiveOrderDetails:\s*async\s*\(?details\)?\s*=>/
     )
     expect(updateActiveIdx).toBeGreaterThan(0)
     // Find the next sibling action so we can scope to just this fn body.
@@ -188,8 +189,8 @@ describe('Wave 2.4 — useOrderStore.updateActiveOrderDetails refactor', () => {
   })
 
   it('uses `OrderService.updateOrderDetails` and forwards `selectedStation.id`', () => {
-    const updateActiveIdx = orderStoreSrc.indexOf(
-      'updateActiveOrderDetails: async details =>'
+    const updateActiveIdx = orderStoreSrc.search(
+      /updateActiveOrderDetails:\s*async\s*\(?details\)?\s*=>/
     )
     const nextActionIdx = orderStoreSrc.indexOf(
       'applyDiscountToCheck:',
@@ -203,8 +204,8 @@ describe('Wave 2.4 — useOrderStore.updateActiveOrderDetails refactor', () => {
   })
 
   it('routes ownership rejections through `isOwnershipError` with the same toast copy as the silent-queue paths', () => {
-    const updateActiveIdx = orderStoreSrc.indexOf(
-      'updateActiveOrderDetails: async details =>'
+    const updateActiveIdx = orderStoreSrc.search(
+      /updateActiveOrderDetails:\s*async\s*\(?details\)?\s*=>/
     )
     const nextActionIdx = orderStoreSrc.indexOf(
       'applyDiscountToCheck:',
@@ -221,8 +222,8 @@ describe('Wave 2.4 — useOrderStore.updateActiveOrderDetails refactor', () => {
     // If a future refactor folds party_size into update_order_details_v1,
     // it would couple two distinct ownership models and break tests
     // that don't have a session id. Keep them separate.
-    const updateActiveIdx = orderStoreSrc.indexOf(
-      'updateActiveOrderDetails: async details =>'
+    const updateActiveIdx = orderStoreSrc.search(
+      /updateActiveOrderDetails:\s*async\s*\(?details\)?\s*=>/
     )
     const nextActionIdx = orderStoreSrc.indexOf(
       'applyDiscountToCheck:',

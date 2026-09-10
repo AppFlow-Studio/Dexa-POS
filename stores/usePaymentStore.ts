@@ -5,10 +5,6 @@ import { isOrderReadOnly } from "@/lib/orderAccessControl";
 import { hasOrderBalanceDue } from "@/lib/orderBalance";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
-import {
-  findLatestReusableEmptyDraftId,
-  getRefreshedReusableDraftNumbers,
-} from "@/lib/reusableEmptyDraft";
 import { toastService } from "@/lib/toastService";
 import {
   CartItem,
@@ -36,6 +32,7 @@ import {
   calculateItemEffectiveCashPrice,
   getOrderStoreSupabaseClient,
   round2,
+  calculateOrderTotalsForOrder,
   useOrderStore,
 } from "./useOrderStore";
 type PaymentMethod = "Card" | "Cash" | "Split";
@@ -340,6 +337,40 @@ interface PaymentState {
   checkAndRefreshLock: () => Promise<boolean>; // Refresh lock if about to expire
 }
 
+/**
+ * Outstanding balances for the active order, computed on demand.
+ *
+ * §4.3 — replaces reads of `useOrderStore`'s mirrored
+ * `activeOrderOutstandingTotal` / `activeOrderOutstandingCash`, now deleted.
+ * Those were refreshed on a deferred microtask, so a split created in the same
+ * tick as an item change could size itself against a stale balance — which
+ * shows up as a guest under- or over-charged on a split.
+ *
+ * Uses the store's own wrapper, the same one `useActiveOrderTotals` calls, so
+ * imperative callers here and reactive components cannot drift apart.
+ */
+function activeOutstanding(): {
+  activeOrderOutstandingTotal: number;
+  activeOrderOutstandingCash: number;
+} {
+  const { activeOrderId, ordersById } = useOrderStore.getState();
+  const order = activeOrderId ? ordersById[activeOrderId] : undefined;
+  if (!order) {
+    return { activeOrderOutstandingTotal: 0, activeOrderOutstandingCash: 0 };
+  }
+  const totals = calculateOrderTotalsForOrder(
+    order.items ?? [],
+    order.checkDiscount ?? null,
+    order.payments ?? [],
+    useStoreSettingsStore.getState().taxRatesMap,
+    order,
+  );
+  return {
+    activeOrderOutstandingTotal: totals.outstanding_total ?? 0,
+    activeOrderOutstandingCash: totals.cash_outstanding_total ?? 0,
+  };
+}
+
 export const usePaymentStore = create<PaymentState>((set, get) => ({
   paymentMethod: null,
   view: "review",
@@ -576,13 +607,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   // checks still due, no session), the helper is a no-op and the active
   // (paid) order is preserved so the operator can interact with it.
   handleSuccessClose: () => {
-    const {
-      activeOrderId,
-      ordersById,
-      orderIds,
-      startNewOrder,
-      setActiveOrder,
-    } = useOrderStore.getState();
+    const { activeOrderId, ordersById } = useOrderStore.getState();
 
     // Per-order PIN attribution: the order is now fully paid/closed. Drop the
     // verified staff so the NEXT order re-opens the PIN gate. Held through
@@ -633,53 +658,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
 
     // For quick service / takeout (or a dine-in clear that just ran),
-    // start a new order immediately.
+    // start a new order immediately. startOrResumeOrder reads the store when
+    // it runs, not when this closure was built — the archive that just fired
+    // makes the snapshot above 100ms out of date, and resuming against a stale
+    // one missed the empty draft and minted a fresh number over it.
     setTimeout(() => {
-      const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-        ordersById,
-        orderIds,
-        activeOrderId,
-        useStoreSettingsStore.getState().selectedStation?.id ?? null,
-      );
-
-      if (reusableEmptyDraftId) {
-        const selectedStore = useStoreSettingsStore.getState().selectedStore;
-        const stationNumber =
-          useStoreSettingsStore.getState().selectedStation?.station_number ??
-          null;
-
-        useOrderStore.setState((state) => {
-          const draft = state.ordersById[reusableEmptyDraftId];
-          if (!draft) return;
-          // After a dine-in auto-clear, reset stale dine-in fields so the
-          // bill shows as a clean new order on the order-processing screen.
-          if (dineInCleared) {
-            draft.order_type = "takeout";
-            draft.service_location_id = null;
-            draft.session_id = undefined;
-            draft.local_session_id = undefined;
-          }
-          if (selectedStore) {
-            const refreshedNumbers = getRefreshedReusableDraftNumbers({
-              draftId: reusableEmptyDraftId,
-              ordersById,
-              orderIds,
-              locationId: selectedStore.id,
-              stationNumber,
-            });
-            if (refreshedNumbers) {
-              draft.order_number = refreshedNumbers.orderNumber;
-              draft.display_number = refreshedNumbers.displayNumber;
-            }
-          }
-        });
-
-        setActiveOrder(reusableEmptyDraftId);
-        return;
-      }
-
-      const newOrder = startNewOrder();
-      setActiveOrder(newOrder.id);
+      useOrderStore.getState().startOrResumeOrder({
+        excludeOrderId: activeOrderId,
+        resetDineInFields: dineInCleared,
+      });
     }, 100);
 
     get().close();
@@ -772,7 +759,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   // the same portion charges the higher card price if paid by card.
   updateSplitAmount: (splitId, cashAmount) => {
     const { activeOrderOutstandingTotal, activeOrderOutstandingCash } =
-      useOrderStore.getState();
+      activeOutstanding();
     set((state) => ({
       splits: state.splits.map((s) =>
         s.id === splitId
@@ -859,12 +846,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const { splits } = get();
 
     // Get order and tax rates for tax calculation
-    const {
-      activeOrderId,
-      ordersById,
-      activeOrderOutstandingTotal,
-      activeOrderOutstandingCash,
-    } = useOrderStore.getState();
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const { activeOrderOutstandingTotal, activeOrderOutstandingCash } =
+      activeOutstanding();
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     const taxRatesMap =
@@ -1391,12 +1375,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
     } else {
       // STANDARD FLOW (full payment)
-      const {
-        activeOrderOutstandingTotal,
-        activeOrderOutstandingCash,
-        ordersById,
-        sendNewItemsToKitchenForOrder,
-      } = useOrderStore.getState();
+      const { ordersById, sendNewItemsToKitchenForOrder } =
+        useOrderStore.getState();
+      const { activeOrderOutstandingTotal, activeOrderOutstandingCash } =
+        activeOutstanding();
       const currentOrder = ordersById[activeOrderId];
 
       // Use cash outstanding for cash payments, card outstanding for card payments
