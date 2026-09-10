@@ -267,46 +267,51 @@ function TapCardScreen({
   const muted = `${config.textColor}99`;
 
   return (
+    // Full-bleed wrapper so the Back button anchors to the real screen edge.
+    // `self-stretch` overrides the parent's `items-center`, which would
+    // otherwise collapse this to content width and float the button mid-screen.
     <View
-      className="flex-1 items-center justify-center px-10"
-      style={{
-        backgroundColor: config.backgroundColor,
-        gap: kioskPx(20, scale),
-      }}
+      className="flex-1 self-stretch"
+      style={{ backgroundColor: config.backgroundColor }}
     >
-      <CreditCard size={kioskPx(96, scale)} color={config.primaryColor} />
-
-      <Text
-        style={{
-          fontSize: kioskPx(26, scale),
-          fontWeight: "800",
-          color: config.textColor,
-          textAlign: "center",
-        }}
+      <View
+        className="flex-1 items-center justify-center px-10"
+        style={{ gap: kioskPx(20, scale) }}
       >
-        Swipe, Tap, or Insert your card
-      </Text>
+        <CreditCard size={kioskPx(96, scale)} color={config.primaryColor} />
 
-      <Text
-        style={{
-          fontSize: kioskPx(16, scale),
-          color: muted,
-          textAlign: "center",
-          lineHeight: kioskPx(24, scale),
-        }}
-      >
-        Follow the prompts on the card reader.
-        {"\n"}Please don&apos;t leave this screen.
-      </Text>
+        <Text
+          style={{
+            fontSize: kioskPx(26, scale),
+            fontWeight: "800",
+            color: config.textColor,
+            textAlign: "center",
+          }}
+        >
+          Swipe, Tap, or Insert your card
+        </Text>
 
-      <ActivityIndicator
-        size="large"
-        color={config.primaryColor}
-        style={{ marginTop: kioskPx(8, scale) }}
-      />
+        <Text
+          style={{
+            fontSize: kioskPx(16, scale),
+            color: muted,
+            textAlign: "center",
+            lineHeight: kioskPx(24, scale),
+          }}
+        >
+          Follow the prompts on the card reader.
+          {"\n"}Please don&apos;t leave this screen.
+        </Text>
 
-      {/* Circular Back — bottom-left in both orientations. Cancels the sale on
-          the terminal (return2Idle / cancel-before-card) and returns to cart. */}
+        <ActivityIndicator
+          size="large"
+          color={config.primaryColor}
+          style={{ marginTop: kioskPx(8, scale) }}
+        />
+      </View>
+
+      {/* Back pill — bottom-left of the screen. Cancels the sale on the
+          terminal (return2Idle / cancel-before-card) and returns to cart. */}
       {onCancel ? (
         <KioskPressable
           onPress={onCancel}
@@ -317,15 +322,26 @@ function TapCardScreen({
             bottom: kioskPx(28, scale),
             left: kioskPx(28, scale),
             zIndex: 10,
-            width: kioskPx(56, scale),
-            height: kioskPx(56, scale),
-            borderRadius: kioskPx(28, scale),
+            flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
+            gap: kioskPx(8, scale),
+            height: kioskPx(56, scale),
+            paddingHorizontal: kioskPx(22, scale),
+            borderRadius: kioskPx(28, scale),
             backgroundColor: `${config.textColor}12`,
           }}
         >
-          <ChevronLeft size={kioskPx(30, scale)} color={config.textColor} />
+          <ChevronLeft size={kioskPx(28, scale)} color={config.textColor} />
+          <Text
+            style={{
+              fontSize: kioskPx(18, scale),
+              fontWeight: "700",
+              color: config.textColor,
+            }}
+          >
+            Back
+          </Text>
         </KioskPressable>
       ) : null}
     </View>
