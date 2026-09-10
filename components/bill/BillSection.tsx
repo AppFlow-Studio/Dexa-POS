@@ -7,11 +7,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { getDeviceId } from "@/lib/deviceId";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
-import {
-    findLatestReusableEmptyDraftId,
-    getRefreshedReusableDraftNumbers,
-    isReusableEmptyDraftOrder,
-} from "@/lib/reusableEmptyDraft";
+import { isReusableEmptyDraftOrder } from "@/lib/reusableEmptyDraft";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { CartItem } from "@/lib/types";
@@ -20,7 +16,10 @@ import {
   getAutoRetryCount,
   isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
-import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import {
+  useActiveOrder,
+  useActiveOrderTotals,
+} from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
@@ -409,22 +408,26 @@ const BillSectionContent = ({
     const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
     return !!o?.payments?.some((p: any) => p.sync_status === "pending");
   });
-  // Cached totals: refreshed by the deferred setTimeout(0) microtask in
-  // _scheduleTotalsRecompute (and synchronously by _ensureTotalsFresh at
-  // commit-points). Reading these is O(1) per render and doesn't trigger
-  // calculateOrderTotals on the parent.
-  const activeOrderTotal = useOrderStore((s) => s.activeOrderTotal ?? 0);
-  const activeOrderOutstandingTotal = useOrderStore(
-    (s) => s.activeOrderOutstandingTotal ?? 0,
-  );
-  // Cash-side outstanding. On a cash-discounted split the payment RPC can drive
-  // the card-side outstanding (activeOrderOutstandingTotal) to 0 after a portion
-  // while the cash side still legitimately owes the rest. Reading only the card
-  // side would disable the Pay button / show $0 due and block continuing the
-  // split, so the balance-due below uses whichever side still owes.
-  const activeOrderOutstandingCash = useOrderStore(
-    (s) => s.activeOrderOutstandingCash ?? 0,
-  );
+  // §4.3 — DERIVED totals, replacing the store's mirrored `activeOrder*`
+  // fields.
+  //
+  // The old comment here described those mirrors as "cached totals refreshed
+  // by the deferred setTimeout(0) microtask in _scheduleTotalsRecompute". That
+  // deferral is exactly the hazard: between an item mutation and the microtask
+  // firing, the cart and its total disagree, and this component renders the
+  // stale number. `useActiveOrderTotals` computes from the item set itself and
+  // memoizes on its identity, so it is O(1) per render when nothing changed
+  // and correct on the SAME frame when something did.
+  //
+  // Cash-side outstanding still matters separately: on a cash-discounted split
+  // the payment RPC can drive the card-side outstanding to 0 after a portion
+  // while the cash side legitimately owes the rest. Reading only the card side
+  // would disable the Pay button and block continuing the split, so the
+  // balance-due below uses whichever side still owes.
+  const billTotals = useActiveOrderTotals();
+  const activeOrderTotal = billTotals?.total ?? 0;
+  const activeOrderOutstandingTotal = billTotals?.amountDue ?? 0;
+  const activeOrderOutstandingCash = billTotals?.cashAmountDue ?? 0;
   // Cart-derived PRIMITIVES — deliberately not the items array reference.
   // Subscribing to the array meant every item mutation re-rendered this whole
   // shell, including quantity-merge adds (the rapid same-item tap path) where
@@ -469,7 +472,7 @@ const BillSectionContent = ({
   );
 
   const {
-    startNewOrder,
+    startOrResumeOrder,
     sendNewItemsToKitchen,
     assignOrderToTable,
     setActiveOrder,
@@ -479,7 +482,7 @@ const BillSectionContent = ({
     updateActiveOrderDetails,
   } = useOrderStore(
     useShallow((s) => ({
-      startNewOrder: s.startNewOrder,
+      startOrResumeOrder: s.startOrResumeOrder,
       sendNewItemsToKitchen: s.sendNewItemsToKitchen,
       assignOrderToTable: s.assignOrderToTable,
       setActiveOrder: s.setActiveOrder,
@@ -1805,52 +1808,15 @@ const BillSectionContent = ({
       return;
     }
 
-    const {
-      activeOrderId: currentActiveOrderId,
-      orderIds,
-      ordersById,
-    } = useOrderStore.getState();
-    const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-      ordersById,
-      orderIds,
-      currentActiveOrderId,
-      selectedStation?.id ?? null,
-    );
-
-    if (reusableEmptyDraftId) {
-      useOrderStore.setState((state) => {
-        const draft = state.ordersById[reusableEmptyDraftId];
-        if (!draft) return;
-        // Reset any stale dine-in fields from a previous session.
-        draft.order_type = "takeout";
-        draft.service_location_id = null;
-        draft.session_id = undefined;
-        draft.local_session_id = undefined;
-        if (selectedStore) {
-          const refreshedNumbers = getRefreshedReusableDraftNumbers({
-            draftId: reusableEmptyDraftId,
-            ordersById,
-            orderIds,
-            locationId: selectedStore.id,
-            stationNumber: selectedStation?.station_number ?? null,
-          });
-          if (refreshedNumbers) {
-            draft.order_number = refreshedNumbers.orderNumber;
-            draft.display_number = refreshedNumbers.displayNumber;
-          }
-        }
-      });
-      setActiveOrder(reusableEmptyDraftId);
-      return;
-    }
-
-    const newOrder = startNewOrder();
-    setActiveOrder(newOrder.id);
+    startOrResumeOrder({
+      excludeOrderId: useOrderStore.getState().activeOrderId,
+      resetDineInFields: true,
+    });
   }, [
     activeOrder?.id,
     clearSelectedTable,
     isCurrentOrderEmptyDraft,
-    startNewOrder,
+    startOrResumeOrder,
     setActiveOrder,
   ]);
 
@@ -1941,41 +1907,7 @@ const BillSectionContent = ({
                 onPress={() => {
                   // Per-order PIN: fresh ticket must re-prompt (see handleStartNewOrder).
                   useEmployeeStore.getState().clearOrderAttributionStaff();
-                  const { orderIds, ordersById } = useOrderStore.getState();
-                  const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-                    ordersById,
-                    orderIds,
-                    null,
-                    selectedStation?.id ?? null,
-                  );
-
-                  if (reusableEmptyDraftId) {
-                    if (selectedStore) {
-                      const refreshedNumbers = getRefreshedReusableDraftNumbers(
-                        {
-                          draftId: reusableEmptyDraftId,
-                          ordersById,
-                          orderIds,
-                          locationId: selectedStore.id,
-                          stationNumber:
-                            selectedStation?.station_number ?? null,
-                        },
-                      );
-                      if (refreshedNumbers) {
-                        useOrderStore.setState((state) => {
-                          const draft = state.ordersById[reusableEmptyDraftId];
-                          if (!draft) return;
-                          draft.order_number = refreshedNumbers.orderNumber;
-                          draft.display_number = refreshedNumbers.displayNumber;
-                        });
-                      }
-                    }
-                    setActiveOrder(reusableEmptyDraftId);
-                    return;
-                  }
-
-                  const newOrder = startNewOrder();
-                  setActiveOrder(newOrder.id);
+                  startOrResumeOrder();
                 }}
               >
                 <Plus color={colors.onSolid} size={s(14)} />

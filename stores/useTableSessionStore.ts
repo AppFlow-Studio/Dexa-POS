@@ -15,6 +15,12 @@
  */
 
 import { markOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
+import { mintStoreSessionId } from "@/lib/localFirst/identity";
+import { hasUnsyncedSession } from "@/lib/localFirst/unsyncedSessions";
+import {
+  LOCAL_WRITES_SEATING,
+  seatLocal,
+} from "@/services/localFirst/localWrites";
 import {
     ACTION_TO_EVENT,
     type SessionAction as DispatchableAction,
@@ -869,6 +875,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               if (existing && isLocalOnlyStatus(existing.status)) {
                 continue;
               }
+              // A session the server has never seen is not "freed" — it is
+              // simply not there yet. See _patchSessionsFromTables for the
+              // full account of what clearing it destroys.
+              if (existing && hasUnsyncedSession(existing.id)) {
+                continue;
+              }
               actions.push({ tableId, action: { type: "CLEAR" } });
             }
           }
@@ -960,6 +972,25 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               if (!snapshotTableIds.has(tableId)) continue;
               const existing = currentSessions[tableId];
               if (existing && isLocalOnlyStatus(existing.status)) {
+                continue;
+              }
+              // ── A locally-seated session is not a freed table. ──────────
+              //
+              // `isLocalOnlyStatus` covers seating/ordering/paying/closing.
+              // It does NOT cover 'seated', and `seatLocal` writes exactly
+              // that — correctly, because the table genuinely IS seated the
+              // moment the operator taps.
+              //
+              // So until the `seat_guests` op drains, an authoritative
+              // snapshot reports that table free, this sweep believes it, and
+              // the session is CLEARed: the table flips to available with
+              // guests sitting at it, and its order detaches. Offline that is
+              // permanent; online it is a race the drain usually but not
+              // always wins.
+              //
+              // The outbox is the authority on "has the server seen this",
+              // and that is precisely the question being asked here.
+              if (existing && hasUnsyncedSession(existing.id)) {
                 continue;
               }
               // A table in the authoritative snapshot missing its session
@@ -1248,9 +1279,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             .substring(2, 9)}`;
           const localOrderId =
             params.localOrderId ||
-            `local_order_${Date.now()}_${Math.random()
-              .toString(36)
-              .substring(2, 9)}`;
+            mintStoreSessionId();
 
           // 2. Resolve staff/merchant/device/station context
           const storeSettings = useStoreSettingsStore.getState();
@@ -1350,6 +1379,107 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             }
             return { resolved: false as const };
           };
+
+          // ── 4a. LOCAL-FIRST SEATING ────────────────────────────────────
+          //
+          // Writes the session, its table links and (optionally) the order in
+          // ONE SQLite transaction. Runs regardless of connectivity — that is
+          // the point: seating a table must not depend on the network, and the
+          // drain pushes it to seat_guests_v4 (idempotent on the session id)
+          // when there is one.
+          //
+          // This is what makes `isOrderTableStillSeating()` return false:
+          // there is no window between the tap and a usable order.
+          //
+          // The ORDER id and number come from the optimistic order above, not
+          // from seatLocal. That order is what `ordersById` is keyed by and
+          // what the operator is already looking at; letting seatLocal mint
+          // its own wrote a second, different order to SQLite and left the
+          // first one orphaned with its number permanently spent.
+          if (LOCAL_WRITES_SEATING) {
+            const { useOrderStore } = require("@/stores/useOrderStore");
+            const optimisticOrder = shouldCreateOrder
+              ? useOrderStore.getState().ordersById[localOrderId]
+              : undefined;
+
+            const seated = await seatLocal({
+              tableIds: params.tableIds,
+              locationId: storeSettings.selectedStore?.id ?? "",
+              merchantId,
+              partySize: params.partySize,
+              createOrder: shouldCreateOrder,
+              stationNumber:
+                useStoreSettingsStore.getState().selectedStation
+                  ?.station_number ?? null,
+              stationId,
+              staffId: serverStaffId ?? staffId ?? null,
+              guestName: params.guestName ?? null,
+              guestPhone: params.guestPhone ?? null,
+              reservationId: params.reservationId ?? null,
+              waitlistId: params.waitlistId ?? null,
+              tableNumber:
+                useFloorPlanStore.getState().tablesById[params.tableIds[0]]
+                  ?.name ?? null,
+              orderId: shouldCreateOrder ? localOrderId : null,
+              orderNumber: optimisticOrder?.order_number ?? null,
+              displayNumber: optimisticOrder?.display_number ?? null,
+            });
+
+            if (seated.ok && seated.value) {
+              // Promote the optimistic session to the REAL ids and out of the
+              // local-only "seating" status in one dispatch. Both ids are
+              // final, so nothing downstream will need rekeying.
+              const realSession: TableSession = {
+                ...optimisticSession,
+                id: seated.value.sessionId,
+                session_number: seated.value.sessionId
+                  .slice(-6)
+                  .toUpperCase(),
+                status: "seated" as TableStatus,
+                order_id: seated.value.orderId ?? undefined,
+              };
+
+              get().batchDispatch(
+                params.tableIds.map((tableId) => ({
+                  tableId,
+                  action: { type: "SET" as const, session: realSession },
+                })),
+              );
+
+              // Same id in and out, so this links the session and marks the
+              // order written without rekeying anything. The number is only
+              // written back when the optimistic order had none (no
+              // selectedStore at the time) — that is the one case seatLocal
+              // still mints, and overwriting an existing number here would put
+              // the store out of step with the row that was just committed.
+              if (seated.value.orderId) {
+                const orderWasNumbered =
+                  !!optimisticOrder?.order_number &&
+                  !!optimisticOrder?.display_number;
+                useOrderStore.getState().hydrateOrderFromSeat({
+                  localOrderId: seated.value.orderId,
+                  dbOrderId: seated.value.orderId,
+                  sessionId: seated.value.sessionId,
+                  orderNumber: orderWasNumbered
+                    ? undefined
+                    : (seated.value.orderNumber ?? undefined),
+                  displayNumber: orderWasNumbered
+                    ? undefined
+                    : (seated.value.displayNumber ?? undefined),
+                });
+              }
+
+              return {
+                sessionId: seated.value.sessionId,
+                orderId: seated.value.orderId ?? undefined,
+              };
+            }
+
+            // A failed LOCAL write is fatal — there is no row anywhere. Fall
+            // through to the legacy path rather than reporting a seat that
+            // does not exist.
+            console.error("[seatGuests] local seat failed:", seated.error);
+          }
 
           // 4. Try backend if online
           if (isOnline && supabase) {

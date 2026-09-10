@@ -26,7 +26,12 @@ import type {
   SideEffectContext,
 } from "@/lib/sessionSideEffects";
 import { toastService } from "@/lib/toastService";
+import {
+  LOCAL_WRITES_ITEMS,
+  sendLocalToKitchen,
+} from "@/services/localFirst/localWrites";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
+import { getIsOnline } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
@@ -153,6 +158,59 @@ async function runSendToKitchenEffect(
   }
 
   const sentLocalIds = new Set(itemIds);
+
+  // ── OFFLINE: the outbox, not the legacy queue. ──────────────────────────
+  //
+  // This is the dine-in path, and it fails exactly the way the takeout one
+  // did: `freshSentItems` below filters on `db_order_item_id`, which only the
+  // drain writes, so offline it is EMPTY. Every item became a "straggler" and
+  // went to a queue addressed by CART id — a composite merge key that
+  // `resolveItemId` cannot map, because `offlineIdRegistry` is only populated
+  // by the legacy add path. The op returned OpBlocked("items_not_synced") on
+  // every pass until it dead-lettered an hour later. The table showed
+  // "ordered", the ticket never existed.
+  //
+  // `item_row_id` is the id those rows already have. One outbox op against
+  // this order drains strictly after the `add_item` ops for the same rows, so
+  // there is nothing to resolve and nothing to wait for.
+  if (LOCAL_WRITES_ITEMS && !getIsOnline()) {
+    const batchItems = (freshOrder?.items ?? []).filter((item) =>
+      sentLocalIds.has(item.id),
+    );
+    const rowIds = batchItems
+      .map((item) => item.db_order_item_id ?? item.item_row_id)
+      .filter((id): id is string => !!id);
+    const unaddressable = batchItems
+      .filter((item) => !item.db_order_item_id && !item.item_row_id)
+      .map((item) => item.id);
+
+    if (rowIds.length > 0) {
+      const ctx2 = createCurrentContext();
+      const res = await sendLocalToKitchen({
+        orderId: dbOrderId,
+        itemIds: rowIds,
+        orderStatus: getOrderSentStatus(),
+        itemStatus: getKitchenSentStatus(),
+        staffId: ctx2.staffId,
+        stationId: ctx2.stationId,
+        deviceId: ctx2.deviceId,
+        sendIdempotencyKey: ctx2.sendIdempotencyKey,
+        itemsIdempotencyKey: ctx2.itemsIdempotencyKey,
+      });
+      if (!res.ok) {
+        console.error("[LF] ✗ sendLocalToKitchen (table) failed:", res.error);
+      }
+    }
+    // Lines predating local-first writes have no row id at all; only the
+    // legacy queue knows how to chase those.
+    if (unaddressable.length > 0) {
+      await queueKitchenSend(orderId, unaddressable, createCurrentContext(), true);
+    }
+    return rowIds.length > 0 || unaddressable.length > 0
+      ? { status: "queued" }
+      : { status: "skipped" };
+  }
+
   const freshSentItems = (freshOrder?.items ?? []).filter(
     (item) => sentLocalIds.has(item.id) && !!item.db_order_item_id,
   );

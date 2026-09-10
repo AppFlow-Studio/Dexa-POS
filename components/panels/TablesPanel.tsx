@@ -9,15 +9,23 @@ import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
+import { FlashList } from "@shopify/flash-list";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    FlatList,
     RefreshControl,
     Text,
     TouchableOpacity,
     View,
 } from "react-native";
+
+/**
+ * Unscaled height of a collapsed table row (vertical padding + name + meta
+ * line). Multiplied by the UI scale at the call site. Only a hint for
+ * FlashList's initial layout pass — expanded rows are far taller, which is
+ * what `getItemType` below keeps in a separate recycling pool.
+ */
+const ESTIMATED_ROW_HEIGHT = 56;
 
 /**
  * Wave 3.3: memoized row that binds parent's stable callbacks to the row's
@@ -487,6 +495,14 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
     ],
   );
   const keyExtractor = useCallback((item: FloorPlanObject) => item.id, []);
+  // Expanded rows are several times taller than collapsed ones. Typing them
+  // separately stops FlashList from recycling a tall expanded view into a
+  // collapsed slot (and vice versa), which otherwise causes size thrash.
+  const getItemType = useCallback(
+    (item: FloorPlanObject) =>
+      expandedTableIds[item.id] ? "expanded" : "collapsed",
+    [expandedTableIds],
+  );
 
   return (
     <View
@@ -602,10 +618,12 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
           onToggle={handleToggleSection}
         >
           {isSectionOpen && (
-            <FlatList
+            <FlashList
               data={displayTables}
               keyExtractor={keyExtractor}
               renderItem={renderTableItem}
+              getItemType={getItemType}
+              estimatedItemSize={s(ESTIMATED_ROW_HEIGHT)}
               extraData={expandedTableIds}
               ListEmptyComponent={
                 <Text
@@ -619,10 +637,6 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
                   No tables assigned
                 </Text>
               }
-              initialNumToRender={8}
-              maxToRenderPerBatch={5}
-              windowSize={3}
-              removeClippedSubviews={true}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}

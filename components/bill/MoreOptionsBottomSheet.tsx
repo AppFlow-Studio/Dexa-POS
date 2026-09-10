@@ -1,3 +1,8 @@
+import PanelSheet, {
+    PanelSheetScrollView as BottomSheetScrollView,
+    PanelSheetTextInput as BottomSheetTextInput,
+} from "@/components/ui/PanelSheet";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
@@ -14,43 +19,39 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
-import PanelSheet, {
-  PanelSheetScrollView as BottomSheetScrollView,
-  PanelSheetTextInput as BottomSheetTextInput,
-} from "@/components/ui/PanelSheet";
-import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import {
-  CheckCircle2,
-  ChevronRight,
-  Flame,
-  Lock,
-  Printer,
-  Receipt,
-  Star,
-  Tag,
-  Trash2,
-  User,
+    CheckCircle2,
+    ChevronRight,
+    Flame,
+    Lock,
+    Printer,
+    Receipt,
+    Star,
+    Tag,
+    Trash2,
+    User,
 } from "lucide-react-native";
 import React, {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    forwardRef,
+    memo,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming,
+    useAnimatedStyle,
+    useSharedValue,
+    withSequence,
+    withTiming,
 } from "react-native-reanimated";
 import PinDisplay from "../auth/PinDisplay";
 import PinNumpad from "../auth/PinNumpad";
-import SplitReceiptSelectorModal from "./SplitReceiptSelectorModal";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import SplitReceiptSelectorModal from "./SplitReceiptSelectorModal";
 
 interface MoreOptionsProps {
   discountSheetRef?: React.RefObject<BottomSheetMethods>;
@@ -62,6 +63,77 @@ interface MoreOptionsProps {
   onSheetChange?: (index: number) => void;
   isTableOrdering?: boolean;
 }
+
+/**
+ * Isolated Order Notes TextInput for the More sheet.
+ *
+ * The sheet body is a large subtree that re-renders frequently. If the note
+ * text lived in the parent, EVERY keystroke would re-render the whole sheet
+ * and the controlled TextInput would eat/duplicate characters ("hi my name
+ * is" → "h my namname is") — the same failure ModifierScreen's isolated
+ * NotesInput exists to prevent. This memoized child owns the visible text
+ * locally so typing only re-renders itself.
+ *
+ * Keystrokes are also mirrored to the parent through `onDraftChange` (a
+ * ref-only callback — no parent state, so no parent re-render) so a commit
+ * triggered by sheet close always sees the latest text. `onCommit` fires on
+ * blur. Re-open seeding is automatic: PanelSheet unmounts its content when
+ * closed, so this child remounts fresh from `initialValue` on every open.
+ */
+const OrderNotesInput = memo(function OrderNotesInput({
+  initialValue,
+  editable,
+  onDraftChange,
+  onCommit,
+}: {
+  initialValue: string;
+  editable: boolean;
+  onDraftChange: (text: string) => void;
+  onCommit: (text?: string) => void;
+}) {
+  const [localValue, setLocalValue] = useState(initialValue);
+  const latestValueRef = useRef(initialValue);
+  const hasUserTypedRef = useRef(false);
+
+  // Sync if the persisted note changes from outside (e.g. another station, a
+  // sync round-trip) — but NEVER once the operator has typed, or the external
+  // write would clobber their in-flight keystrokes.
+  useEffect(() => {
+    if (hasUserTypedRef.current) return;
+    if (latestValueRef.current === initialValue) return;
+    latestValueRef.current = initialValue;
+    setLocalValue(initialValue);
+  }, [initialValue]);
+
+  return (
+    <BottomSheetTextInput
+      value={localValue}
+      editable={editable}
+      placeholder="Add special instructions..."
+      numberOfLines={1}
+      onChangeText={(text) => {
+        hasUserTypedRef.current = true;
+        latestValueRef.current = text;
+        setLocalValue(text);
+        onDraftChange(text);
+      }}
+      onBlur={() => onCommit(latestValueRef.current)}
+      style={{
+        padding: 10,
+        backgroundColor: colors.screen,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
+        color: colors.heading,
+        fontSize: 13,
+        minHeight: 72,
+        textAlignVertical: "top",
+        opacity: editable ? 1 : 0.45,
+      }}
+      placeholderTextColor={colors.muted}
+    />
+  );
+});
 
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
@@ -82,7 +154,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   // Full-column height so all options (incl. Danger Zone) are visible without
   // scrolling — the in-panel sheet is capped to the bill column, not full screen.
   const snapPoints = useMemo(() => ["100%"], []);
-  const [orderNotes, setOrderNotes] = useState("");
+  // Mirror of the Order Notes draft (kept current by the isolated input on
+  // every keystroke via a ref-only callback — no parent state) so blur/close
+  // commits never read a stale value and typing never re-renders this sheet.
+  // See `OrderNotesInput` and `commitOrderNote`.
+  const orderNotesDraftRef = useRef("");
   const [showManagerPin, setShowManagerPin] = useState(false);
   const [managerPin, setManagerPin] = useState("");
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
@@ -102,10 +178,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const pendingActionRef = useRef<(() => void) | null>(null);
   /** Last index reported by the sheet; -1 means closed/closing. See `closeAndThen`. */
   const sheetIndexRef = useRef(-1);
+  /** True while the sheet is open (index >= 0). Drives the Order Notes draft
+   *  reload-on-reopen and commit-on-close below. */
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   const handleSheetChange = useCallback(
     (index: number) => {
       sheetIndexRef.current = index;
+      setIsSheetOpen(index >= 0);
       if (index === -1 && pendingActionRef.current) {
         const action = pendingActionRef.current;
         pendingActionRef.current = null;
@@ -152,6 +232,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const clearCart = useOrderStore((state) => state.clearCart);
   const voidOrder = useOrderStore((state) => state.voidOrder);
+  const updateActiveOrderDetails = useOrderStore(
+    (state) => state.updateActiveOrderDetails,
+  );
   const activeOrder = useActiveOrder();
 
   // Reset rush/priority state when active order changes
@@ -202,6 +285,48 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const canApplyDiscount =
     !hasRefunds && !isCheckClosed && !isReadOnlyForStation;
   const canManageDrawer = !!drawerId && !!onManageDrawer;
+
+  // ── Order Notes lifecycle ─────────────────────────────────────────────────
+  // The order note lives on the order's `notes` field — persisted to
+  // `orders.special_instructions` and surfaced to KDS as `order_notes` — so a
+  // note typed here only reaches the kitchen once it is committed through
+  // `updateActiveOrderDetails`. The TextInput itself is `OrderNotesInput` (a
+  // memoized child that owns its text locally so keystrokes never re-render
+  // this big sheet — that re-render was what mangled characters). Commit on
+  // blur AND on sheet close (PanelSheet unmounts its content when closed, so
+  // onBlur alone is not reliable).
+  const handleOrderNotesDraftChange = useCallback((text: string) => {
+    orderNotesDraftRef.current = text;
+  }, []);
+
+  const commitOrderNote = useCallback(
+    (textOverride?: string) => {
+      if (isCheckClosed || isReadOnlyForStation) return;
+      const draft = (textOverride ?? orderNotesDraftRef.current).trim();
+      const persisted = (activeOrder?.notes ?? "").trim();
+      if (draft === persisted) return;
+      void updateActiveOrderDetails(
+        draft.length > 0 ? { notes: draft } : { notes: undefined },
+      );
+    },
+    [
+      activeOrder?.notes,
+      isCheckClosed,
+      isReadOnlyForStation,
+      updateActiveOrderDetails,
+    ],
+  );
+
+  // Persist any unsaved draft the moment the sheet closes (swipe-down, backdrop
+  // tap, or a Close Check / Void / Print flow that closes it). Track the
+  // open→closed edge so the initial closed mount never triggers a commit.
+  const wasSheetOpenRef = useRef(false);
+  useEffect(() => {
+    if (wasSheetOpenRef.current && !isSheetOpen) {
+      commitOrderNote();
+    }
+    wasSheetOpenRef.current = isSheetOpen;
+  }, [isSheetOpen, commitOrderNote]);
 
   // Wave D — Edit Service Charge entry. Server refuses when any non-voided
   // captured / refunded payment exists; mirror that here so the row is greyed
@@ -1154,25 +1279,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             </Text>
           </View>
           <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-            <BottomSheetTextInput
-              value={orderNotes}
-              onChangeText={setOrderNotes}
-              placeholder="Add special instructions..."
-              numberOfLines={1}
-              editable={!isCheckClosed}
-              style={{
-                padding: 10,
-                backgroundColor: colors.screen,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                color: colors.heading,
-                fontSize: 13,
-                minHeight: 72,
-                textAlignVertical: "top",
-                opacity: isCheckClosed ? 0.45 : 1,
-              }}
-              placeholderTextColor={colors.muted}
+            <OrderNotesInput
+              initialValue={activeOrder?.notes ?? ""}
+              editable={!isCheckClosed && !isReadOnlyForStation}
+              onDraftChange={handleOrderNotesDraftChange}
+              onCommit={commitOrderNote}
             />
           </View>
 

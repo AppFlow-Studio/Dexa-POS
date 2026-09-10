@@ -68,10 +68,10 @@ describe('useOrderStore broadcast merge — Wave 2.1 station_id propagation', ()
     // "taken over" — terminal-state guards short-circuit the flip-away check.
     expect(orderStoreSource).toMatch(/_orderIsTerminal =/)
     expect(orderStoreSource).toMatch(
-      /localOrder\?\.order_status === 'void'/
+      /localOrder\?\.order_status === ['\"]void['\"]/
     )
     expect(orderStoreSource).toMatch(
-      /localOrder\?\.check_status === 'Closed'/
+      /localOrder\?\.check_status === ['\"]Closed['\"]/
     )
   })
 

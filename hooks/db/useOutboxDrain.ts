@@ -1,0 +1,216 @@
+/**
+ * Runs the outbox drain: on mount, on reconnect, and on a slow interval.
+ *
+ * docs/engineering/architecture/local-first-orders-seating.md §7.2
+ *
+ * ── Why three triggers and not one ─────────────────────────────────────────
+ *
+ * RECONNECT is the one that matters — it is what turns a service period's
+ * worth of offline writes into server rows the moment wifi returns.
+ *
+ * THE INTERVAL is the safety net. Reconnect events are not perfectly reliable
+ * on Android (a captive portal, a flapping AP, a doze wake), and an op that
+ * missed its reconnect must not sit forever. It is deliberately slow: the
+ * drain is cheap when the outbox is empty (one indexed COUNT), so a long
+ * period costs nothing and a short one would hammer a struggling connection.
+ *
+ * ON MOUNT covers the app being force-quit mid-drain and reopened.
+ *
+ * Deliberately NOT triggered per-write. A drain on every cart tap would put a
+ * network call on the hot path — which is the latency this whole design exists
+ * to remove.
+ */
+import { useEffect, useRef } from "react";
+
+import {
+  failedOpCount,
+  failedOpReasons,
+  pendingOpCount,
+  purgeUnsyncableOps,
+  requeueFailedOps,
+  resetBackoffForReconnect,
+} from "@/lib/db/outbox";
+import { seedUnsyncedSessions } from "@/lib/localFirst/unsyncedSessions";
+import { initLocalDb, isLocalDbReady } from "@/lib/db/index";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { makeOpHandlers } from "@/services/localFirst/opHandlers";
+import {
+  drainOnce,
+  registerDrainRunner,
+} from "@/services/localFirst/outboxDrain";
+import {
+  LOCAL_WRITES_ITEMS,
+  LOCAL_WRITES_ORDERS,
+  LOCAL_WRITES_SEATING,
+} from "@/services/localFirst/localWrites";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { toastService } from "@/lib/toastService";
+
+const DRAIN_INTERVAL_MS = 30_000;
+
+/** Any local-first write path on at all? Nothing to drain otherwise. */
+const ANY_LOCAL_WRITES =
+  LOCAL_WRITES_ITEMS || LOCAL_WRITES_ORDERS || LOCAL_WRITES_SEATING;
+
+export function useOutboxDrain(): void {
+  const supabase = useSupabaseClient();
+  // `isOnline` (not rawIsOnline): it is false in slow-mode too, and pushing
+  // a drain over a degraded link is how a struggling connection gets worse.
+  const { isOnline } = useNetworkStatus();
+  const runningRef = useRef(false);
+  // Last reported parked count, so the reason dump prints once per change.
+  const lastReportedFailedRef = useRef(-1);
+
+  useEffect(() => {
+    if (!ANY_LOCAL_WRITES) {
+      console.log(
+        "[LF] drain DISABLED — no EXPO_PUBLIC_LOCAL_WRITES_* flag is set",
+      );
+      return;
+    }
+    if (!supabase) {
+      console.log("[LF] drain waiting — no supabase client yet");
+      return;
+    }
+    console.log(
+      `[LF] drain ready items=${LOCAL_WRITES_ITEMS} orders=${LOCAL_WRITES_ORDERS} seating=${LOCAL_WRITES_SEATING} online=${isOnline}`,
+    );
+
+    let cancelled = false;
+
+    const handlers = makeOpHandlers(supabase, {
+      // §9.5 — two stations seated the same table while partitioned. The table
+      // is lost but the ORDER is preserved, so this has to reach a human
+      // rather than being logged and forgotten: there is real food on that
+      // check and someone has to merge or move it.
+      onTableOccupied: (conflict) => {
+        toastService.show({
+          title: "Table already seated",
+          message:
+            `This table was seated on another station. The order was kept — ` +
+            `merge these checks or move one.`,
+          type: "warning",
+        });
+        console.warn("[OutboxDrain] table_occupied:", conflict);
+      },
+    });
+
+    const run = async () => {
+      if (cancelled || runningRef.current) return;
+      // Never push while offline. `nudgeDrain` fires on every local write, and
+      // a drain with no network turns each one into a failed attempt with an
+      // exponentially longer `next_at` — see nudgeDrain's header. The write is
+      // already durable; the reconnect path below is what pushes it.
+      if (!isOnline) return;
+      if (!isLocalDbReady()) {
+        // Wait rather than skip. At mount the DB is still opening, and a
+        // plain skip meant the FIRST drain after launch never ran — the very
+        // one that should flush whatever the last session left queued.
+        const db = await initLocalDb();
+        if (!db || cancelled) return;
+      }
+      // Cheap guard: an indexed COUNT beats constructing a drain pass for an
+      // empty outbox, which is the steady state.
+      if ((await pendingOpCount()) === 0) return;
+
+      runningRef.current = true;
+      try {
+        const stats = await drainOnce(handlers);
+        if (stats.attempted > 0) {
+          const stillPending = await pendingOpCount();
+          const failed = await failedOpCount();
+          if (failed > 0) {
+            // Reported ONCE per session, not once per drain.
+            //
+            // Parked ops are by definition not retried, so their state does
+            // not change between drains — re-printing 22 error lines (each
+            // with a React Native stack trace) every 30 seconds buried the
+            // logs that actually describe live behaviour. The count is what
+            // matters continuously; the reasons only need saying once.
+            if (failed !== lastReportedFailedRef.current) {
+              lastReportedFailedRef.current = failed;
+              const reasons = await failedOpReasons();
+              const shown = reasons.slice(0, 5);
+              const lines = [
+                `[LF] ⚠ ${failed} op(s) parked as FAILED (not retried).`,
+                ...shown.map((r) => `   ${r.count}x ${r.op}: ${r.reason}`),
+              ];
+              if (reasons.length > shown.length) {
+                lines.push(`   ...and ${reasons.length - shown.length} more`);
+              }
+              lines.push(
+                `   discardFailedOps() clears them (drops the sync intent, keeps the local rows).`,
+              );
+              // ONE warn, not one per reason: each console call in RN carries a
+              // stack trace, and 22 of them every 30s buried the live logs.
+              console.warn(lines.join("\n"));
+            }
+          } else if (__DEV__) {
+            console.log("[OutboxDrain]", stats, `pending=${stillPending}`);
+          }
+        }
+      } finally {
+        runningRef.current = false;
+      }
+    };
+
+    // Let a local write ask for a drain immediately, instead of waiting out
+    // the interval — otherwise a ticket could take 30s to reach the kitchen
+    // on a perfectly good network.
+    registerDrainRunner(run);
+
+    // One-time startup cleanup, AFTER the database is actually open.
+    //
+    // This used to fire synchronously on mount. `initLocalDb()` had not
+    // resolved yet, so `getDb()` was null, both helpers returned 0 without
+    // touching anything, and the "one-time" cleanup silently never happened —
+    // which is why a stack of unsyncable ops survived every single restart
+    // while the log cheerfully reported "purged 0".
+    //
+    // Awaiting initLocalDb() is safe and idempotent: it returns the existing
+    // handle when already open, and every caller shares one in-flight promise.
+    //
+    // Order matters: drop what can never work, THEN give the rest one retry.
+    // Requeueing first would just re-attempt the unsyncable ones.
+    void (async () => {
+      const db = await initLocalDb();
+      if (cancelled || !db) return;
+      await purgeUnsyncableOps();
+      await requeueFailedOps();
+      // Protect sessions seated in a PREVIOUS run of the app from being
+      // cleared by the first floor-plan snapshot of this one.
+      await seedUnsyncedSessions();
+      // Kick a drain now that the requeued ops are eligible.
+      if (isOnline) void run();
+    })();
+
+    // Mount + whenever connectivity flips back on.
+    //
+    // The backoff reset is what makes reconnect actually mean "now". Ops
+    // parked at the 5-minute ceiling by failed offline pushes would otherwise
+    // stay ineligible for minutes after the wifi returns, which reads to an
+    // operator as sync being broken rather than merely slow. A reconnect
+    // invalidates the reason those attempts failed, so it invalidates their
+    // schedule too. Runs BEFORE the drain, or the drain claims nothing.
+    if (isOnline) {
+      void (async () => {
+        if (!isLocalDbReady()) {
+          const db = await initLocalDb();
+          if (!db || cancelled) return;
+        }
+        await resetBackoffForReconnect();
+        if (!cancelled) void run();
+      })();
+    }
+
+    const timer = setInterval(() => {
+      if (isOnline) void run();
+    }, DRAIN_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      registerDrainRunner(null);
+      clearInterval(timer);
+    };
+  }, [supabase, isOnline]);
+}
