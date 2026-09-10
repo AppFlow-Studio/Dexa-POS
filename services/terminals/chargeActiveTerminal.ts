@@ -51,7 +51,7 @@ import type { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from "@/types/atom";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { generateRefId } from "@/types/dejavoo-spin-api";
-import { VALOR_DEFAULT_PORT } from "@/types/valor";
+import { VALOR_DEFAULT_PORT, VALOR_CANCEL_PORT } from "@/types/valor";
 import { v4 as uuidv4 } from "uuid";
 
 /** Normalized result of charging the active terminal. */
@@ -243,12 +243,24 @@ export async function chargeActiveTerminal(
 
   // ============ VALOR ============
   if (terminal.terminal_type === "valor") {
+    if (!terminal.epi?.trim()) {
+      return { ok: false, message: "Valor terminal has no EPI configured. Please see a staff member." };
+    }
+    if (terminal.last_connection_status === "IdentityMismatch") {
+      return { ok: false, message: "Valor terminal identity does not match its registration. Please see a staff member." };
+    }
+    if (terminal.connection_type !== "usb" && terminal.connection_type !== "local_socket" && terminal.connection_type !== "local") {
+      return { ok: false, message: "Valor requires TCP/local socket or USB configuration." };
+    }
     const isUsb = terminal.connection_type === "usb";
     const host = isUsb ? undefined : terminal.ip_address;
     if (!isUsb && !host) {
       return { ok: false, message: "Valor terminal has no IP address configured." };
     }
     const port = isUsb ? undefined : (terminal.port ?? VALOR_DEFAULT_PORT);
+    if (!isUsb && [port, terminal.cancel_port ?? VALOR_CANCEL_PORT].some((value) => !Number.isInteger(value) || value! < 1 || value! > 65535)) {
+      return { ok: false, message: "Valor terminal has an invalid TCP or cancel port." };
+    }
 
     const service = getSharedValorService();
     await service.connect({
@@ -324,6 +336,11 @@ export async function chargeActiveTerminal(
         message: `Only $${approved} was approved. Please see a staff member to finish your payment.`,
       };
     }
+
+    updatePaymentJournal(journalId, {
+      status: "terminal_approved",
+      terminalTxnId: result.stan ?? referenceId,
+    });
 
     return {
       ok: true,

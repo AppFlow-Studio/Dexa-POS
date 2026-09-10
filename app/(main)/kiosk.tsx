@@ -5,6 +5,9 @@ import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosti
 import { KioskErrorBoundary } from "@/components/kiosk/shared/KioskErrorBoundary";
 import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { refreshSelectedStationOperationalState } from "@/services/posAccessService";
+import { isKioskCheckoutHeld } from "@/components/kiosk/shared/checkoutGuard";
 import {
     kioskProfileQueryKeys,
     useKioskProfile,
@@ -15,7 +18,7 @@ import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 
 /**
  * Kiosk entry point.
@@ -34,6 +37,7 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
  * "ordering" branch is below.
  */
 export default function KioskScreen() {
+  const supabase = useSupabaseClient();
   const { config, status, error } = useKioskProfile();
   const isIdle = useKioskProfileStore((s) => s.isIdle);
   const setIdle = useKioskProfileStore((s) => s.setIdle);
@@ -42,6 +46,24 @@ export default function KioskScreen() {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const handleStart = async () => {
+    try {
+      const stationId = useStoreSettingsStore.getState().selectedStation?.id;
+      const location = useStoreSettingsStore.getState().selectedStore;
+      if (!stationId || !location?.id || !location.merchant_id || isKioskCheckoutHeld(stationId)) {
+        Alert.alert("Staff assistance required", "Please ask a staff member to check this kiosk's payment status.");
+        return;
+      }
+      const access = await refreshSelectedStationOperationalState(supabase);
+      if (!access.valid) {
+        Alert.alert(access.failure.title, access.failure.message);
+        return;
+      }
+      setIdle(false);
+    } catch {
+      Alert.alert("Kiosk unavailable", "Could not verify kiosk access. Please see a staff member.");
+    }
+  };
 
   // Warm the image cache once per profile (not on every render — configsEqual
   // in the store keeps `config` referentially stable across identical polls,
@@ -142,7 +164,7 @@ export default function KioskScreen() {
         {isIdle ? (
           <KioskAttractScreen
             config={effectiveConfig}
-            onStart={() => setIdle(false)}
+            onStart={handleStart}
             onLogoLongPress={() => setShowPinModal(true)}
           />
         ) : (

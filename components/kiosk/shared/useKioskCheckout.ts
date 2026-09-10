@@ -1,4 +1,8 @@
-import { resolveKioskChargeOutcome } from "@/components/kiosk/shared/chargeOutcome";
+import { resolveKioskChargeOutcome, KIOSK_VERIFY_STAFF_MESSAGE } from "./chargeOutcome";
+import { acquireKioskCheckout, markKioskPaymentDispatched, releaseKioskCheckout } from "./checkoutGuard";
+import { refreshSelectedStationOperationalState } from "@/services/posAccessService";
+import { completePaymentJournal } from "@/services/paymentJournal";
+import { round2 } from "@/utils/money";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { CartItem } from "@/lib/types";
@@ -33,8 +37,8 @@ import { v4 as uuidv4 } from "uuid";
  *   2. setActiveOrder + ensureActiveOrderCreated  → backend row exists
  *   3. addItemToActiveOrder per cart line         → store recomputes totals/tax
  *   4. chargeCard (terminal; DEV-only mock if none) → card approved
- *   5. sendNewItemsToKitchenForOrder              → items to KDS (before pay RPC)
- *   6. payFullCard                                → records the payment
+ *   5. payFullCard                                → records the payment
+ *   6. sendNewItemsToKitchenForOrder              → paid items to KDS
  *
  * Card pricing is used (customer pays by card). Tip is passed through from the
  * caller (the tip screen). Templates own the screens; this owns the logic.
@@ -48,6 +52,7 @@ export type KioskCheckoutStatus =
   | "cancelled" // confirmed cancel: no charge, order voided
   | "finalizing" // kitchen send + payment record
   | "success"
+  | "assistance" // possible/confirmed charge: staff must reconcile, no retry
   | "error";
 
 /**
@@ -125,8 +130,12 @@ export function useKioskCheckout() {
   // failure as a confirmed cancellation rather than a decline.
   const chargeHandleRef = useRef<ChargeStartedHandle | null>(null);
   const cancelRequestedRef = useRef(false);
+  const runningRef = useRef(false);
+  const settledRef = useRef(false);
+  const chargingRef = useRef(false);
 
   const reset = useCallback(() => {
+    if (runningRef.current || settledRef.current) return;
     setStatus("idle");
     setError(null);
     setResult(null);
@@ -174,26 +183,41 @@ export function useKioskCheckout() {
   }, []);
 
   /**
-   * Create the order, add the cart items, sync, charge, send to kitchen, and
-   * record the payment — all at once, only when the customer commits to paying.
+   * Create the order, add the cart items, sync, charge, persist, and send to kitchen.
+   * Runs only when the customer commits to paying.
    * `tipAmount` is absolute dollars (0 if none). Returns the result or null on
    * failure (status/error set).
    */
   const payOrder = useCallback(
     async (tipAmount: number): Promise<KioskCheckoutResult | null> => {
-      const cart = useKioskCartStore.getState();
-      const orderStore = useOrderStore.getState();
-
-      if (cart.lines.length === 0) {
-        setStatus("error");
-        setError("Your cart is empty.");
+      if (runningRef.current || settledRef.current) return null;
+      const stationId = useStoreSettingsStore.getState().selectedStation?.id;
+      if (!stationId || !acquireKioskCheckout(stationId)) {
+        setStatus("assistance");
+        setError("This kiosk needs staff assistance before another payment can start.");
         return null;
       }
+      runningRef.current = true;
+      let needsReview = false;
+      const cart = useKioskCartStore.getState();
+      const orderStore = useOrderStore.getState();
 
       setError(null);
       setStatus("creating");
 
       try {
+        const location = useStoreSettingsStore.getState().selectedStore;
+        if (!location?.id || !location.merchant_id) throw new Error("Kiosk location is not configured. Please see a staff member.");
+        if (cart.lines.length === 0) throw new Error("Your cart is empty.");
+        if (!Number.isFinite(tipAmount) || tipAmount < 0 || round2(tipAmount) !== tipAmount) {
+          throw new Error("Invalid tip amount.");
+        }
+        const access = await refreshSelectedStationOperationalState(supabase);
+        if (!access.valid) throw new Error(access.failure.message);
+        const station = useStoreSettingsStore.getState().selectedStation;
+        if (station?.id !== stationId || station.can_process_payments === false || station.can_create_orders === false) {
+          throw new Error("This station cannot process kiosk orders. Please see a staff member.");
+        }
         // 1. Create the backend order now (deferred until pay). Apply the
         // customer's chosen order type (dine_in / takeout) BEFORE the backend
         // row is created, so it's sent on creation rather than defaulting to
@@ -269,9 +293,11 @@ export function useKioskCheckout() {
 
         // 3. Authoritative total from the synced order.
         const t = orderStore.recalculateOrder(liveOrderId);
-        const chargeTotal = t.total_amount;
-        const amountToCharge = chargeTotal + tipAmount;
-        if (chargeTotal <= 0) {
+        const { data: header, error: headerError } = await supabase
+          .from("orders").select("card_total").eq("id", createdDbId).single();
+        const chargeTotal = header?.card_total == null ? NaN : Number(header.card_total);
+        const amountToCharge = round2(chargeTotal + tipAmount);
+        if (headerError || !Number.isFinite(chargeTotal) || chargeTotal <= 0 || round2(t.total_amount) !== round2(chargeTotal)) {
           try {
             orderStore.voidOrder(liveOrderId);
           } catch {
@@ -292,6 +318,16 @@ export function useKioskCheckout() {
         // the right cancel-outcome branch (Castles' cancel can't confirm no
         // charge; Valor/Dejavoo cancel on a separate channel and can).
         let startedTerminalType: string | undefined;
+        // Recheck billing after order synchronization, immediately before any charge.
+        const paymentAccess = await refreshSelectedStationOperationalState(supabase);
+        if (!paymentAccess.valid) throw new Error(paymentAccess.failure.message);
+        const paymentStation = useStoreSettingsStore.getState().selectedStation;
+        if (paymentStation?.id !== stationId || paymentStation.can_process_payments === false || paymentStation.can_create_orders === false) {
+          throw new Error("Station changed or payment access was removed. Please see a staff member.");
+        }
+        markKioskPaymentDispatched(stationId, createdDbId);
+        needsReview = true;
+        chargingRef.current = true;
         setStatus("charging");
         const charge = await chargeActiveTerminal({
           amount: amountToCharge,
@@ -316,6 +352,8 @@ export function useKioskCheckout() {
             ? { simulatedCardWaitMs: KIOSK_SIMULATED_CARD_WAIT_MS }
             : {}),
         });
+        chargingRef.current = false;
+        chargeHandleRef.current = null;
         // Decide the reaction to the settled charge. An APPROVED card always
         // wins — even if the customer pressed Back a beat too late, the order is
         // completed and taken through confirmation (we must not un-charge it).
@@ -332,6 +370,7 @@ export function useKioskCheckout() {
           // Void the half-built order ONLY when nothing could have been
           // captured (confirmed cancel or clean decline). Never for "verify".
           if (outcome.kind === "cancelled" || outcome.kind === "declined") {
+            needsReview = false;
             try {
               orderStore.voidOrder(liveOrderId);
             } catch {
@@ -342,14 +381,17 @@ export function useKioskCheckout() {
             setStatus("cancelled");
             return null;
           }
-          setStatus("error");
+          setStatus(outcome.kind === "verify" ? "assistance" : "error");
           setError(outcome.message);
           return null;
         }
 
         // 5. Record the payment.
         setStatus("finalizing");
-        const idempotencyKey = uuidv4(); // must be a valid UUID
+        const journal = charge.terminalResponse?.paymentJournalHandle as
+          | { id: string; idempotencyKey: string }
+          | undefined;
+        const idempotencyKey = journal?.idempotencyKey ?? uuidv4();
         const payment = await payFullCard(
           createdDbId,
           chargeTotal,
@@ -359,20 +401,24 @@ export function useKioskCheckout() {
           charge.terminalId,
         );
 
-        if (payment.kind !== "success") {
-          setStatus("error");
-          setError(
-            payment.kind === "verifying"
-              ? "Payment is being verified. Please see a staff member."
-              : "Payment failed. Please try again.",
-          );
+        if (payment.kind !== "success" || !payment.data.success || !payment.data.order_fully_paid) {
+          setStatus("assistance");
+          setError(KIOSK_VERIFY_STAFF_MESSAGE);
           return null;
         }
+        if (journal) completePaymentJournal(journal.id, payment.data.payment_id);
 
         // 6. Only AFTER payment succeeds, send the ticket to the kitchen. On a
         // self-service kiosk there's no staff to catch a ticket for an order
         // that never paid, so the KDS send must follow a confirmed payment.
-        await orderStore.sendNewItemsToKitchenForOrder(liveOrderId);
+        const kitchen = await orderStore.sendNewItemsToKitchenForOrder(liveOrderId);
+        if (kitchen.status !== "sent") {
+          setStatus("assistance");
+          setError("Your payment was recorded, but kitchen delivery needs staff confirmation. Please do not pay again.");
+          return null;
+        }
+        needsReview = false;
+        settledRef.current = true;
 
         // 7. Text the customer their receipt + a personalized confirmation on
         // top (name + order number). Fire-and-forget — never block or fail the
@@ -419,9 +465,15 @@ export function useKioskCheckout() {
         return res;
       } catch (err) {
         console.error("[kioskCheckout] payOrder failed:", err);
-        setStatus("error");
-        setError("Something went wrong. Please try again.");
+        setStatus(needsReview ? "assistance" : "error");
+        setError(needsReview ? KIOSK_VERIFY_STAFF_MESSAGE : err instanceof Error ? err.message : "Could not start payment. Please see a staff member.");
         return null;
+      } finally {
+        chargingRef.current = false;
+        chargeHandleRef.current = null;
+        runningRef.current = false;
+        if (needsReview) settledRef.current = true;
+        releaseKioskCheckout(stationId, needsReview);
       }
     },
     [supabase],
@@ -436,6 +488,7 @@ export function useKioskCheckout() {
    * only meaningful while a charge is in flight.
    */
   const cancelCharge = useCallback(async () => {
+    if (!chargingRef.current) return;
     if (cancelRequestedRef.current) return; // already cancelling — ignore repeat taps
     cancelRequestedRef.current = true;
     setStatus("cancelling");
