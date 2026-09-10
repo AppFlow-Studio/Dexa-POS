@@ -73,6 +73,8 @@ export type OperationType =
   | "remove_course"
   // Seating operations
   | "set_item_seat"
+  // Per-item TO GO flag (durable; is_to_go is set ONLY by toggle_to_go_order_items)
+  | "toggle_to_go"
   // Pre-auth operations (terminal call must be online; only backend sync queued)
   | "process_preauth"
   | "capture_preauth"
@@ -116,6 +118,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   fire_course: 4,
   remove_course: 4,
   set_item_seat: 3,
+  toggle_to_go: 3, // item-level flag, same tier as set_item_seat
   update_order_status: 4,
   send_to_kitchen: 4, // Kitchen send after items synced
   update_item_status: 4, // KDS bulk status — Wave 3.0d-3
@@ -464,6 +467,7 @@ const ORDER_SCOPED_OPS: Partial<Record<OperationType, true>> = {
   void_discount: true,
   send_to_kitchen: true,
   update_item_status: true,
+  toggle_to_go: true, // is_to_go lives on the order item in the persisted slice
   process_payment: true,
   process_cash_payment: true,
   process_card_payment: true,

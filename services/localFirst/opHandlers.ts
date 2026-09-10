@@ -119,6 +119,17 @@ export interface AddItemPayload {
   seatNumber?: number | null;
   stationId?: string | null;
   /**
+   * Open/custom item. When true the drain calls add_open_item_v5 instead of
+   * add_order_item_v5 (which has no open-item columns and rejects the client
+   * cart id as p_menu_item_id with 22P02). menuItemId is NULL for these.
+   */
+  isOpenItem?: boolean;
+  openItemName?: string | null;
+  openItemPrice?: number | null;
+  isTaxExempt?: boolean;
+  /** Open items carry TO GO natively via add_open_item_v5.p_is_to_go. */
+  isToGo?: boolean;
+  /**
    * The CartItem's id — a composite merge key, not the row uuid.
    *
    * Needed to bind db_order_item_id back onto the right cart line once the
@@ -327,40 +338,63 @@ export function makeOpHandlers(
 
     add_item: async (op: ClaimedOp): Promise<DrainOutcome> => {
       const p = op.payload as AddItemPayload;
+      // Open/custom items go to add_open_item_v5 — add_order_item_v5 has no
+      // open-item columns and would reject the client cart id as a uuid
+      // p_menu_item_id (22P02). add_open_item_v5 carries p_is_to_go natively.
+      const rpcName = p.isOpenItem ? "add_open_item_v5" : "add_order_item_v5";
       console.log(
-        `[LF] → add_order_item_v5 item=${op.entityId} order=${p.orderId} name=${p.itemName} qty=${p.quantity}`,
+        `[LF] → ${rpcName} item=${op.entityId} order=${p.orderId} name=${p.itemName} qty=${p.quantity} open=${!!p.isOpenItem}`,
       );
       try {
-        const { data, error } = await client.rpc("add_order_item_v5", {
-          p_order_id: p.orderId,
-          p_menu_item_id: p.menuItemId ?? null,
-          p_quantity: p.quantity,
-          p_unit_price: p.unitPrice,
-          p_cash_unit_price: p.cashUnitPrice ?? null,
-          p_item_name: p.itemName ?? null,
-          p_category_name: p.categoryName ?? null,
-          p_selected_size_id: p.selectedSizeId ?? null,
-          p_selected_size_name: p.selectedSizeName ?? null,
-          p_size_price_modifier: p.sizePriceModifier ?? 0,
-          p_modifiers: p.modifiers ?? null,
-          p_special_instructions: p.specialInstructions ?? null,
-          p_course_number: p.courseNumber ?? 1,
-          p_seat_number: p.seatNumber ?? null,
-          p_menu_id: p.menuId ?? null,
-          p_menu_name: p.menuName ?? null,
-          p_category_id: p.categoryId ?? null,
-          p_idempotency_key: op.id,
-          p_station_id: p.stationId ?? null,
-          // Not routed through ORIGIN_CAPABLE_RPC: that map upgrades
-          // add_order_item_v3 -> v4, and we are already on v5. Passed directly
-          // so this write is still recognised as our own echo.
-          p_origin_id: op.id,
-          p_item_id: op.entityId,
-        });
+        let data: any;
+        let error: any;
+        if (p.isOpenItem) {
+          ({ data, error } = await client.rpc("add_open_item_v5", {
+            p_order_id: p.orderId,
+            p_item_name: p.openItemName ?? p.itemName ?? "Open Item",
+            p_unit_price: p.openItemPrice ?? p.unitPrice,
+            p_quantity: p.quantity,
+            p_special_instructions: p.specialInstructions ?? null,
+            p_is_tax_exempt: p.isTaxExempt ?? false,
+            p_seat_number: p.seatNumber ?? null,
+            p_idempotency_key: op.id,
+            p_station_id: p.stationId ?? null,
+            p_is_to_go: p.isToGo ?? false,
+            p_origin_id: op.id,
+            p_item_id: op.entityId,
+          }));
+        } else {
+          ({ data, error } = await client.rpc("add_order_item_v5", {
+            p_order_id: p.orderId,
+            p_menu_item_id: p.menuItemId ?? null,
+            p_quantity: p.quantity,
+            p_unit_price: p.unitPrice,
+            p_cash_unit_price: p.cashUnitPrice ?? null,
+            p_item_name: p.itemName ?? null,
+            p_category_name: p.categoryName ?? null,
+            p_selected_size_id: p.selectedSizeId ?? null,
+            p_selected_size_name: p.selectedSizeName ?? null,
+            p_size_price_modifier: p.sizePriceModifier ?? 0,
+            p_modifiers: p.modifiers ?? null,
+            p_special_instructions: p.specialInstructions ?? null,
+            p_course_number: p.courseNumber ?? 1,
+            p_seat_number: p.seatNumber ?? null,
+            p_menu_id: p.menuId ?? null,
+            p_menu_name: p.menuName ?? null,
+            p_category_id: p.categoryId ?? null,
+            p_idempotency_key: op.id,
+            p_station_id: p.stationId ?? null,
+            // Not routed through ORIGIN_CAPABLE_RPC: that map upgrades
+            // add_order_item_v3 -> v4, and we are already on v5. Passed directly
+            // so this write is still recognised as our own echo.
+            p_origin_id: op.id,
+            p_item_id: op.entityId,
+          }));
+        }
 
-        if (error) return rpcError("add_order_item_v5", error);
+        if (error) return rpcError(rpcName, error);
         console.log(
-          `[LF] ✓ add_order_item_v5 item=${op.entityId} order=${p.orderId} existed=${!!data?.already_existed}`,
+          `[LF] ✓ ${rpcName} item=${op.entityId} order=${p.orderId} existed=${!!data?.already_existed}`,
         );
 
         // NOW the server has the row, so the cart line may advertise it.
@@ -387,7 +421,7 @@ export function makeOpHandlers(
 
         return { kind: "synced", syncVersion: data?.sync_version ?? null };
       } catch (error) {
-        return rpcError("add_order_item_v5", error);
+        return rpcError(rpcName, error);
       }
     },
 

@@ -749,13 +749,17 @@ const persistToGoIfChanged = (
   dbItemId: string | undefined | null,
   prevIsToGo: boolean | undefined,
   nextIsToGo: boolean,
+  context?: { localOrderId?: string; localItemIds?: string[] },
 ) => {
   if (Boolean(prevIsToGo) === Boolean(nextIsToGo)) return;
   if (!dbItemId || !client) return;
-  OrderService.toggleToGoOnItems(client, [dbItemId], nextIsToGo).catch(() => {
-    // Fire-and-forget: local flag is persisted; a later broadcast re-fetch
-    // reconciles the server state.
-  });
+  // Durable now: on failure toggleToGoOnItems queues a retry (via context) and
+  // keeps the pending guard, so the flag can't be reconciled away before it
+  // persists. Items with no db id yet are still covered by addItemToBackend's
+  // reconcile once the id lands.
+  OrderService.toggleToGoOnItems(client, [dbItemId], nextIsToGo, context).catch(
+    () => {},
+  );
 };
 
 // ============================================================================
@@ -1476,6 +1480,10 @@ const ModifierScreenContent = () => {
           resolvedDbItemId,
           currentCartItem.is_to_go,
           currentState.isToGo,
+          {
+            localOrderId: useOrderStore.getState().activeOrderId ?? undefined,
+            localItemIds: [currentCartItem.id],
+          },
         );
 
         // Apply seat override for open items
@@ -1634,6 +1642,10 @@ const ModifierScreenContent = () => {
           resolvedDbItemId,
           currentCartItem.is_to_go,
           currentState.isToGo,
+          {
+            localOrderId: useOrderStore.getState().activeOrderId ?? undefined,
+            localItemIds: [currentCartItem.id],
+          },
         );
 
         // Ensure manual sync matches the updated seat
@@ -1889,16 +1901,36 @@ const ModifierScreenContent = () => {
               value={state.isToGo}
               onValueChange={(v) => {
                 dispatch({ type: "SET_TOGO", payload: v });
-                updateItemInActiveOrder({ ...cartItem, is_to_go: v });
-                if (cartItem.db_order_item_id && supabaseRef.current) {
+                // Patch ONLY is_to_go on the LIVE store item. Writing the stale
+                // sheet-open `cartItem` snapshot back could revert a
+                // db_order_item_id / paid_quantity / kitchen_status that advanced
+                // while the sheet was open, and would base the persist decision
+                // on a stale (missing) db id — the two save branches already
+                // resolve the live item for exactly this reason.
+                const orderId = useOrderStore.getState().activeOrderId;
+                const liveItem = orderId
+                  ? useOrderStore
+                      .getState()
+                      .ordersById[orderId]?.items.find(
+                        (i) => i.id === cartItem.id,
+                      )
+                  : undefined;
+                const baseItem = liveItem ?? cartItem;
+                updateItemInActiveOrder({ ...baseItem, is_to_go: v });
+                if (supabaseRef.current) {
+                  const dbId = baseItem.db_order_item_id;
+                  // Durable: toggleToGoOnItems queues a retry on failure and
+                  // keeps the pending guard, so send-to-kitchen / payment can no
+                  // longer reconcile the flag away before it persists.
                   OrderService.toggleToGoOnItems(
                     supabaseRef.current,
-                    [cartItem.db_order_item_id],
+                    dbId ? [dbId] : [],
                     v,
-                  ).catch(() => {
-                    // Fire-and-forget: local flag is set; a later broadcast
-                    // re-fetch reconciles the server state.
-                  });
+                    {
+                      localOrderId: orderId ?? undefined,
+                      localItemIds: [cartItem.id],
+                    },
+                  ).catch(() => {});
                 }
               }}
               trackColor={{ false: colors.border, true: colors.teal }}

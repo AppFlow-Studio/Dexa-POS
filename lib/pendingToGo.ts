@@ -12,8 +12,13 @@
  * Fix: while a toggle's persist is unconfirmed, remember the desired value keyed by
  * db_order_item_id. The inbound mapper prefers this value over a stale backend one,
  * and auto-clears the entry once the backend payload finally agrees (server caught
- * up). On RPC failure the caller clears the entry so the next fetch reconciles the
- * local flag back to the (unchanged) DB value.
+ * up).
+ *
+ * Durability (2026-09): a failed persist no longer clears the entry. Instead
+ * `OrderService.toggleToGoOnItems` queues a durable `toggle_to_go` offline op and
+ * KEEPS the marker, so the optimistic flag survives a bad-WiFi/offline/app-restart
+ * gap until the queued write lands — the same guarantee every other mutation has.
+ * The marker is cleared only when there is no context to queue with (last resort).
  */
 
 const pending = new Map<string, boolean>()

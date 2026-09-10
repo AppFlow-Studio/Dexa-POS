@@ -2218,6 +2218,19 @@ const addItemToBackend = async (
       courseNumber: item.courseNumber ?? 1,
       seatNumber: item.seatNumber ?? null,
       stationId: useStoreSettingsStore.getState().selectedStation?.id ?? null,
+      // Open/custom item — routes the drain to add_open_item_v5 (which owns the
+      // open-item columns + p_is_to_go). Without this an open item fell through
+      // to add_order_item_v5 with a client cart id as p_menu_item_id → 22P02.
+      isOpenItem: item.is_open_item ?? false,
+      openItemName: item.open_item_name ?? item.name,
+      openItemPrice:
+        item.open_item_price ??
+        item.baseCardPrice ??
+        item.unitPrice ??
+        item.price ??
+        0,
+      isTaxExempt: (item as any).is_tax_exempt ?? false,
+      isToGo: item.is_to_go ?? false,
       // The ROW id is deliberately NOT `item.id`.
       //
       // A CartItem's id is a composite MERGE key built by generateCartItemId —
@@ -2745,6 +2758,7 @@ const addItemToBackend = async (
             supabase,
             [addResult.order_item_id],
             true,
+            { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
           ).catch((err) => {
             if (__DEV__)
               console.warn(
@@ -3259,6 +3273,7 @@ const addItemToBackend = async (
           supabase,
           [addResult.order_item_id],
           true,
+          { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
         ).catch((err) => {
           if (__DEV__)
             console.warn("[addItemToBackend] to-go reconcile failed:", err);

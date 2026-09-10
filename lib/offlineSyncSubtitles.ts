@@ -22,7 +22,8 @@ export const ITEM_BOUND_OPS: ReadonlySet<OperationType> = new Set<OperationType>
   'void_item',
   'remove_item',
   'update_item_status',
-  'set_item_seat'
+  'set_item_seat',
+  'toggle_to_go'
 ])
 
 // Order-bound op types — surface on the inline OrderSyncBanner above the bill.
@@ -69,6 +70,8 @@ export function deriveTitle (op: OfflineOperation): string {
     }
     case 'set_item_seat':
       return "Seat assignment didn't save"
+    case 'toggle_to_go':
+      return "TO GO didn't save"
     case 'send_to_kitchen':
       return 'Kitchen send pending'
     case 'close_check':

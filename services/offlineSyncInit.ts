@@ -2258,6 +2258,7 @@ async function executeQueuedOperation(
               _supabaseClient,
               [data.order_item_id],
               true,
+              { localOrderId: storeKey, localItemIds: [localItemId] },
             ).catch((err) => {
               console.warn(
                 "[OfflineSync:add_item] to-go reconcile failed:",
@@ -3368,6 +3369,92 @@ async function executeQueuedOperation(
           return true;
         } catch (err) {
           console.error("[OfflineSync] Error setting item seat:", err);
+          return false;
+        }
+      }
+
+      // ================================================================
+      // TOGGLE TO GO — durable per-item "TO GO" flag.
+      // is_to_go is set ONLY by toggle_to_go_order_items; no add/payment/
+      // kitchen RPC touches it. Before this op the toggle was a one-shot
+      // fire-and-forget, so any transient failure silently lost the flag and
+      // the next full re-fetch (payment / send-to-kitchen) reconciled the item
+      // back to the DB's false. Now it retries like every other mutation.
+      // The RPC is naturally idempotent (a boolean UPDATE), so replay is safe.
+      // ================================================================
+      case "toggle_to_go": {
+        const { dbItemIds, isToGo, localOrderId, localItemIds } =
+          op.params as {
+            dbItemIds?: string[];
+            isToGo: boolean;
+            localOrderId?: string;
+            localItemIds?: string[];
+          };
+
+        // Resolve local item ids that weren't UUIDs at queue time (an item
+        // toggled TO GO before its add synced). Mirrors update_item_status.
+        let resolvedItemIds: string[] = (dbItemIds ?? []).filter((id) =>
+          isValidUUID(id),
+        );
+
+        if (localItemIds?.length && localOrderId) {
+          for (const localItemId of localItemIds) {
+            const resolved = resolveItemId(localOrderId, localItemId);
+            if (resolved && !resolvedItemIds.includes(resolved)) {
+              resolvedItemIds.push(resolved);
+            }
+          }
+
+          if (resolvedItemIds.length === 0) {
+            const liveOrder = _getOrderStore().getState().ordersById[
+              localOrderId
+            ] as any;
+            if (liveOrder?.items) {
+              for (const localItemId of localItemIds) {
+                const liveItem = liveOrder.items.find(
+                  (i: any) => i.id === localItemId && i.db_order_item_id,
+                );
+                if (
+                  liveItem?.db_order_item_id &&
+                  !resolvedItemIds.includes(liveItem.db_order_item_id)
+                ) {
+                  resolvedItemIds.push(liveItem.db_order_item_id);
+                }
+              }
+            }
+          }
+        }
+
+        if (resolvedItemIds.length === 0) {
+          console.log(
+            "[OfflineSync:toggle_to_go] No items resolved yet, will retry",
+          );
+          return false;
+        }
+
+        try {
+          const { error } = await _supabaseClient.rpc(
+            "toggle_to_go_order_items",
+            {
+              p_order_item_ids: resolvedItemIds,
+              p_is_to_go: isToGo,
+            },
+          );
+          if (error) {
+            console.error("[OfflineSync:toggle_to_go] Failed:", error);
+            return false;
+          }
+          if (__DEV__)
+            console.log("[OfflineSync:toggle_to_go] OK", {
+              count: resolvedItemIds.length,
+              isToGo,
+            });
+          // Leave the pending-guard marker (if this device still holds it) for
+          // resolveInboundToGo to clear on the next confirming fetch — clearing
+          // here would briefly expose a stale pre-commit broadcast.
+          return true;
+        } catch (err) {
+          console.error("[OfflineSync:toggle_to_go] Exception:", err);
           return false;
         }
       }

@@ -113,6 +113,74 @@ describe("identity reaches the wire", () => {
   });
 });
 
+describe("open items route to add_open_item_v5", () => {
+  it("sends an open item to add_open_item_v5 with the client id, open fields, and TO GO", async () => {
+    const { client, calls } = fakeClient(() => ({
+      data: { success: true, order_item_id: "x" },
+      error: null,
+    }));
+    const handlers = makeOpHandlers(client);
+
+    const result = await handlers.add_item!(
+      op({
+        payload: {
+          orderId: "o1",
+          quantity: 2,
+          unitPrice: 7.5,
+          itemName: "Custom Plate",
+          isOpenItem: true,
+          openItemName: "Custom Plate",
+          openItemPrice: 7.5,
+          isTaxExempt: false,
+          isToGo: true,
+          stationId: "st-1",
+        },
+      }),
+    );
+
+    expect(result.kind).toBe("synced");
+    expect(calls).toHaveLength(1);
+    // The whole bug: an open item must NOT go to add_order_item_v5 (no open
+    // columns; the client cart id would land in p_menu_item_id → 22P02).
+    expect(calls[0].name).toBe("add_open_item_v5");
+    expect(calls[0].params.p_item_id).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(calls[0].params.p_item_name).toBe("Custom Plate");
+    expect(calls[0].params.p_unit_price).toBe(7.5);
+    expect(calls[0].params.p_is_to_go).toBe(true);
+    expect(calls[0].params.p_origin_id).toBe("op-1");
+    expect(calls[0].params.p_idempotency_key).toBe("op-1");
+    // add_open_item_v5 has no menu-item param — a fake uuid can't leak through.
+    expect(calls[0].params.p_menu_item_id).toBeUndefined();
+  });
+
+  it("regular items still go to add_order_item_v5", async () => {
+    const { client, calls } = fakeClient(() => ({
+      data: { sync_version: 3 },
+      error: null,
+    }));
+    const handlers = makeOpHandlers(client);
+
+    await handlers.add_item!(
+      op({
+        payload: {
+          orderId: "o1",
+          quantity: 1,
+          unitPrice: 4,
+          menuItemId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          isOpenItem: false,
+        },
+      }),
+    );
+
+    expect(calls[0].name).toBe("add_order_item_v5");
+    expect(calls[0].params.p_menu_item_id).toBe(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
+  });
+});
+
 describe("seat_guests conflict handling (§9.5)", () => {
   it("escalates table_occupied and rejects rather than retrying forever", async () => {
     const seen: TableOccupiedConflict[] = [];

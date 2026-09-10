@@ -9,27 +9,34 @@
 -- has to be rewritten atomically. v5 lets the DEVICE mint the uuid, which
 -- removes the rewrite entirely.
 --
--- ── PROVENANCE. READ THIS BEFORE DEPLOYING. ─────────────────────────────────
--- This is forked from `add_order_item_v3_station_guard.sql` (in this repo),
--- NOT from the deployed `add_order_item_v4` — because v4's definition does not
--- live in this repository. Per lib/realtime/mutationOrigin.ts:11-13, the
--- origin-id work shipped from a DIFFERENT repo:
+-- ── PROVENANCE — VERIFIED AGAINST THE LIVE DB 2026-09-10. ────────────────────
+-- The live add_order_item_v4 (recovered verbatim in add_order_item_v4.sql) is a
+-- thin wrapper: it calls set_broadcast_origin(p_origin_id), then delegates to
+-- the 20-parameter add_order_item_v3 (station-guard overload). v5 cannot
+-- delegate the same way because it must place a client-minted id inside the
+-- INSERT, so it INLINES the v3 body + the origin stamp. The p_origin_id work
+-- itself shipped from the website repo
+-- (dexapos-website/.../20260816130000_aud10_broadcast_origin_id.sql); see
+-- lib/realtime/mutationOrigin.ts:11-13.
 --
---     dexapos-website/supabase/migrations/20260816130000_aud10_broadcast_origin_id.sql
+-- Step 1 of the runbook was executed: the live v4 AND the v3 it delegates to
+-- were dumped from staging and diffed against this file. Two drifts were found
+-- between the STALE in-repo add_order_item_v3_station_guard.sql (which the first
+-- draft of v5 copied) and the LIVE v3, and are corrected here:
+--   1. Cash fallback is the INVERSE formula `ROUND(p_unit_price/(1+rate),2)`
+--      (live), not the old discount `p_unit_price*(1-rate)` (stale in-repo).
+--   2. search_path is 'public','pg_temp' (matches live v4 + repo convention),
+--      not bare 'public'.
+-- Everything else — tax-category lookup, modifier rollup, discount
+-- redistribution, the station guard — matches the live v3 verbatim.
 --
--- Diffing the deployed v4 signature (database.types.ts) against station-guard
--- v3 shows exactly ONE functional addition: `p_origin_id`, which per that same
--- comment is wired as `set_broadcast_origin()` in the same transaction so
--- `broadcast_order_changes()` can echo it back as `data.order.origin_id` for
--- local echo suppression. That is reproduced below.
+-- set_broadcast_origin(NULL) early-returns, so the NULL-guard below is
+-- equivalent to v4's unconditional call; it is kept for readability.
 --
--- Everything else — pricing, dual-price resolution, tax-category lookup,
--- modifier rollup, discount redistribution, the station guard — is VERBATIM
--- from station-guard v3 and was not retyped.
---
--- ⚠️ BEFORE DEPLOY: dump the live v4 and diff it against this file. If v4
--- gained anything beyond p_origin_id, port it here first. Query and procedure
--- in add_order_item_v5_RUNBOOK.md.
+-- ⚠️ STILL PENDING BEFORE PROD DEPLOY: confirm production (hifouuofcaytijrkbvcy)
+-- carries the same inverse-formula v3 as staging. Prod is not readable from
+-- here; run the §Step 1 query against prod and diff. If prod v3 still uses the
+-- old discount formula, hold this migration until prod gets the inverse one.
 --
 -- DROP-then-CREATE because PostgreSQL treats different parameter counts as
 -- distinct overloads — leaving a partial signature behind would let a racy
@@ -65,7 +72,7 @@ CREATE OR REPLACE FUNCTION public.add_order_item_v5(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO 'public'
+SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_cached JSONB;
@@ -207,10 +214,16 @@ BEGIN
 
   v_size_mod := COALESCE(p_size_price_modifier, 0);
 
+  -- Cash fallback is the INVERSE formula (card is a surcharge over cash),
+  -- matching the LIVE add_order_item_v3 that v4 delegates to since
+  -- 20260706130000_open_item_dual_pricing_inverse.sql. The in-repo
+  -- add_order_item_v3_station_guard.sql still shows the old `* (1 - rate)`
+  -- discount form and is stale — do not copy it. Only fires when the client
+  -- sends neither p_cash_unit_price nor a menu cash_price.
   v_resolved_cash_unit_price := COALESCE(
     p_cash_unit_price,
     (SELECT mi.cash_price FROM public.menu_items mi WHERE mi.id = p_menu_item_id AND p_menu_item_id IS NOT NULL),
-    p_unit_price * (1 - v_cash_discount_rate)
+    ROUND(p_unit_price / (1 + v_cash_discount_rate), 2)
   );
 
   v_effective_card_price := p_unit_price + v_size_mod + v_modifier_total;

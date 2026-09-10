@@ -286,6 +286,17 @@ export interface AddLocalItemInput {
   seatNumber?: number | null;
   stationId?: string | null;
   /**
+   * Open/custom item. When true the drain routes to add_open_item_v5 (NOT
+   * add_order_item_v5, which has no open-item columns and would reject the
+   * client cart id as p_menu_item_id with 22P02). menuItemId is forced NULL.
+   */
+  isOpenItem?: boolean;
+  openItemName?: string | null;
+  openItemPrice?: number | null;
+  isTaxExempt?: boolean;
+  /** Open items carry TO GO natively via add_open_item_v5.p_is_to_go. */
+  isToGo?: boolean;
+  /**
    * The CartItem's id — a composite merge key (`<menuItemId>|modifiers:…`),
    * NOT a uuid. Carried through so the drain can bind the resulting row id
    * back onto the correct cart line.
@@ -305,9 +316,13 @@ export async function addLocalItem(
   const deviceId = getDeviceId();
   const ts = nowIso();
 
+  // Open items have no menu item — never let a client cart id reach a uuid
+  // column. The drain routes on isOpenItem to add_open_item_v5.
+  const menuItemId = input.isOpenItem ? null : (input.menuItemId ?? null);
+
   const payload: AddItemPayload = {
     orderId: input.orderId,
-    menuItemId: input.menuItemId ?? null,
+    menuItemId,
     quantity: input.quantity,
     unitPrice: input.unitPrice,
     cashUnitPrice: input.cashUnitPrice ?? null,
@@ -324,6 +339,13 @@ export async function addLocalItem(
     courseNumber: input.courseNumber ?? 1,
     seatNumber: input.seatNumber ?? null,
     stationId: input.stationId ?? null,
+    isOpenItem: input.isOpenItem ?? false,
+    openItemName: input.isOpenItem ? (input.openItemName ?? input.itemName) : null,
+    openItemPrice: input.isOpenItem
+      ? (input.openItemPrice ?? input.unitPrice)
+      : null,
+    isTaxExempt: input.isTaxExempt ?? false,
+    isToGo: input.isToGo ?? false,
     cartItemId: input.cartItemId ?? itemId,
   };
 
@@ -334,17 +356,19 @@ export async function addLocalItem(
               category_name, menu_name, quantity, unit_price_minor,
               cash_unit_price_minor, item_status, course_number, seat_number,
               special_instructions, selected_size_id, selected_size_name,
-              created_at, updated_at, _sync_status, _device_id, payload
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)
+              is_to_go, created_at, updated_at, _sync_status, _device_id, payload
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)
             ON CONFLICT(id) DO NOTHING`,
       args: [
         itemId,
         input.orderId,
-        input.menuItemId ?? null,
+        menuItemId,
         input.menuId ?? null,
         input.categoryId ?? null,
         input.itemName,
-        input.categoryName ?? null,
+        // Open items live under the "Open Items" category server-side; mirror
+        // it locally so the optimistic row groups the same way.
+        input.isOpenItem ? "Open Items" : (input.categoryName ?? null),
         input.menuName ?? null,
         input.quantity,
         Math.round(input.unitPrice * 100),
@@ -354,10 +378,24 @@ export async function addLocalItem(
         input.specialInstructions ?? null,
         input.selectedSizeId ?? null,
         input.selectedSizeName ?? null,
+        input.isToGo ? 1 : 0,
         ts,
         ts,
         deviceId,
-        JSON.stringify({ id: itemId, order_id: input.orderId }),
+        // Persist open-item facts in the row payload so a SQLite-first rehydrate
+        // (the table has no is_open_item column) can still render it as an open
+        // item rather than a $0 menu lookup.
+        JSON.stringify({
+          id: itemId,
+          order_id: input.orderId,
+          is_open_item: input.isOpenItem ?? false,
+          open_item_name: input.isOpenItem
+            ? (input.openItemName ?? input.itemName)
+            : null,
+          open_item_price: input.isOpenItem
+            ? (input.openItemPrice ?? input.unitPrice)
+            : null,
+        }),
       ],
     },
     // Touch the parent so any "has this order changed?" check sees it. Same

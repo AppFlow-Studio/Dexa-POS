@@ -212,11 +212,24 @@ const OrderDetailsComponent: React.FC<{
       return
     }
 
-    // Create a new cart item for the open item
+    // Create a new cart item for the open item.
+    //
+    // CRITICAL: this MUST carry is_open_item / open_item_name / open_item_price
+    // and MUST NOT set a non-uuid menuItemId. addItemToBackend routes on
+    // is_open_item (useOrderStore ~2560): open items go to add_open_item (no
+    // menu_item_id), regular items send menuItemId as the uuid p_menu_item_id.
+    // The previous shape omitted is_open_item and set menuItemId to a fake
+    // `open_item_<ts>`, so it fell through to the REGULAR path and Postgres
+    // rejected it with `invalid input syntax for type uuid: "open_item_..."`
+    // (22P02) — the add failed, nothing persisted, and the total never moved.
+    // Mirrors the canonical creator in components/menu/OpenItemAdder.tsx.
+    const itemId = `open_item_${Date.now()}`
     const newOpenItem: any = {
-      id: `open_item_${Date.now()}`,
-      itemId: `open_item_${Date.now()}`,
-      menuItemId: `open_item_${Date.now()}`,
+      id: itemId,
+      itemId,
+      // Open items have no menu item — leave this null so it is never sent as a
+      // uuid on any add path (legacy add_order_item OR the local-first v5 route).
+      menuItemId: null,
       name: openItemName.trim(),
       quantity: 1,
       originalPrice: price,
@@ -226,6 +239,11 @@ const OrderDetailsComponent: React.FC<{
       },
       availableDiscount: undefined,
       appliedDiscount: null,
+      is_open_item: true,
+      open_item_name: openItemName.trim(),
+      open_item_price: price,
+      category_name: 'Open Items',
+      is_tax_exempt: false,
       // Default missing properties to satisfy CartItem
       paidQuantity: 0,
       unitPrice: price,
