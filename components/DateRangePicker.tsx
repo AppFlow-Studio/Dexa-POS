@@ -43,14 +43,14 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
         startingDay: true,
         endingDay: true,
         color: colors.info,
-        textColor: "white",
+        textColor: colors.onSolid,
       };
     } else {
       // Different dates - mark range
       marked[fromString] = {
         startingDay: true,
         color: colors.info,
-        textColor: "white",
+        textColor: colors.onSolid,
       };
 
       let currentDate = new Date(range.from);
@@ -60,7 +60,7 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
         const dateString = currentDate.toISOString().split("T")[0];
         marked[dateString] = {
           color: colors.info,
-          textColor: "white",
+          textColor: colors.onSolid,
         };
         currentDate.setDate(currentDate.getDate() + 1);
       }
@@ -68,7 +68,7 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
       marked[toString] = {
         endingDay: true,
         color: colors.info,
-        textColor: "white",
+        textColor: colors.onSolid,
       };
     }
   } else {
@@ -77,7 +77,7 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
       startingDay: true,
       endingDay: true,
       color: colors.info,
-      textColor: "white",
+      textColor: colors.onSolid,
     };
   }
   return marked;
@@ -114,20 +114,26 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     calendarBackground: colors.panel,
     textSectionTitleColor: colors.label,
     selectedDayBackgroundColor: colors.info,
-    selectedDayTextColor: "#ffffff",
+    selectedDayTextColor: colors.onSolid,
     todayTextColor: colors.info,
-    dayTextColor: "#FFFFFF",
+    dayTextColor: colors.heading,
     arrowColor: colors.info,
-    monthTextColor: "#FFFFFF",
+    monthTextColor: colors.heading,
     textMonthFontWeight: "bold",
   };
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <TouchableOpacity className="flex-row items-center p-3 gap-2 bg-surface border border-gray-600 rounded-lg">
+        <TouchableOpacity
+          className="flex-row items-center p-3 gap-2 bg-surface border rounded-lg"
+          style={{ borderColor: colors.border }}
+        >
           <CalendarIcon color={colors.label} size={20} />
-          <Text className="text-lg font-semibold text-gray-300">
+          <Text
+            className="text-lg font-semibold"
+            style={{ color: colors.heading }}
+          >
             {range.from
               ? `${formatDisplayDate(range.from)} - ${formatDisplayDate(
                   range.to || range.from
@@ -137,7 +143,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
           {range.from && (
             <TouchableOpacity
               onPress={clearRange}
-              className="ml-2 p-1 bg-gray-700 rounded-full"
+              className="ml-2 p-1 rounded-full"
+              style={{ backgroundColor: colors.card }}
             >
               <X size={14} color={colors.heading} />
             </TouchableOpacity>
@@ -145,7 +152,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
         </TouchableOpacity>
       </PopoverTrigger>
       <PopoverContent
-        className="p-0 w-[700px] bg-surface border border-gray-700 rounded-2xl"
+        className="p-0 w-[700px] bg-surface border rounded-2xl"
+        style={{ borderColor: colors.border }}
         align="end"
       >
         <View className="flex-row p-4 gap-x-4 w-[700px] justify-between">
@@ -163,11 +171,11 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 calendarBackground: colors.card,
                 textSectionTitleColor: colors.label,
                 selectedDayBackgroundColor: colors.info,
-                selectedDayTextColor: "#ffffff",
+                selectedDayTextColor: colors.onSolid,
                 todayTextColor: colors.info,
-                dayTextColor: "#FFFFFF",
+                dayTextColor: colors.heading,
                 arrowColor: colors.info,
-                monthTextColor: "#FFFFFF",
+                monthTextColor: colors.heading,
                 textMonthFontWeight: "bold",
               }}
             />
@@ -192,39 +200,54 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 calendarBackground: colors.card,
                 textSectionTitleColor: colors.label,
                 selectedDayBackgroundColor: colors.info,
-                selectedDayTextColor: "#ffffff",
+                selectedDayTextColor: colors.onSolid,
                 todayTextColor: colors.info,
-                dayTextColor: "#FFFFFF",
+                dayTextColor: colors.heading,
                 arrowColor: colors.info,
-                monthTextColor: "#FFFFFF",
+                monthTextColor: colors.heading,
                 textMonthFontWeight: "bold",
               }}
             />
           </View> */}
         </View>
-        <View className="flex-row items-center justify-between p-4 border-t border-gray-700">
+        <View
+          className="flex-row items-center justify-between p-4 border-t"
+          style={{ borderTopColor: colors.border }}
+        >
           <View className="flex-row gap-x-4 items-center">
             <TouchableOpacity
               onPress={() => setActiveSelector("from")}
-              className={`p-3 rounded-lg border-2 ${
-                activeSelector === "from"
-                  ? "border-blue-500"
-                  : "border-gray-600"
-              }`}
+              className="p-3 rounded-lg border-2"
+              style={{
+                borderColor:
+                  activeSelector === "from" ? colors.info : colors.border,
+              }}
             >
-              <Text className="text-gray-400 text-sm mb-1">Start Date</Text>
-              <Text className="text-white font-semibold text-base">
+              <Text className="text-sm mb-1" style={{ color: colors.label }}>
+                Start Date
+              </Text>
+              <Text
+                className="font-semibold text-base"
+                style={{ color: colors.heading }}
+              >
                 {formatDisplayDate(range.from)}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setActiveSelector("to")}
-              className={`p-3 rounded-lg border-2 ${
-                activeSelector === "to" ? "border-blue-500" : "border-gray-600"
-              }`}
+              className="p-3 rounded-lg border-2"
+              style={{
+                borderColor:
+                  activeSelector === "to" ? colors.info : colors.border,
+              }}
             >
-              <Text className="text-gray-400 text-sm mb-1">End Date</Text>
-              <Text className="text-white font-semibold text-base">
+              <Text className="text-sm mb-1" style={{ color: colors.label }}>
+                End Date
+              </Text>
+              <Text
+                className="font-semibold text-base"
+                style={{ color: colors.heading }}
+              >
                 {formatDisplayDate(range.to)}
               </Text>
             </TouchableOpacity>
