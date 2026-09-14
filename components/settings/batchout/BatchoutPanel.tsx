@@ -62,6 +62,15 @@ type ScreenState = 'idle' | 'confirming' | 'settling' | 'results'
  */
 const VALOR_BATCHOUT_ENABLED = true
 
+/**
+ * Kill switch for CodePay (on-terminal) batch-out. Default ON for staging/preview
+ * where prepare_codepay_settlement / finalize_codepay_settlement are live
+ * (applied 2026-09-15). Flip false to hide the CodePay path in the field if the
+ * PROD RPCs aren't deployed yet — a missing RPC also surfaces a clean "not
+ * deployed to this environment yet" message, so this is belt-and-suspenders.
+ */
+const CODEPAY_BATCHOUT_ENABLED = true
+
 interface BatchoutPanelProps {
   /** When true, renders the today's batch log section below the action card. */
   showBatchLog?: boolean
@@ -129,9 +138,17 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   const terminal = selectedStation?.payment_terminal
   const isCastles = terminal?.terminal_type === 'castles'
   const isValor = terminal?.terminal_type === 'valor'
+  const isCodepay = terminal?.terminal_type === 'codepay'
   const isUsbTerminal = terminal?.connection_type === 'usb'
   const terminalHost = terminal?.ip_address
   const terminalPort = terminal?.port ?? CASTLES_DEFAULT_PORT
+  // CodePay settles via an on-device Intent — no USB/TCP connection to gate on.
+  const isOnDeviceTerminal = isCodepay
+  // CodePay app_id (Intent extra) lives in app_id, falling back to register_id.
+  const codepayAppId = terminal?.app_id ?? terminal?.register_id ?? undefined
+  // Settle is reachable when the terminal is either connected (USB/TCP) or
+  // on-device (CodePay Intent).
+  const canReachTerminal = isUsbTerminal || !!terminalHost || isOnDeviceTerminal
 
   // ATOM (Landi P30) settles host-side automatically — there's no manual
   // batch-out to run on-device. When it's the active processor and there's no
@@ -143,7 +160,10 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   // it can be turned off in the field without an OTA; it requires the
   // prepare_valor_settlement / finalize_valor_settlement RPCs to be live in the
   // DB the app points at (staging done; prod on the user's deploy).
-  const isSupported = isCastles || (isValor && VALOR_BATCHOUT_ENABLED)
+  const isSupported =
+    isCastles ||
+    (isValor && VALOR_BATCHOUT_ENABLED) ||
+    (isCodepay && CODEPAY_BATCHOUT_ENABLED)
 
   // serial_number isn't in get_location_stations_with_status — fetch it
   // separately so the header can show it.
@@ -314,7 +334,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   const handleSettle = useCallback(async () => {
     if (
       !terminal?.id ||
-      (!isUsbTerminal && !terminalHost) ||
+      !canReachTerminal ||
       !selectedStore?.id ||
       !selectedStore?.merchant_id
     )
@@ -334,6 +354,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         connectionType: isUsbTerminal ? 'usb' : 'local_socket',
         epi: (terminal as any).epi ?? undefined,
         cancelPort: (terminal as any).cancel_port ?? undefined,
+        appId: isCodepay ? codepayAppId : undefined,
         locationId: selectedStore.id,
         supabase,
         onStatus: setStatusMessage
@@ -429,11 +450,13 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
             ? isUsbTerminal
               ? 'Castles · USB'
               : `Castles @ ${terminalHost}:${terminalPort}`
-            : terminal?.terminal_type
-              ? terminal.terminal_type
-              : atomActive
-                ? 'Landi P30 · TSYS'
-                : 'No terminal configured'}
+            : isCodepay
+              ? 'CodePay · on-terminal'
+              : terminal?.terminal_type
+                ? terminal.terminal_type
+                : atomActive
+                  ? 'Landi P30 · TSYS'
+                  : 'No terminal configured'}
         </Text>
         {terminalSerial ? (
           <Text style={{ marginTop: s(2), fontSize: s(12), color: colors.muted }}>
@@ -456,7 +479,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
             statsLoading={statsLoading}
             onSettle={handleConfirm}
             onPrintDay={printDay}
-            disabled={state === 'confirming' || (!isUsbTerminal && !terminalHost)}
+            disabled={state === 'confirming' || !canReachTerminal}
           />
         ) : state === 'settling' ? (
           <SettlingView statusMessage={statusMessage} />

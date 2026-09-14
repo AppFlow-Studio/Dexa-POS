@@ -30,7 +30,8 @@ export interface StationPaymentTerminal {
     | "stripe_terminal"
     | "castles"
     | "valor"
-    | "atom";
+    | "atom"
+    | "codepay";
   terminal_model: string | null;
   is_connected: boolean;
   /** Castles/Valor terminal IP address */
@@ -41,6 +42,12 @@ export interface StationPaymentTerminal {
   cancel_port?: number;
   /** Valor EPI (merchant/device identifier) */
   epi?: string;
+  /**
+   * CodePay payment app id (Intent extra `app_id`) for the on-terminal path.
+   * Until a dedicated DB column is projected, chargeActiveTerminal falls back to
+   * `register_id` for the app_id.
+   */
+  app_id?: string | null;
   /** Hardware serial number printed on the device */
   serial_number?: string | null;
   /** Terminal firmware / app version (Castles infAppVersion, Valor APP_VERSION) */

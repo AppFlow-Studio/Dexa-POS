@@ -3241,7 +3241,9 @@ const DevicesConnectionsScreen = ({
                                       ? 'Castles'
                                       : t.terminalType === 'valor'
                                         ? 'Valor'
-                                        : 'Dejavoo'}
+                                        : t.terminalType === 'codepay'
+                                          ? 'CodePay'
+                                          : 'Dejavoo'}
                                   </Text>
                                 </View>
                                 {/* Connection-type pill — USB vs TCP/WiFi. Helps staff

@@ -13,6 +13,7 @@
 //             `cleared` reports positive device confirmation)
 //   Dejavoo → abortTransaction().referenceId(refId).execute()
 //   ATOM    → unsupported (no cancel-before-card endpoint in v1)
+//   CodePay → unsupported (startActivityForResult; cardholder cancels on-device)
 //
 // This layer only DISPATCHES the abort. The authoritative outcome — cancelled
 // (no charge) vs. indeterminate (may have charged) vs. raced-to-approved — is
@@ -89,6 +90,14 @@ export async function cancelActiveTerminalCharge(
     if (terminalType === "atom") {
       // ATOM has no cancel-before-card endpoint in v1 — the /authorize call
       // blocks until the terminal resolves on its own.
+      return { terminalType, dispatched: false, unsupported: true };
+    }
+
+    if (terminalType === "codepay") {
+      // CodePay runs via startActivityForResult — once CodePay Register is in
+      // the foreground the POS can't inject a cancel. The cardholder cancels on
+      // the terminal itself (RESULT_CANCELED → surfaced as `aborted` by
+      // chargeActiveTerminal). No dispatchable cancel from our side.
       return { terminalType, dispatched: false, unsupported: true };
     }
 

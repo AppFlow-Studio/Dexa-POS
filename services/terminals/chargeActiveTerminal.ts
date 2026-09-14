@@ -37,6 +37,8 @@ import {
   resumeAtomLoopbackProbing,
   suspendAtomLoopbackProbing,
 } from "@/services/terminals/atomLoopbackDetector";
+import { getSharedCodePayService } from "@/services/terminals/codepay-service";
+import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
 import { getSharedValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import {
@@ -433,6 +435,94 @@ export async function chargeActiveTerminal(
       terminalResponse: {
         ...(result.terminalResponse ?? { atom_transaction: atomTx }),
         transactionId: result.paymentId ?? referenceId,
+        paymentJournalHandle: journalHandle(journalId),
+      },
+    };
+  }
+
+  // ============ CODEPAY (on-terminal Intent) ============
+  if (terminal.terminal_type === "codepay") {
+    // app_id drives the Intent. Prefer a dedicated field; fall back to
+    // register_id until a DB column is projected (see types/station.ts).
+    const appId = terminal.app_id ?? terminal.register_id ?? "";
+    if (!appId.trim()) {
+      return {
+        ok: false,
+        message: "CodePay terminal has no app_id configured. Please see a staff member.",
+      };
+    }
+
+    const service = getSharedCodePayService();
+    service.configure({
+      appId,
+      terminalId: terminal.id,
+      terminalSn: terminal.serial_number ?? undefined,
+      timeout: CODEPAY_SALE_TIMEOUT_MS,
+    });
+
+    const staSuffix =
+      useStoreSettingsStore.getState().selectedStation?.id?.slice(-4) ?? "";
+    // merchant_order_no ≤ 32 chars: "CP_" + ms epoch + "_" + 4 = ~21 chars.
+    const referenceId = `CP_${Date.now()}_${staSuffix}`;
+
+    const journalId = writeJournal();
+    onChargeStarted?.({
+      terminalType: "codepay",
+      terminalId: terminal.id,
+      referenceId,
+    });
+
+    // CodePay Register runs on the same device and returns to us via
+    // onActivityResult, so — unlike ATOM — the POS is re-foregrounded
+    // automatically; no bringToForeground needed. Tip is pre-known here, so we
+    // bake it in (no on-screen tip prompt).
+    const result = await service.processSale({
+      amount: base,
+      ...(tipAmount > 0 ? { tipAmount } : {}),
+      referenceId,
+      onScreenTip: false,
+    });
+
+    const codepayTx = result.terminalResponse?.codepay_transaction as
+      | Record<string, unknown>
+      | undefined;
+
+    // INDETERMINATE — the sale MAY have been charged (Intent timed out or an
+    // unreadable result). Leave the journal for reconcile; never re-charge.
+    if (result.indeterminate) {
+      updatePaymentJournal(journalId, {
+        status: "terminal_approved",
+        terminalTxnId: result.transNo ?? referenceId,
+      });
+      return { ok: false, indeterminate: true, message: INDETERMINATE_MESSAGE };
+    }
+
+    // Cardholder cancelled on the terminal — no card read, no charge.
+    if (result.aborted) {
+      failPaymentJournal(journalId, "terminal_aborted: cancelled");
+      return {
+        ok: false,
+        message: result.error || "Payment cancelled — no charge. Please try again.",
+      };
+    }
+
+    if (!result.success) {
+      failPaymentJournal(journalId, `terminal_declined: ${result.error ?? "Declined"}`);
+      return { ok: false, message: result.error || "Payment declined." };
+    }
+
+    updatePaymentJournal(journalId, {
+      status: "terminal_approved",
+      terminalTxnId: result.transNo ?? referenceId,
+      ...(dbOrderId ? { dbOrderId } : {}),
+    });
+
+    return {
+      ok: true,
+      terminalId: terminal.id,
+      terminalResponse: {
+        ...(result.terminalResponse ?? { codepay_transaction: codepayTx }),
+        transactionId: result.transNo ?? referenceId,
         paymentJournalHandle: journalHandle(journalId),
       },
     };

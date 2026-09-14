@@ -28,6 +28,8 @@ import {
 } from "@/services/terminals/atomLoopbackDetector";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
 import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from "@/types/atom";
+import { getSharedCodePayService } from "@/services/terminals/codepay-service";
+import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
 import {
     CASTLES_DEFAULT_PORT,
     CASTLES_SOCKET_TIMEOUT_MS,
@@ -241,8 +243,16 @@ export class RefundService {
         // ATOM linked refund/void references the original by paymentId.
         const atomTxn = p.processor_response?.atom_transaction;
         const atomPaymentId = atomTxn?.paymentId || "";
+        // CodePay references the original by orig_merchant_order_no.
+        const codepayTxn = p.processor_response?.codepay_transaction;
+        const codepayMerchantOrderNo =
+          codepayTxn?.merchantOrderNo || "";
         const cardLast4 =
-          valorTxn?.cardLast4 || castlesTxn?.cardLast4 || atomTxn?.cardLast4 || "";
+          valorTxn?.cardLast4 ||
+          castlesTxn?.cardLast4 ||
+          atomTxn?.cardLast4 ||
+          codepayTxn?.cardLast4 ||
+          "";
         return {
           paymentId: p.id,
           referenceId: p.reference_number || p.transaction_id || "",
@@ -250,6 +260,7 @@ export class RefundService {
           stan,
           tranNo,
           atomPaymentId,
+          codepayMerchantOrderNo,
           cardLast4,
           authCode: p.auth_code || "",
           amount,
@@ -1334,6 +1345,15 @@ export class RefundService {
       );
     }
 
+    if (terminalType === "codepay") {
+      return this.processCodePayTerminalRefund(
+        payment,
+        amount,
+        useVoid,
+        terminal!,
+      );
+    }
+
     // Dejavoo flow
     const api = new DejavooSpinAPI(this.supabase);
     const loaded = await api.loadTerminal(terminalId, terminal);
@@ -1594,6 +1614,80 @@ export class RefundService {
       console.error("[RefundService] ATOM terminal refund error:", message);
       Sentry.captureException(err instanceof Error ? err : new Error(message), {
         tags: { source: "atom_refund" },
+      });
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * CodePay (on-terminal Intent) reversal. Both refund and void are REFERENCED
+   * by the original sale's merchant_order_no (orig_merchant_order_no) — no card
+   * re-presentment. Void (trans_type 2) works only while the batch is open
+   * (isVoidable); otherwise a refund (trans_type 3) is issued for the amount.
+   * Amounts are DOLLARS. Config (app_id) comes from the station's configured
+   * CodePay terminal row (app_id, falling back to register_id).
+   */
+  private async processCodePayTerminalRefund(
+    payment: PaymentRefundContext,
+    amount: number,
+    useVoid: boolean,
+    terminal: StationPaymentTerminal,
+  ): Promise<{
+    success: boolean;
+    terminalResponse?: Record<string, unknown>;
+    error?: string;
+  }> {
+    const appId = terminal.app_id ?? terminal.register_id ?? "";
+    if (!appId.trim()) {
+      return { success: false, error: "CodePay terminal has no app_id configured." };
+    }
+    // Referenced reversal needs the ORIGINAL merchant_order_no. Prefer the value
+    // pulled from processor_response.codepay_transaction; fall back to the
+    // generic reference_number/transaction_id.
+    const origMerchantOrderNo =
+      payment.codepayMerchantOrderNo || payment.referenceId;
+    if (!origMerchantOrderNo) {
+      return {
+        success: false,
+        error: "Cannot reverse: missing original CodePay merchant order number.",
+      };
+    }
+
+    try {
+      const service = getSharedCodePayService();
+      service.configure({
+        appId,
+        terminalId: terminal.id,
+        terminalSn: terminal.serial_number ?? undefined,
+        timeout: CODEPAY_SALE_TIMEOUT_MS,
+      });
+      // merchant_order_no for this reversal (≤32 chars).
+      const referenceId = `${useVoid ? "CPVD" : "CPRF"}_${Date.now()}`;
+      const result = useVoid
+        ? await service.void({ referenceId, origMerchantOrderNo, amount })
+        : await service.refund({ referenceId, origMerchantOrderNo, amount });
+
+      // An indeterminate reversal (Intent timed out) must NOT be reported as a
+      // clean success; surface it so staff can verify on the terminal.
+      if (result.indeterminate) {
+        return {
+          success: false,
+          terminalResponse: result.terminalResponse,
+          error:
+            result.error ??
+            "CodePay reversal result could not be confirmed. Check the terminal before retrying.",
+        };
+      }
+      return {
+        success: result.success,
+        terminalResponse: result.terminalResponse,
+        error: result.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[RefundService] CodePay terminal refund error:", message);
+      Sentry.captureException(err instanceof Error ? err : new Error(message), {
+        tags: { source: "codepay_refund" },
       });
       return { success: false, error: message };
     }
