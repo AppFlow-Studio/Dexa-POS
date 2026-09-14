@@ -164,6 +164,63 @@ manager sets on the tablet itself rather than on the website: `menuColumns` and
 `orientationMode`. Both default to deferring — `"auto"` and `"profile"` — so an
 untouched device behaves as though the setting did not exist.
 
+## Menu search
+
+`KioskSearchBar` + `KioskSearchOverlay` + `kioskMenuSearch.ts`, ranked logic
+unit-tested in `__tests__/kioskMenuSearch.test.ts`.
+
+**The bar is a button, not a text field.** A focusable input above the grid
+would raise the software keyboard in place; the app runs `adjustResize`, so the
+window shrinks, `KioskItemGrid` re-measures, and every card re-derives its
+height budget and can flip card shape mid-keystroke. Tapping promotes to a
+full-panel overlay instead: browsing layout untouched, input pinned to the top
+where the keyboard can never cover it, results get the whole panel. It also
+costs nothing until tapped — no index, no listeners, no input state on the menu
+screen.
+
+**The overlay is an absolute fill, never a `Modal`.** A Modal's touches don't
+bubble to the template body, so `onTouchStart={registerActivity}` would stop
+firing and the idle timer could reset the kiosk under a customer who is actively
+tapping results. Staying in the tree also keeps the header and floating cart
+button in place, so search reads as a layer over the menu.
+
+**One column at every size** is what makes it correct in both orientations and
+all three templates with no branching: input on top, results below, column
+capped at `MAX_COLUMN` and centred so a 55" landscape panel doesn't stretch rows
+into a tabloid page. Rows are fixed-height, which is what lets the list use
+`getItemLayout`. The list carries bottom padding for the floating cart button,
+which paints above the overlay (it is a later sibling, outside the menu view) —
+without it the last result is trapped underneath.
+
+**Placement rule, same in every template:** a full-width row leading the menu
+content. Templates A and B span it across rail and grid (B puts it under the
+banner); Template C leads `menuContent`, which in landscape is the column beside
+the media strip, so the strip keeps its full height. Because it spans the rail,
+its position matches what it does — it searches every available menu, not the
+selected category.
+
+**Cost per keystroke is one pass over a prebuilt index.** All per-item string
+work — lower-casing, accent folding, splitting the name into words, building the
+haystack — happens once in `useKioskSearchEntries`, memoised on the same inputs
+the rail and grid use, so it rebuilds only when the menu changes. A keystroke is
+then one `includes` per token per item, over already-folded strings: no regex,
+no per-item allocation, no fuzzy-match dependency. `useDeferredValue` keeps the
+typed text painting on the frame it was typed while ranking yields to it.
+
+Search applies **exactly** the visibility filters the browsing path applies
+(kiosk channel, menu/category schedules, 86 state, unbuildable required modifier
+groups), so it can never surface something the grid deliberately hides. Items
+listed under two menus are indexed once — duplicate rows read as a bug.
+
+Accent folding is a hand-rolled table, not `String.prototype.normalize("NFD")`:
+that path depends on Hermes' Intl build, and degrading to "accented items are
+unfindable" on one platform is the kind of bug nobody reports from a shop floor.
+The two strings in `kioskMenuSearch.ts` are index-aligned — keep them the same
+length.
+
+Tokens are **ANDed**: typing more words narrows, which is the only behaviour
+that lets a customer recover from too many results by continuing to type.
+
 ## Conventions
 
 - **Never use raw `px` for a size in a kiosk component.** Route it through

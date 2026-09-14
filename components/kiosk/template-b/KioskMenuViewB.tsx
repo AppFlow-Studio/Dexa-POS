@@ -7,6 +7,8 @@ import {
 import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
 import { kioskBannerHeight, kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
+import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
 import type { MenuItemType } from "@/lib/types";
@@ -31,6 +33,10 @@ import { useWindowDimensions, View } from "react-native";
  * short to spare the vertical space for both a banner and a comfortable
  * rail + grid, so horizontal drops the banner entirely (rail + grid only,
  * like Template A).
+ *
+ * Search sits between the banner and the split, spanning both panes, and opens
+ * KioskSearchOverlay over the whole view — same placement and behaviour as
+ * Templates A and C.
  */
 export function KioskMenuViewB({
   config,
@@ -83,6 +89,8 @@ export function KioskMenuViewB({
 
   const items = useOrderableItems(activeCategory?.items);
 
+  const [searchOpen, setSearchOpen] = useState(false);
+
   const bannerImages = kioskOrderBannerImages(config);
   const hasMedia = bannerImages.length > 0 && isVertical;
   const { height: screenHeight } = useWindowDimensions();
@@ -114,6 +122,11 @@ export function KioskMenuViewB({
         </View>
       ) : null}
 
+      {/* Search sits under the banner, spanning rail and grid — same placement
+          rule as every other template: a full-width row at the top of the menu
+          content, looking across the whole menu. */}
+      <KioskSearchBar config={config} onPress={() => setSearchOpen(true)} />
+
       <View className="flex-1 flex-row">
         {/* Left rail — categories grouped by menu */}
         <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
@@ -136,6 +149,17 @@ export function KioskMenuViewB({
           />
         </View>
       </View>
+
+      {searchOpen ? (
+        <KioskSearchOverlay
+          config={config}
+          onClose={() => setSearchOpen(false)}
+          onSelectItem={(item) => {
+            setSearchOpen(false);
+            onSelectItem(item);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
