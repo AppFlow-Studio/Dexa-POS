@@ -14,6 +14,7 @@ import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
+import { FlashList } from "@shopify/flash-list";
 import {
   ChevronLeft,
   Search,
@@ -29,8 +30,9 @@ import React, {
   useState,
 } from "react";
 import {
-  FlatList,
   Image,
+  Keyboard,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -59,6 +61,10 @@ import {
  * Per-keystroke cost is one pass over the prebuilt index (see
  * useKioskSearchEntries), run through `useDeferredValue` so the typed text
  * always paints on the frame it was typed and the ranking yields to it.
+ *
+ * Results render in a FlashList, same as the menu grid. Rows are a fixed
+ * height, so `overrideItemLayout` hands it a real size and no cell is ever
+ * measured then corrected.
  */
 
 /** Thumbnail edge, and the paddings that together fix the row height. */
@@ -114,27 +120,44 @@ export function KioskSearchOverlay({
     [onSelectItem],
   );
 
+  // FlashList positions its cells but does not size them
+  // (`forceNonDeterministicRendering`), so a row with no width shrinks to its
+  // content instead of filling the column. The list's own width is measured and
+  // handed down.
+  const [listWidth, setListWidth] = useState(0);
+  const listPadH = kioskPx(16, s);
+  const rowWidth = Math.max(0, listWidth - listPadH * 2);
+
+  const handleListLayout = useCallback(
+    (e: { nativeEvent: { layout: { width: number } } }) => {
+      const { width } = e.nativeEvent.layout;
+      setListWidth((prev) => (Math.abs(prev - width) > 0.5 ? width : prev));
+    },
+    [],
+  );
+
   const renderItem = useCallback(
     ({ item: entry }: { item: KioskSearchEntry }) => (
       <KioskSearchResultRow
         entry={entry}
         config={config}
         surface={surface}
+        width={rowWidth}
         onPress={handleSelect}
       />
     ),
-    [config, surface, handleSelect],
+    [config, surface, rowWidth, handleSelect],
   );
 
-  // Fixed-height rows, so the list can skip measurement entirely and jump
-  // straight to any offset as the customer flicks through a long result set.
-  const getItemLayout = useCallback(
-    (_: unknown, index: number) => ({
-      length: kioskPx(ROW_HEIGHT, s),
-      offset: kioskPx(ROW_HEIGHT, s) * index,
-      index,
-    }),
-    [s],
+  // Rows are a fixed height, so FlashList gets a real size rather than an
+  // estimate it would have to correct after measuring — no scroll-jump under a
+  // customer's finger, and no per-cell measurement pass at all.
+  const rowHeight = kioskPx(ROW_HEIGHT, s);
+  const overrideItemLayout = useCallback(
+    (layout: { span?: number; size?: number }) => {
+      layout.size = rowHeight;
+    },
+    [rowHeight],
   );
 
   const trimmed = query.trim();
@@ -147,178 +170,195 @@ export function KioskSearchOverlay({
         { backgroundColor: config.backgroundColor, zIndex: 20 },
       ]}
     >
-      {/* Search field row — pinned to the top, above the keyboard at any height */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: kioskPx(14, s),
-          width: "100%",
-          maxWidth: kioskPx(MAX_COLUMN, s),
-          alignSelf: "center",
-          paddingHorizontal: kioskPx(16, s),
-          paddingTop: kioskPx(16, s),
-          paddingBottom: kioskPx(12, s),
-        }}
+      {/* Tapping any chrome that isn't a control puts the keyboard away and
+          gives the results the full panel — the query and results stay put.
+          Controls (the field, the back and clear buttons, result rows) sit
+          deeper in the tree and win the responder, so this only catches taps
+          that would otherwise do nothing. Taps and drags inside the list are
+          already handled by `keyboardShouldPersistTaps` / `keyboardDismissMode`
+          below. */}
+      <Pressable
+        onPress={Keyboard.dismiss}
+        accessible={false}
+        style={{ flex: 1 }}
       >
-        <KioskPressable
-          onPress={onClose}
-          pressedScale={0.92}
-          accessibilityRole="button"
-          accessibilityLabel="Close search"
-          style={{
-            width: kioskPx(62, s),
-            height: kioskPx(62, s),
-            borderRadius: kioskPx(31, s),
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: faint,
-          }}
-        >
-          <ChevronLeft size={kioskPx(28, s)} color={config.textColor} />
-        </KioskPressable>
-
+        {/* Search field row — pinned to the top, above the keyboard at any height */}
         <View
           style={{
-            flex: 1,
             flexDirection: "row",
             alignItems: "center",
             gap: kioskPx(14, s),
-            height: kioskPx(62, s),
-            paddingHorizontal: kioskPx(20, s),
-            borderRadius: kioskPx(18, s),
-            backgroundColor: surface,
-            borderWidth: 1,
-            borderColor: `${config.accentColor}33`,
-          }}
-        >
-          <Search size={kioskPx(24, s)} color={config.accentColor} />
-          <TextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={setQuery}
-            autoFocus
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-            placeholder="Search the menu"
-            placeholderTextColor={`${config.textColor}80`}
-            selectionColor={config.accentColor}
-            style={{
-              flex: 1,
-              fontSize: kioskPx(20, s),
-              fontWeight: "500",
-              color: config.textColor,
-              // RN gives Android inputs their own vertical padding; zeroing it
-              // keeps the text on the row's centre line at every UI scale.
-              paddingVertical: 0,
-            }}
-          />
-          {query.length > 0 ? (
-            <KioskPressable
-              onPress={clear}
-              pressedScale={0.9}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-              style={{
-                width: kioskPx(34, s),
-                height: kioskPx(34, s),
-                borderRadius: kioskPx(17, s),
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: faint,
-              }}
-            >
-              <X size={kioskPx(19, s)} color={config.textColor} />
-            </KioskPressable>
-          ) : null}
-        </View>
-      </View>
-
-      {results.length > 0 ? (
-        <Text
-          style={{
             width: "100%",
             maxWidth: kioskPx(MAX_COLUMN, s),
             alignSelf: "center",
             paddingHorizontal: kioskPx(16, s),
-            paddingBottom: kioskPx(8, s),
-            fontSize: kioskPx(15, s),
-            fontWeight: "600",
-            letterSpacing: 0.6,
-            textTransform: "uppercase",
-            color: muted,
+            paddingTop: kioskPx(16, s),
+            paddingBottom: kioskPx(12, s),
           }}
         >
-          {results.length >= KIOSK_SEARCH_RESULT_LIMIT
-            ? `Top ${KIOSK_SEARCH_RESULT_LIMIT} matches`
-            : `${results.length} ${results.length === 1 ? "result" : "results"}`}
-        </Text>
-      ) : null}
+          <KioskPressable
+            onPress={onClose}
+            pressedScale={0.92}
+            accessibilityRole="button"
+            accessibilityLabel="Close search"
+            style={{
+              width: kioskPx(62, s),
+              height: kioskPx(62, s),
+              borderRadius: kioskPx(31, s),
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: faint,
+            }}
+          >
+            <ChevronLeft size={kioskPx(28, s)} color={config.textColor} />
+          </KioskPressable>
 
-      <FlatList
-        data={results}
-        keyExtractor={(entry) => entry.item.id}
-        renderItem={renderItem}
-        getItemLayout={getItemLayout}
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          width: "100%",
-          maxWidth: kioskPx(MAX_COLUMN, s),
-          alignSelf: "center",
-          paddingHorizontal: kioskPx(16, s),
-          paddingBottom: kioskPx(LIST_BOTTOM_PAD, s),
-          flexGrow: results.length === 0 ? 1 : undefined,
-        }}
-        showsVerticalScrollIndicator={false}
-        // Without this the first tap on a result is swallowed dismissing the
-        // keyboard, and the customer has to tap the same row twice.
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        initialNumToRender={8}
-        maxToRenderPerBatch={8}
-        windowSize={5}
-        // No `removeClippedSubviews`: it has a history of blanking cells in
-        // Android FlatLists, and a blank row is a lost sale on a customer-facing
-        // panel. `getItemLayout` plus a 40-result cap already keep this cheap.
-        ListEmptyComponent={
           <View
             style={{
               flex: 1,
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
-              paddingHorizontal: kioskPx(32, s),
-              gap: kioskPx(10, s),
+              gap: kioskPx(14, s),
+              height: kioskPx(62, s),
+              paddingHorizontal: kioskPx(20, s),
+              borderRadius: kioskPx(18, s),
+              backgroundColor: surface,
+              borderWidth: 1,
+              borderColor: `${config.accentColor}33`,
             }}
           >
-            <Search size={kioskPx(46, s)} color={`${config.textColor}33`} />
-            <Text
+            <Search size={kioskPx(24, s)} color={config.accentColor} />
+            <TextInput
+              ref={inputRef}
+              value={query}
+              onChangeText={setQuery}
+              autoFocus
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+              placeholder="Search the menu"
+              placeholderTextColor={`${config.textColor}80`}
+              selectionColor={config.accentColor}
               style={{
-                fontSize: kioskPx(22, s),
-                fontWeight: "700",
+                flex: 1,
+                fontSize: kioskPx(20, s),
+                fontWeight: "500",
                 color: config.textColor,
-                textAlign: "center",
+                // RN gives Android inputs their own vertical padding; zeroing it
+                // keeps the text on the row's centre line at every UI scale.
+                paddingVertical: 0,
               }}
-            >
-              {noMatches
-                ? `No matches for "${trimmed}"`
-                : "What are you looking for?"}
-            </Text>
-            <Text
-              style={{
-                fontSize: kioskPx(17, s),
-                color: muted,
-                textAlign: "center",
-              }}
-            >
-              {noMatches
-                ? "Try a shorter word, or go back and browse the menu."
-                : "Start typing an item, or a category like drinks."}
-            </Text>
+            />
+            {query.length > 0 ? (
+              <KioskPressable
+                onPress={clear}
+                pressedScale={0.9}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+                style={{
+                  width: kioskPx(34, s),
+                  height: kioskPx(34, s),
+                  borderRadius: kioskPx(17, s),
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: faint,
+                }}
+              >
+                <X size={kioskPx(19, s)} color={config.textColor} />
+              </KioskPressable>
+            ) : null}
           </View>
-        }
-      />
+        </View>
+
+        {results.length > 0 ? (
+          <Text
+            style={{
+              width: "100%",
+              maxWidth: kioskPx(MAX_COLUMN, s),
+              alignSelf: "center",
+              paddingHorizontal: kioskPx(16, s),
+              paddingBottom: kioskPx(8, s),
+              fontSize: kioskPx(15, s),
+              fontWeight: "600",
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+              color: muted,
+            }}
+          >
+            {results.length >= KIOSK_SEARCH_RESULT_LIMIT
+              ? `Top ${KIOSK_SEARCH_RESULT_LIMIT} matches`
+              : `${results.length} ${results.length === 1 ? "result" : "results"}`}
+          </Text>
+        ) : null}
+
+        {/* The readable-width cap lives on this wrapper, not on the list's
+            content container: FlashList's ContentStyle accepts padding and
+            background colour only. */}
+        <View
+          onLayout={handleListLayout}
+          style={{
+            flex: 1,
+            width: "100%",
+            maxWidth: kioskPx(MAX_COLUMN, s),
+            alignSelf: "center",
+          }}
+        >
+          {results.length === 0 ? (
+            <View
+              style={{
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingHorizontal: kioskPx(32, s),
+                gap: kioskPx(10, s),
+              }}
+            >
+              <Search size={kioskPx(46, s)} color={`${config.textColor}33`} />
+              <Text
+                style={{
+                  fontSize: kioskPx(22, s),
+                  fontWeight: "700",
+                  color: config.textColor,
+                  textAlign: "center",
+                }}
+              >
+                {noMatches
+                  ? `No matches for "${trimmed}"`
+                  : "What are you looking for?"}
+              </Text>
+              <Text
+                style={{
+                  fontSize: kioskPx(17, s),
+                  color: muted,
+                  textAlign: "center",
+                }}
+              >
+                {noMatches
+                  ? "Try a shorter word, or go back and browse the menu."
+                  : "Start typing an item, or a category like drinks."}
+              </Text>
+            </View>
+          ) : rowWidth > 0 ? (
+            <FlashList
+              data={results}
+              keyExtractor={(entry) => entry.item.id}
+              renderItem={renderItem}
+              estimatedItemSize={rowHeight}
+              overrideItemLayout={overrideItemLayout}
+              contentContainerStyle={{
+                paddingHorizontal: listPadH,
+                paddingBottom: kioskPx(LIST_BOTTOM_PAD, s),
+              }}
+              showsVerticalScrollIndicator={false}
+              // Without this the first tap on a result is swallowed dismissing the
+              // keyboard, and the customer has to tap the same row twice.
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            />
+          ) : null}
+        </View>
+      </Pressable>
     </View>
   );
 }
@@ -328,17 +368,21 @@ export function KioskSearchOverlay({
  *
  * A compact fixed-height row rather than a menu card — a result list is read
  * top to bottom while scanning for one known item, where cards are browsed.
- * Fixed height is also what lets the list use `getItemLayout`.
+ * Fixed height is also what lets FlashList lay the list out from a real size
+ * instead of measuring each cell.
  */
 const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
   entry,
   config,
   surface,
+  width,
   onPress,
 }: {
   entry: KioskSearchEntry;
   config: KioskConfig;
   surface: string;
+  /** Measured by the overlay — FlashList's cells are positioned but unsized. */
+  width: number;
   onPress: (item: MenuItemType) => void;
 }) {
   const s = useKioskUiScale();
@@ -365,6 +409,7 @@ const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
         flexDirection: "row",
         alignItems: "center",
         gap: kioskPx(16, s),
+        width,
         height: kioskPx(THUMB + ROW_PAD_V * 2, s),
         marginBottom: kioskPx(ROW_GAP, s),
         paddingHorizontal: kioskPx(ROW_PAD_V, s),

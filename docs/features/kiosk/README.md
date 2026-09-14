@@ -144,8 +144,42 @@ no-op. Regression test: `__tests__/useKioskOrientation.test.tsx`.
 ## Shared components
 
 `KioskItemGrid` owns the responsive measurement, the card-shape choice and the
-entrance cascade for all three templates — templates supply `items` /
+entrance animation for all three templates — templates supply `items` /
 `numColumns` / `resetKey` and nothing else.
+
+**It is a FlashList**, as is the search result list. Three things that adoption
+required, none of which should be undone casually:
+
+- **Exact heights, not estimates.** Cells are sized through `overrideItemLayout`
+  from the card's real height (see the convention above). An estimate makes
+  FlashList measure the cell and correct itself afterwards, which on a menu is a
+  scroll-jump under the customer's finger.
+- **The cell container is positioned but unsized — size it yourself.** FlashList
+  renders every cell with `forceNonDeterministicRendering`, so RecyclerListView
+  gives the container only `position: absolute` + `left`/`top` (and
+  `flexDirection: "row"` when `numColumns > 1`). `overrideItemLayout` only tells
+  FlashList how far to scroll. So the cell wrapper carries an explicit **width
+  and height**: without the height, cards using `flex: 1` collapse to their
+  image (a flex child of an auto-height parent resolves to zero); without the
+  width, they shrink to their content inside that row box. Both were real
+  regressions during the port. Column width is
+  `(listWidth − content horizontal padding) / numColumns` — the padding is
+  applied for you by `applyContentContainerInsetForLayoutManager`.
+- **No `columnWrapperStyle` and no per-cell entrance.** FlashList has no column
+  wrapper, so gutters come from half-gap padding on each cell against a content
+  container inset by the same half gap — algebraically identical to the old
+  spacing. And Reanimated `entering` animations fight cell recycling (a recycled
+  cell replays its entrance, so cards flash while scrolling), so the old
+  staggered per-card cascade is now one animation on the list container.
+
+`contentContainerStyle` accepts **padding and background colour only**
+(`ContentStyle`). Anything needing width caps, `flexGrow` or centring —
+including a centred empty state — belongs on a wrapper around the list, not in
+that prop. Both lists render their empty state outside the list for this reason.
+
+The grid is keyed on `numColumns` alone. Keying it on the active category would
+remount per switch and throw away the recycle pool FlashList exists to build;
+the category switch scrolls to the top through the ref instead.
 
 **It renders nothing until it has measured itself.** The window used to stand
 in for the first frame, but the window is not the grid pane — beside a category
@@ -187,8 +221,8 @@ button in place, so search reads as a layer over the menu.
 **One column at every size** is what makes it correct in both orientations and
 all three templates with no branching: input on top, results below, column
 capped at `MAX_COLUMN` and centred so a 55" landscape panel doesn't stretch rows
-into a tabloid page. Rows are fixed-height, which is what lets the list use
-`getItemLayout`. The list carries bottom padding for the floating cart button,
+into a tabloid page. Rows are fixed-height, which is what lets the FlashList lay
+out from a real size. The list carries bottom padding for the floating cart button,
 which paints above the overlay (it is a later sibling, outside the menu view) —
 without it the last result is trapped underneath.
 
@@ -227,9 +261,14 @@ that lets a customer recover from too many results by continuing to type.
   `kioskPx(n, scale)` or `kioskCardMetrics`, or it will render at a fraction of
   the surrounding UI on a large panel. `KioskIdleModal` shipped with raw px and
   was invisible-small on a 32" kiosk until this was fixed.
-- Avoid `removeClippedSubviews` on the menu grid — it has a history of blanking
-  cells in multi-column Android FlatLists, and a blank menu cell on a
-  customer-facing kiosk is a lost sale.
+- Avoid `removeClippedSubviews` on any kiosk list — it has a history of blanking
+  cells in Android lists, and a blank menu cell on a customer-facing kiosk is a
+  lost sale. FlashList's recycling makes it unnecessary anyway.
+- **Every card shape must report an exact height.** `kioskCardMetrics.cardHeight`,
+  `kioskRowMetrics.rowHeight` and `kioskFeatureRowMetrics.height` are sums of
+  blocks that are each already a fixed height — not estimates. FlashList lays the
+  grid out from them (see below), so adding a block to a card without adding it
+  to the sum makes the list measure and correct itself mid-scroll.
 
 ## Layout variants
 

@@ -148,7 +148,8 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
           flex: 1,
           paddingHorizontal: m.padH,
           paddingTop: m.padV,
-          paddingBottom: m.padV * 1.2,
+          // Rounded, because `cardHeight` sums this exact value.
+          paddingBottom: Math.round(m.padV * 1.2),
           gap: m.gap,
         }}
       >
@@ -179,12 +180,15 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
           </Text>
         )}
 
+        {/* Fixed height — `cardHeight` is a sum of the card's blocks, and an
+            intrinsically-sized price row would make that sum a guess. */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
             gap: m.gap,
+            height: m.priceRowHeight,
             marginTop: "auto",
           }}
         >

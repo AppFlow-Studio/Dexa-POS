@@ -363,6 +363,82 @@ describe("shouldUseRowLayout", () => {
   });
 });
 
+/**
+ * FlashList lays the menu grid out from these numbers via `overrideItemLayout`.
+ * If a reported height stops matching what the card actually renders, the list
+ * measures the cell and corrects itself mid-scroll — a visible jump under the
+ * customer's finger. So each sum is re-derived here from the same blocks the
+ * card puts on screen; changing a card's structure must change these too.
+ */
+describe("exact card heights (the FlashList layout contract)", () => {
+  // 3-col portrait, 4-col portrait, 3-col landscape, 2-col small panel.
+  const CELLS: [number, number][] = [
+    [218, 879],
+    [160, 879],
+    [463, 443],
+    [300, 500],
+  ];
+
+  it("sums the top-image card from the blocks it renders", () => {
+    for (const [w, h] of CELLS) {
+      const m = kioskCardMetrics(w, h);
+      const expected =
+        m.imageHeight +
+        m.padV +
+        m.nameBlockHeight +
+        m.gap +
+        (m.showDescription ? m.descBlockHeight + m.gap : 0) +
+        m.priceRowHeight +
+        Math.round(m.padV * 1.2);
+      expect(m.cardHeight).toBe(expected);
+    }
+  });
+
+  it("sums the row card from the taller of its two columns", () => {
+    for (const [w, h] of CELLS) {
+      const m = kioskRowMetrics(w, h);
+      const copyHeight =
+        m.nameLineHeight * 2 +
+        (m.showDescription ? m.descLineHeight * m.descLines + m.gap : 0) +
+        m.gap * 2 +
+        m.priceRowHeight;
+      expect(m.rowHeight).toBe(
+        Math.round(Math.max(m.imageSize, copyHeight) + m.pad * 2),
+      );
+      // Never shorter than the image it has to contain.
+      expect(m.rowHeight).toBeGreaterThanOrEqual(m.imageSize + m.pad * 2);
+    }
+  });
+
+  it("reserves a price row at least as tall as its own contents", () => {
+    for (const [w, h] of CELLS) {
+      const card = kioskCardMetrics(w, h);
+      expect(card.priceRowHeight).toBeGreaterThanOrEqual(card.optionsIconSize);
+      expect(card.priceRowHeight).toBeGreaterThanOrEqual(card.priceSize);
+
+      const row = kioskRowMetrics(w, h);
+      expect(row.priceRowHeight).toBeGreaterThanOrEqual(row.optionsIconSize);
+      expect(row.priceRowHeight).toBeGreaterThanOrEqual(row.priceSize);
+    }
+  });
+
+  it("reports whole pixels — a fractional cell size drifts the list", () => {
+    for (const [w, h] of CELLS) {
+      expect(Number.isInteger(kioskCardMetrics(w, h).cardHeight)).toBe(true);
+      expect(Number.isInteger(kioskRowMetrics(w, h).rowHeight)).toBe(true);
+      expect(Number.isInteger(kioskFeatureRowMetrics(w, h).height)).toBe(true);
+    }
+  });
+
+  it("keeps the top-image card inside the grid's height budget", () => {
+    // Two rows must stay in view, which is the reason maxCardHeight exists.
+    for (const [w, h] of CELLS) {
+      const budget = Math.max(160, (h - 32 - 14) * 0.52);
+      expect(kioskCardMetrics(w, budget).cardHeight).toBeLessThanOrEqual(h);
+    }
+  });
+});
+
 describe("kioskFeatureRowMetrics", () => {
   // 1080x1920 portrait kiosk, 34% rail: the grid gets ~713dp, less padding.
   const PORTRAIT_ROW_WIDTH = 681;
