@@ -360,6 +360,11 @@ const transformMenuItemsFromSync = (
         dbItem.card_bg_color ?? undefined
       ),
       availability: dbItem.effective_availability,
+      // Carried through as-is, including absent: `isItemOnChannel` is what
+      // decides what a missing array means, in one place, for POS and kiosk
+      // alike. Normalizing to a default here would bake that decision into
+      // every cached snapshot instead.
+      availableChannels: dbItem.effective_available_channels ?? undefined,
       stockQuantity: dbItem.current_stock ?? undefined,
       stockTrackingMode: dbItem.stock_tracking_mode,
       modifierGroupIds: orderedModifierGroups.map((mg: any) => mg.id),

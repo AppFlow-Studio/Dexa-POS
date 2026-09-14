@@ -1,4 +1,5 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
 import { MenuItemType, Schedule } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -128,6 +129,12 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
         const isCategoryAvailable = isScheduleActive(category.schedules);
 
         category.items?.forEach((item) => {
+          // 3a. Sales channel. Dropped outright rather than added to the
+          // unavailable section: search must not surface something the grid
+          // deliberately hides, or staff will find an item here that they
+          // cannot reach any other way.
+          if (!isItemOnChannel(item, "pos")) return;
+
           // 3. Match Search Text - only filter if search is not empty
           if (trimmedSearch) {
             const matchName = item.name.toLowerCase().includes(trimmedSearch);

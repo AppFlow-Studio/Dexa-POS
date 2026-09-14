@@ -287,6 +287,38 @@ describe("isItemOrderable", () => {
     expect(isItemOrderable(item(), resolver([]))).toBe(true);
   });
 
+  it("hides an item the merchant unticked for the kiosk", () => {
+    // The dashboard's Sales Channels checkboxes. Sold on POS, not on kiosk.
+    expect(
+      isItemOrderable(item({ availableChannels: ["pos", "online"] }), resolver([])),
+    ).toBe(false);
+    expect(
+      isItemOrderable(
+        item({ availableChannels: ["pos", "online", "kiosk"] }),
+        resolver([]),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps channel-less items visible on the kiosk", () => {
+    // Pre-field snapshots must not empty a live kiosk menu.
+    expect(isItemOrderable(item(), resolver([]))).toBe(true);
+  });
+
+  it("hasOrderableItem drops a category whose items are all POS-only", () => {
+    const posOnly = [
+      item({ id: "a", availableChannels: ["pos"] }),
+      item({ id: "b", availableChannels: ["pos"] }),
+    ];
+    expect(hasOrderableItem(posOnly, resolver([]))).toBe(false);
+    expect(
+      hasOrderableItem(
+        [...posOnly, item({ id: "c", availableChannels: ["kiosk"] })],
+        resolver([]),
+      ),
+    ).toBe(true);
+  });
+
   it("hasOrderableItem drops a category with nothing left to sell", () => {
     const groups = [grp("bun", "required", [opt("brioche", false)])];
     const items = [

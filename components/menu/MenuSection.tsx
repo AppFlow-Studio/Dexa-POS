@@ -65,6 +65,7 @@ import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
 import MenuStaleBanner from "./MenuStaleBanner";
 import MenuUnavailableState from "./MenuUnavailableState";
+import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
 import MenuItem from "./MenuItem";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
@@ -569,9 +570,14 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     }
   }, [showPreviousOrdersSection, activeTab]);
 
-  // Helper to check if a menu has items (not empty)
+  // Helper to check if a menu has items (not empty). Counts only what order
+  // entry would actually render — a menu whose every item is unticked for POS
+  // is empty HERE even though its categories are full, and auto-opening it
+  // would land staff on a blank grid.
   const menuHasItems = (menu: (typeof menus)[0]) => {
-    return menu.categories.some((cat) => cat.items && cat.items.length > 0);
+    return menu.categories.some((cat) =>
+      cat.items?.some((item) => isItemOnChannel(item, "pos")),
+    );
   };
 
   // Helper to find the first menu that is currently available (with items preferred)
@@ -890,18 +896,25 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       debug("bail:category-gate", { scheduleAllows, unlockedByOverride });
       return [];
     }
+    // An item the merchant has not ticked for POS is REMOVED, not greyed out.
+    // "Not sold on this channel" is a menu-design decision, unlike 86ing — a
+    // disabled tile would invite staff to ask why they can't ring it up.
     const visible = activeCategoryEntry.items.filter(
-      (item) => item.availability !== false,
+      (item) => item.availability !== false && isItemOnChannel(item, "pos"),
     );
     debug("pass", {
       scheduleAllows,
       unlockedByOverride,
       visibleItemCount: visible.length,
-      // If rawItemCount > 0 but visibleItemCount is 0, effective_availability
-      // from the sync payload is the culprit, not the override logic.
+      // If rawItemCount > 0 but visibleItemCount is 0, the culprit is in the
+      // sync payload rather than the override logic — either
+      // effective_availability or the POS sales channel.
       availabilityValues: activeCategoryEntry.items
         .slice(0, 8)
         .map((i) => `${i.name}=${String(i.availability)}`),
+      channelValues: activeCategoryEntry.items
+        .slice(0, 8)
+        .map((i) => `${i.name}=[${(i.availableChannels ?? []).join("|")}]`),
     });
     return visible;
   }, [
