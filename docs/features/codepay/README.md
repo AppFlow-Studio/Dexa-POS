@@ -38,7 +38,33 @@ This is the ATOM-class on-device pattern (see `services/terminals/atom-service.t
 | Settlement | `services/settlementService.ts` (`runCodePaySettlement`), `services/pendingFinalize.ts` |
 | Manual batch-out UI | `components/settings/batchout/BatchoutPanel.tsx` (gated by `CODEPAY_BATCHOUT_ENABLED`) |
 
-`app_id` is stored in `payment_terminals.register_id` (no dedicated column).
+`app_id` is stored in `payment_terminals.register_id` (no dedicated column) for a
+manually-configured terminal, and in `useCodePayTerminalStore.appId` (persisted,
+seeded from `CODEPAY_DEFAULT_APP_ID`) for the auto-detect path.
+
+## Auto-detect (ATOM-style, on-device)
+
+Like ATOM, CodePay auto-surfaces on-device — with ONE difference: CodePay's
+Intent needs the merchant `app_id` (ATOM needs no credentials). So the POS holds
+`app_id` once; detection + activation are then automatic.
+
+- `stores/useCodePayTerminalStore.ts` — the persisted `app_id` + the detected
+  synthetic internal terminal (`buildInternalCodePayTerminal`, id `codepay-internal`,
+  `register_id = app_id`).
+- `services/terminals/codepayDetector.ts` — started in `PosSyncProvider` (POS-only).
+  Every 30s + on app-resume it presence-checks via `codepayIsRegisterAvailable()`
+  and surfaces/un-surfaces the internal terminal (only when `app_id` is set). The
+  presence check is a pure `resolveActivity` — zero-cost, never launches Register,
+  so no suspend/resume machinery (unlike ATOM's loopback probe).
+- `hooks/useActiveProcessor.ts` — surfaces the internal CodePay terminal as a
+  **fallback after any configured terminal** (`codepayEnabled` gate). A real
+  provisioned CodePay row therefore always wins (it carries a DB id sales stamp +
+  is what settlement/BatchoutPanel need); the synthetic internal terminal covers
+  sale/refund/tip when nothing is configured.
+- Settlement note: batch-out needs a real `payment_terminals` row (BatchoutPanel
+  reads the station's configured terminal). The synthetic internal terminal does
+  sale/refund/tip but not settlement — provision a row (or the deferred
+  auto-provision enhancement) to batch-out.
 
 ## Settlement: backend RPCs — APPLIED TO STAGING (2026-09-15)
 

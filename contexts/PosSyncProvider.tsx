@@ -63,6 +63,10 @@ import {
   startAtomLoopbackDetect,
   stopAtomLoopbackDetect,
 } from "@/services/terminals/atomLoopbackDetector";
+import {
+  startCodePayDetect,
+  stopCodePayDetect,
+} from "@/services/terminals/codepayDetector";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import {
   startCastlesUsbAutoConnect,
@@ -400,6 +404,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     startAtomLoopbackDetect();
     return () => {
       stopAtomLoopbackDetect();
+    };
+  }, [isKDS]);
+
+  // On-device ("internal") CodePay detection: presence-check the CodePay Register
+  // app (Intent) and, when a merchant app_id is set, surface it as an available
+  // terminal. Self-gates on the native CodePay bridge + a configured app_id, so
+  // it's a no-op on non-CodePay devices / before the app_id is entered. POS-only.
+  useEffect(() => {
+    if (isKDS) return;
+    startCodePayDetect();
+    return () => {
+      stopCodePayDetect();
     };
   }, [isKDS]);
 

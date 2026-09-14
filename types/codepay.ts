@@ -289,6 +289,16 @@ export interface CodePayTxnResult {
 // ============================================================
 
 export const CODEPAY_DEFAULT_CURRENCY = "USD";
+
+/** Sentinel id for the in-memory internal CodePay terminal (NOT a payment_terminals UUID). */
+export const CODEPAY_INTERNAL_TERMINAL_ID = "codepay-internal";
+
+/**
+ * Merchant CodePay payment app id (Intent extra `app_id`). Seeds the persisted
+ * app-id setting so the on-device auto-detect can activate CodePay with no other
+ * config. Overridable at runtime via useCodePayTerminalStore.setAppId.
+ */
+export const CODEPAY_DEFAULT_APP_ID = "wz1f2e3295adc70112";
 /** Default order expiry (seconds) handed to the terminal. */
 export const CODEPAY_DEFAULT_EXPIRES_SEC = 120;
 
