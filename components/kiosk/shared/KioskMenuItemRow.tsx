@@ -176,11 +176,14 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
           </Text>
         ) : null}
 
+        {/* Fixed height — `rowHeight` sums the copy column's blocks, and an
+            intrinsically-sized price row would make that sum a guess. */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
             gap: m.pad,
+            height: m.priceRowHeight,
             marginTop: m.gap,
           }}
         >

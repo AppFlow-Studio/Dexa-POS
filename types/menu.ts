@@ -111,6 +111,13 @@ export interface MenuItemDetails {
   has_location_category_override: boolean;
   has_location_menu_override: boolean;
 
+  /**
+   * Sales channels this item is sold on, resolved server-side (L2 location
+   * override > L1 base). Null/absent on snapshots taken before the field
+   * existed — consumers fail open. See `isItemOnChannel`.
+   */
+  effective_available_channels?: MenuChannel[] | null;
+
   // Stock
   stock_tracking_mode: StockTrackingMode;
   current_stock: number | null;

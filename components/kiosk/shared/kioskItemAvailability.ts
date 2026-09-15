@@ -1,3 +1,4 @@
+import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import type { MenuItemType, ModifierCategory } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useMemo } from "react";
@@ -5,24 +6,32 @@ import { useMemo } from "react";
 export type ResolveModifierGroups = (ids: string[]) => ModifierCategory[];
 
 /**
- * Can this item actually be made right now?
+ * Should the kiosk offer this item right now?
  *
- * Beyond the item's own 86 flag, an item is unorderable when a **required**
- * modifier group has no available options left — a burger whose every bun is
- * 86'd cannot be built, whatever the item flag says. Both option-level and
- * whole-group snoozes land as `isAvailable: false` on the options (see
- * `snoozeModifierOption` / `snoozeModifierGroup` in useMenuStore), so one
- * predicate covers both.
+ * Three gates, in cost order:
  *
- * Fails **open**: an item whose groups can't be resolved (empty lookup, menu
- * still hydrating) stays visible. Hiding a sellable item because of a
- * data-loading gap is far worse than showing one that later turns out to be
- * unavailable — the detail screen catches that case anyway.
+ * 1. **Sales channel.** The merchant can untick Kiosk on an item in the
+ *    dashboard; an item not sold on this channel is not the kiosk's to show,
+ *    whatever the kitchen could make. Checked here rather than at each call
+ *    site so the rail, the grid and search can never disagree about it.
+ * 2. The item's own 86 flag.
+ * 3. **Required** modifier groups with no available options left — a burger
+ *    whose every bun is 86'd cannot be built, whatever the item flag says.
+ *    Both option-level and whole-group snoozes land as `isAvailable: false` on
+ *    the options (see `snoozeModifierOption` / `snoozeModifierGroup` in
+ *    useMenuStore), so one predicate covers both.
+ *
+ * Fails **open** throughout: an item with no channel data, or whose groups
+ * can't be resolved (empty lookup, menu still hydrating), stays visible. Hiding
+ * a sellable item because of a data-loading gap is far worse than showing one
+ * that later turns out to be unavailable — the detail screen catches that case
+ * anyway.
  */
 export function isItemOrderable(
   item: MenuItemType,
   resolveGroups: ResolveModifierGroups,
 ): boolean {
+  if (!isItemOnChannel(item, "kiosk")) return false;
   if (item.availability === false) return false;
 
   const groupIds = item.modifierGroupIds ?? [];
