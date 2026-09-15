@@ -63,7 +63,8 @@ function PaymentDetailLoadingFallback() {
 
 const PaymentDetailBottomSheetController: React.ForwardRefRenderFunction<
   BottomSheetMethods,
-  Record<string, never>
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  {}
 > = (_props, ref) => {
   // The ONLY subscription this component may take. Anything else here is paid
   // on every POS screen, forever — put it in the body instead.

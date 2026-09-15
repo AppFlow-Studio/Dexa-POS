@@ -432,7 +432,11 @@ describe("Valor kiosk payment safety", () => {
     await svc.connect({ ...CONFIG, host: "192.0.2.2", terminalId: "terminal-2" });
     expect(creations).toBe(2);
     expect(first.isOpen).toBe(false);
-    await svc.connect({ connectionType: "usb", terminalId: "terminal-3" });
+    await svc.connect({
+      ...CONFIG,
+      connectionType: "usb",
+      terminalId: "terminal-3",
+    });
     expect(creations).toBe(3);
   });
 
@@ -455,7 +459,7 @@ describe("Valor kiosk payment safety", () => {
     const scripted = new ScriptedTransport();
     mockTransportImpl.current = () => scripted;
     const svc = newService();
-    await svc.connect({ connectionType: "usb", timeout: 30 });
+    await svc.connect({ ...CONFIG, connectionType: "usb", timeout: 30 });
     const result = await svc.processSale({ amount: 2500, referenceId: "ref" });
     expect(result).toMatchObject({ success: false, indeterminate: true });
   });
