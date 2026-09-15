@@ -7,6 +7,8 @@ import {
 import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
 import { kioskBannerHeight } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
+import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
 import type { Category, MenuItemType } from "@/lib/types";
@@ -32,6 +34,10 @@ import { useWindowDimensions, View } from "react-native";
  * Template B. In horizontal orientation the screen is too short for a tall
  * top banner, so the carousel instead becomes a left-hand sidebar (media
  * fills the vertical strip) with the pill bar + grid stacked to its right.
+ *
+ * The search bar leads the menu content in both orientations — under the banner
+ * in portrait, at the top of the right column in landscape, so the media strip
+ * keeps its full height — and opens KioskSearchOverlay over the whole view.
  */
 export function KioskMenuViewC({
   config,
@@ -100,8 +106,28 @@ export function KioskMenuViewC({
     <KioskMediaCarousel imageUrls={bannerImages} videoUrl={null} style={style} />
   );
 
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Absolutely positioned, so it fills whichever root it's dropped into and is
+  // unaffected by that root's flex direction — the landscape branch is a row.
+  const searchOverlay = searchOpen ? (
+    <KioskSearchOverlay
+      config={config}
+      onClose={() => setSearchOpen(false)}
+      onSelectItem={(item) => {
+        setSearchOpen(false);
+        onSelectItem(item);
+      }}
+    />
+  ) : null;
+
   const menuContent = (
     <>
+      {/* Top of the menu content in both orientations — above the banner's
+          sibling column in landscape, under the banner in portrait — so the
+          media strip keeps its full height either way. */}
+      <KioskSearchBar config={config} onPress={() => setSearchOpen(true)} />
+
       <KioskCategoryPillBar
         config={config}
         pills={pills}
@@ -150,6 +176,8 @@ export function KioskMenuViewC({
         ) : null}
 
         <View className="flex-1">{menuContent}</View>
+
+        {searchOverlay}
       </View>
     );
   }
@@ -183,6 +211,8 @@ export function KioskMenuViewC({
       ) : null}
 
       {menuContent}
+
+      {searchOverlay}
     </View>
   );
 }

@@ -266,6 +266,10 @@ export interface MenuItemType {
   // null/undefined = live, ISO timestamp = timed 86, "infinity" = until manual.
   snoozedUntil?: string | null;
   snoozeReason?: string | null;
+  // Sales channels this item is sold on ("pos" | "kiosk" | "online"), resolved
+  // server-side from the L1 item and its L2 location override. Undefined on
+  // pre-field snapshots; every consumer fails open. See `isItemOnChannel`.
+  availableChannels?: string[];
 }
 
 export interface CustomPricing {

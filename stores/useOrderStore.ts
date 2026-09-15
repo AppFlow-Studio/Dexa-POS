@@ -14893,7 +14893,8 @@ export const useOrderStore = create<OrderState>()(
             // ================================================================
             // OFFLINE-FIRST: Update local state immediately
             // ================================================================
-            if (!_checkCartEditable(get(), orderId)) return;
+            if (!_checkCartEditable(get(), orderId))
+              return { status: "skipped" };
 
             // Kitchen operations work with local state - no need to wait for sync
             // Backend status update is queued for later (fire-and-forget)

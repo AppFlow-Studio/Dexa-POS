@@ -26,6 +26,7 @@ import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useOnlineMenu } from "@/hooks/pos/useOnlineMenu";
 import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { getMenuStatusChips } from "@/lib/menu/menuStatusReasons";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import {
     SNOOZE_INFINITY,
@@ -378,7 +379,14 @@ const DraggableMenu = React.memo(
     });
 
     const isAvailable = checkAvailability(menu.schedules);
-    const statusActive = menu.isActive && isAvailable;
+    const statusChips = useMemo(
+      () =>
+        getMenuStatusChips(menu, {
+          isAvailableNow: isAvailable,
+          isHiddenOnDevice: isHidden,
+        }),
+      [menu, isAvailable, isHidden],
+    );
     const menuCategories = Array.isArray(menu.categories)
       ? menu.categories
       : [];
@@ -432,6 +440,10 @@ const DraggableMenu = React.memo(
               alignItems: "center",
               gap: s(8),
               flex: 1,
+              // MENU_DRAG_ROW_HEIGHT is a hard-coded 96 that the reorder maths
+              // reads, so this row must stay exactly one line tall. Wrapping the
+              // status chips would grow it and drift every drag target.
+              flexWrap: "nowrap",
             }}
           >
             <GestureDetector gesture={panGesture}>
@@ -441,6 +453,9 @@ const DraggableMenu = React.memo(
             </GestureDetector>
             <Text
               style={{
+                // The name yields first when chips crowd the row: it already
+                // truncates to one line, whereas a squeezed chip is unreadable.
+                flexShrink: 1,
                 fontSize: s(13),
                 fontWeight: "700",
                 color: colors.heading,
@@ -449,34 +464,61 @@ const DraggableMenu = React.memo(
             >
               {menu.name}
             </Text>
-            <View
-              style={{
-                paddingHorizontal: s(8),
-                paddingVertical: s(3),
-                borderRadius: s(20),
-                backgroundColor: statusActive
-                  ? colors.teal + "20"
-                  : colors.danger + "15",
-                borderWidth: 1,
-                borderColor: statusActive
-                  ? colors.teal + "50"
-                  : colors.danger + "30",
-              }}
-            >
-              <Text
+            {/*
+              One chip per reason the menu is not simply orderable, so the row
+              can explain a menu missing from the grid without anyone opening
+              the dashboard. Blocking reasons are red; "Off on Kiosk" is amber
+              because it is real config but says nothing about THIS surface.
+            */}
+            {statusChips.length === 0 ? (
+              <View
                 style={{
-                  fontSize: s(10),
-                  fontWeight: "600",
-                  color: statusActive ? colors.teal : colors.danger,
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(3),
+                  borderRadius: s(20),
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "50",
                 }}
               >
-                {menu.isActive
-                  ? isAvailable
-                    ? "Available"
-                    : "Unavailable"
-                  : "Inactive"}
-              </Text>
-            </View>
+                <Text
+                  style={{
+                    fontSize: s(10),
+                    fontWeight: "600",
+                    color: colors.teal,
+                  }}
+                >
+                  Available
+                </Text>
+              </View>
+            ) : (
+              statusChips.map((chip) => {
+                const tone = chip.blocking ? colors.danger : colors.warning;
+                return (
+                  <View
+                    key={chip.key}
+                    style={{
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(3),
+                      borderRadius: s(20),
+                      backgroundColor: tone + "15",
+                      borderWidth: 1,
+                      borderColor: tone + "30",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: s(10),
+                        fontWeight: "600",
+                        color: tone,
+                      }}
+                    >
+                      {chip.label}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
             {isOnlineMenu && (
               <View
                 style={{
@@ -508,34 +550,65 @@ const DraggableMenu = React.memo(
           <View
             style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
           >
+            {/*
+              These two sit side by side and do different things at different
+              scopes — this one hides the menu on THIS device only, the next
+              deactivates it for everyone. Both used to render one fixed icon
+              whatever the state, which is what made them read as duplicates.
+              Each now shows where it stands: eye open vs struck through, power
+              tinted when the menu is off.
+            */}
             <TouchableOpacity
               onPress={onToggleHiddenPress}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isHidden }}
+              accessibilityLabel={
+                isHidden ? "Show menu on this device" : "Hide menu on this device"
+              }
               style={{
                 padding: s(6),
                 backgroundColor: colors.panel,
                 borderRadius: s(8),
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor: isHidden ? colors.danger + "60" : colors.border,
                 opacity: 1,
               }}
             >
-              <EyeOff size={s(14)} color={colors.label} />
+              {isHidden ? (
+                <EyeOff size={s(14)} color={colors.danger} />
+              ) : (
+                <Eye size={s(14)} color={colors.label} />
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onToggleMenuActive(menu.id)}
               disabled={!isEditable}
+              accessibilityRole="button"
+              accessibilityState={{ selected: menu.isActive }}
+              accessibilityLabel={
+                menu.isActive ? "Deactivate menu" : "Activate menu"
+              }
               style={{
                 padding: s(6),
                 backgroundColor: colors.panel,
                 borderRadius: s(8),
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor:
+                  isEditable && !menu.isActive
+                    ? colors.danger + "60"
+                    : colors.border,
                 opacity: isEditable ? 1 : 0.4,
               }}
             >
               <Power
                 size={s(14)}
-                color={isEditable ? colors.label : colors.muted}
+                color={
+                  !isEditable
+                    ? colors.muted
+                    : menu.isActive
+                      ? colors.label
+                      : colors.danger
+                }
               />
             </TouchableOpacity>
             <TouchableOpacity

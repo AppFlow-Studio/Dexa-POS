@@ -9,6 +9,8 @@ import {
 } from "@/components/kiosk/shared/kioskItemAvailability";
 import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
 import { kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
+import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
+import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
 import type { MenuItemType } from "@/lib/types";
 import {
   resolveKioskColumns,
@@ -20,9 +22,12 @@ import { useMemo, useState } from "react";
 import { View } from "react-native";
 
 /**
- * Template A menu view — two-pane split:
+ * Template A menu view — a search bar over a two-pane split:
  *   left rail  = categories grouped under their menu name (menu = section header)
  *   right pane = item grid for the selected category
+ *
+ * The search bar spans both panes and opens KioskSearchOverlay over the whole
+ * view — searching looks across every available menu, not the selected category.
  *
  * Split ratio follows orientation (config.orientation):
  *   horizontal → 1/4 left · 3/4 right, grid 4 columns
@@ -86,28 +91,47 @@ export function KioskMenuView({
 
   const items = useOrderableItems(activeCategory?.items);
 
+  const [searchOpen, setSearchOpen] = useState(false);
+
   return (
-    <View className="flex-1 flex-row">
-      {/* Left rail — categories grouped by menu */}
-      <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
-        <KioskCategoryRail
-          config={config}
-          sections={sections}
-          resolvedKey={resolvedKey}
-          onSelect={setActiveKey}
-        />
+    <View className="flex-1">
+      {/* Search spans the rail as well as the grid — it looks across the whole
+          menu, not the category that happens to be selected. */}
+      <KioskSearchBar config={config} onPress={() => setSearchOpen(true)} />
+
+      <View className="flex-1 flex-row">
+        {/* Left rail — categories grouped by menu */}
+        <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
+          <KioskCategoryRail
+            config={config}
+            sections={sections}
+            resolvedKey={resolvedKey}
+            onSelect={setActiveKey}
+          />
+        </View>
+
+        {/* Right pane - item grid */}
+        <View className="flex-1">
+          <KioskItemGrid
+            config={config}
+            items={items}
+            numColumns={numColumns}
+            resetKey={resolvedKey}
+            onSelectItem={onSelectItem}
+          />
+        </View>
       </View>
 
-      {/* Right pane - item grid */}
-      <View className="flex-1">
-        <KioskItemGrid
+      {searchOpen ? (
+        <KioskSearchOverlay
           config={config}
-          items={items}
-          numColumns={numColumns}
-          resetKey={resolvedKey}
-          onSelectItem={onSelectItem}
+          onClose={() => setSearchOpen(false)}
+          onSelectItem={(item) => {
+            setSearchOpen(false);
+            onSelectItem(item);
+          }}
         />
-      </View>
+      ) : null}
     </View>
   );
 }
