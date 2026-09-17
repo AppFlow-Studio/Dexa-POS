@@ -248,11 +248,12 @@ export function useKioskCheckout() {
   /**
    * Create the order, add the cart items, sync, charge, persist, and send to kitchen.
    * Runs only when the customer commits to paying.
-   * `tipAmount` is absolute dollars (0 if none). Returns the result or null on
-   * failure (status/error set).
+   * `rawTipAmount` is absolute dollars (0 if none); it is rounded to cents below
+   * (a percentage-based tip can arrive with sub-cent float precision). Returns
+   * the result or null on failure (status/error set).
    */
   const payOrder = useCallback(
-    async (tipAmount: number): Promise<KioskCheckoutResult | null> => {
+    async (rawTipAmount: number): Promise<KioskCheckoutResult | null> => {
       if (runningRef.current || settledRef.current) return null;
       const stationId = useStoreSettingsStore.getState().selectedStation?.id;
       if (!stationId || !acquireKioskCheckout(stationId)) {
@@ -277,9 +278,15 @@ export function useKioskCheckout() {
         const location = useStoreSettingsStore.getState().selectedStore;
         if (!location?.id || !location.merchant_id) throw new Error("Kiosk location is not configured. Please see a staff member.");
         if (cart.lines.length === 0) throw new Error("Your cart is empty.");
-        if (!Number.isFinite(tipAmount) || tipAmount < 0 || round2(tipAmount) !== tipAmount) {
+        if (!Number.isFinite(rawTipAmount) || rawTipAmount < 0) {
           throw new Error("Invalid tip amount.");
         }
+        // Normalize to cents rather than reject the whole payment: a
+        // percentage-based tip (e.g. 18% of $16.55 = $2.979) arrives with float
+        // precision beyond 2dp. round2 is the decimal.js money rounder
+        // (Postgres-compatible), so the charged tip matches the total the
+        // backend computes downstream.
+        const tipAmount = round2(rawTipAmount);
         const access = await refreshSelectedStationOperationalState(supabase);
         if (!access.valid) throw new Error(access.failure.message);
         const station = useStoreSettingsStore.getState().selectedStation;
