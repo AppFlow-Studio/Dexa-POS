@@ -1562,11 +1562,12 @@ function ClosedTodayCollapsible ({
   )
 }
 
-// Terminal-type → brand logo. Only Valor/Castles have assets today; other
+// Terminal-type → brand logo. Valor/Castles/CodePay have assets today; other
 // types (dejavoo/atom/manual/…) have no logo and fall back to the status icon.
 const TERMINAL_LOGOS: Record<string, number> = {
   valor: require('@/assets/images/valorlogo.jpg'),
-  castles: require('@/assets/images/castles.jpg')
+  castles: require('@/assets/images/castles.jpg'),
+  codepay: require('@/assets/images/codepaylogo.jpg')
 }
 
 function terminalLogoForType (type: string | null | undefined): number | null {
