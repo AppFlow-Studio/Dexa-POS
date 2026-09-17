@@ -7,8 +7,10 @@ import { captureRpcError } from "@/lib/supabase";
 import { addPendingFinalize } from "@/services/pendingFinalize";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getSharedValorService } from "@/services/terminals/valor-service";
+import { getSharedCodePayService } from "@/services/terminals/codepay-service";
 import { reconcileTerminalSerial } from "@/services/terminals/terminalIdentity";
 import { VALOR_DEFAULT_PORT, VALOR_SETTLEMENT_TIMEOUT_MS } from "@/types/valor";
+import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
 import type {
     CastlesSettlementHostResult,
     CastlesSettlementResult,
@@ -26,9 +28,9 @@ export interface SettlementInput {
   terminalId: string; // payment_terminals.id (UUID)
   merchantId: string; // required by RPCs for tenant isolation
   initiatedBy: string; // Clerk userId — audit trail
-  /** 'castles' (default) or 'valor' — selects the settlement path. */
+  /** 'castles' (default), 'valor', or 'codepay' — selects the settlement path. */
   terminalType?: string;
-  /** Required for TCP terminals; ignored for USB. */
+  /** Required for TCP terminals; ignored for USB and on-terminal CodePay. */
   terminalHost?: string;
   terminalPort?: number;
   /** 'usb' for wired Castles/Valor, otherwise TCP. Defaults to 'local_socket'. */
@@ -36,6 +38,8 @@ export interface SettlementInput {
   /** Valor only: terminal EPI + cancel port from the payment_terminals row. */
   epi?: string;
   cancelPort?: number;
+  /** CodePay only: payment app id (Intent extra) — from app_id/register_id. */
+  appId?: string;
   locationId: string;
   supabase: SupabaseClient;
   onStatus?: (message: string) => void;
@@ -233,6 +237,9 @@ export async function runSettlement(
 ): Promise<SettlementOutput> {
   if (input.terminalType === 'valor') {
     return runValorSettlement(input);
+  }
+  if (input.terminalType === 'codepay') {
+    return runCodePaySettlement(input);
   }
   return runCastlesSettlement(input);
 }
@@ -464,6 +471,144 @@ async function runValorSettlement(
     requiresSupport: Boolean(fin.requires_support),
     hosts: [],
     processor: 'valor',
+    batchUuid,
+    batchId: fin.batch_id ?? batchId,
+    status: fin.status,
+    batchNumber: fin.batch_number,
+    paymentsUpdated: fin.success ? paymentCount : undefined,
+    error: fin.success ? undefined : (fin.error ?? `Settlement ${fin.status}`),
+  };
+}
+
+// ── CodePay on-terminal settlement (topic ecrhub.pay.batch.close) ───
+//
+// Like Valor, CodePay settles on the terminal itself (one clean shot, no
+// per-acquirer partial detection), so there is NO auto-retry loop and it is
+// deliberately kept OUT of the unattended auto-settlement scheduler — a
+// scheduled POS batch-close racing a host/terminal auto-batch is a double-cut
+// vector. CodePay batch-out is manual (BatchoutPanel) only.
+//
+// prepare pins the unsettled CodePay payments to a batch_uuid; batchClose()
+// fires the Intent that closes the open batch on the terminal; finalize marks
+// the pinned payments settled (or routes to needs_review). On a finalize RPC
+// failure AFTER a confirmed close, the response is journaled for replay.
+//
+// Backend dependency: prepare_codepay_settlement / finalize_codepay_settlement
+// must exist (mirror the Valor RPCs). Until deployed, a clear "not deployed to
+// this environment yet" message is surfaced instead of a crash.
+async function runCodePaySettlement(
+  input: SettlementInput,
+): Promise<SettlementOutput> {
+  const { terminalId, merchantId, initiatedBy, appId, supabase, onStatus } =
+    input;
+
+  const failOutput = (
+    error: string,
+    extra?: Partial<SettlementOutput>,
+  ): SettlementOutput => ({
+    success: false, partialSuccess: false, shouldRetry: false,
+    requiresSupport: false, hosts: [], processor: 'codepay', error, ...extra,
+  });
+
+  if (!appId?.trim()) {
+    return failOutput('CodePay terminal has no app_id configured.');
+  }
+
+  // 1. Prepare: snapshot + pin membership (server side).
+  onStatus?.('Preparing settlement batch...');
+  const { data: prep, error: prepErr } = await supabase.rpc(
+    'prepare_codepay_settlement',
+    {
+      p_terminal_id: terminalId,
+      p_merchant_id: merchantId,
+      p_initiated_by: initiatedBy,
+    },
+  );
+  if (prepErr) {
+    if (/no unsettled captured codepay payments/i.test(prepErr.message ?? '')) {
+      return failOutput('', { status: 'nothing_to_settle', error: undefined });
+    }
+    const msg = /function .*prepare_codepay_settlement.* does not exist/i.test(
+      prepErr.message ?? '',
+    )
+      ? 'CodePay settlement is not deployed to this environment yet.'
+      : `Prepare failed: ${prepErr.message}`;
+    captureRpcError('prepare_codepay_settlement', prepErr);
+    return failOutput(msg);
+  }
+
+  if (prep?.branch === 'nothing_to_settle' || prep?.nothing_to_settle === true) {
+    return failOutput('', { status: 'nothing_to_settle', error: undefined });
+  }
+  if (prep?.branch === 'needs_manual') {
+    return failOutput(
+      prep?.message ?? 'Multiple open CodePay batches for this terminal. Reconcile manually.',
+      { status: 'needs_manual', requiresSupport: true },
+    );
+  }
+
+  const batchUuid: string = prep.batch_uuid;
+  const batchId: string = prep.batch_id;
+  const paymentCount: number = prep.payment_count ?? 0;
+
+  // 2. Close the batch on the terminal (single Intent round trip).
+  onStatus?.('Closing the batch on the terminal — do not leave this screen.');
+  const service = getSharedCodePayService();
+  service.configure({ appId, terminalId, timeout: CODEPAY_SALE_TIMEOUT_MS });
+  const referenceId = `CPBC_${String(Date.now()).slice(-9)}`;
+  const res = await service.batchClose({ referenceId });
+
+  // The terminal response drives finalize. Deterministic shape so finalize can
+  // read response_code without guessing: "000" on success, null on
+  // indeterminate/failure. The raw biz payload rides along under `biz` for the
+  // optional count cross-check + audit. On an indeterminate close finalize
+  // routes the batch to needs_review (out of 'pending') rather than leaving it
+  // stuck — and keeps the pin (the batch MAY have closed; never re-close).
+  const codepayResponse: Record<string, unknown> = {
+    response_code: res.success ? '000' : null,
+    response_msg: res.error ?? null,
+    indeterminate: res.indeterminate ?? false,
+    biz: res.raw ?? null,
+  };
+
+  // 3. Finalize: mark payments settled or needs_review.
+  onStatus?.('Recording settlement results...');
+  const { data: fin, error: finErr } = await supabase.rpc(
+    'finalize_codepay_settlement',
+    {
+      p_batch_uuid: batchUuid,
+      p_merchant_id: merchantId,
+      p_codepay_response: codepayResponse,
+    },
+  );
+
+  if (finErr) {
+    captureRpcError('finalize_codepay_settlement', finErr);
+    // If the terminal confirmed the close, journal the response so any device
+    // can replay finalize (re-closing would double-cut).
+    if (res.success) {
+      await addPendingFinalize(
+        {
+          batchUuid, merchantId, terminalId,
+          processor: 'codepay', castlesResponse: codepayResponse,
+          savedAt: new Date().toISOString(),
+        },
+        supabase,
+      );
+    }
+    return failOutput(
+      'Settlement completed on the terminal but saving the result failed. Retry the DB sync from settings.',
+      { batchUuid, batchId, dbWriteFailed: true },
+    );
+  }
+
+  return {
+    success: Boolean(fin.success),
+    partialSuccess: false,
+    shouldRetry: Boolean(fin.should_retry),
+    requiresSupport: Boolean(fin.requires_support),
+    hosts: [],
+    processor: 'codepay',
     batchUuid,
     batchId: fin.batch_id ?? batchId,
     status: fin.status,

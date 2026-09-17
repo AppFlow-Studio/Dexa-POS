@@ -247,16 +247,17 @@ const PreAuthPaymentView: React.FC = () => {
       return
     }
 
-    // ATOM (Landi P30) can't place holds — pre-auth isn't part of the on-device
-    // capability set. Defense-in-depth guard for the OPEN path only; capture /
-    // release of an existing hold must still work regardless of the active
-    // processor. The Open Tab entry is also hidden in PaymentMethodSelectionView
-    // when ATOM is active, so this should rarely be reached.
-    if (resolveActiveProcessor().activeType === 'atom') {
+    // ATOM (Landi P30) and CodePay (on-terminal) can't place holds — pre-auth
+    // isn't part of their on-device capability set. Defense-in-depth guard for
+    // the OPEN path only; capture / release of an existing hold must still work
+    // regardless of the active processor. The Open Tab entry is also hidden in
+    // PaymentMethodSelectionView for these, so this should rarely be reached.
+    const openPreAuthType = resolveActiveProcessor().activeType
+    if (openPreAuthType === 'atom' || openPreAuthType === 'codepay') {
+      const proc = openPreAuthType === 'atom' ? 'ATOM (Landi P30)' : 'CodePay'
       toastService.show({
         title: 'Not Supported',
-        message:
-          'Open Tab / pre-auth isn’t available on ATOM (Landi P30). Charge the full amount instead.',
+        message: `Open Tab / pre-auth isn’t available on ${proc}. Charge the full amount instead.`,
         type: 'error'
       })
       return

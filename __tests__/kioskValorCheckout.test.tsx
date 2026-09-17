@@ -7,6 +7,13 @@ const mockStorage = new Map<string, unknown>();
 jest.mock("@/lib/storage", () => ({
   getSyncJSON: (key: string) => mockStorage.get(key) ?? null,
   setSyncJSON: (key: string, value: unknown) => mockStorage.set(key, value),
+  // Persisted zustand stores (e.g. useCodePayTerminalStore, reached via
+  // useActiveProcessor) call this at module load — no-op storage in tests.
+  createLazyPersistStorage: () => ({
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+  }),
 }));
 const mockTerminal: any = { id: "valor-1", terminal_type: "valor", connection_type: "local_socket", ip_address: "192.0.2.1", port: 5000, cancel_port: 5001, epi: "sandbox-epi" };
 const mockSettings: any = { selectedStation: { id: "station-1", can_process_payments: true, can_create_orders: true, payment_terminal: mockTerminal }, selectedStore: { id: "location-1", merchant_id: "merchant-1" } };

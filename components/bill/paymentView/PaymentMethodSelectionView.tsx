@@ -171,9 +171,12 @@ const PaymentMethodSelectionView: React.FC = () => {
   // perf kill-switch). Uses the active processor, not the configured terminal,
   // because a NEW hold routes to whatever device services new sales.
   const activeProcessorType = useActiveProcessor().activeType
+  // CodePay's on-terminal path has no pre-auth/hold either (auth+capture is
+  // cloud-REST only), so it gets the same Open Tab suppression as ATOM.
   const openTabDisabledForTerminal =
     (terminalType === 'valor' && !VALOR_OPEN_TAB_ENABLED) ||
-    activeProcessorType === 'atom'
+    activeProcessorType === 'atom' ||
+    activeProcessorType === 'codepay'
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(
     hasPreAuth ? 'Close Tab' : 'Card Reader'

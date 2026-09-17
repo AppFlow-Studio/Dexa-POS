@@ -1,9 +1,12 @@
 import {
+  createFailOpenBillingAccess,
   createStationInactiveFailure,
   normalizeMerchantBillingAccess,
   PosBillingAccessStatus,
   PosAccessFailure,
 } from "@/lib/posAccessControl";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { SelectedStation, Station } from "@/types/station";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -37,12 +40,20 @@ export async function fetchMerchantBillingAccess(
 
   // database.types.ts must be regenerated after the shared website migration
   // is deployed. Keep this single cast at the contract boundary until then.
-  const { data, error } = await (supabase.rpc as any)(
+  //
+  // Deadline-wrapped: this runs on the critical sign-in path (see pin-login's
+  // ensureBillingAccess) and previously had no timeout, so a slow billing
+  // endpoint could hang login indefinitely. On timeout runWithDeadline returns
+  // a DEADLINE_EXCEEDED error which we throw like any other RPC error — callers
+  // on the login path catch it and fail open.
+  const { data, error } = await runWithDeadline<any>(
     "get_subscription_access_state",
-    {
-      p_merchant_id: merchantId,
-      p_location_id: locationId,
-    },
+    DEADLINES.paymentAuthCheck,
+    (signal) =>
+      (supabase.rpc as any)("get_subscription_access_state", {
+        p_merchant_id: merchantId,
+        p_location_id: locationId,
+      }).abortSignal(signal),
   );
 
   if (error) throw error;
@@ -102,11 +113,23 @@ export async function fetchLocationStationsWithBillingGate(
   supabase: SupabaseClient,
   params: { locationId: string; merchantId: string | null | undefined },
 ): Promise<{ stations: Station[]; billingAccess: PosBillingAccessStatus }> {
-  const billingAccess = await fetchMerchantBillingAccess(
-    supabase,
-    params.merchantId,
-    params.locationId,
-  );
+  // Fail open on the sign-in path: a billing timeout / network error is not a
+  // definitive "unpaid" verdict and must not block staff from selecting a
+  // station. Only an explicit `allowed: false` response gates them out.
+  let billingAccess: PosBillingAccessStatus;
+  try {
+    billingAccess = await fetchMerchantBillingAccess(
+      supabase,
+      params.merchantId,
+      params.locationId,
+    );
+  } catch (err) {
+    console.warn(
+      "[posAccessService] Billing precheck failed on station load — proceeding (fail open):",
+      err,
+    );
+    billingAccess = createFailOpenBillingAccess();
+  }
 
   useStoreSettingsStore.getState().setBillingAccess(billingAccess);
 
@@ -114,9 +137,18 @@ export async function fetchLocationStationsWithBillingGate(
     return { stations: [], billingAccess };
   }
 
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await runWithDeadline<Station[]>(
     "get_location_stations_with_status",
-    { p_location_id: params.locationId },
+    DEADLINES.read,
+    (signal) =>
+      supabase
+        .rpc("get_location_stations_with_status", {
+          p_location_id: params.locationId,
+        })
+        .abortSignal(signal) as unknown as Promise<{
+        data: Station[] | null;
+        error: any;
+      }>,
   );
 
   if (error) throw error;
@@ -138,6 +170,10 @@ export async function refreshSelectedStationOperationalState(
     return { valid: true };
   }
 
+  // Fail CLOSED here (unlike the sign-in path): this guards an in-progress
+  // kiosk checkout, so acting on a stale verdict is the larger risk — a
+  // timeout/network error propagates rather than optimistically allowing.
+  // The deadline just makes it fail fast instead of hanging.
   const billingAccess = await fetchMerchantBillingAccess(
     supabase,
     selectedStore.merchant_id,
@@ -149,9 +185,18 @@ export async function refreshSelectedStationOperationalState(
     return { valid: false, failure: billingAccess.failure };
   }
 
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await runWithDeadline<Station[]>(
     "get_location_stations_with_status",
-    { p_location_id: selectedStore.id },
+    DEADLINES.read,
+    (signal) =>
+      supabase
+        .rpc("get_location_stations_with_status", {
+          p_location_id: selectedStore.id,
+        })
+        .abortSignal(signal) as unknown as Promise<{
+        data: Station[] | null;
+        error: any;
+      }>,
   );
 
   if (error) {

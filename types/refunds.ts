@@ -107,6 +107,8 @@ export interface PaymentRefundContext {
   tranNo?: string;
   /** ATOM paymentId — linked refund/void key for the on-device terminal. */
   atomPaymentId?: string;
+  /** CodePay original merchant_order_no — orig_merchant_order_no reversal key. */
+  codepayMerchantOrderNo?: string;
   /** Card last-4 (Valor CARD_NO fallback reversal key). */
   cardLast4?: string;
   authCode: string;

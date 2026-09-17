@@ -17,6 +17,7 @@
 import { useMemo } from "react";
 import type { StationPaymentTerminal } from "@/types/station";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
+import { useCodePayTerminalStore } from "@/stores/useCodePayTerminalStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useProcessorPreferenceStore } from "@/stores/useProcessorPreferenceStore";
 import { describeProcessor } from "@/lib/processorLabels";
@@ -29,39 +30,53 @@ export interface ActiveProcessor {
   /** Human label, e.g. "ATOM (on-device) · TSYS". */
   activeLabel: string;
   /** Where the active terminal came from. */
-  source: "atom" | "configured" | "none";
-  /** All terminal types this station can process reversals on (atom + configured). */
+  source: "atom" | "codepay" | "configured" | "none";
+  /** All terminal types this station can process reversals on (atom/codepay + configured). */
   availableTypes: string[];
   /** True when the on-device ATOM is surfaced. */
   atomActive: boolean;
+  /** True when the on-device CodePay Register is detected + surfaced. */
+  codepayActive: boolean;
   /** The configured (DB) terminal's type, if any. */
   configuredType: string | null;
   /** Whether ATOM is enabled for NEW sales. */
   atomEnabled: boolean;
+  /** Whether auto-detected CodePay is enabled for NEW sales. */
+  codepayEnabled: boolean;
 }
 
 function computeActiveProcessor(
   atomInternal: StationPaymentTerminal | null,
   configured: StationPaymentTerminal | null,
   atomEnabled: boolean,
+  codepayInternal: StationPaymentTerminal | null,
+  codepayEnabled: boolean,
 ): ActiveProcessor {
-  // ATOM on → prefer the on-device ATOM for new sales; Off → configured only.
+  // ATOM on → prefer the on-device ATOM for new sales; then a configured DB
+  // terminal; then auto-detected CodePay as a fallback. CodePay is a fallback
+  // (NOT preferred over a configured terminal) so that a real provisioned
+  // CodePay row — which carries a DB id sales stamp + settlement need — always
+  // wins over the synthetic internal terminal.
+  const codepayFallback = codepayEnabled ? codepayInternal : null;
   const activeTerminal: StationPaymentTerminal | null = atomEnabled
-    ? (atomInternal ?? configured ?? null)
-    : (configured ?? null);
+    ? (atomInternal ?? configured ?? codepayFallback ?? null)
+    : (configured ?? codepayFallback ?? null);
 
   const activeType = activeTerminal?.terminal_type ?? null;
   const source: ActiveProcessor["source"] =
     activeTerminal == null
       ? "none"
-      : activeTerminal.terminal_type === "atom"
+      : activeTerminal === atomInternal
         ? "atom"
-        : "configured";
+        : activeTerminal === codepayInternal
+          ? "codepay"
+          : "configured";
 
   const availableTypes = Array.from(
     new Set(
       [
         atomInternal ? "atom" : null,
+        codepayInternal ? "codepay" : null,
         configured?.terminal_type ?? null,
       ].filter((t): t is string => !!t),
     ),
@@ -74,21 +89,32 @@ function computeActiveProcessor(
     source,
     availableTypes,
     atomActive: !!atomInternal,
+    codepayActive: !!codepayInternal,
     configuredType: configured?.terminal_type ?? null,
     atomEnabled,
+    codepayEnabled,
   };
 }
 
 /** Reactive selector for render / gates. */
 export function useActiveProcessor(): ActiveProcessor {
   const atomInternal = useAtomTerminalStore((s) => s.internalTerminal);
+  const codepayInternal = useCodePayTerminalStore((s) => s.internalTerminal);
   const configured = useStoreSettingsStore(
     (s) => s.selectedStation?.payment_terminal ?? null,
   );
   const atomEnabled = useProcessorPreferenceStore((s) => s.atomEnabled);
+  const codepayEnabled = useProcessorPreferenceStore((s) => s.codepayEnabled);
   return useMemo(
-    () => computeActiveProcessor(atomInternal, configured, atomEnabled),
-    [atomInternal, configured, atomEnabled],
+    () =>
+      computeActiveProcessor(
+        atomInternal,
+        configured,
+        atomEnabled,
+        codepayInternal,
+        codepayEnabled,
+      ),
+    [atomInternal, configured, atomEnabled, codepayInternal, codepayEnabled],
   );
 }
 
@@ -98,8 +124,17 @@ export function useActiveProcessor(): ActiveProcessor {
  */
 export function resolveActiveProcessor(): ActiveProcessor {
   const atomInternal = useAtomTerminalStore.getState().internalTerminal;
+  const codepayInternal = useCodePayTerminalStore.getState().internalTerminal;
   const configured =
     useStoreSettingsStore.getState().selectedStation?.payment_terminal ?? null;
   const atomEnabled = useProcessorPreferenceStore.getState().atomEnabled;
-  return computeActiveProcessor(atomInternal, configured, atomEnabled);
+  const codepayEnabled =
+    useProcessorPreferenceStore.getState().codepayEnabled;
+  return computeActiveProcessor(
+    atomInternal,
+    configured,
+    atomEnabled,
+    codepayInternal,
+    codepayEnabled,
+  );
 }

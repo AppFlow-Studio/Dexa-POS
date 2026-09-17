@@ -48,7 +48,7 @@ export function KioskCheckoutView({
 }) {
   const scale = useKioskUiScale();
   const clearCart = useKioskCartStore((state) => state.clear);
-  const { status, error, totals, computeTotals, payOrder, cancelCharge } =
+  const { status, error, totals, assistanceRef, computeTotals, payOrder, cancelCharge } =
     useKioskCheckout();
 
   // The active processor decides whether the card read can be cancelled from the
@@ -182,6 +182,51 @@ export function KioskCheckoutView({
           <Text style={{ fontSize: kioskPx(16, scale), color: muted, textAlign: "center" }}>
             {error}
           </Text>
+          {assistanceRef && (
+            <Text
+              style={{
+                fontSize: kioskPx(13, scale),
+                color: muted,
+                textAlign: "center",
+              }}
+            >
+              {assistanceRef.displayNumber
+                ? `Order #${assistanceRef.displayNumber}`
+                : assistanceRef.dbOrderId
+                  ? `Order ${assistanceRef.dbOrderId.slice(0, 8)}`
+                  : "Order not started"}
+              {"  ·  "}
+              {new Date(assistanceRef.at).toLocaleTimeString()}
+            </Text>
+          )}
+          <View
+            style={{
+              flexDirection: "row",
+              gap: kioskPx(12, scale),
+              marginTop: kioskPx(8, scale),
+            }}
+          >
+            <Pressable
+              onPress={handleBack}
+              style={{
+                paddingHorizontal: kioskPx(28, scale),
+                paddingVertical: kioskPx(14, scale),
+                borderRadius: kioskPx(16, scale),
+                borderWidth: 1.5,
+                borderColor: `${config.textColor}30`,
+              }}
+            >
+              <Text
+                style={{
+                  color: config.textColor,
+                  fontSize: kioskPx(16, scale),
+                  fontWeight: "700",
+                }}
+              >
+                Back to order
+              </Text>
+            </Pressable>
+          </View>
         </>
       ) : status === "error" ? (
         <>

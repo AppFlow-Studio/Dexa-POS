@@ -2,6 +2,7 @@ import { queryClient } from "@/contexts/TanstackProvider";
 import { useDeltaSync } from "@/hooks/db/useDeltaSync";
 import { useOutboxDrain } from "@/hooks/db/useOutboxDrain";
 import { useAutoSettlementScheduler } from "@/hooks/pos/useAutoSettlementScheduler";
+import { isAutoSettleSupportedType } from "@/services/autoSettlementScheduler";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
 import { useMenuVersionWatch } from "@/hooks/pos/useMenuVersionWatch";
@@ -63,6 +64,11 @@ import {
   startAtomLoopbackDetect,
   stopAtomLoopbackDetect,
 } from "@/services/terminals/atomLoopbackDetector";
+import {
+  startCodePayDetect,
+  stopCodePayDetect,
+} from "@/services/terminals/codepayDetector";
+import { setCodePayProvisionSupabaseClient } from "@/services/terminals/codepayAutoProvision";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import {
   startCastlesUsbAutoConnect,
@@ -167,6 +173,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
       setKDSSupabaseClient(supabase);
+      setCodePayProvisionSupabaseClient(supabase);
       // Initialize offline sync service (re-inits after Fast Refresh since module-level state resets)
       if (!isServiceInitialized()) {
         initializeOfflineSync()
@@ -193,10 +200,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
 
-  // Unattended daily Castles batch-out. Gated to the Castles terminal THIS
+  // Unattended daily batch-out. Gated to the Castles or CodePay terminal THIS
   // station owns with server auto_settle on (fail-safe OFF when the field is
-  // absent on un-migrated envs). Enablement is the server auto_settle column —
-  // there is no separate client flag.
+  // absent on un-migrated envs). Both are POS-driven on-demand batch-close models
+  // (Valor is excluded — host auto-batch + webhook). Enablement is the server
+  // auto_settle column — there is no separate client flag.
   useAutoSettlementScheduler({
     enabled: Boolean(
       supabase &&
@@ -204,7 +212,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       selectedStore?.merchant_id &&
       selectedStore?.timezone &&
       selectedStation?.payment_terminal?.id &&
-      selectedStation?.payment_terminal?.terminal_type === "castles" &&
+      isAutoSettleSupportedType(
+        selectedStation?.payment_terminal?.terminal_type,
+      ) &&
       (selectedStation?.payment_terminal?.auto_settle ?? false) &&
       !isKDS,
     ),
@@ -400,6 +410,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     startAtomLoopbackDetect();
     return () => {
       stopAtomLoopbackDetect();
+    };
+  }, [isKDS]);
+
+  // On-device ("internal") CodePay detection: presence-check the CodePay Register
+  // app (Intent) and, when a merchant app_id is set, surface it as an available
+  // terminal. Self-gates on the native CodePay bridge + a configured app_id, so
+  // it's a no-op on non-CodePay devices / before the app_id is entered. POS-only.
+  useEffect(() => {
+    if (isKDS) return;
+    startCodePayDetect();
+    return () => {
+      stopCodePayDetect();
     };
   }, [isKDS]);
 

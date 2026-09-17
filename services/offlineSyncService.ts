@@ -374,6 +374,14 @@ let unsubscribeNetInfo: (() => void) | null = null;
 let periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
 let netInfoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let netInfoPollTimer: ReturnType<typeof setInterval> | null = null;
+/**
+ * True while we hold a prior ONLINE state through a single ambiguous
+ * reachability reading (isConnected=true, isInternetReachable=null) awaiting a
+ * re-probe. Bounds the hold to one re-probe so a genuinely-offline link still
+ * flips us offline instead of latching online forever.
+ */
+let netInfoAmbiguousReprobePending = false;
+const NETINFO_AMBIGUOUS_REPROBE_MS = 4000;
 /** Unregister fns for the lifecycle-coordinator tasks (was an AppState sub). */
 let lifecycleUnregister: (() => void)[] = [];
 
@@ -776,8 +784,10 @@ function handleNetworkChange(state: NetInfoState): void {
 
   if (state.isConnected === false) {
     isOnline = false;
+    netInfoAmbiguousReprobePending = false;
   } else if (state.isConnected === true && state.isInternetReachable === true) {
     isOnline = true;
+    netInfoAmbiguousReprobePending = false;
     if (netInfoRefreshTimer) {
       clearTimeout(netInfoRefreshTimer);
       netInfoRefreshTimer = null;
@@ -787,10 +797,28 @@ function handleNetworkChange(state: NetInfoState): void {
     state.isInternetReachable === false
   ) {
     isOnline = false;
+    netInfoAmbiguousReprobePending = false;
   } else {
-    // isConnected=true but isInternetReachable=null (ambiguous — common on Android emulator).
-    // Treat as offline immediately (pessimistic). NetInfo will fire again when
-    // reachability resolves to true after its probe (configured above).
+    // isConnected=true but isInternetReachable=null (ambiguous — common on
+    // flaky links and Android). A transient null often appears right after a
+    // `true`; flipping straight to offline caused an online↔offline flap that
+    // re-fired the heavy reconnect sweep and reset connectionQuality every
+    // edge. If we're currently ONLINE, hold that state and re-probe once; only
+    // fall back to offline when the re-probe is still not definitively
+    // reachable (or we were already offline). A definitive `false` (branch
+    // above) always flips us offline immediately.
+    if (isOnline && !netInfoAmbiguousReprobePending) {
+      netInfoAmbiguousReprobePending = true;
+      if (netInfoRefreshTimer) clearTimeout(netInfoRefreshTimer);
+      netInfoRefreshTimer = setTimeout(() => {
+        netInfoRefreshTimer = null;
+        NetInfo.fetch().then(handleNetworkChange).catch(() => {});
+      }, NETINFO_AMBIGUOUS_REPROBE_MS);
+      return; // hold prior (online) state; no transition this tick
+    }
+    // Already offline, or the held re-probe is still ambiguous → pessimistic
+    // offline (NetInfo will fire again when reachability resolves to true).
+    netInfoAmbiguousReprobePending = false;
     isOnline = false;
     if (netInfoRefreshTimer) {
       clearTimeout(netInfoRefreshTimer);

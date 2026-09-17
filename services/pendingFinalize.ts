@@ -26,10 +26,10 @@ export interface PendingFinalizeEntry {
   merchantId: string;
   terminalId: string;
   /** Which finalize RPC to replay. Defaults to 'castles' for legacy entries. */
-  processor?: "castles" | "valor";
+  processor?: "castles" | "valor" | "codepay";
   /**
    * The terminal close response to replay into finalize. Kept as `castlesResponse`
-   * for back-compat; for Valor this holds the Valor settlement response.
+   * for back-compat; for Valor/CodePay this holds their settlement response.
    */
   castlesResponse: any;
   savedAt: string; // ISO
@@ -137,7 +137,7 @@ export async function listPendingFinalizes(
     batchUuid: r.batch_uuid,
     merchantId: r.merchant_id,
     terminalId: r.terminal_id,
-    processor: (r.processor as "castles" | "valor") ?? "castles",
+    processor: (r.processor as "castles" | "valor" | "codepay") ?? "castles",
     castlesResponse: r.response ?? r.castles_response,
     savedAt: r.saved_at,
   }));
@@ -186,18 +186,25 @@ export async function retryPendingFinalize(
   supabase: SupabaseClient,
   entry: PendingFinalizeEntry,
 ): Promise<RetryFinalizeOutput> {
+  const processor = entry.processor ?? "castles";
   const { data, error } =
-    (entry.processor ?? "castles") === "valor"
+    processor === "valor"
       ? await supabase.rpc("finalize_valor_settlement", {
           p_batch_uuid: entry.batchUuid,
           p_merchant_id: entry.merchantId,
           p_valor_response: entry.castlesResponse,
         })
-      : await supabase.rpc("finalize_castles_settlement", {
-          p_batch_uuid: entry.batchUuid,
-          p_merchant_id: entry.merchantId,
-          p_castles_response: entry.castlesResponse,
-        });
+      : processor === "codepay"
+        ? await supabase.rpc("finalize_codepay_settlement", {
+            p_batch_uuid: entry.batchUuid,
+            p_merchant_id: entry.merchantId,
+            p_codepay_response: entry.castlesResponse,
+          })
+        : await supabase.rpc("finalize_castles_settlement", {
+            p_batch_uuid: entry.batchUuid,
+            p_merchant_id: entry.merchantId,
+            p_castles_response: entry.castlesResponse,
+          });
 
   if (error) {
     // The 'already settled' guard means a previous retry actually

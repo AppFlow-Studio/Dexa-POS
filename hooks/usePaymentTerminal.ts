@@ -12,6 +12,7 @@ import { extractLast4 } from '@/services/terminals/castles-response-mapper';
 import { CASTLES_DEFAULT_PORT, CASTLES_SOCKET_TIMEOUT_MS } from '@/types/castles';
 import { getSharedValorService } from '@/services/terminals/valor-service';
 import { getOrCreateValorCounter } from '@/services/terminals/valor-txn-counter';
+import { codepayIsRegisterAvailable } from '@/native/CodePayBridge';
 import {
   VALOR_DEFAULT_PORT,
   VALOR_SALE_TIMEOUT_MS,
@@ -324,6 +325,31 @@ export function usePaymentTerminal() {
 
         if (!qResult.success) setError(qResult.error || 'Terminal did not respond to query');
         return qResult.success;
+      }
+
+      // CodePay (on-terminal): no socket — the "test" is a non-intrusive
+      // presence check that the CodePay Register app is installed and handles
+      // the transaction Intent. It never launches Register (no card screen).
+      if (terminal?.terminalType === 'codepay') {
+        const available = await codepayIsRegisterAvailable();
+        updateTerminalStatus(targetId, {
+          isConnected: available,
+          lastConnectionStatus: available ? 'Online' : 'Offline',
+          lastConnectionTest: new Date().toISOString(),
+        });
+        try {
+          await supabase.rpc('update_terminal_status', {
+            p_terminal_id: targetId,
+            p_status: available ? 'Online' : 'Offline',
+            p_is_connected: available,
+          });
+        } catch (dbErr) {
+          console.warn('[usePaymentTerminal] CodePay DB status update failed:', dbErr);
+        }
+        if (!available) {
+          setError('CodePay Register app not found on this terminal. Install or update it, then test again.');
+        }
+        return available;
       }
 
       // Dejavoo: existing path

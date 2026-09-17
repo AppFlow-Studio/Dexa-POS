@@ -28,6 +28,11 @@ import {
 } from "@/stores/useKioskDeviceSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
+import { isCodePayBridgeAvailable } from "@/native/CodePayBridge";
+import { probeCodePayNow } from "@/services/terminals/codepayDetector";
+import { ensureCodePayTerminalProvisioned } from "@/services/terminals/codepayAutoProvision";
+import { useCodePayTerminalStore } from "@/stores/useCodePayTerminalStore";
+import { useProcessorPreferenceStore } from "@/stores/useProcessorPreferenceStore";
 import type { KioskConfig } from "@/types/kiosk";
 import type { StationPaymentTerminal } from "@/types/station";
 import { useUsbDevices } from "@/hooks/hardware/useUsbDevices";
@@ -290,6 +295,85 @@ export function KioskDiagnosticsScreen({
     currentTerminal?.id ?? undefined,
     currentTerminal ?? undefined,
   );
+
+  // ── On-device CodePay (config card + auto-provision) ──────────────
+  // Mirrors the register settings card: enter the merchant app_id, detect the
+  // Register app, then auto-provision a real payment_terminals row (so batch-out
+  // works without SQL). Self-hides on non-CodePay hardware (no native bridge).
+  const codepayBridgeAvailable = isCodePayBridgeAvailable();
+  const codepayInternalTerminal = useCodePayTerminalStore(
+    (s) => s.internalTerminal,
+  );
+  const codepayAppId = useCodePayTerminalStore((s) => s.appId);
+  const setCodepayAppId = useCodePayTerminalStore((s) => s.setAppId);
+  const codepayEnabled = useProcessorPreferenceStore((s) => s.codepayEnabled);
+  const setCodepayEnabled = useProcessorPreferenceStore(
+    (s) => s.setCodepayEnabled,
+  );
+  const [codepayAppIdDraft, setCodepayAppIdDraft] = useState("");
+  const [codepayFieldTouched, setCodepayFieldTouched] = useState(false);
+  const [codepayDetecting, setCodepayDetecting] = useState(false);
+  useEffect(() => {
+    if (!codepayFieldTouched) setCodepayAppIdDraft(codepayAppId ?? "");
+  }, [codepayAppId, codepayFieldTouched]);
+  const codepayOtherDevices = codepayBridgeAvailable
+    ? terminals.filter(
+        (t) =>
+          t.terminalType === "codepay" && t.stationId !== selectedStation?.id,
+      )
+    : [];
+  const handleCodepaySetup = async () => {
+    const next = codepayAppIdDraft.trim();
+    if (!next) {
+      toastService.show({
+        title: "App ID required",
+        message: "Enter your CodePay merchant app_id, then tap Save & Set Up.",
+        type: "warning",
+      });
+      return;
+    }
+    setCodepayDetecting(true);
+    try {
+      if (next !== (codepayAppId ?? "").trim()) setCodepayAppId(next);
+      await probeCodePayNow();
+      const surfaced = !!useCodePayTerminalStore.getState().internalTerminal;
+      if (!surfaced) {
+        toastService.show({
+          title: "Not Detected",
+          message:
+            "CodePay Register app not found on this device. Make sure the Register app is installed.",
+          type: "error",
+        });
+        return;
+      }
+      const res = await ensureCodePayTerminalProvisioned({
+        supabase,
+        appId: next,
+      });
+      if (!res.ok) {
+        toastService.show({
+          title: "Detected — setup incomplete",
+          message:
+            res.reason === "missing_session"
+              ? "Detected CodePay, but no store/station is selected yet."
+              : res.reason === "no_serial"
+                ? "Detected CodePay, but could not read a device serial to register it."
+                : `Detected CodePay, but registering this device failed: ${res.reason ?? "unknown error"}.`,
+          type: "warning",
+        });
+        return;
+      }
+      if (selectedStore?.id) await loadTerminals(selectedStore.id);
+      if (res.terminalId) setActiveTerminal(res.terminalId);
+      toastService.show({
+        title: "CodePay Ready",
+        message: `This device is set up and registered (serial ${res.serial}). Card sales and batch-out are enabled.`,
+        type: "success",
+      });
+    } finally {
+      setCodepayDetecting(false);
+    }
+  };
 
   // ── Printers ──────────────────────────────────────────────────────
   const usbHw = useUsbDevices();
@@ -1568,6 +1652,152 @@ export function KioskDiagnosticsScreen({
     </>
   );
 
+  // On-device CodePay config + auto-provision card. Shown above the terminal
+  // panel in the Payment Terminal section on CodePay hardware only.
+  const renderCodePayCard = () => {
+    if (!codepayBridgeAvailable) return null;
+    return (
+      <View
+        className="rounded-3xl border border-gray-200 bg-white overflow-hidden mb-3"
+        style={cardShadow}
+      >
+        <View className="px-5 py-5">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2">
+              <View
+                className={`w-2.5 h-2.5 rounded-full ${
+                  codepayInternalTerminal ? "bg-green-500" : "bg-gray-300"
+                }`}
+              />
+              <Text className="text-base font-bold text-gray-900">
+                CodePay (on-terminal)
+              </Text>
+            </View>
+            <View
+              className={`px-2.5 py-1 rounded-lg border ${
+                codepayInternalTerminal ? "border-green-500" : "border-gray-200"
+              }`}
+            >
+              <Text
+                className={`text-[11px] font-bold ${
+                  codepayInternalTerminal ? "text-green-600" : "text-gray-400"
+                }`}
+              >
+                {codepayInternalTerminal ? "Online" : "Not detected"}
+              </Text>
+            </View>
+          </View>
+          <Text className="text-xs text-gray-500 mt-1.5">
+            On-device processor · drives the CodePay Register app via Intent.
+          </Text>
+
+          <Text className="text-[11px] font-bold text-gray-500 mt-4 mb-1.5">
+            MERCHANT APP ID
+          </Text>
+          <TextInput
+            value={codepayAppIdDraft}
+            onChangeText={(v) => {
+              setCodepayAppIdDraft(v);
+              setCodepayFieldTouched(true);
+            }}
+            placeholder="e.g. wz1f2e3295adc70112"
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="none"
+            autoCorrect={false}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-900"
+          />
+
+          <Text className="text-[11px] font-bold text-gray-500 mt-4 mb-1.5">
+            ACTIVE PROCESSOR FOR NEW SALES
+          </Text>
+          <View className="flex-row gap-1.5">
+            {[
+              { value: true, label: "Enabled" },
+              { value: false, label: "Off" },
+            ].map((opt) => {
+              const selected = codepayEnabled === opt.value;
+              return (
+                <Pressable
+                  key={String(opt.value)}
+                  onPress={() => setCodepayEnabled(opt.value)}
+                  className={`flex-1 py-2.5 rounded-xl border items-center ${
+                    selected ? "bg-teal-600 border-teal-600" : "border-gray-200"
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-semibold ${
+                      selected ? "text-white" : "text-gray-500"
+                    }`}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View className="flex-row items-center gap-2 mt-3">
+            <Pressable
+              onPress={handleCodepaySetup}
+              disabled={codepayDetecting}
+              className="px-3 py-2 rounded-xl border border-teal-600"
+              style={{ opacity: codepayDetecting ? 0.5 : 1 }}
+            >
+              <Text className="text-xs font-semibold text-teal-700">
+                {codepayDetecting ? "Setting up…" : "Save & Set Up"}
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text className="text-[11px] text-gray-500 mt-2">
+            {codepayInternalTerminal
+              ? "Detected. New card sales use CodePay."
+              : "Enter your merchant app_id and tap Save & Set Up. The CodePay Register app must be installed on this device."}
+          </Text>
+
+          {codepayOtherDevices.length > 0 && (
+            <View className="mt-3 pt-3 border-t border-gray-200">
+              <Text className="text-[11px] font-bold text-gray-500 mb-2">
+                OTHER CODEPAY DEVICES AT THIS LOCATION
+              </Text>
+              {codepayOtherDevices.map((t) => (
+                <View
+                  key={t.id}
+                  className="flex-row items-center px-2.5 py-2 rounded-xl border border-gray-200 bg-gray-50 mb-1.5"
+                >
+                  <View
+                    className={`w-2 h-2 rounded-full mr-2.5 ${
+                      t.isConnected ? "bg-green-500" : "bg-gray-300"
+                    }`}
+                  />
+                  <View className="flex-1">
+                    <Text
+                      className="text-xs font-semibold text-gray-900"
+                      numberOfLines={1}
+                    >
+                      {t.name}
+                    </Text>
+                    <Text
+                      className="text-[10px] text-gray-400 mt-0.5"
+                      numberOfLines={1}
+                    >
+                      {t.serialNumber ? `SN ${t.serialNumber}` : "No serial"}
+                    </Text>
+                  </View>
+                  <View className="px-1.5 py-0.5 rounded-md bg-teal-100">
+                    <Text className="text-[10px] font-semibold text-teal-700">
+                      CodePay
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
+
   const renderTerminalPanel = () => (
     <View
       className="rounded-3xl border border-gray-200 bg-white overflow-hidden"
@@ -2415,7 +2645,12 @@ export function KioskDiagnosticsScreen({
           )}
           {activeSection === "menu" && renderMenuLayout()}
           {activeSection === "printers" && renderPrintersPanel()}
-          {activeSection === "terminal" && renderTerminalPanel()}
+          {activeSection === "terminal" && (
+            <>
+              {renderCodePayCard()}
+              {renderTerminalPanel()}
+            </>
+          )}
           {activeSection === "about" && renderAbout()}
         </ScrollView>
       </View>

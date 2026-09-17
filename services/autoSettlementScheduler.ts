@@ -1,12 +1,14 @@
 // ============================================================
-// Auto-Batch Settlement scheduler (Castles)
+// Auto-Batch Settlement scheduler (Castles + CodePay)
 // File: services/autoSettlementScheduler.ts
 // ============================================================
-// Unattended daily batch-out. The tablet is the only device that can command a
-// Castles terminal over LAN/USB, so it owns the timer. This module is the pure
-// decision core (computeDueInstantMs / dayKey / decideFire) plus the orchestrator
-// (tickAutoSettlement) that reuses the existing manual settle path
-// (services/settlementService.ts::runSettlement).
+// Unattended daily batch-out for the POS-driven, on-demand batch-close terminals
+// (Castles over LAN/USB, CodePay via on-terminal Intent). In both, the tablet is
+// the only device that cuts the batch, so it owns the timer. This module is the
+// pure decision core (computeDueInstantMs / dayKey / decideFire) plus the
+// orchestrator (tickAutoSettlement) that reuses the existing manual settle path
+// (services/settlementService.ts::runSettlement). Valor is excluded — see
+// isAutoSettleSupportedType.
 //
 // GOVERNING PRINCIPLE — an unattended actor must clear a HIGHER bar than a
 // supervised human:
@@ -58,18 +60,31 @@ export interface AutoSettleConfig {
   autoSettle: boolean;
   /** "HH:MM" or "HH:MM:SS" in the location timezone. */
   settleTime: string | null;
-  terminalType?: string; // must be 'castles' to fire
+  terminalType?: string; // 'castles' or 'codepay' (see isAutoSettleSupportedType)
   terminalHost?: string;
   terminalPort?: number;
   connectionType?: "local_socket" | "usb";
   epi?: string;
   cancelPort?: number;
+  /** CodePay only: payment app id (Intent extra) — from app_id/register_id. */
+  appId?: string;
+}
+
+/**
+ * Which terminal types the unattended scheduler is allowed to auto-settle.
+ * Castles + CodePay are both POS-driven, on-demand batch-close models (the POS
+ * is the ONLY thing that cuts the batch), so scheduling is safe. Valor is
+ * EXCLUDED — it auto-batches host-side and is reconciled by a webhook, so a
+ * scheduled POS settle would race the host cut (double-cut vector).
+ */
+export function isAutoSettleSupportedType(t?: string): boolean {
+  return t === "castles" || t === "codepay";
 }
 
 export interface AutoSettleProbes {
   /** WAN reachability (Supabase). */
   isOnline: () => boolean;
-  /** Castles command mutex held (a live command is in flight). */
+  /** The relevant terminal's command mutex is held (a live command is in flight). */
   isTerminalBusy: () => boolean;
   /** A payment is being processed / an order is locked for payment. */
   isSaleActive: () => boolean;
@@ -167,11 +182,14 @@ export function decideFire(
 
   // ── disabled gates ── (enablement is the server payment_terminals.auto_settle
   // column, threaded in as cfg.autoSettle — there is no separate client flag.)
-  // Castles-only by design. Valor settles host-side (terminal auto-batch) and is
-  // reconciled by the Valor webhook (record_valor_batch_webhook) — do NOT add
-  // Valor here: a scheduled POS settle racing the host auto-batch is a double-cut
-  // vector. Valor's on-demand batch-out lives in BatchoutPanel only.
-  if (cfg.terminalType !== "castles") return skip("not_castles");
+  // Castles + CodePay only: both are POS-driven, on-demand batch-close models
+  // (the tablet is the ONLY device that cuts the batch), so scheduling is safe.
+  // Valor is EXCLUDED — it auto-batches host-side and is reconciled by the Valor
+  // webhook (record_valor_batch_webhook), so a scheduled POS settle would race
+  // the host cut (double-cut vector). Valor's batch-out lives in BatchoutPanel only.
+  if (!isAutoSettleSupportedType(cfg.terminalType)) {
+    return skip("unsupported_terminal");
+  }
   if (!cfg.autoSettle) return skip("auto_settle_off");
   if (!cfg.settleTime) return skip("no_settle_time");
   if (!day) return skip("bad_timezone");
@@ -289,7 +307,9 @@ export async function tickAutoSettlement(deps: TickDeps): Promise<void> {
   const progress = store.getProgress(cfg.terminalId);
   const decision = decideFire(cfg, progress, probes, now);
   const armed =
-    cfg.terminalType === "castles" && !!cfg.autoSettle && !!cfg.settleTime;
+    isAutoSettleSupportedType(cfg.terminalType) &&
+    !!cfg.autoSettle &&
+    !!cfg.settleTime;
 
   // A concurrent tick already holds the terminal — record honestly, don't double-fire.
   const concurrent = decision.action === "fire" && inFlight.has(cfg.terminalId);
@@ -365,6 +385,7 @@ export async function tickAutoSettlement(deps: TickDeps): Promise<void> {
         connectionType: cfg.connectionType,
         epi: cfg.epi,
         cancelPort: cfg.cancelPort,
+        appId: cfg.appId,
         locationId: cfg.locationId,
         supabase,
         onStatus: deps.onLog,

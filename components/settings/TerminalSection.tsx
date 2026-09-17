@@ -727,7 +727,7 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
                     <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                       <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8, backgroundColor: colors.teal + "30" }}>
                         <Text style={{ fontSize: 11, fontWeight: "500", color: colors.teal }}>
-                          {t.terminalType === "castles" ? "Castles" : t.terminalType === "valor" ? "Valor" : "Dejavoo"}
+                          {t.terminalType === "castles" ? "Castles" : t.terminalType === "valor" ? "Valor" : t.terminalType === "codepay" ? "CodePay" : "Dejavoo"}
                         </Text>
                       </View>
                       {t.model && <Text style={{ color: colors.muted, fontSize: 11 }}>{t.model}</Text>}
@@ -776,7 +776,7 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
             <Text style={{ color: colors.heading, fontWeight: "bold", fontSize: 14 }}>Edit Terminal</Text>
             <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.teal + "30" }}>
               <Text style={{ fontSize: 11, fontWeight: "bold", color: colors.teal }}>
-                {currentTerminal.terminal_type === "castles" ? "Castles" : currentTerminal.terminal_type === "valor" ? "Valor" : "Dejavoo"}
+                {currentTerminal.terminal_type === "castles" ? "Castles" : currentTerminal.terminal_type === "valor" ? "Valor" : currentTerminal.terminal_type === "codepay" ? "CodePay" : "Dejavoo"}
               </Text>
             </View>
           </View>
@@ -1012,7 +1012,7 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
                 </Text>
                 <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.teal + "20" }}>
                   <Text style={{ fontSize: 9, fontWeight: "700", color: colors.teal }}>
-                    {currentTerminal.terminal_type === "castles" ? "CASTLES" : "DEJAVOO"}
+                    {currentTerminal.terminal_type === "castles" ? "CASTLES" : currentTerminal.terminal_type === "codepay" ? "CODEPAY" : "DEJAVOO"}
                   </Text>
                 </View>
               </View>

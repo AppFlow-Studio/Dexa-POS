@@ -50,6 +50,10 @@ import { getSharedAtomService } from '@/services/terminals/atom-service'
 import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from '@/types/atom'
 import { useProcessorPreferenceStore } from '@/stores/useProcessorPreferenceStore'
 import { useActiveProcessor } from '@/hooks/useActiveProcessor'
+import { useCodePayTerminalStore } from '@/stores/useCodePayTerminalStore'
+import { isCodePayBridgeAvailable } from '@/native/CodePayBridge'
+import { probeCodePayNow } from '@/services/terminals/codepayDetector'
+import { ensureCodePayTerminalProvisioned } from '@/services/terminals/codepayAutoProvision'
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -383,6 +387,90 @@ const DevicesConnectionsScreen = ({
     { value: true, label: 'ATOM' },
     { value: false, label: 'Off' }
   ]
+
+  // On-device CodePay: the app runs ON the CodePay terminal and drives the
+  // CodePay Register app via Intent. Unlike ATOM it needs a merchant app_id, so
+  // this is editable in-app — no SQL/WB provisioning required. The native bridge
+  // is only present on CodePay hardware, so the card self-hides elsewhere.
+  const codepayBridgeAvailable = isCodePayBridgeAvailable()
+  const codepayInternalTerminal = useCodePayTerminalStore(s => s.internalTerminal)
+  const codepayAppId = useCodePayTerminalStore(s => s.appId)
+  const setCodepayAppId = useCodePayTerminalStore(s => s.setAppId)
+  const codepayEnabled = useProcessorPreferenceStore(s => s.codepayEnabled)
+  const setCodepayEnabled = useProcessorPreferenceStore(s => s.setCodepayEnabled)
+  const [codepayAppIdDraft, setCodepayAppIdDraft] = useState('')
+  const [codepayFieldTouched, setCodepayFieldTouched] = useState(false)
+  const [codepayDetecting, setCodepayDetecting] = useState(false)
+  // Other CodePay terminals registered at this location (i.e. sibling devices,
+  // not this station's own row) — surfaced so an operator can see the fleet.
+  const codepayOtherDevices = codepayBridgeAvailable
+    ? terminals.filter(
+        t => t.terminalType === 'codepay' && t.stationId !== selectedStation?.id
+      )
+    : []
+  // CodePay terminals are locked to the device the POS runs ON (on-terminal
+  // Intent), so they are never a switch target — exclude them from the Switch /
+  // Available Terminals picker.
+  const switchableTerminals = terminals.filter(t => t.terminalType !== 'codepay')
+  // Seed the input from the persisted app_id once it rehydrates (lazy persist
+  // may land after mount), unless the user has already started editing.
+  useEffect(() => {
+    if (!codepayFieldTouched) setCodepayAppIdDraft(codepayAppId ?? '')
+  }, [codepayAppId, codepayFieldTouched])
+  // Save the entered app_id, force a presence check, and — if the Register app
+  // resolves — auto-provision a real payment_terminals row so batch-out works
+  // without SQL. Reports the combined outcome.
+  const handleCodepayDetect = async () => {
+    const next = codepayAppIdDraft.trim()
+    if (!next) {
+      toastService.show({
+        title: 'App ID required',
+        message: 'Enter your CodePay merchant app_id, then tap Save & Set Up.',
+        type: 'warning'
+      })
+      return
+    }
+    setCodepayDetecting(true)
+    try {
+      if (next !== (codepayAppId ?? '').trim()) setCodepayAppId(next)
+      await probeCodePayNow()
+      const surfaced = !!useCodePayTerminalStore.getState().internalTerminal
+      if (!surfaced) {
+        toastService.show({
+          title: 'Not Detected',
+          message:
+            'CodePay Register app not found on this device. Make sure the Register app is installed.',
+          type: 'error'
+        })
+        return
+      }
+      // Surfaced → persist a real terminal row (settlement needs one).
+      const res = await ensureCodePayTerminalProvisioned({ supabase, appId: next })
+      if (!res.ok) {
+        toastService.show({
+          title: 'Detected — setup incomplete',
+          message:
+            res.reason === 'missing_session'
+              ? 'Detected CodePay, but no store/station is selected yet.'
+              : res.reason === 'no_serial'
+                ? 'Detected CodePay, but could not read a device serial to register it.'
+                : `Detected CodePay, but registering this device failed: ${res.reason ?? 'unknown error'}.`,
+          type: 'warning'
+        })
+        return
+      }
+      if (selectedStore?.id) await loadTerminals(selectedStore.id)
+      if (res.terminalId) setActiveTerminal(res.terminalId)
+      toastService.show({
+        title: 'CodePay Ready',
+        message: `This device is set up and registered (serial ${res.serial}). Card sales and batch-out are enabled.`,
+        type: 'success'
+      })
+    } finally {
+      setCodepayDetecting(false)
+    }
+  }
+
   const { status: terminalStatus, recheckStatus } = useTerminalStatus(
     currentTerminal?.id ?? undefined,
     currentTerminal ?? undefined
@@ -2111,6 +2199,315 @@ const DevicesConnectionsScreen = ({
           />
           {expandedSections.terminal && (
             <View style={{ paddingHorizontal: s(12), paddingVertical: s(10) }}>
+              {/* On-device CodePay (Intent to the CodePay Register app). Editable
+                  because CodePay's Intent needs a merchant app_id: enter it, tap
+                  Detect, and if the Register app resolves the terminal surfaces —
+                  no SQL/WB provisioning. Gated on the native bridge so it only
+                  shows on CodePay hardware. */}
+              {codepayBridgeAvailable && (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: codepayInternalTerminal
+                      ? colors.teal
+                      : colors.border,
+                    borderRadius: s(10),
+                    padding: s(12),
+                    marginBottom: s(12),
+                    backgroundColor: colors.panel
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: s(8)
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: s(8),
+                          height: s(8),
+                          borderRadius: s(4),
+                          backgroundColor: codepayInternalTerminal
+                            ? colors.success
+                            : colors.muted
+                        }}
+                      />
+                      <Text
+                        style={{
+                          fontSize: s(15),
+                          fontWeight: '700',
+                          color: colors.heading
+                        }}
+                      >
+                        CodePay (on-terminal)
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(3),
+                        borderRadius: s(6),
+                        borderWidth: 1,
+                        borderColor: codepayInternalTerminal
+                          ? colors.success
+                          : colors.border
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(11),
+                          fontWeight: '700',
+                          color: codepayInternalTerminal
+                            ? colors.success
+                            : colors.muted
+                        }}
+                      >
+                        {codepayInternalTerminal ? 'Online' : 'Not detected'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      color: colors.muted,
+                      marginTop: s(6)
+                    }}
+                  >
+                    On-device processor · CodePay · drives the CodePay Register app
+                    via Intent.
+                  </Text>
+
+                  {/* Merchant app_id — the one credential CodePay's Intent needs.
+                      Persisted, so auto-detect reuses it on every boot. */}
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      fontWeight: '700',
+                      color: colors.label,
+                      marginTop: s(12),
+                      marginBottom: s(6)
+                    }}
+                  >
+                    MERCHANT APP ID
+                  </Text>
+                  <TextInput
+                    value={codepayAppIdDraft}
+                    onChangeText={v => {
+                      setCodepayAppIdDraft(v)
+                      setCodepayFieldTouched(true)
+                    }}
+                    placeholder='e.g. wz1f2e3295adc70112'
+                    placeholderTextColor={colors.muted}
+                    autoCapitalize='none'
+                    autoCorrect={false}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: s(8),
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(10),
+                      color: colors.heading,
+                      fontSize: s(13)
+                    }}
+                  />
+
+                  {/* Whether the detected CodePay is used for NEW sales (as a
+                      fallback when no other terminal is configured). Reversals of
+                      existing CodePay payments are unaffected by this. */}
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      fontWeight: '700',
+                      color: colors.label,
+                      marginTop: s(12),
+                      marginBottom: s(6)
+                    }}
+                  >
+                    ACTIVE PROCESSOR FOR NEW SALES
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: s(6) }}>
+                    {[
+                      { value: true, label: 'Enabled' },
+                      { value: false, label: 'Off' }
+                    ].map(opt => {
+                      const selected = codepayEnabled === opt.value
+                      return (
+                        <TouchableOpacity
+                          key={String(opt.value)}
+                          onPress={() => setCodepayEnabled(opt.value)}
+                          style={{
+                            flex: 1,
+                            paddingVertical: s(8),
+                            paddingHorizontal: s(6),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: selected ? colors.teal : colors.border,
+                            backgroundColor: selected ? colors.teal : 'transparent',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(12),
+                              fontWeight: '600',
+                              color: selected ? '#ffffff' : colors.muted
+                            }}
+                            numberOfLines={1}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+
+                  <View
+                    style={{
+                      marginTop: s(10),
+                      flexDirection: 'row',
+                      gap: s(8),
+                      alignItems: 'center'
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={handleCodepayDetect}
+                      disabled={codepayDetecting}
+                      style={{
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(7),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.teal,
+                        opacity: codepayDetecting ? 0.5 : 1
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '600',
+                          color: colors.teal
+                        }}
+                      >
+                        {codepayDetecting ? 'Setting up…' : 'Save & Set Up'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      color: colors.muted,
+                      marginTop: s(8)
+                    }}
+                  >
+                    {codepayInternalTerminal
+                      ? `Detected. New card sales use: ${activeProcessor.activeLabel ?? 'CodePay'}.`
+                      : 'Enter your merchant app_id and tap Save & Set Up. The CodePay Register app must be installed on this device.'}
+                  </Text>
+
+                  {/* Sibling CodePay devices registered at this location. */}
+                  {codepayOtherDevices.length > 0 && (
+                    <View
+                      style={{
+                        marginTop: s(12),
+                        paddingTop: s(12),
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(11),
+                          fontWeight: '700',
+                          color: colors.label,
+                          marginBottom: s(8)
+                        }}
+                      >
+                        OTHER CODEPAY DEVICES AT THIS LOCATION
+                      </Text>
+                      {codepayOtherDevices.map(t => (
+                        <View
+                          key={t.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingVertical: s(8),
+                            paddingHorizontal: s(10),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.screen,
+                            marginBottom: s(6)
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: s(8),
+                              height: s(8),
+                              borderRadius: s(4),
+                              marginRight: s(10),
+                              backgroundColor: t.isConnected
+                                ? colors.success
+                                : colors.muted
+                            }}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              style={{
+                                fontSize: s(12),
+                                fontWeight: '600',
+                                color: colors.heading
+                              }}
+                              numberOfLines={1}
+                            >
+                              {t.name}
+                            </Text>
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                color: colors.muted,
+                                marginTop: s(2)
+                              }}
+                              numberOfLines={1}
+                            >
+                              {t.serialNumber ? `SN ${t.serialNumber}` : 'No serial'}
+                            </Text>
+                          </View>
+                          <View
+                            style={{
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: s(4),
+                              backgroundColor: colors.teal + '30'
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: '600',
+                                color: colors.teal
+                              }}
+                            >
+                              CodePay
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
               {/* Auto-detected on-device ATOM processor (loopback). Read-only —
                   ATOM needs no IP/credentials; it's discovered, not configured. */}
               {atomInternalTerminal && (
@@ -3143,7 +3540,7 @@ const DevicesConnectionsScreen = ({
                       <Text style={{ color: colors.teal, fontSize: s(13) }}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
-                  {terminals.length === 0 ? (
+                  {switchableTerminals.length === 0 ? (
                     <Text
                       style={{
                         color: colors.muted,
@@ -3154,7 +3551,7 @@ const DevicesConnectionsScreen = ({
                       No terminals found.
                     </Text>
                   ) : (
-                    terminals.map(t => {
+                    switchableTerminals.map(t => {
                       const isCurrent = t.id === currentTerminal?.id
                       const isOtherStation =
                         t.isActive &&
@@ -3241,7 +3638,9 @@ const DevicesConnectionsScreen = ({
                                       ? 'Castles'
                                       : t.terminalType === 'valor'
                                         ? 'Valor'
-                                        : 'Dejavoo'}
+                                        : t.terminalType === 'codepay'
+                                          ? 'CodePay'
+                                          : 'Dejavoo'}
                                   </Text>
                                 </View>
                                 {/* Connection-type pill — USB vs TCP/WiFi. Helps staff
@@ -3536,7 +3935,9 @@ const DevicesConnectionsScreen = ({
                             ? 'Castles'
                             : currentTerminal.terminal_type === 'valor'
                               ? 'Valor'
-                              : 'Dejavoo'}
+                              : currentTerminal.terminal_type === 'codepay'
+                                ? 'CodePay'
+                                : 'Dejavoo'}
                         </Text>
                       </View>
                     </View>
@@ -3960,7 +4361,9 @@ const DevicesConnectionsScreen = ({
                                 ? 'CASTLES'
                                 : currentTerminal.terminal_type === 'valor'
                                   ? 'VALOR'
-                                  : 'DEJAVOO'}
+                                  : currentTerminal.terminal_type === 'codepay'
+                                    ? 'CODEPAY'
+                                    : 'DEJAVOO'}
                             </Text>
                           </View>
                           {(currentTerminal.terminal_type === 'castles' ||
@@ -3991,6 +4394,26 @@ const DevicesConnectionsScreen = ({
                                 {currentTerminal.connection_type === 'usb'
                                   ? 'USB'
                                   : 'WiFi'}
+                              </Text>
+                            </View>
+                          )}
+                          {currentTerminal.terminal_type === 'codepay' && (
+                            <View
+                              style={{
+                                paddingHorizontal: s(6),
+                                paddingVertical: s(2),
+                                borderRadius: s(4),
+                                backgroundColor: colors.teal + '20'
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: s(9),
+                                  fontWeight: '700',
+                                  color: colors.teal
+                                }}
+                              >
+                                ON-TERMINAL
                               </Text>
                             </View>
                           )}
@@ -4215,6 +4638,147 @@ const DevicesConnectionsScreen = ({
                                     fontSize: s(9),
                                     fontWeight: '600',
                                     width: s(36)
+                                  }}
+                                >
+                                  ID:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: s(9),
+                                    fontFamily: 'monospace'
+                                  }}
+                                  selectable
+                                >
+                                  {currentTerminal.id.slice(0, 8)}
+                                </Text>
+                              </View>
+                            </>
+                          ) : currentTerminal.terminal_type === 'codepay' ? (
+                            <>
+                              <Image
+                                source={require('@/assets/images/codepaylogo.jpg')}
+                                style={{
+                                  width: s(110),
+                                  height: s(28),
+                                  marginBottom: s(4)
+                                }}
+                                resizeMode='contain'
+                              />
+                              <View
+                                style={{ flexDirection: 'row', alignItems: 'center' }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: s(9),
+                                    fontWeight: '600',
+                                    width: s(44)
+                                  }}
+                                >
+                                  S/N:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: s(9),
+                                    fontFamily: 'monospace'
+                                  }}
+                                  selectable
+                                >
+                                  {currentTerminal.serial_number ?? '— not set —'}
+                                </Text>
+                              </View>
+                              {currentTerminal.register_id && (
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.muted,
+                                      fontSize: s(9),
+                                      fontWeight: '600',
+                                      width: s(44)
+                                    }}
+                                  >
+                                    App ID:
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      color: colors.heading,
+                                      fontSize: s(9),
+                                      fontFamily: 'monospace'
+                                    }}
+                                    selectable
+                                  >
+                                    {currentTerminal.register_id}
+                                  </Text>
+                                </View>
+                              )}
+                              <View
+                                style={{ flexDirection: 'row', alignItems: 'center' }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: s(9),
+                                    fontWeight: '600',
+                                    width: s(44)
+                                  }}
+                                >
+                                  Conn:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: s(9),
+                                    fontFamily: 'monospace'
+                                  }}
+                                >
+                                  On-terminal (Intent)
+                                </Text>
+                              </View>
+                              {currentTerminal.terminal_model && (
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.muted,
+                                      fontSize: s(9),
+                                      fontWeight: '600',
+                                      width: s(44)
+                                    }}
+                                  >
+                                    Model:
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      color: colors.heading,
+                                      fontSize: s(9),
+                                      fontFamily: 'monospace'
+                                    }}
+                                    selectable
+                                  >
+                                    {currentTerminal.terminal_model}
+                                  </Text>
+                                </View>
+                              )}
+                              <View
+                                style={{ flexDirection: 'row', alignItems: 'center' }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: s(9),
+                                    fontWeight: '600',
+                                    width: s(44)
                                   }}
                                 >
                                   ID:

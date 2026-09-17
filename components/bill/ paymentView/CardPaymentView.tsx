@@ -37,6 +37,8 @@ import {
   resumeAtomLoopbackProbing,
 } from "@/services/terminals/atomLoopbackDetector";
 import { atomBringPosToForeground } from "@/native/AtomBridge";
+import { getSharedCodePayService } from "@/services/terminals/codepay-service";
+import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
 import {
   useActiveProcessor,
@@ -906,6 +908,137 @@ const CardPaymentView = () => {
                 // Carries the ATOM paymentId (processor_response.atom_transaction)
                 // used later for /cancel refunds.
                 atomTransaction: result.terminalResponse,
+                paymentJournalHandle: {
+                  id: paymentJournalId,
+                  idempotencyKey: paymentJournalKey,
+                },
+              },
+              amountOverride: totalToPay,
+            });
+
+            showApproved();
+            schedulePostTipAdjustIdle(3000);
+            setStatus("success");
+            return;
+          }
+
+          // ============ CODEPAY BRANCH (on-terminal Intent) ============
+          if (terminal.terminal_type === "codepay") {
+            // app_id drives the Intent; fall back to register_id until a
+            // dedicated DB column is projected (see types/station.ts).
+            const appId = terminal.app_id ?? terminal.register_id ?? "";
+            if (!appId.trim()) {
+              throw new Error("CodePay terminal has no app_id configured");
+            }
+
+            const service = getSharedCodePayService();
+            service.configure({
+              appId,
+              terminalId: terminal.id,
+              terminalSn: terminal.serial_number ?? undefined,
+              timeout: CODEPAY_SALE_TIMEOUT_MS,
+            });
+
+            // merchant_order_no ≤ 32 chars: "CP_" + ms epoch + "_" + 4 ≈ 21.
+            const staSuffix = selectedStation?.id?.slice(-4) ?? "";
+            const referenceId = `CP_${Date.now()}_${staSuffix}`;
+            currentRefIdRef.current = referenceId;
+
+            // Pre-swipe journal (idempotency handle) — written BEFORE the send.
+            // Tip is entered on the POS before Charge (Flow B), so it's known
+            // here and baked into the single sale.
+            const activeOrderForJournal =
+              useOrderStore.getState().activeOrderId;
+            const orderForJournal = activeOrderForJournal
+              ? useOrderStore.getState().ordersById[activeOrderForJournal]
+              : undefined;
+            const paymentJournalKey = uuidv4();
+            const paymentJournalId = writePaymentJournal({
+              orderId: activeOrderForJournal ?? "unknown",
+              dbOrderId: orderForJournal?.db_order_id,
+              amount: totalToPay,
+              tipAmount,
+              paymentMethod: "Card",
+              idempotencyKey: paymentJournalKey,
+            });
+
+            // CodePay Register runs on the same device and returns to us via
+            // onActivityResult, so — unlike ATOM — the POS is re-foregrounded
+            // automatically; no bringToForeground needed. Tip is pre-known, so
+            // we bake it in (no on-screen tip prompt).
+            const result = await service.processSale({
+              amount: totalToPay,
+              ...(tipAmount > 0 ? { tipAmount } : {}),
+              referenceId,
+              onScreenTip: false,
+            });
+
+            const codepayTx = result.terminalResponse?.codepay_transaction as
+              | Record<string, string>
+              | undefined;
+
+            // INDETERMINATE — the terminal may have charged. Do NOT complete the
+            // payment or fail the journal; leave it for reconciliation.
+            if (result.indeterminate) {
+              updatePaymentJournal(paymentJournalId, {
+                status: "terminal_approved",
+                terminalTxnId: result.transNo ?? referenceId,
+              });
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Verifying Payment",
+                message:
+                  "The payment result could not be confirmed. Check the terminal before charging again — do not re-charge if the terminal shows approved.",
+              });
+              return;
+            }
+
+            // Cardholder cancelled on the terminal — NO card read, NO charge.
+            if (result.aborted) {
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_aborted: ${result.errorCode ?? "cancelled"}`,
+              );
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Payment Cancelled",
+                message: result.error || "Cancelled on terminal — no charge.",
+              });
+              return;
+            }
+
+            // Clean decline — no charge happened.
+            if (!result.success) {
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_declined: ${result.error ?? "Declined"}`,
+              );
+              showDeclined();
+              setErrorModal({
+                visible: true,
+                title: "Payment Declined",
+                message: result.error || "Transaction failed",
+              });
+              return;
+            }
+
+            // Full success — persist base + baked-in tip.
+            await handlePaymentCompletion({
+              method: "Card",
+              tipAmount,
+              transactionDetails: {
+                terminalType: "codepay",
+                isCashPriced: false,
+                authorizationCode: codepayTx?.authCode as string | undefined,
+                cardType: codepayTx?.cardType as string | undefined,
+                last4: codepayTx?.cardLast4 as string | undefined,
+                transactionId: result.transNo ?? referenceId,
+                rrn: (codepayTx?.rrn as string | undefined) ?? result.rrn,
+                // Carries the full processor_response.codepay_transaction blob
+                // (used later for referenced refund / void by merchant_order_no).
+                codepayTransaction: result.terminalResponse,
                 paymentJournalHandle: {
                   id: paymentJournalId,
                   idempotencyKey: paymentJournalKey,

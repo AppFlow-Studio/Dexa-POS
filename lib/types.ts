@@ -810,6 +810,8 @@ export interface OrderPaymentTransactionDetails {
   valorTransaction?: Record<string, unknown>;
   // Full ATOM response JSONB (from buildAtomTerminalResponse)
   atomTransaction?: Record<string, unknown>;
+  // Full CodePay response JSONB (from buildCodePayTerminalResponse)
+  codepayTransaction?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
