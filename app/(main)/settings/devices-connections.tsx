@@ -408,6 +408,10 @@ const DevicesConnectionsScreen = ({
         t => t.terminalType === 'codepay' && t.stationId !== selectedStation?.id
       )
     : []
+  // CodePay terminals are locked to the device the POS runs ON (on-terminal
+  // Intent), so they are never a switch target — exclude them from the Switch /
+  // Available Terminals picker.
+  const switchableTerminals = terminals.filter(t => t.terminalType !== 'codepay')
   // Seed the input from the persisted app_id once it rehydrates (lazy persist
   // may land after mount), unless the user has already started editing.
   useEffect(() => {
@@ -3536,7 +3540,7 @@ const DevicesConnectionsScreen = ({
                       <Text style={{ color: colors.teal, fontSize: s(13) }}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
-                  {terminals.length === 0 ? (
+                  {switchableTerminals.length === 0 ? (
                     <Text
                       style={{
                         color: colors.muted,
@@ -3547,7 +3551,7 @@ const DevicesConnectionsScreen = ({
                       No terminals found.
                     </Text>
                   ) : (
-                    terminals.map(t => {
+                    switchableTerminals.map(t => {
                       const isCurrent = t.id === currentTerminal?.id
                       const isOtherStation =
                         t.isActive &&
@@ -3931,7 +3935,9 @@ const DevicesConnectionsScreen = ({
                             ? 'Castles'
                             : currentTerminal.terminal_type === 'valor'
                               ? 'Valor'
-                              : 'Dejavoo'}
+                              : currentTerminal.terminal_type === 'codepay'
+                                ? 'CodePay'
+                                : 'Dejavoo'}
                         </Text>
                       </View>
                     </View>
@@ -4355,7 +4361,9 @@ const DevicesConnectionsScreen = ({
                                 ? 'CASTLES'
                                 : currentTerminal.terminal_type === 'valor'
                                   ? 'VALOR'
-                                  : 'DEJAVOO'}
+                                  : currentTerminal.terminal_type === 'codepay'
+                                    ? 'CODEPAY'
+                                    : 'DEJAVOO'}
                             </Text>
                           </View>
                           {(currentTerminal.terminal_type === 'castles' ||
@@ -4386,6 +4394,26 @@ const DevicesConnectionsScreen = ({
                                 {currentTerminal.connection_type === 'usb'
                                   ? 'USB'
                                   : 'WiFi'}
+                              </Text>
+                            </View>
+                          )}
+                          {currentTerminal.terminal_type === 'codepay' && (
+                            <View
+                              style={{
+                                paddingHorizontal: s(6),
+                                paddingVertical: s(2),
+                                borderRadius: s(4),
+                                backgroundColor: colors.teal + '20'
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: s(9),
+                                  fontWeight: '700',
+                                  color: colors.teal
+                                }}
+                              >
+                                ON-TERMINAL
                               </Text>
                             </View>
                           )}
@@ -4610,6 +4638,147 @@ const DevicesConnectionsScreen = ({
                                     fontSize: s(9),
                                     fontWeight: '600',
                                     width: s(36)
+                                  }}
+                                >
+                                  ID:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: s(9),
+                                    fontFamily: 'monospace'
+                                  }}
+                                  selectable
+                                >
+                                  {currentTerminal.id.slice(0, 8)}
+                                </Text>
+                              </View>
+                            </>
+                          ) : currentTerminal.terminal_type === 'codepay' ? (
+                            <>
+                              <Image
+                                source={require('@/assets/images/codepaylogo.jpg')}
+                                style={{
+                                  width: s(110),
+                                  height: s(28),
+                                  marginBottom: s(4)
+                                }}
+                                resizeMode='contain'
+                              />
+                              <View
+                                style={{ flexDirection: 'row', alignItems: 'center' }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: s(9),
+                                    fontWeight: '600',
+                                    width: s(44)
+                                  }}
+                                >
+                                  S/N:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: s(9),
+                                    fontFamily: 'monospace'
+                                  }}
+                                  selectable
+                                >
+                                  {currentTerminal.serial_number ?? '— not set —'}
+                                </Text>
+                              </View>
+                              {currentTerminal.register_id && (
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.muted,
+                                      fontSize: s(9),
+                                      fontWeight: '600',
+                                      width: s(44)
+                                    }}
+                                  >
+                                    App ID:
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      color: colors.heading,
+                                      fontSize: s(9),
+                                      fontFamily: 'monospace'
+                                    }}
+                                    selectable
+                                  >
+                                    {currentTerminal.register_id}
+                                  </Text>
+                                </View>
+                              )}
+                              <View
+                                style={{ flexDirection: 'row', alignItems: 'center' }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: s(9),
+                                    fontWeight: '600',
+                                    width: s(44)
+                                  }}
+                                >
+                                  Conn:
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.heading,
+                                    fontSize: s(9),
+                                    fontFamily: 'monospace'
+                                  }}
+                                >
+                                  On-terminal (Intent)
+                                </Text>
+                              </View>
+                              {currentTerminal.terminal_model && (
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.muted,
+                                      fontSize: s(9),
+                                      fontWeight: '600',
+                                      width: s(44)
+                                    }}
+                                  >
+                                    Model:
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      color: colors.heading,
+                                      fontSize: s(9),
+                                      fontFamily: 'monospace'
+                                    }}
+                                    selectable
+                                  >
+                                    {currentTerminal.terminal_model}
+                                  </Text>
+                                </View>
+                              )}
+                              <View
+                                style={{ flexDirection: 'row', alignItems: 'center' }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: s(9),
+                                    fontWeight: '600',
+                                    width: s(44)
                                   }}
                                 >
                                   ID:
