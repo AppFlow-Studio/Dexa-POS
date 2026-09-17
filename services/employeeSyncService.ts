@@ -1,3 +1,5 @@
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { MerchantRole } from "@/lib/types";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -15,10 +17,17 @@ export async function syncEmployees(
   const { setEmployees, setSyncState } = useEmployeeStore.getState();
   setSyncState({ isLoading: true, error: null });
   try {
-    const { data, error } = await supabase
-      .from("location_members")
-      .select(
-        `
+    // Deadline-wrapped: this unbounded join previously had no timeout and runs
+    // at store selection, so a slow link could stall the sync (and, when the
+    // login path falls back to it, block sign-in).
+    const { data, error } = await runWithDeadline<any[]>(
+      "sync_location_members",
+      DEADLINES.read,
+      (signal) =>
+        supabase
+          .from("location_members")
+          .select(
+            `
       id,
       pin_code,
       pin_plain,
@@ -34,9 +43,14 @@ export async function syncEmployees(
         phone
       )
     `,
-      )
-      .eq("location_id", locationId)
-      .eq("is_active", true);
+          )
+          .eq("location_id", locationId)
+          .eq("is_active", true)
+          .abortSignal(signal) as unknown as Promise<{
+          data: any[] | null;
+          error: any;
+        }>,
+    );
 
     if (error) throw error;
 

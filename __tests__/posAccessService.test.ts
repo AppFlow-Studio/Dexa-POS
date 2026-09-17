@@ -14,20 +14,32 @@ jest.mock("@/stores/useStoreSettingsStore", () => ({
   useStoreSettingsStore: { getState: () => mockStore },
 }));
 
+// The access RPCs are now deadline-wrapped, so production calls
+// `supabase.rpc(...).abortSignal(signal)`. Return a thenable that also carries
+// an `abortSignal()` method (chainable → same thenable) so both the wrapped
+// path and a direct await resolve to the Supabase-shaped { data, error }.
+function withAbortSignal<T>(value: T): any {
+  const p: any = Promise.resolve(value);
+  p.abortSignal = () => p;
+  return p;
+}
+
 function client(
   status: Record<string, unknown>,
   station: Record<string, unknown> | null,
 ) {
   return {
-    rpc: jest.fn(async (name: string) => ({
-      data:
-        name === "get_subscription_access_state"
-          ? status
-          : station
-            ? [station]
-            : [],
-      error: null,
-    })),
+    rpc: jest.fn((name: string) =>
+      withAbortSignal({
+        data:
+          name === "get_subscription_access_state"
+            ? status
+            : station
+              ? [station]
+              : [],
+        error: null,
+      }),
+    ),
   };
 }
 
@@ -45,6 +57,34 @@ describe("station refresh used by kiosk checkout", () => {
       billingAccess: { allowed: false },
     });
     expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it("fails OPEN on a billing network error and still loads stations (sign-in path)", async () => {
+    const error = new Error("Offline");
+    const supabase = {
+      rpc: jest.fn((name: string) =>
+        name === "get_subscription_access_state"
+          ? withAbortSignal({ data: null, error })
+          : withAbortSignal({
+              data: [{ id: "station-1", is_active: true }],
+              error: null,
+            }),
+      ),
+    };
+
+    const result = await fetchLocationStationsWithBillingGate(supabase as any, {
+      merchantId: "merchant-1",
+      locationId: "location-1",
+    });
+
+    // A billing timeout / network error is not a definitive "unpaid" verdict —
+    // staff must still reach the station list.
+    expect(result.billingAccess.allowed).toBe(true);
+    expect(result.stations).toHaveLength(1);
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      "get_location_stations_with_status",
+      { p_location_id: "location-1" },
+    );
   });
 
   it("blocks suspension before fetching the terminal assignment", async () => {
@@ -142,7 +182,9 @@ describe("station refresh used by kiosk checkout", () => {
 
   it("propagates access-network failures instead of refreshing from stale state", async () => {
     const error = new Error("Offline");
-    const supabase = { rpc: jest.fn().mockResolvedValue({ data: null, error }) };
+    const supabase = {
+      rpc: jest.fn(() => withAbortSignal({ data: null, error })),
+    };
     await expect(refreshSelectedStationOperationalState(supabase as any)).rejects.toBe(error);
     expect(mockStore.setSelectedStation).not.toHaveBeenCalled();
   });

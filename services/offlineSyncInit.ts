@@ -201,6 +201,19 @@ const MAX_KITCHEN_REQUEUE_GENERATIONS = 3;
 let _supabaseClient: any = null;
 
 /**
+ * Guards for the heavy online-reconnect sweep (menu refetch → queue flush →
+ * reconciliation). Without these, a flaky link that flaps online↔offline
+ * re-fires the whole sweep on every edge, saturating the network and starving
+ * the login/KDS RPCs. `_reconnectSweepInFlight` coalesces concurrent flaps;
+ * `_lastReconnectSweepAt` + the min-interval coalesces rapid successive ones.
+ * The periodic 60s sync and queue-change triggers remain the backstop for any
+ * flush skipped here.
+ */
+let _reconnectSweepInFlight = false;
+let _lastReconnectSweepAt = 0;
+const RECONNECT_SWEEP_MIN_INTERVAL_MS = 15_000;
+
+/**
  * Mirror of useOrderStore's getKioskSafeCreatorStaffId().
  * Kiosk (self_service) orders must NOT attribute the logged-in employee who
  * entered the PIN to start the kiosk session — otherwise KDS tickets show
@@ -388,6 +401,26 @@ export async function initializeOfflineSync(): Promise<void> {
 
       // When we come back online, reconcile orders with failed syncs
       if (isOnline) {
+        // Debounce the heavy sweep so link flaps don't re-fire it back-to-back
+        // (network saturation was the primary "frozen login" amplifier for a
+        // flaky new location). Always let setOnlineStatus above run; only gate
+        // the expensive work here.
+        if (_reconnectSweepInFlight) {
+          console.log(
+            "[OfflineSync] Reconnect sweep already in flight — skipping duplicate",
+          );
+          return;
+        }
+        const nowMs = Date.now();
+        if (nowMs - _lastReconnectSweepAt < RECONNECT_SWEEP_MIN_INTERVAL_MS) {
+          console.log(
+            "[OfflineSync] Reconnect sweep debounced (ran <15s ago) — periodic sync will cover any pending ops",
+          );
+          return;
+        }
+        _reconnectSweepInFlight = true;
+        _lastReconnectSweepAt = nowMs;
+        try {
         // Refresh stale data if offline for a significant period
         const offlineDurationMs = getOfflineDurationMs();
         const STALENESS_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -479,6 +512,9 @@ export async function initializeOfflineSync(): Promise<void> {
             "[OfflineSync] Floor plan refresh on reconnect failed:",
             fpErr,
           );
+        }
+        } finally {
+          _reconnectSweepInFlight = false;
         }
       }
     },

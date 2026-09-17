@@ -149,6 +149,20 @@ export function createStationInactiveFailure(
   };
 }
 
+/**
+ * Fail-open access status for the LOGIN / station-select path.
+ *
+ * A slow or unreachable billing endpoint (deadline exceeded, network error) is
+ * NOT a definitive "unpaid" verdict — it must not brick a paying store's staff
+ * out of the POS. Callers on the sign-in path use this when the billing RPC
+ * throws so login can proceed; only an explicit `allowed: false` response
+ * blocks. (The runtime kiosk-checkout re-check fails closed instead — a stale
+ * verdict mid-transaction is the larger risk there.)
+ */
+export function createFailOpenBillingAccess(): PosBillingAccessStatus {
+  return { allowed: true, failure: null, status: "unverified", raw: null };
+}
+
 export function normalizeMerchantBillingAccess(
   payload: unknown,
 ): PosBillingAccessStatus {
