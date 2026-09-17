@@ -1,11 +1,13 @@
 import { registerResumeTask } from "@/lib/lifecycle/appLifecycleCoordinator";
 import {
+  isAutoSettleSupportedType,
   tickAutoSettlement,
   type AutoSettleConfig,
   type AutoSettleProbes,
 } from "@/services/autoSettlementScheduler";
 import { getRawIsOnline } from "@/services/offlineSyncService";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import { getSharedCodePayService } from "@/services/terminals/codepay-service";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
@@ -20,9 +22,17 @@ const AUTO_SETTLE_POLL_INTERVAL_MS = 60_000;
  */
 const probes: AutoSettleProbes = {
   isOnline: () => getRawIsOnline(),
+  // Busy = the ACTIVE station terminal's command mutex is held. Read the live
+  // terminal type so the probe follows a station/terminal switch and picks the
+  // matching service (CodePay Intent mutex vs Castles LAN/USB mutex).
   isTerminalBusy: () => {
     try {
-      return getSharedCastlesService().isLocked();
+      const type =
+        useStoreSettingsStore.getState().selectedStation?.payment_terminal
+          ?.terminal_type;
+      return type === "codepay"
+        ? getSharedCodePayService().isLocked()
+        : getSharedCastlesService().isLocked();
     } catch {
       return false;
     }
@@ -34,13 +44,14 @@ const probes: AutoSettleProbes = {
 };
 
 /**
- * Unattended daily Castles batch-out. Mirrors useBusinessDayRollover: a mount
- * seed (boot catch-up), a `frame`-bucket resume task (overnight foreground
- * catch-up), and a 60s interval backstop for tablets that never background.
+ * Unattended daily batch-out for the station's Castles or CodePay terminal.
+ * Mirrors useBusinessDayRollover: a mount seed (boot catch-up), a `frame`-bucket
+ * resume task (overnight foreground catch-up), and a 60s interval backstop for
+ * tablets that never background.
  *
  * The tick early-outs purely (no DB/terminal I/O) unless a fire is actually due,
  * so the 60s cadence is cheap. All firing/skip logic + safety gates live in
- * services/autoSettlementScheduler.ts. Wire the `enabled` gate to a Castles
+ * services/autoSettlementScheduler.ts. Wire the `enabled` gate to a supported
  * terminal this station owns with server `auto_settle` on (see PosSyncProvider).
  */
 export function useAutoSettlementScheduler(params: {
@@ -64,9 +75,11 @@ export function useAutoSettlementScheduler(params: {
         !selectedStore.timezone
       )
         return;
-      if (!terminal?.id || terminal.terminal_type !== "castles") return;
+      if (!terminal?.id || !isAutoSettleSupportedType(terminal.terminal_type))
+        return;
       if (!(terminal.auto_settle ?? false)) return;
 
+      const isCodepay = terminal.terminal_type === "codepay";
       const isUsb = terminal.connection_type === "usb";
       const cfg: AutoSettleConfig = {
         terminalId: terminal.id,
@@ -81,6 +94,11 @@ export function useAutoSettlementScheduler(params: {
         connectionType: isUsb ? "usb" : "local_socket",
         epi: terminal.epi,
         cancelPort: terminal.cancel_port,
+        // CodePay settles via an on-terminal Intent — no host/port; it needs the
+        // merchant app_id (stored on register_id / app_id) as the Intent extra.
+        appId: isCodepay
+          ? terminal.app_id ?? terminal.register_id ?? undefined
+          : undefined,
       };
       void tickAutoSettlement({ supabase, cfg, probes });
     };

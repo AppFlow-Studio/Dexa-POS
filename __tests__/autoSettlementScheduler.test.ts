@@ -55,6 +55,18 @@ const CFG: AutoSettleConfig = {
   connectionType: "local_socket",
 };
 
+// CodePay is an on-terminal Intent processor — no host/port, needs an app_id.
+const CODEPAY_CFG: AutoSettleConfig = {
+  terminalId: TERM,
+  merchantId: "m1",
+  locationId: "loc1",
+  timezone: TZ,
+  autoSettle: true,
+  settleTime: "23:00",
+  terminalType: "codepay",
+  appId: "app-1",
+};
+
 const permissiveProbes: AutoSettleProbes = {
   isOnline: () => true,
   isTerminalBusy: () => false,
@@ -194,10 +206,23 @@ describe("decideFire", () => {
     ).toMatchObject({ action: "wait", reason: "offline" });
   });
 
-  it("respects terminal type and the server auto_settle column (no client flag)", () => {
+  it("fires for supported types (castles, codepay) and skips the rest", () => {
+    expect(
+      decideFire({ ...CFG, terminalType: "castles" }, prog(), permissiveProbes, now),
+    ).toMatchObject({ action: "fire" });
+    expect(
+      decideFire(CODEPAY_CFG, prog(), permissiveProbes, now),
+    ).toMatchObject({ action: "fire" });
+    // Valor auto-batches host-side + is webhook-reconciled — excluded (double-cut).
     expect(
       decideFire({ ...CFG, terminalType: "valor" }, prog(), permissiveProbes, now),
-    ).toMatchObject({ action: "skip", reason: "not_castles" });
+    ).toMatchObject({ action: "skip", reason: "unsupported_terminal" });
+    expect(
+      decideFire({ ...CFG, terminalType: undefined }, prog(), permissiveProbes, now),
+    ).toMatchObject({ action: "skip", reason: "unsupported_terminal" });
+  });
+
+  it("respects the server auto_settle column (no client flag)", () => {
     expect(
       decideFire({ ...CFG, autoSettle: false }, prog(), permissiveProbes, now),
     ).toMatchObject({ action: "skip", reason: "auto_settle_off" });
@@ -400,5 +425,64 @@ describe("tickAutoSettlement", () => {
     expect(useAutoSettlementStore.getState().getProgress(TERM).lastReason).toBe(
       "auto_settle_off",
     );
+  });
+});
+
+// ── orchestration: CodePay (on-terminal Intent) ───────────────────
+// CodePay reuses the same tick path (only cfg differs). These cover the two
+// CodePay-specific contracts: the app_id Intent extra is threaded through, and
+// an indeterminate close escalates instead of re-firing (no double-cut).
+
+describe("tickAutoSettlement (CodePay)", () => {
+  const now = at("2026-08-16T23:30");
+  const today = "2026-08-16";
+
+  const tick = (over: Partial<Parameters<typeof tickAutoSettlement>[0]>) =>
+    tickAutoSettlement({
+      supabase: {} as any,
+      cfg: CODEPAY_CFG,
+      probes: permissiveProbes,
+      nowMs: now,
+      ...over,
+    });
+
+  it("threads terminalType + appId into the settle call and settles on truth", async () => {
+    const run = jest.fn().mockResolvedValue(okOutput({ processor: "codepay" }));
+    const getStats = jest
+      .fn()
+      .mockResolvedValueOnce(okStats({ count: 2 })) // preflight
+      .mockResolvedValueOnce(okStats({ count: 0 })); // post-fire recheck
+    await tick({ run, getStats });
+    const p = useAutoSettlementStore.getState().getProgress(TERM);
+    expect(p.phase).toBe("settled");
+    expect(p.resolvedDueDay).toBe(today);
+    expect(run.mock.calls[0][0]).toMatchObject({
+      terminalType: "codepay",
+      appId: "app-1",
+      initiatedBy: "pos_auto",
+    });
+  });
+
+  it("indeterminate close → needs_manual, marker advanced, never re-fires (no double-cut)", async () => {
+    // A CodePay indeterminate batch-close returns success:false and finalize
+    // routes it to needs_review (requiresSupport) — NOT a retry. It must
+    // escalate: re-firing would double-cut an already-closed batch.
+    const run = jest.fn().mockResolvedValue(
+      okOutput({
+        success: false,
+        requiresSupport: true,
+        status: "needs_review",
+        error: "indeterminate close",
+      }),
+    );
+    const getStats = jest.fn().mockResolvedValue(okStats({ count: 2 }));
+    await tick({ run, getStats });
+    let p = useAutoSettlementStore.getState().getProgress(TERM);
+    expect(p.phase).toBe("needs_manual");
+    expect(p.resolvedDueDay).toBe(today); // marker advanced
+    expect(p.nextRetryAtMs).toBeNull(); // NOT backoff
+    // Second tick the same day must NOT fire again.
+    await tick({ run, getStats });
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });

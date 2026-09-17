@@ -2,6 +2,7 @@ import { queryClient } from "@/contexts/TanstackProvider";
 import { useDeltaSync } from "@/hooks/db/useDeltaSync";
 import { useOutboxDrain } from "@/hooks/db/useOutboxDrain";
 import { useAutoSettlementScheduler } from "@/hooks/pos/useAutoSettlementScheduler";
+import { isAutoSettleSupportedType } from "@/services/autoSettlementScheduler";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
 import { useMenuVersionWatch } from "@/hooks/pos/useMenuVersionWatch";
@@ -197,10 +198,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
 
-  // Unattended daily Castles batch-out. Gated to the Castles terminal THIS
+  // Unattended daily batch-out. Gated to the Castles or CodePay terminal THIS
   // station owns with server auto_settle on (fail-safe OFF when the field is
-  // absent on un-migrated envs). Enablement is the server auto_settle column —
-  // there is no separate client flag.
+  // absent on un-migrated envs). Both are POS-driven on-demand batch-close models
+  // (Valor is excluded — host auto-batch + webhook). Enablement is the server
+  // auto_settle column — there is no separate client flag.
   useAutoSettlementScheduler({
     enabled: Boolean(
       supabase &&
@@ -208,7 +210,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       selectedStore?.merchant_id &&
       selectedStore?.timezone &&
       selectedStation?.payment_terminal?.id &&
-      selectedStation?.payment_terminal?.terminal_type === "castles" &&
+      isAutoSettleSupportedType(
+        selectedStation?.payment_terminal?.terminal_type,
+      ) &&
       (selectedStation?.payment_terminal?.auto_settle ?? false) &&
       !isKDS,
     ),

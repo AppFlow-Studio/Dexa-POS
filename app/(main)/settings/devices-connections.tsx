@@ -50,6 +50,9 @@ import { getSharedAtomService } from '@/services/terminals/atom-service'
 import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from '@/types/atom'
 import { useProcessorPreferenceStore } from '@/stores/useProcessorPreferenceStore'
 import { useActiveProcessor } from '@/hooks/useActiveProcessor'
+import { useCodePayTerminalStore } from '@/stores/useCodePayTerminalStore'
+import { isCodePayBridgeAvailable } from '@/native/CodePayBridge'
+import { probeCodePayNow } from '@/services/terminals/codepayDetector'
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -383,6 +386,54 @@ const DevicesConnectionsScreen = ({
     { value: true, label: 'ATOM' },
     { value: false, label: 'Off' }
   ]
+
+  // On-device CodePay: the app runs ON the CodePay terminal and drives the
+  // CodePay Register app via Intent. Unlike ATOM it needs a merchant app_id, so
+  // this is editable in-app — no SQL/WB provisioning required. The native bridge
+  // is only present on CodePay hardware, so the card self-hides elsewhere.
+  const codepayBridgeAvailable = isCodePayBridgeAvailable()
+  const codepayInternalTerminal = useCodePayTerminalStore(s => s.internalTerminal)
+  const codepayAppId = useCodePayTerminalStore(s => s.appId)
+  const setCodepayAppId = useCodePayTerminalStore(s => s.setAppId)
+  const codepayEnabled = useProcessorPreferenceStore(s => s.codepayEnabled)
+  const setCodepayEnabled = useProcessorPreferenceStore(s => s.setCodepayEnabled)
+  const [codepayAppIdDraft, setCodepayAppIdDraft] = useState('')
+  const [codepayFieldTouched, setCodepayFieldTouched] = useState(false)
+  const [codepayDetecting, setCodepayDetecting] = useState(false)
+  // Seed the input from the persisted app_id once it rehydrates (lazy persist
+  // may land after mount), unless the user has already started editing.
+  useEffect(() => {
+    if (!codepayFieldTouched) setCodepayAppIdDraft(codepayAppId ?? '')
+  }, [codepayAppId, codepayFieldTouched])
+  // Save the entered app_id, then force an immediate presence check and report
+  // whether the CodePay Register app resolved (i.e. the terminal surfaced).
+  const handleCodepayDetect = async () => {
+    const next = codepayAppIdDraft.trim()
+    if (!next) {
+      toastService.show({
+        title: 'App ID required',
+        message: 'Enter your CodePay merchant app_id, then tap Detect.',
+        type: 'warning'
+      })
+      return
+    }
+    setCodepayDetecting(true)
+    try {
+      if (next !== (codepayAppId ?? '').trim()) setCodepayAppId(next)
+      await probeCodePayNow()
+      const surfaced = !!useCodePayTerminalStore.getState().internalTerminal
+      toastService.show({
+        title: surfaced ? 'CodePay Detected' : 'Not Detected',
+        message: surfaced
+          ? 'CodePay Register found — this device can now take card payments.'
+          : 'CodePay Register app not found on this device. Make sure the Register app is installed.',
+        type: surfaced ? 'success' : 'error'
+      })
+    } finally {
+      setCodepayDetecting(false)
+    }
+  }
+
   const { status: terminalStatus, recheckStatus } = useTerminalStatus(
     currentTerminal?.id ?? undefined,
     currentTerminal ?? undefined
@@ -2111,6 +2162,224 @@ const DevicesConnectionsScreen = ({
           />
           {expandedSections.terminal && (
             <View style={{ paddingHorizontal: s(12), paddingVertical: s(10) }}>
+              {/* On-device CodePay (Intent to the CodePay Register app). Editable
+                  because CodePay's Intent needs a merchant app_id: enter it, tap
+                  Detect, and if the Register app resolves the terminal surfaces —
+                  no SQL/WB provisioning. Gated on the native bridge so it only
+                  shows on CodePay hardware. */}
+              {codepayBridgeAvailable && (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: codepayInternalTerminal
+                      ? colors.teal
+                      : colors.border,
+                    borderRadius: s(10),
+                    padding: s(12),
+                    marginBottom: s(12),
+                    backgroundColor: colors.panel
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: s(8)
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: s(8),
+                          height: s(8),
+                          borderRadius: s(4),
+                          backgroundColor: codepayInternalTerminal
+                            ? colors.success
+                            : colors.muted
+                        }}
+                      />
+                      <Text
+                        style={{
+                          fontSize: s(15),
+                          fontWeight: '700',
+                          color: colors.heading
+                        }}
+                      >
+                        CodePay (on-terminal)
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(3),
+                        borderRadius: s(6),
+                        borderWidth: 1,
+                        borderColor: codepayInternalTerminal
+                          ? colors.success
+                          : colors.border
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(11),
+                          fontWeight: '700',
+                          color: codepayInternalTerminal
+                            ? colors.success
+                            : colors.muted
+                        }}
+                      >
+                        {codepayInternalTerminal ? 'Online' : 'Not detected'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      color: colors.muted,
+                      marginTop: s(6)
+                    }}
+                  >
+                    On-device processor · CodePay · drives the CodePay Register app
+                    via Intent.
+                  </Text>
+
+                  {/* Merchant app_id — the one credential CodePay's Intent needs.
+                      Persisted, so auto-detect reuses it on every boot. */}
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      fontWeight: '700',
+                      color: colors.label,
+                      marginTop: s(12),
+                      marginBottom: s(6)
+                    }}
+                  >
+                    MERCHANT APP ID
+                  </Text>
+                  <TextInput
+                    value={codepayAppIdDraft}
+                    onChangeText={v => {
+                      setCodepayAppIdDraft(v)
+                      setCodepayFieldTouched(true)
+                    }}
+                    placeholder='e.g. wz1f2e3295adc70112'
+                    placeholderTextColor={colors.muted}
+                    autoCapitalize='none'
+                    autoCorrect={false}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: s(8),
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(10),
+                      color: colors.heading,
+                      fontSize: s(13)
+                    }}
+                  />
+
+                  {/* Whether the detected CodePay is used for NEW sales (as a
+                      fallback when no other terminal is configured). Reversals of
+                      existing CodePay payments are unaffected by this. */}
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      fontWeight: '700',
+                      color: colors.label,
+                      marginTop: s(12),
+                      marginBottom: s(6)
+                    }}
+                  >
+                    ACTIVE PROCESSOR FOR NEW SALES
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: s(6) }}>
+                    {[
+                      { value: true, label: 'Enabled' },
+                      { value: false, label: 'Off' }
+                    ].map(opt => {
+                      const selected = codepayEnabled === opt.value
+                      return (
+                        <TouchableOpacity
+                          key={String(opt.value)}
+                          onPress={() => setCodepayEnabled(opt.value)}
+                          style={{
+                            flex: 1,
+                            paddingVertical: s(8),
+                            paddingHorizontal: s(6),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: selected ? colors.teal : colors.border,
+                            backgroundColor: selected ? colors.teal : 'transparent',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(12),
+                              fontWeight: '600',
+                              color: selected ? '#ffffff' : colors.muted
+                            }}
+                            numberOfLines={1}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+
+                  <View
+                    style={{
+                      marginTop: s(10),
+                      flexDirection: 'row',
+                      gap: s(8),
+                      alignItems: 'center'
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={handleCodepayDetect}
+                      disabled={codepayDetecting}
+                      style={{
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(7),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.teal,
+                        opacity: codepayDetecting ? 0.5 : 1
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '600',
+                          color: colors.teal
+                        }}
+                      >
+                        {codepayDetecting ? 'Detecting…' : 'Save & Detect'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      color: colors.muted,
+                      marginTop: s(8)
+                    }}
+                  >
+                    {codepayInternalTerminal
+                      ? `Detected. New card sales use: ${activeProcessor.activeLabel ?? 'CodePay'}.`
+                      : 'Enter your merchant app_id and tap Detect. The CodePay Register app must be installed on this device.'}
+                  </Text>
+                </View>
+              )}
+
               {/* Auto-detected on-device ATOM processor (loopback). Read-only —
                   ATOM needs no IP/credentials; it's discovered, not configured. */}
               {atomInternalTerminal && (

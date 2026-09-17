@@ -1,5 +1,6 @@
 import { resolveKioskChargeOutcome, KIOSK_VERIFY_STAFF_MESSAGE } from "./chargeOutcome";
 import { acquireKioskCheckout, markKioskPaymentDispatched, releaseKioskCheckout } from "./checkoutGuard";
+import { flagKioskAssistance } from "./flagKioskAssistance";
 import { refreshSelectedStationOperationalState } from "@/services/posAccessService";
 import { completePaymentJournal } from "@/services/paymentJournal";
 import { round2 } from "@/utils/money";
@@ -76,6 +77,24 @@ export interface KioskCheckoutResult {
   displayNumber?: string;
 }
 
+/**
+ * Identifying details for an order that landed in the "assistance" state, shown
+ * on the "Please see a staff member" screen so staff can find the order, and
+ * flagged to the dev team via {@link flagKioskAssistance}.
+ */
+export interface KioskAssistanceRef {
+  /** Groupable code — see KioskAssistanceFlag.reason. */
+  reason: string;
+  /** Backend order id. */
+  dbOrderId?: string;
+  /** Local order store key. */
+  orderId?: string;
+  /** Human-facing pickup/display number, if assigned. */
+  displayNumber?: string;
+  /** ISO timestamp of when the assistance state was entered. */
+  at: string;
+}
+
 /** Build a POS CartItem from a kiosk cart line (card pricing). Totals/tax are
  * recomputed by the order store on add, so we only supply prices + modifiers. */
 function toCartItem(line: KioskCartLine): CartItem {
@@ -123,6 +142,9 @@ export function useKioskCheckout() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<KioskCheckoutResult | null>(null);
   const [totals, setTotals] = useState<KioskCheckoutTotals | null>(null);
+  const [assistanceRef, setAssistanceRef] = useState<KioskAssistanceRef | null>(
+    null,
+  );
 
   // Cancel plumbing. `chargeHandleRef` holds what the active sale needs to be
   // aborted (set by chargeActiveTerminal's onChargeStarted); `cancelRequestedRef`
@@ -140,9 +162,50 @@ export function useKioskCheckout() {
     setError(null);
     setResult(null);
     setTotals(null);
+    setAssistanceRef(null);
     chargeHandleRef.current = null;
     cancelRequestedRef.current = false;
   }, []);
+
+  /**
+   * Enter the "assistance" state (customer sees "Please see a staff member").
+   * Centralizes the three effects every assistance transition needs: set the
+   * UI status + message, record an on-screen order/time reference, and flag the
+   * event to the dev team. Best-effort resolves the station + display number
+   * from the stores at call time.
+   */
+  const enterAssistance = useCallback(
+    (
+      reason: string,
+      message: string,
+      ctx?: { dbOrderId?: string; orderId?: string },
+    ) => {
+      const stationId = useStoreSettingsStore.getState().selectedStation?.id;
+      const displayNumber = ctx?.orderId
+        ? useOrderStore.getState().ordersById[ctx.orderId]?.display_number
+        : undefined;
+      const at = new Date().toISOString();
+      setStatus("assistance");
+      setError(message);
+      setAssistanceRef({
+        reason,
+        dbOrderId: ctx?.dbOrderId,
+        orderId: ctx?.orderId,
+        displayNumber,
+        at,
+      });
+      flagKioskAssistance({
+        reason,
+        message,
+        at,
+        stationId,
+        dbOrderId: ctx?.dbOrderId,
+        orderId: ctx?.orderId,
+        displayNumber,
+      });
+    },
+    [],
+  );
 
   /**
    * Compute the order totals LOCALLY from the current cart — no backend order is
@@ -193,12 +256,17 @@ export function useKioskCheckout() {
       if (runningRef.current || settledRef.current) return null;
       const stationId = useStoreSettingsStore.getState().selectedStation?.id;
       if (!stationId || !acquireKioskCheckout(stationId)) {
-        setStatus("assistance");
-        setError("This kiosk needs staff assistance before another payment can start.");
+        enterAssistance(
+          "guard_held",
+          "This kiosk needs staff assistance before another payment can start.",
+        );
         return null;
       }
       runningRef.current = true;
       let needsReview = false;
+      // Hoisted so the catch block can reference the backend order id when it
+      // flags an assistance event.
+      let createdDbId: string | undefined;
       const cart = useKioskCartStore.getState();
       const orderStore = useOrderStore.getState();
 
@@ -235,7 +303,8 @@ export function useKioskCheckout() {
           ...(cart.customerId ? { customer_id: cart.customerId } : {}),
         });
         orderStore.setActiveOrder(order.id);
-        const createdDbId = await orderStore.ensureActiveOrderCreated(order.id);
+        createdDbId =
+          (await orderStore.ensureActiveOrderCreated(order.id)) ?? undefined;
         if (!createdDbId) {
           setStatus("error");
           setError("Could not create the order. Please try again.");
@@ -381,8 +450,15 @@ export function useKioskCheckout() {
             setStatus("cancelled");
             return null;
           }
-          setStatus(outcome.kind === "verify" ? "assistance" : "error");
-          setError(outcome.message);
+          if (outcome.kind === "verify") {
+            enterAssistance("charge_verify", outcome.message, {
+              dbOrderId: createdDbId,
+              orderId: liveOrderId,
+            });
+          } else {
+            setStatus("error");
+            setError(outcome.message);
+          }
           return null;
         }
 
@@ -402,8 +478,10 @@ export function useKioskCheckout() {
         );
 
         if (payment.kind !== "success" || !payment.data.success || !payment.data.order_fully_paid) {
-          setStatus("assistance");
-          setError(KIOSK_VERIFY_STAFF_MESSAGE);
+          enterAssistance("payment_record_failed", KIOSK_VERIFY_STAFF_MESSAGE, {
+            dbOrderId: createdDbId,
+            orderId: liveOrderId,
+          });
           return null;
         }
         if (journal) completePaymentJournal(journal.id, payment.data.payment_id);
@@ -413,8 +491,11 @@ export function useKioskCheckout() {
         // that never paid, so the KDS send must follow a confirmed payment.
         const kitchen = await orderStore.sendNewItemsToKitchenForOrder(liveOrderId);
         if (kitchen.status !== "sent") {
-          setStatus("assistance");
-          setError("Your payment was recorded, but kitchen delivery needs staff confirmation. Please do not pay again.");
+          enterAssistance(
+            "kitchen_send_failed",
+            "Your payment was recorded, but kitchen delivery needs staff confirmation. Please do not pay again.",
+            { dbOrderId: createdDbId, orderId: liveOrderId },
+          );
           return null;
         }
         needsReview = false;
@@ -465,8 +546,18 @@ export function useKioskCheckout() {
         return res;
       } catch (err) {
         console.error("[kioskCheckout] payOrder failed:", err);
-        setStatus(needsReview ? "assistance" : "error");
-        setError(needsReview ? KIOSK_VERIFY_STAFF_MESSAGE : err instanceof Error ? err.message : "Could not start payment. Please see a staff member.");
+        if (needsReview) {
+          enterAssistance("payorder_exception", KIOSK_VERIFY_STAFF_MESSAGE, {
+            dbOrderId: createdDbId,
+          });
+        } else {
+          setStatus("error");
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not start payment. Please see a staff member.",
+          );
+        }
         return null;
       } finally {
         chargingRef.current = false;
@@ -476,7 +567,7 @@ export function useKioskCheckout() {
         releaseKioskCheckout(stationId, needsReview);
       }
     },
-    [supabase],
+    [supabase, enterAssistance],
   );
 
   /**
@@ -510,6 +601,7 @@ export function useKioskCheckout() {
     error,
     result,
     totals,
+    assistanceRef,
     computeTotals,
     payOrder,
     cancelCharge,

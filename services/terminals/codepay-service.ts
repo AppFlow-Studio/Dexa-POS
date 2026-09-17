@@ -62,6 +62,11 @@ export class CodePayService {
     return !!this._config;
   }
 
+  /** True when a command Intent is in flight (mutex held). */
+  isLocked(): boolean {
+    return this._mutex.isLocked();
+  }
+
   private requireConfig(): CodePayConnectionConfig {
     if (!this._config) throw new Error("CodePayService not configured");
     return this._config;
