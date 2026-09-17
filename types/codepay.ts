@@ -302,6 +302,18 @@ export const CODEPAY_DEFAULT_APP_ID = "wz1f2e3295adc70112";
 /** Default order expiry (seconds) handed to the terminal. */
 export const CODEPAY_DEFAULT_EXPIRES_SEC = 120;
 
+/**
+ * Kill switch for on-device CodePay AUTO-provisioning (the detector creating a
+ * real payment_terminals row keyed on the device serial, so batch-out works
+ * without SQL). When false, the synthetic terminal + sales still work and the
+ * Settings "Provision this device" button is unaffected — only the automatic,
+ * boot-time row creation is disabled. Flip to false if auto-provision misbehaves
+ * in the field.
+ */
+export const CODEPAY_AUTO_PROVISION_ENABLED = true;
+/** Display name stamped on an auto-provisioned CodePay terminal row. */
+export const CODEPAY_TERMINAL_DISPLAY_NAME = "CodePay (on-terminal)";
+
 // Per-op timeouts (ms)
 /** Live sale window — the terminal reads the card and contacts the host. */
 export const CODEPAY_SALE_TIMEOUT_MS = 120_000;

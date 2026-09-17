@@ -68,6 +68,7 @@ import {
   startCodePayDetect,
   stopCodePayDetect,
 } from "@/services/terminals/codepayDetector";
+import { setCodePayProvisionSupabaseClient } from "@/services/terminals/codepayAutoProvision";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import {
   startCastlesUsbAutoConnect,
@@ -172,6 +173,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
       setKDSSupabaseClient(supabase);
+      setCodePayProvisionSupabaseClient(supabase);
       // Initialize offline sync service (re-inits after Fast Refresh since module-level state resets)
       if (!isServiceInitialized()) {
         initializeOfflineSync()

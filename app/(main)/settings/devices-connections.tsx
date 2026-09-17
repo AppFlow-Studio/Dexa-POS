@@ -53,6 +53,7 @@ import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import { useCodePayTerminalStore } from '@/stores/useCodePayTerminalStore'
 import { isCodePayBridgeAvailable } from '@/native/CodePayBridge'
 import { probeCodePayNow } from '@/services/terminals/codepayDetector'
+import { ensureCodePayTerminalProvisioned } from '@/services/terminals/codepayAutoProvision'
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -400,19 +401,27 @@ const DevicesConnectionsScreen = ({
   const [codepayAppIdDraft, setCodepayAppIdDraft] = useState('')
   const [codepayFieldTouched, setCodepayFieldTouched] = useState(false)
   const [codepayDetecting, setCodepayDetecting] = useState(false)
+  // Other CodePay terminals registered at this location (i.e. sibling devices,
+  // not this station's own row) — surfaced so an operator can see the fleet.
+  const codepayOtherDevices = codepayBridgeAvailable
+    ? terminals.filter(
+        t => t.terminalType === 'codepay' && t.stationId !== selectedStation?.id
+      )
+    : []
   // Seed the input from the persisted app_id once it rehydrates (lazy persist
   // may land after mount), unless the user has already started editing.
   useEffect(() => {
     if (!codepayFieldTouched) setCodepayAppIdDraft(codepayAppId ?? '')
   }, [codepayAppId, codepayFieldTouched])
-  // Save the entered app_id, then force an immediate presence check and report
-  // whether the CodePay Register app resolved (i.e. the terminal surfaced).
+  // Save the entered app_id, force a presence check, and — if the Register app
+  // resolves — auto-provision a real payment_terminals row so batch-out works
+  // without SQL. Reports the combined outcome.
   const handleCodepayDetect = async () => {
     const next = codepayAppIdDraft.trim()
     if (!next) {
       toastService.show({
         title: 'App ID required',
-        message: 'Enter your CodePay merchant app_id, then tap Detect.',
+        message: 'Enter your CodePay merchant app_id, then tap Save & Set Up.',
         type: 'warning'
       })
       return
@@ -422,12 +431,36 @@ const DevicesConnectionsScreen = ({
       if (next !== (codepayAppId ?? '').trim()) setCodepayAppId(next)
       await probeCodePayNow()
       const surfaced = !!useCodePayTerminalStore.getState().internalTerminal
+      if (!surfaced) {
+        toastService.show({
+          title: 'Not Detected',
+          message:
+            'CodePay Register app not found on this device. Make sure the Register app is installed.',
+          type: 'error'
+        })
+        return
+      }
+      // Surfaced → persist a real terminal row (settlement needs one).
+      const res = await ensureCodePayTerminalProvisioned({ supabase, appId: next })
+      if (!res.ok) {
+        toastService.show({
+          title: 'Detected — setup incomplete',
+          message:
+            res.reason === 'missing_session'
+              ? 'Detected CodePay, but no store/station is selected yet.'
+              : res.reason === 'no_serial'
+                ? 'Detected CodePay, but could not read a device serial to register it.'
+                : `Detected CodePay, but registering this device failed: ${res.reason ?? 'unknown error'}.`,
+          type: 'warning'
+        })
+        return
+      }
+      if (selectedStore?.id) await loadTerminals(selectedStore.id)
+      if (res.terminalId) setActiveTerminal(res.terminalId)
       toastService.show({
-        title: surfaced ? 'CodePay Detected' : 'Not Detected',
-        message: surfaced
-          ? 'CodePay Register found — this device can now take card payments.'
-          : 'CodePay Register app not found on this device. Make sure the Register app is installed.',
-        type: surfaced ? 'success' : 'error'
+        title: 'CodePay Ready',
+        message: `This device is set up and registered (serial ${res.serial}). Card sales and batch-out are enabled.`,
+        type: 'success'
       })
     } finally {
       setCodepayDetecting(false)
@@ -2361,7 +2394,7 @@ const DevicesConnectionsScreen = ({
                           color: colors.teal
                         }}
                       >
-                        {codepayDetecting ? 'Detecting…' : 'Save & Detect'}
+                        {codepayDetecting ? 'Setting up…' : 'Save & Set Up'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -2375,8 +2408,99 @@ const DevicesConnectionsScreen = ({
                   >
                     {codepayInternalTerminal
                       ? `Detected. New card sales use: ${activeProcessor.activeLabel ?? 'CodePay'}.`
-                      : 'Enter your merchant app_id and tap Detect. The CodePay Register app must be installed on this device.'}
+                      : 'Enter your merchant app_id and tap Save & Set Up. The CodePay Register app must be installed on this device.'}
                   </Text>
+
+                  {/* Sibling CodePay devices registered at this location. */}
+                  {codepayOtherDevices.length > 0 && (
+                    <View
+                      style={{
+                        marginTop: s(12),
+                        paddingTop: s(12),
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(11),
+                          fontWeight: '700',
+                          color: colors.label,
+                          marginBottom: s(8)
+                        }}
+                      >
+                        OTHER CODEPAY DEVICES AT THIS LOCATION
+                      </Text>
+                      {codepayOtherDevices.map(t => (
+                        <View
+                          key={t.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingVertical: s(8),
+                            paddingHorizontal: s(10),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.screen,
+                            marginBottom: s(6)
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: s(8),
+                              height: s(8),
+                              borderRadius: s(4),
+                              marginRight: s(10),
+                              backgroundColor: t.isConnected
+                                ? colors.success
+                                : colors.muted
+                            }}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              style={{
+                                fontSize: s(12),
+                                fontWeight: '600',
+                                color: colors.heading
+                              }}
+                              numberOfLines={1}
+                            >
+                              {t.name}
+                            </Text>
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                color: colors.muted,
+                                marginTop: s(2)
+                              }}
+                              numberOfLines={1}
+                            >
+                              {t.serialNumber ? `SN ${t.serialNumber}` : 'No serial'}
+                            </Text>
+                          </View>
+                          <View
+                            style={{
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: s(4),
+                              backgroundColor: colors.teal + '30'
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: '600',
+                                color: colors.teal
+                              }}
+                            >
+                              CodePay
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               )}
 

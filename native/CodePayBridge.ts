@@ -21,6 +21,7 @@ interface CodePayBridgeNative {
     timeoutMs: number,
   ): Promise<CodePayIntentResult>;
   isRegisterAvailable(): Promise<boolean>;
+  getDeviceSerial(): Promise<string | null>;
 }
 
 const nativeModule = (
@@ -63,5 +64,21 @@ export async function codepayIsRegisterAvailable(): Promise<boolean> {
     return await nativeModule.isRegisterAvailable();
   } catch {
     return false;
+  }
+}
+
+/**
+ * Best-effort hardware serial of the CodePay terminal (Build.getSerial). Used as
+ * a stable per-device identity when auto-provisioning a payment_terminals row.
+ * Resolves null when the native module is absent, the platform is not Android,
+ * or the app lacks the privileged serial permission — callers fall back to a
+ * non-privileged device id (ANDROID_ID). Never rejects.
+ */
+export async function codepayGetDeviceSerial(): Promise<string | null> {
+  if (!nativeModule?.getDeviceSerial) return null;
+  try {
+    return await nativeModule.getDeviceSerial();
+  } catch {
+    return null;
   }
 }

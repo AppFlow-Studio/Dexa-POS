@@ -3,6 +3,7 @@ package com.temurappflowstudios.dexapos.codepay
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -148,6 +149,40 @@ class CodePayBridgeModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             Log.w(TAG, "isRegisterAvailable failed: ${e.message}")
             promise.resolve(false)
+        }
+    }
+
+    /**
+     * Best-effort read of the terminal's hardware serial, for a stable per-device
+     * identity when auto-provisioning a payment_terminals row. Uses
+     * Build.getSerial() (API 26+, needs a privileged/OEM permission) with a
+     * Build.SERIAL fallback on older platforms.
+     *
+     * Resolves null — NEVER rejects — when the serial is unavailable or the app
+     * lacks the privilege (a non-system app on most ROMs throws SecurityException).
+     * The JS side then falls back to a non-privileged device id (ANDROID_ID), so
+     * provisioning still works. Safe to call from any thread; touches no I/O.
+     */
+    @ReactMethod
+    fun getDeviceSerial(promise: Promise) {
+        try {
+            val serial = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Build.getSerial()
+            } else {
+                @Suppress("DEPRECATION")
+                Build.SERIAL
+            }
+            if (serial.isNullOrBlank() || serial == Build.UNKNOWN) {
+                promise.resolve(null)
+            } else {
+                promise.resolve(serial)
+            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "getDeviceSerial denied (no privileged serial permission): ${e.message}")
+            promise.resolve(null)
+        } catch (e: Exception) {
+            Log.w(TAG, "getDeviceSerial failed: ${e.message}")
+            promise.resolve(null)
         }
     }
 

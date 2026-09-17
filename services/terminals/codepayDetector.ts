@@ -23,8 +23,12 @@ import {
   codepayIsRegisterAvailable,
   isCodePayBridgeAvailable,
 } from "@/native/CodePayBridge";
-import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
+import {
+  CODEPAY_AUTO_PROVISION_ENABLED,
+  CODEPAY_SALE_TIMEOUT_MS,
+} from "@/types/codepay";
 import { getSharedCodePayService } from "./codepay-service";
+import { ensureCodePayTerminalProvisioned } from "./codepayAutoProvision";
 import {
   buildInternalCodePayTerminal,
   useCodePayTerminalStore,
@@ -38,6 +42,33 @@ let _running = false;
 let _timer: ReturnType<typeof setInterval> | null = null;
 let _appStateSub: { remove: () => void } | null = null;
 let _probing = false;
+/** Auto-provision runs at most once per detector session (idempotent anyway). */
+let _autoProvisioned = false;
+let _provisioning = false;
+
+/**
+ * Best-effort: create a real payment_terminals row for this device so batch-out
+ * works without SQL. Fire-and-forget from the probe (never blocks it); no-ops
+ * offline / before the session is ready and retries on the next probe until it
+ * succeeds, then latches off for the session.
+ */
+async function maybeAutoProvision(): Promise<void> {
+  if (!CODEPAY_AUTO_PROVISION_ENABLED || _autoProvisioned || _provisioning) {
+    return;
+  }
+  _provisioning = true;
+  try {
+    const res = await ensureCodePayTerminalProvisioned();
+    if (res.ok) {
+      _autoProvisioned = true;
+      console.log(
+        `${TAG} auto-provisioned terminal ${res.terminalId} (serial ${res.serial})`,
+      );
+    }
+  } finally {
+    _provisioning = false;
+  }
+}
 
 /** Presence-check once; surface or un-surface the internal CodePay terminal. */
 async function probeOnce(): Promise<void> {
@@ -72,6 +103,8 @@ async function probeOnce(): Promise<void> {
         store.internalTerminal?.register_id !== appId;
       store.setInternalTerminal(terminal);
       if (changed) console.log(`${TAG} internal CodePay surfaced (app_id set)`);
+      // Persist a real terminal row too (settlement needs one). Fire-and-forget.
+      void maybeAutoProvision();
       return;
     }
 
@@ -103,6 +136,7 @@ export function startCodePayDetect(): void {
 export function stopCodePayDetect(): void {
   if (!_running) return;
   _running = false;
+  _autoProvisioned = false;
   console.log(`${TAG} stopping`);
   if (_timer) {
     clearInterval(_timer);

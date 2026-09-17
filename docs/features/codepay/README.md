@@ -63,8 +63,41 @@ Intent needs the merchant `app_id` (ATOM needs no credentials). So the POS holds
   sale/refund/tip when nothing is configured.
 - Settlement note: batch-out needs a real `payment_terminals` row (BatchoutPanel
   reads the station's configured terminal). The synthetic internal terminal does
-  sale/refund/tip but not settlement — provision a row (or the deferred
-  auto-provision enhancement) to batch-out.
+  sale/refund/tip but not settlement — so the detector now **auto-provisions** a
+  real row (see below) once online, and a Settings card lets an operator do it
+  explicitly. No more per-device SQL.
+
+## Auto-provision (real payment_terminals row, no SQL)
+
+Sales run off the synthetic terminal (they only need the Intent `app_id`), but
+settlement needs a DB row. So on-device CodePay now creates one itself, keyed on a
+**stable per-device serial** so it is a find-or-create (never a duplicate).
+
+- `services/terminals/codepayDeviceIdentity.ts` — `resolveCodePayDeviceIdentity()`:
+  native hardware serial (`Build.getSerial` via the new
+  `CodePayBridgeModule.getDeviceSerial()`), falling back to a prefixed
+  `ANDROID_ID` (`expo-application`, zero-permission) when the ROM blocks the
+  privileged serial. Both are device-bound and survive reinstall (not factory
+  reset). `Build.getSerial` needs `READ_PRIVILEGED_PHONE_STATE` (declared with
+  `tools:ignore`; only granted if Dexa is privileged on the terminal) — hence the
+  fallback.
+- `services/terminals/codepayAutoProvision.ts` — `ensureCodePayTerminalProvisioned()`:
+  headless find-or-adopt on `(location_id, serial_number)` (the DB partial-unique
+  index is the backstop; a 23505 race resolves to an adopt). Inserts
+  `terminal_type='codepay'`, `register_id=<app_id>`, `connection_type='local'`,
+  `serial_number=<serial>`, `is_active=true`, then deactivates sibling rows at the
+  station. Never throws; returns `{ ok, terminalId, created, serial, reason }`.
+  Supabase client registered via `setCodePayProvisionSupabaseClient` in
+  `PosSyncProvider`.
+- The detector (`codepayDetector.ts`) fires `maybeAutoProvision()` once per
+  session after presence + app_id, fire-and-forget (never blocks the probe),
+  gated by `CODEPAY_AUTO_PROVISION_ENABLED` (kill switch in `types/codepay.ts`).
+- UI: a CodePay card in **both** the register settings
+  (`devices-connections.tsx`) and the kiosk settings
+  (`KioskDiagnosticsScreen.tsx`) — app_id input, Enabled/Off toggle,
+  "Save & Set Up" (detect + provision), and an "Other CodePay devices at this
+  location" list (derived from the shared `usePaymentTerminal` terminals, no
+  extra query).
 
 ## Settlement: backend RPCs — APPLIED TO STAGING (2026-09-15)
 
@@ -110,11 +143,15 @@ if the first finalize call fails after a confirmed close.
   - Health check: `terminalHealthCheck.performCodePayHealthCheck` + `usePaymentTerminal.testConnection` codepay branch → non-intrusive native `isRegisterAvailable()` presence check (never launches Register).
   - Identity: no passive serial discovery on the Intent path — `serial_number` is config-driven and flows into the `codepay_transaction` JSONB.
   - Display labels fixed in `TerminalSection.tsx` + `devices-connections.tsx`.
-- **Follow-up (deferred)**: the "Add CodePay Terminal" *form* (picker option + inputs + insert) in `devices-connections.tsx`. Provision a row directly meanwhile: `terminal_type='codepay'`, `register_id=<app_id>`, `serial_number`, `connection_type='local'`, `is_active=true`. Once provisioned it displays, tests (presence check), and runs sales/refunds/tips.
+- **Provisioning (done)**: on-device CodePay now **auto-provisions** its own `payment_terminals` row (detector, once per session) and exposes a Settings card ("Save & Set Up") in both the register and kiosk screens — no per-device SQL. Keyed on a stable device serial (hardware serial → ANDROID_ID). See "Auto-provision" above. Kill switch `CODEPAY_AUTO_PROVISION_ENABLED`.
 - **Phase 5 — EAS native rebuild + on-hardware QA**: pending (needs the terminal).
 
 ## Verify on live hardware
 1. `trans_status` arrives as a string vs number (client handles both).
 2. `response_code` is a top-level Intent extra vs nested in `biz_data` (both handled).
 3. Confirm the exact `biz_data` result keys against a real sale.
-4. New native module ⇒ requires an **EAS native rebuild** (not OTA-able).
+4. New native module ⇒ requires an **EAS native rebuild** (not OTA-able). The
+   `getDeviceSerial` method + `READ_PRIVILEGED_PHONE_STATE` also need the rebuild.
+5. Confirm `getDeviceSerial()` returns a real serial on the CodePay ROM (privileged)
+   vs falls back to `ANDROIDID-…` (check the provisioned row's `serial_number`),
+   then confirm auto-provision created exactly one row and batch-out runs off it.
