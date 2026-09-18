@@ -14,6 +14,14 @@ export type PriceSource =
   | "location_category"
   | "location_menu";
 
+export type MenuChannel = "pos" | "kiosk" | "online";
+
+export interface MenuChannelVisibility {
+  pos: boolean;
+  kiosk: boolean;
+  online: boolean;
+}
+
 // ============================================================================
 // 1.5. TAX RATE TYPES
 // ============================================================================
@@ -102,6 +110,13 @@ export interface MenuItemDetails {
   has_category_override: boolean;
   has_location_category_override: boolean;
   has_location_menu_override: boolean;
+
+  /**
+   * Sales channels this item is sold on, resolved server-side (L2 location
+   * override > L1 base). Null/absent on snapshots taken before the field
+   * existed — consumers fail open. See `isItemOnChannel`.
+   */
+  effective_available_channels?: MenuChannel[] | null;
 
   // Stock
   stock_tracking_mode: StockTrackingMode;
@@ -197,6 +212,8 @@ export interface MenuWithCategories {
   is_global: boolean; // location_id IS NULL
   is_location_owned: boolean; // location_id IS NOT NULL
   display_order?: number | null;
+  /** Per-location surface visibility. Missing values default to visible. */
+  channel_visibility?: Partial<MenuChannelVisibility> | null;
 
   created_at: string;
   updated_at: string;

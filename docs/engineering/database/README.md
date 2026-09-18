@@ -15,6 +15,7 @@ The companion SELECT-only collector is `supabase/audits/20260731_database_worklo
 
 - [RLS plan](rls_plan.md)
 - [Staging vs prod gaps](staging-vs-prod-gaps.md)
+- [Purchase-order numbering](purchase-order-numbering.md)
 
 ## Guardrails
 

@@ -19,6 +19,15 @@ export interface PosBillingAccessStatus {
 
 const BLOCKED_BILLING_STATUSES = new Set([
   "suspended",
+  "merchant_suspended",
+  "subscription_suspended",
+  "location_suspended",
+  "subscription_canceled",
+  "subscription_cancelled",
+  "location_canceled",
+  "location_cancelled",
+  "canceled",
+  "cancelled",
   "past_due",
   "past-due",
   "unpaid",
@@ -35,6 +44,10 @@ const BILLING_CODE_TOKENS = [
   "billing_suspended",
   "merchant_suspended",
   "location_suspended",
+  "subscription_canceled",
+  "subscription_cancelled",
+  "location_canceled",
+  "location_cancelled",
   "payment_required",
   "past_due",
   "non_payment",
@@ -51,6 +64,12 @@ const QUOTA_CODE_TOKENS = [
   "device_limit",
 ];
 
+const EXPLICIT_NON_BLOCKING_ACCESS_STATUSES = new Set([
+  "active",
+  "billing_exempt",
+  "past_due_grace",
+]);
+
 function normalizeToken(value: unknown): string {
   return String(value ?? "")
     .trim()
@@ -66,6 +85,21 @@ function hasAnyToken(value: unknown, tokens: string[]): boolean {
 function readBoolean(payload: any, keys: string[]): boolean {
   if (!payload || typeof payload !== "object") return false;
   return keys.some((key) => payload[key] === true);
+}
+
+function readExplicitBoolean(payload: any, keys: string[]): boolean | null {
+  if (!payload || typeof payload !== "object") return null;
+  for (const key of keys) {
+    if (typeof payload[key] === "boolean") return payload[key];
+  }
+  return null;
+}
+
+function unwrapRpcPayload(payload: unknown): Record<string, any> {
+  const candidate = Array.isArray(payload) ? payload[0] : payload;
+  return candidate && typeof candidate === "object"
+    ? (candidate as Record<string, any>)
+    : {};
 }
 
 function readFirstString(payload: any, keys: string[]): string | null {
@@ -115,10 +149,24 @@ export function createStationInactiveFailure(
   };
 }
 
+/**
+ * Fail-open access status for the LOGIN / station-select path.
+ *
+ * A slow or unreachable billing endpoint (deadline exceeded, network error) is
+ * NOT a definitive "unpaid" verdict — it must not brick a paying store's staff
+ * out of the POS. Callers on the sign-in path use this when the billing RPC
+ * throws so login can proceed; only an explicit `allowed: false` response
+ * blocks. (The runtime kiosk-checkout re-check fails closed instead — a stale
+ * verdict mid-transaction is the larger risk there.)
+ */
+export function createFailOpenBillingAccess(): PosBillingAccessStatus {
+  return { allowed: true, failure: null, status: "unverified", raw: null };
+}
+
 export function normalizeMerchantBillingAccess(
   payload: unknown,
 ): PosBillingAccessStatus {
-  const source = payload && typeof payload === "object" ? (payload as any) : {};
+  const source = unwrapRpcPayload(payload);
   const status =
     readFirstString(source, [
       "status",
@@ -136,6 +184,37 @@ export function normalizeMerchantBillingAccess(
       "suspended_reason",
       "billing_message",
     ]) ?? null;
+
+  if (Object.keys(source).length === 0) {
+    return {
+      allowed: false,
+      failure: createBillingSuspendedFailure(
+        null,
+        "POS could not verify subscription access. Check the connection and try again.",
+      ),
+      status: null,
+      raw: payload,
+    };
+  }
+
+  // The shared access RPC is the policy boundary. Its explicit decision wins
+  // over nested subscription rows (for example past_due during grace, or a
+  // billing-exempt merchant whose underlying schedule remains suspended).
+  const explicitAllowed = readExplicitBoolean(source, [
+    "allowed",
+    "access_allowed",
+    "pos_access_allowed",
+  ]);
+  if (explicitAllowed !== null) {
+    return explicitAllowed
+      ? { allowed: true, failure: null, status, raw: payload }
+      : {
+          allowed: false,
+          failure: createBillingSuspendedFailure(status, message),
+          status,
+          raw: payload,
+        };
+  }
 
   const blockedByStatus = BLOCKED_BILLING_STATUSES.has(normalizeToken(status));
   const blockedByFlag = readBoolean(source, [
@@ -170,6 +249,11 @@ export function getPosAccessFailure(input: {
   error?: string | null;
   errorCode?: string | null;
 }): PosAccessFailure | null {
+  if (
+    EXPLICIT_NON_BLOCKING_ACCESS_STATUSES.has(normalizeToken(input.errorCode))
+  ) {
+    return null;
+  }
   const combined = `${input.errorCode ?? ""} ${input.error ?? ""}`;
 
   if (hasAnyToken(combined, QUOTA_CODE_TOKENS)) {

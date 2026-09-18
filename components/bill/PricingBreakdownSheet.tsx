@@ -132,16 +132,6 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
         ? s.ordersById[s.activeOrderId]
         : undefined,
   );
-  const activeOrderSubtotal = useOrderStore((s) => s.activeOrderSubtotal);
-  const activeOrderTax = useOrderStore((s) => s.activeOrderTax);
-  const activeOrderDiscount = useOrderStore((s) => s.activeOrderDiscount);
-  const activeOrderOutstandingSubtotal = useOrderStore(
-    (s) => s.activeOrderOutstandingSubtotal,
-  );
-  const activeOrderOutstandingTax = useOrderStore(
-    (s) => s.activeOrderOutstandingTax,
-  );
-
   const activeOrderTotals = useActiveOrderTotals(!orderId);
   const orderTotals = useOrderTotals(orderId ?? null);
   const liveTotals = orderTotals ?? activeOrderTotals;
@@ -185,21 +175,23 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
         return acc + Math.max(0, p.amount - refunded);
       }, 0) ?? 0;
 
-  const displayDiscount = hasPayments
-    ? 0
-    : (liveTotals?.discount ?? activeOrderDiscount);
+  // §4.3 — derived only. These used to fall back to useOrderStore's mirrored
+  // `activeOrder*` fields, which are a SECOND source of truth for money: any
+  // path that writes items without also writing all ten mirrors leaves the
+  // cart and its total disagreeing. `liveTotals` is computed from the item set
+  // itself, so there is nothing left to disagree with — and `?? 0` is the
+  // honest default for "no order", where the mirrors would have shown a stale
+  // previous order's numbers.
+  const displayDiscount = hasPayments ? 0 : (liveTotals?.discount ?? 0);
   const displaySubtotal = hasPayments
-    ? Math.max(
-        0,
-        liveTotals?.outstandingSubtotal ?? activeOrderOutstandingSubtotal,
-      )
-    : (liveTotals?.subtotal ?? activeOrderSubtotal);
+    ? Math.max(0, liveTotals?.outstandingSubtotal ?? 0)
+    : (liveTotals?.subtotal ?? 0);
   const displayCashSubtotal = hasPayments
     ? Math.max(0, liveTotals?.cashOutstandingSubtotal ?? 0)
     : cashSubtotal;
   const displayTax = hasPayments
-    ? Math.max(0, liveTotals?.outstandingTax ?? activeOrderOutstandingTax)
-    : (liveTotals?.tax ?? activeOrderTax);
+    ? Math.max(0, liveTotals?.outstandingTax ?? 0)
+    : (liveTotals?.tax ?? 0);
   const displayCashTax = hasPayments
     ? Math.max(0, liveTotals?.cashOutstandingTax ?? 0)
     : cashTax;

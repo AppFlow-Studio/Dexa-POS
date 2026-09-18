@@ -287,7 +287,7 @@ function renderSingleItem(
   // Special instructions (prominent)
   if (item.notes) {
     b.bold(true);
-    b.textLine(`  *** ${item.notes} ***`);
+    b.textLine(`  Note: ${item.notes}`);
     b.bold(false);
   }
 

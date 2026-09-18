@@ -25,6 +25,7 @@ import { VALOR_DEFAULT_PORT } from "@/types/valor";
  * Default OFF; production merchants see zero change.
  */
 function isMockEnabled(): boolean {
+  if (!__DEV__) return false;
   const storeEnabled = useValorMockStore.getState().enabled;
   if (storeEnabled) return true;
   const flag = process.env.EXPO_PUBLIC_VALOR_MOCK;

@@ -72,16 +72,21 @@ describe('useOrdersQuery hydrateWorkspace — Wave 2.1.1 flip-away on catch-up p
     expect(useOrdersQuerySource).toMatch(/prev\.check_status === "Closed"/)
   })
 
-  it('treats `prev mine + next absent` as flip-away (the silent-prune path at line ~184)', () => {
-    // The remote-station-draft prune at `useOrdersQuery.ts:184-202` removes
-    // orders entirely from `newOrdersById`. From the user's POV this is also
-    // an ownership change — they should hear about it.
-    expect(useOrdersQuerySource).toMatch(/!next \|\|/)
+  it('does NOT treat `prev mine + next absent` as flip-away (superseded by Wave 2.7)', () => {
+    // Wave 2.1.1 originally counted a pruned order as a flip-away. Wave 2.7
+    // deliberately narrowed that to an EXPLICIT foreign owner — an order
+    // going absent/unowned must not toast. See the negative assertion in
+    // `wave27OwnershipRecheck.test.ts` ("only toasts for an explicit foreign
+    // owner, not when an order becomes unowned"), which pins this exact
+    // shape. Kept as a guard so the two waves can't silently diverge again.
+    expect(useOrdersQuerySource).not.toMatch(
+      /!next \|\| \(next\.station_id != null/
+    )
   })
 
   it('treats `prev mine + next.station_id mismatches` as flip-away (the standard claim case)', () => {
     expect(useOrdersQuerySource).toMatch(
-      /next\.station_id != null && next\.station_id !== _myStationId/
+      /next\?\.station_id != null && next\.station_id !== _myStationId/
     )
   })
 

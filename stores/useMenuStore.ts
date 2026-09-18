@@ -243,6 +243,11 @@ interface MenuState {
   addTemporaryMenuAccess: (menuName: string) => void
   addTemporaryCategoryAccess: (categoryName: string) => void
   clearTemporaryAccess: () => void // Call this on logout
+  /** Drop specific grants once whatever justified them no longer holds. */
+  revokeTemporaryAccess: (
+    menuNames: string[],
+    categoryNames: string[]
+  ) => void
 
   // Merge standalone entities (categories, items, modifiers, menus)
   mergeStandaloneData: (data: {
@@ -355,6 +360,11 @@ const transformMenuItemsFromSync = (
         dbItem.card_bg_color ?? undefined
       ),
       availability: dbItem.effective_availability,
+      // Carried through as-is, including absent: `isItemOnChannel` is what
+      // decides what a missing array means, in one place, for POS and kiosk
+      // alike. Normalizing to a default here would bake that decision into
+      // every cached snapshot instead.
+      availableChannels: dbItem.effective_available_channels ?? undefined,
       stockQuantity: dbItem.current_stock ?? undefined,
       stockTrackingMode: dbItem.stock_tracking_mode,
       modifierGroupIds: orderedModifierGroups.map((mg: any) => mg.id),
@@ -413,6 +423,11 @@ const transformMenuItemsFromSync = (
         description: menu.description || undefined,
         isActive: menu.is_active,
         displayOrder: menu.display_order ?? undefined,
+        channelVisibility: {
+          pos: menu.channel_visibility?.pos !== false,
+          kiosk: menu.channel_visibility?.kiosk !== false,
+          online: menu.channel_visibility?.online !== false
+        },
         categories: categories.sort((a, b) => {
           // Website Logic: Missing order goes to the BOTTOM
           const aOrder = a.displayOrder ?? a.order ?? 999999
@@ -2156,6 +2171,17 @@ export const useMenuStore = create<MenuState>((set, get) => {
       set({ temporaryActiveMenus: [], temporaryActiveCategories: [] })
     },
 
+    revokeTemporaryAccess: (menuNames, categoryNames) => {
+      set(state => ({
+        temporaryActiveMenus: state.temporaryActiveMenus.filter(
+          name => !menuNames.includes(name)
+        ),
+        temporaryActiveCategories: state.temporaryActiveCategories.filter(
+          name => !categoryNames.includes(name)
+        )
+      }))
+    },
+
     // Merge standalone entities (categories, items, modifiers not in any menu)
     mergeStandaloneData: data => {
       set(state => {
@@ -2468,7 +2494,19 @@ export const useMenuStore = create<MenuState>((set, get) => {
                   return {
                     ...category,
                     isActive: mc.is_active,
-                    order: mc.display_order ?? category.order
+                    order: mc.display_order ?? category.order,
+                    // Global category records are stored flat with
+                    // `items: undefined` (see the categoryMap build in
+                    // transformSyncData), so spreading one here produced a menu
+                    // category with no items at all and an empty item grid.
+                    // Re-attach the items that belong to this category.
+                    items:
+                      category.items ??
+                      newMenuItems.filter(
+                        item =>
+                          Array.isArray(item.category) &&
+                          item.category.includes(category.name)
+                      )
                   }
                 }
               )

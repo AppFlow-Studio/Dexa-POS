@@ -8,6 +8,8 @@ import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { getSharedValorService } from "@/services/terminals/valor-service";
+import { getSharedCodePayService } from "@/services/terminals/codepay-service";
+import { CODEPAY_QUERY_TIMEOUT_MS } from "@/types/codepay";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
@@ -188,6 +190,49 @@ export function useTipAdjustMutation() {
 
           if (!result.success) {
             throw new Error(result.error || "Valor tip adjust failed.");
+          }
+
+          if (payment.dbPaymentId) processedDbIds.add(payment.dbPaymentId);
+        }
+      } else if (terminal?.terminal_type === "codepay") {
+        // ──── CODEPAY BRANCH (on-terminal Intent) ────
+        // CodePay adjusts the tip on a completed txn via topic
+        // ecrhub.pay.tip.adjustment, referencing the ORIGINAL sale by its
+        // merchant_order_no (stored as the payment's reference_number). Blocked
+        // after batch settlement (guarded above by payment.is_settled).
+        const appId = terminal.app_id ?? terminal.register_id ?? "";
+        if (!appId.trim()) throw new Error("CodePay terminal has no app_id configured.");
+
+        const service = getSharedCodePayService();
+        service.configure({
+          appId,
+          terminalId: terminal.id,
+          terminalSn: terminal.serial_number ?? undefined,
+          timeout: CODEPAY_QUERY_TIMEOUT_MS,
+        });
+
+        for (const payment of input.payments) {
+          if (Math.abs(payment.newTip - payment.currentTip) < 0.001) continue;
+
+          const origMerchantOrderNo = payment.referenceId;
+          if (!origMerchantOrderNo) {
+            show({
+              title: "Warning",
+              message: `Cannot adjust tip — missing CodePay order reference (••••${payment.last4 || "????"}).`,
+              type: "warning",
+            });
+            continue;
+          }
+
+          const referenceId = `CPTA_${Date.now()}`;
+          const result = await service.tipAdjust({
+            origMerchantOrderNo,
+            tipAmount: payment.newTip,
+            referenceId,
+          });
+
+          if (!result.success) {
+            throw new Error(result.error || "CodePay tip adjust failed.");
           }
 
           if (payment.dbPaymentId) processedDbIds.add(payment.dbPaymentId);

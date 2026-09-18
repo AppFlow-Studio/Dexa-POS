@@ -661,17 +661,6 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
       }
     }
 
-    if (isForeignStationSession) {
-      return baseActions.map((action) =>
-        action.label === "Close Table"
-          ? {
-              ...action,
-              disabled: true,
-            }
-          : action,
-      );
-    }
-
     return baseActions;
   }, [
     // Shallow identity checks: only recompute when table identity or session status changes,
@@ -688,7 +677,6 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     updateSessionStatus,
     order?.id,
     order?.order_status,
-    isForeignStationSession,
     selectedStore?.id,
     liveSession?.id,
     onTransferServer,
@@ -1144,7 +1132,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                   color: colors.warning,
                 }}
               >
-                Table locked by {foreignStationLabel}
+                Order owned by {foreignStationLabel}
               </Text>
               <Text
                 style={{
@@ -1153,7 +1141,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                   marginTop: s(2),
                 }}
               >
-                Close Table is disabled on this station.
+                Cart edits are locked to that station, but this table can still be closed here.
               </Text>
             </View>
           ) : null}

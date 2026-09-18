@@ -143,7 +143,21 @@ interface ProbeResult {
   paperJamError?: boolean;
   printHeadOverTemperature?: boolean;
   detectedPaperWidth?: number;
+  // Top-level drawer signal. NOTE: the SDK types this `boolean` and defaults it
+  // to false, assigning it unconditionally (StarPrinterStatusFactory.ts:14), so
+  // it is ALWAYS a boolean — never null. It therefore cannot, on its own,
+  // distinguish "drawer present & closed" from "nothing wired to the DK port".
   drawerOpen?: boolean;
+  // DIAGNOSTIC — the discriminating fields. The DETAIL channel is
+  // `boolean | undefined`: the factory only sets it when the native layer
+  // returns a boolean (StarPrinterStatusFactory.ts:66-70), so `undefined` here
+  // means the printer's firmware reported NO drawer sense for that channel —
+  // which is itself the tell that no drawer is wired to this printer. We map
+  // undefined → null so a persisted row distinguishes "reported false" from
+  // "not reported at all".
+  drawerSignalDetail?: boolean | null;
+  drawerOpenedMethod?: string | null;
+  externalDevice1Connected?: boolean | null;
 }
 
 async function probePrinter(
@@ -173,6 +187,15 @@ async function probePrinter(
       const printHeadOverTemperature = !!detail?.printHeadOverTemperature;
       const detectedPaperWidth = detail?.detectedPaperWidth ?? undefined;
       const drawerOpen = !!(status as any).drawerOpenCloseSignal;
+      // DIAGNOSTIC — discriminating drawer-sense fields (see ProbeResult).
+      // Persist `undefined` as `null` so the DB row separates "firmware
+      // reported false" from "firmware did not report a drawer channel".
+      const d1 = detail?.drawer1OpenCloseSignal;
+      const drawerSignalDetail = typeof d1 === "boolean" ? d1 : null;
+      const dm = detail?.drawer1OpenedMethod;
+      const drawerOpenedMethod = dm === undefined || dm === null ? null : String(dm);
+      const ext1 = detail?.externalDevice1Connected;
+      const externalDevice1Connected = typeof ext1 === "boolean" ? ext1 : null;
 
       if (status.hasError) {
         // Provide specific error messages based on detailed fault codes
@@ -194,6 +217,9 @@ async function probePrinter(
           printHeadOverTemperature,
           detectedPaperWidth,
           drawerOpen,
+          drawerSignalDetail,
+          drawerOpenedMethod,
+          externalDevice1Connected,
         };
       }
 
@@ -202,6 +228,9 @@ async function probePrinter(
         paperNearEmpty,
         detectedPaperWidth,
         drawerOpen,
+        drawerSignalDetail,
+        drawerOpenedMethod,
+        externalDevice1Connected,
       };
     } catch (e: any) {
       // InUseError means the printer is reachable but held by another connection
@@ -239,11 +268,28 @@ function handlePrinterOnline(printer: PrinterConfig, result?: ProbeResult): void
 
   // Defer store update to next frame — avoids interrupting in-progress renders
   const pid = printer.id;
+  // DIAGNOSTIC — persist the drawer-sense read alongside the connectivity
+  // update. This rides the SAME syncPrinterStatus write (no new table, no extra
+  // round-trip); the fields land in printers.metadata. Persisting across the
+  // three Yallah Stars (.214 / .173 / .241) shows which — if any — physically
+  // reports a drawer on its DK port, without a site visit. Only attach when the
+  // probe actually read a status (drawerOpen is always defined on success).
+  const drawerMeta =
+    result && result.drawerOpen !== undefined
+      ? {
+          lastDrawerSignal: result.drawerOpen,
+          lastDrawerSignalDetail: result.drawerSignalDetail ?? null,
+          lastDrawerOpenedMethod: result.drawerOpenedMethod ?? null,
+          lastDrawerExternalDevice: result.externalDevice1Connected ?? null,
+          lastDrawerSignalAt: new Date().toISOString(),
+        }
+      : undefined;
   deferStoreUpdate(() => {
     usePrinterStore.getState().syncPrinterStatus(pid, {
       isConnected: true,
       lastStatus: "Online",
       errorCount: 0,
+      ...(drawerMeta ? { metadata: drawerMeta } : {}),
     });
   });
 

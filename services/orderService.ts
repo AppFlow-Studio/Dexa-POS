@@ -2224,19 +2224,84 @@ export class OrderService {
 
   /**
    * Toggle the per-item "TO GO" flag on order items.
+   *
+   * DURABILITY: `is_to_go` is set ONLY by this RPC — no add/payment/kitchen RPC
+   * touches it (verified against the schema). Previously this was a one-shot
+   * fire-and-forget that CLEARED its own pending-guard marker on any failure, so
+   * a transient bad-WiFi/deadline/offline error silently lost the flag; the next
+   * full re-fetch (triggered by paying or sending to kitchen) then reconciled
+   * the item back to the DB's `false`. That is the "TO GO drops after
+   * payment / send-to-kitchen" bug.
+   *
+   * Now it behaves like every other mutation: on failure or while offline it
+   * queues a durable `toggle_to_go` op (retried by the offline drain) and KEEPS
+   * the pending marker so an inbound fetch can't clobber the optimistic value
+   * before the retry lands. `context` carries the local order/item ids so the
+   * drain can resolve a db id that only arrives after the item's add syncs.
    */
   static async toggleToGoOnItems(
     client: SupabaseClient,
     orderItemIds: string[],
     isToGo: boolean,
+    context?: { localOrderId?: string; localItemIds?: string[] },
   ): Promise<{ data: any; error: any }> {
-    if (orderItemIds.length === 0) {
+    const hasContext = Boolean(context?.localOrderId);
+    if (orderItemIds.length === 0 && !hasContext) {
       return { data: null, error: null };
     }
     // Protect the optimistic local flag from a stale concurrent fetch/broadcast
-    // until this persist commits (see lib/pendingToGo). On failure we clear the
-    // markers so the next fetch reconciles local state back to the DB value.
+    // until this persist commits (see lib/pendingToGo).
     markPendingToGo(orderItemIds, isToGo);
+
+    // Queue a durable retry. Keeps the pending marker (do NOT clear on failure)
+    // so the flag survives until the queued write lands. Falls back to clearing
+    // the marker only when we have no context to queue with — otherwise a never-
+    // persisted flag would be stranded true locally forever.
+    const enqueueRetry = () => {
+      if (!hasContext) {
+        clearPendingToGo(orderItemIds);
+        return;
+      }
+      try {
+        const {
+          queueFailedOperation,
+        } = require("@/services/offlineSyncInit") as typeof import("@/services/offlineSyncInit");
+        void queueFailedOperation(
+          "toggle_to_go",
+          {
+            dbItemIds: orderItemIds,
+            isToGo,
+            localOrderId: context!.localOrderId,
+            localItemIds: context!.localItemIds,
+          },
+          context!.localOrderId as string,
+          context!.localItemIds?.[0],
+        );
+      } catch {
+        clearPendingToGo(orderItemIds);
+      }
+    };
+
+    // Offline: skip the doomed RPC and queue immediately.
+    try {
+      const {
+        getIsOnline,
+      } = require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
+      if (typeof getIsOnline === "function" && getIsOnline() === false) {
+        enqueueRetry();
+        return { data: null, error: null };
+      }
+    } catch {
+      // getIsOnline unavailable — fall through and attempt the RPC.
+    }
+
+    // No db ids yet but we have context — queue for the drain to resolve once
+    // the item's add syncs (mirrors the add-time reconcile, but durable).
+    if (orderItemIds.length === 0) {
+      enqueueRetry();
+      return { data: null, error: null };
+    }
+
     let result: { data: any; error: any };
     try {
       result = await _runWithDeadline<any>(
@@ -2253,11 +2318,12 @@ export class OrderService {
         },
       );
     } catch (err) {
-      clearPendingToGo(orderItemIds);
-      throw err;
+      // Deadline / abort / transient — queue a durable retry, keep the marker.
+      enqueueRetry();
+      return { data: null, error: err };
     }
     if (result?.error) {
-      clearPendingToGo(orderItemIds);
+      enqueueRetry();
     }
     return result;
   }

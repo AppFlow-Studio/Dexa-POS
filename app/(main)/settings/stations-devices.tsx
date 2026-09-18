@@ -5,6 +5,7 @@ import { useCFD } from '@/contexts/CFDProvider'
 import { createSupabaseClient } from '@/lib/supabase'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useAuth } from '@clerk/clerk-expo'
 import { useQuery } from '@tanstack/react-query'
@@ -28,6 +29,16 @@ import {
 } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 
+// Multipliers applied on top of the CFD's own automatic per-device scale.
+// `null` = no override. Range is wider than the POS scale options because the
+// customer display is read at a greater distance and varies far more in size.
+const CFD_SCALE_OPTIONS: { label: string; value: number | null }[] = [
+  { label: 'Small', value: 0.85 },
+  { label: 'Default', value: null },
+  { label: 'Large', value: 1.15 },
+  { label: 'Extra Large', value: 1.35 }
+]
+
 const CustomerDisplayScreen = () => {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
@@ -42,6 +53,10 @@ const CustomerDisplayScreen = () => {
     state => state.cfdOrderingRightPanelMode
   )
   const updateField = useStoreSettingsStore(state => state.updateField)
+  const cfdUiScaleOverride = useSettingsStore(state => state.cfdUiScaleOverride)
+  const setCfdUiScaleOverride = useSettingsStore(
+    state => state.setCfdUiScaleOverride
+  )
   const {
     connectedClientIds,
     disconnectClient,
@@ -513,6 +528,59 @@ const CustomerDisplayScreen = () => {
                       {option.label}
                     </Text>
                   )}
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        </View>
+
+        {/* Display scale — CFD only */}
+        <View
+          style={{
+            marginTop: s(10),
+            paddingTop: s(10),
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            gap: s(8)
+          }}
+        >
+          <View>
+            <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
+              Display Scale
+            </Text>
+            <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
+              Size of text and spacing on the customer display only — does not
+              affect this POS screen
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
+            {CFD_SCALE_OPTIONS.map(option => {
+              const active = cfdUiScaleOverride === option.value
+              return (
+                <TouchableOpacity
+                  key={option.label}
+                  onPress={() => setCfdUiScaleOverride(option.value)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: s(8),
+                    paddingHorizontal: s(6),
+                    borderRadius: s(8),
+                    borderWidth: 1,
+                    borderColor: active ? colors.teal + '50' : colors.border,
+                    backgroundColor: active ? colors.teal + '15' : colors.screen,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      fontWeight: '600',
+                      textAlign: 'center',
+                      color: active ? colors.teal : colors.label
+                    }}
+                  >
+                    {option.label}
+                  </Text>
                 </TouchableOpacity>
               )
             })}

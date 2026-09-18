@@ -2,6 +2,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { colors } from "@/lib/theme";
 import { round2 } from "@/utils/money";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -37,9 +38,11 @@ interface Split {
 const SplitPaymentView = () => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  const activeOrderOutstandingTotal = useOrderStore(
-    (state) => state.activeOrderOutstandingTotal
-  );
+  // §4.3 — derived from the item set, not read from the store's mirrored
+  // `activeOrderOutstandingTotal`. The mirror is a second source of truth for
+  // money: any path that writes items without also writing all ten mirrors
+  // leaves the cart and its balance disagreeing.
+  const activeOrderOutstandingTotal = useActiveOrderTotals()?.amountDue ?? 0;
   const close = usePaymentStore((s) => s.close);
   const setView = usePaymentStore((s) => s.setView);
   const { show } = useToast();

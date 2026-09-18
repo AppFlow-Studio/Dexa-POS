@@ -1,7 +1,16 @@
 import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
-import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
+import {
+  hasOrderableItem,
+  useModifierGroupResolver,
+  useOrderableItems,
+} from "@/components/kiosk/shared/kioskItemAvailability";
+import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
+import { kioskBannerHeight, kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
+import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
+import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
@@ -11,7 +20,7 @@ import {
 import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 
 /**
  * Template B menu view — same two-pane category/item split as Template A,
@@ -24,6 +33,10 @@ import { FlatList, Text, View } from "react-native";
  * short to spare the vertical space for both a banner and a comfortable
  * rail + grid, so horizontal drops the banner entirely (rail + grid only,
  * like Template A).
+ *
+ * Search sits between the banner and the split, spanning both panes, and opens
+ * KioskSearchOverlay over the whole view — same placement and behaviour as
+ * Templates A and C.
  */
 export function KioskMenuViewB({
   config,
@@ -34,6 +47,7 @@ export function KioskMenuViewB({
 }) {
   const s = useKioskUiScale();
   const menus = useMenuStore((s) => s.menus);
+  const resolveGroups = useModifierGroupResolver();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
@@ -43,7 +57,10 @@ export function KioskMenuViewB({
 
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter((m) => isMenuAvailableNow(m.id))
+      .filter(
+        (m) =>
+          isMenuVisibleOnChannel(m, "kiosk") && isMenuAvailableNow(m.id),
+      )
       .map((m) => ({
         menuId: m.id,
         title: m.name,
@@ -51,11 +68,11 @@ export function KioskMenuViewB({
           (c) =>
             c.isActive &&
             isCategoryAvailableNow(c.name) &&
-            (c.items?.length ?? 0) > 0,
+            hasOrderableItem(c.items, resolveGroups),
         ),
       }))
       .filter((s) => s.data.length > 0);
-  }, [menus, isMenuAvailableNow, isCategoryAvailableNow]);
+  }, [menus, isMenuAvailableNow, isCategoryAvailableNow, resolveGroups]);
 
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -70,14 +87,14 @@ export function KioskMenuViewB({
     };
   }, [sections, activeKey]);
 
-  const items = useMemo(
-    () => (activeCategory?.items ?? []).filter((i) => i.availability !== false),
-    [activeCategory],
-  );
+  const items = useOrderableItems(activeCategory?.items);
+
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const bannerImages = kioskOrderBannerImages(config);
   const hasMedia = bannerImages.length > 0 && isVertical;
-  const bannerHeight = kioskPx(420, s);
+  const { height: screenHeight } = useWindowDimensions();
+  const bannerHeight = kioskBannerHeight(screenHeight);
 
   return (
     <View className="flex-1">
@@ -105,9 +122,14 @@ export function KioskMenuViewB({
         </View>
       ) : null}
 
+      {/* Search sits under the banner, spanning rail and grid — same placement
+          rule as every other template: a full-width row at the top of the menu
+          content, looking across the whole menu. */}
+      <KioskSearchBar config={config} onPress={() => setSearchOpen(true)} />
+
       <View className="flex-1 flex-row">
         {/* Left rail — categories grouped by menu */}
-        <View style={{ width: isVertical ? "33.3333%" : "25%" }}>
+        <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
           <KioskCategoryRail
             config={config}
             sections={sections}
@@ -118,41 +140,26 @@ export function KioskMenuViewB({
 
         {/* Right pane — item grid */}
         <View className="flex-1">
-          <FlatList
-            key={numColumns}
-            data={items}
-            keyExtractor={(i) => i.id}
+          <KioskItemGrid
+            config={config}
+            items={items}
             numColumns={numColumns}
-            columnWrapperStyle={{
-              gap: kioskPx(12, s),
-              marginBottom: kioskPx(12, s),
-            }}
-            contentContainerStyle={{ padding: kioskPx(16, s) }}
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <View style={{ flex: 1 / numColumns }}>
-                <KioskMenuItem
-                  item={item}
-                  config={config}
-                  onPress={onSelectItem}
-                />
-              </View>
-            )}
-            ListEmptyComponent={
-              <View className="flex-1 items-center justify-center py-20">
-                <Text
-                  style={{
-                    fontSize: kioskPx(18, s),
-                    color: `${config.textColor}99`,
-                  }}
-                >
-                  No items in this category.
-                </Text>
-              </View>
-            }
+            resetKey={resolvedKey}
+            onSelectItem={onSelectItem}
           />
         </View>
       </View>
+
+      {searchOpen ? (
+        <KioskSearchOverlay
+          config={config}
+          onClose={() => setSearchOpen(false)}
+          onSelectItem={(item) => {
+            setSearchOpen(false);
+            onSelectItem(item);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

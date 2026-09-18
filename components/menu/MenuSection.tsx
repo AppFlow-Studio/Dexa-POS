@@ -5,6 +5,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  LOCAL_WRITES_ORDERS,
+  LOCAL_WRITES_SEATING,
+} from "@/services/localFirst/localWrites";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
@@ -24,6 +28,7 @@ import {
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
@@ -60,6 +65,7 @@ import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
 import MenuStaleBanner from "./MenuStaleBanner";
 import MenuUnavailableState from "./MenuUnavailableState";
+import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
 import MenuItem from "./MenuItem";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
@@ -294,6 +300,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const menus = useMenuStore((s) => s.menus);
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const temporaryActiveMenus = useMenuStore((s) => s.temporaryActiveMenus);
+  const temporaryActiveCategories = useMenuStore(
+    (s) => s.temporaryActiveCategories,
+  );
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
   const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
@@ -303,10 +312,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const usePopupMenuNavigation = menuNavigationMode === "popup";
 
   const requestPinOverride = usePinOverrideStore((s) => s.requestPinOverride);
-  const isUnlocked = usePinOverrideStore((s) => s.isUnlocked);
-  const addTemporaryMenuAccess = useMenuStore((s) => s.addTemporaryMenuAccess);
-  const addTemporaryCategoryAccess = useMenuStore(
-    (s) => s.addTemporaryCategoryAccess,
+  const overrideTimeoutMinutes = useLocationConfigStore(
+    (s) => s.config.security.managerOverrideTimeoutMinutes,
   );
   const selectedStoreId = useStoreSettingsStore(
     (s) => s.selectedStore?.id ?? null,
@@ -342,6 +349,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   });
   const isTableSeating = useTableSessionStore((s) => {
     if (currentOrderType !== "dine_in") return false;
+    // Local-first seating commits the session AND its order in one SQLite
+    // transaction before the tap finishes, so the "seating" window this
+    // overlay covers does not exist. Mirrors isOrderTableStillSeating() in
+    // useOrderStore, which gates the same thing at the add-item call.
+    if (LOCAL_WRITES_SEATING) return false;
     const sessionIds = [
       currentOrderSessionId,
       currentOrderLocalSessionId,
@@ -376,8 +388,25 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const currentOrderExists = useOrderStore((s) =>
     s.activeOrderId ? !!s.ordersById[s.activeOrderId] : false,
   );
+  // ── Local-first order creation removes this overlay entirely. ───────────
+  //
+  // The gate's premise is "no db_order_id means the server hasn't created the
+  // order yet, so items have nowhere to land." Under EXPO_PUBLIC_CLIENT_IDS
+  // the order's own id IS its server primary key, and under
+  // EXPO_PUBLIC_LOCAL_WRITES_ORDERS the row is committed locally before the
+  // tap finishes — so `db_order_id` being unset says nothing about whether
+  // the order is usable.
+  //
+  // Leaving it in would be worse than cosmetic: with the add-item gate in
+  // useOrderStore already bypassed, nothing calls ensureActiveOrderCreated on
+  // demand any more, so if eager-create is off (autoCreateOrder OFF) this
+  // overlay would block the menu FOREVER while online.
   const isCreatingOrder =
-    isOnline && !!activeOrderId && !currentOrderDbId && currentOrderExists;
+    !LOCAL_WRITES_ORDERS &&
+    isOnline &&
+    !!activeOrderId &&
+    !currentOrderDbId &&
+    currentOrderExists;
   // No order to add to: activeOrderId unset (e.g. auto-create OFF before the
   // operator starts a ticket) or set but pruned from ordersById. BillSection
   // shows its "No Active Order" panel in this state — block the menu so item
@@ -495,6 +524,20 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     [temporaryActiveMenus],
   );
 
+  const temporaryActiveCategorySet = useMemo(
+    () => new Set(temporaryActiveCategories),
+    [temporaryActiveCategories],
+  );
+
+  // Self-reference so the menu-level PIN callback can resume the same selection.
+  const handleMenuCategorySelectRef = useRef<
+    (
+      menuName: string,
+      categoryName: string,
+      menuAlreadyApproved?: boolean,
+    ) => void
+  >(() => {});
+
   const visibleMenus = useMemo(
     () => filterPosOrderEntryMenus(menus, hiddenMenuIds),
     [menus, hiddenMenuIds],
@@ -527,9 +570,14 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     }
   }, [showPreviousOrdersSection, activeTab]);
 
-  // Helper to check if a menu has items (not empty)
+  // Helper to check if a menu has items (not empty). Counts only what order
+  // entry would actually render — a menu whose every item is unticked for POS
+  // is empty HERE even though its categories are full, and auto-opening it
+  // would land staff on a blank grid.
   const menuHasItems = (menu: (typeof menus)[0]) => {
-    return menu.categories.some((cat) => cat.items && cat.items.length > 0);
+    return menu.categories.some((cat) =>
+      cat.items?.some((item) => isItemOnChannel(item, "pos")),
+    );
   };
 
   // Helper to find the first menu that is currently available (with items preferred)
@@ -687,42 +735,61 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     const menu = menusByName.get(menuName);
     if (!menu) return;
 
+    const applySelection = () => {
+      setActiveTab("Menu");
+      setActiveMeal(menuName);
+      setActiveCategory(menu.categories[0]?.name || "");
+      setIsMenuDialogOpen(false);
+      setLastSelectedMenuId(menu.id);
+    };
+
     const isAvailable =
       isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name);
 
     if (isAvailable) {
-      setActiveTab("Menu");
-      setActiveMeal(menuName);
-      setActiveCategory(menu.categories[0]?.name || "");
-      setIsMenuDialogOpen(false);
-      setLastSelectedMenuId(menu.id);
-    } else if (isUnlocked()) {
-      // Manager session active — bypass PIN and grant directly
-      addTemporaryMenuAccess(menuName);
-      setActiveTab("Menu");
-      setActiveMeal(menuName);
-      setActiveCategory(menu.categories[0]?.name || "");
-      setIsMenuDialogOpen(false);
-      setLastSelectedMenuId(menu.id);
+      applySelection();
     } else {
-      requestPinOverride({ type: "select_menu", payload: { menuName } });
+      // Every locked menu needs its own PIN — no "already unlocked" shortcut.
+      // The callback completes this one selection, so "always require PIN"
+      // needs no lingering grant to fall back on.
+      requestPinOverride(
+        { type: "select_menu", payload: { menuName } },
+        applySelection,
+      );
     }
   };
 
   const handleMenuCategorySelect = useCallback(
-    (menuName: string, categoryName: string) => {
+    (
+      menuName: string,
+      categoryName: string,
+      // Set when the operator has just cleared the menu-level PIN gate for this
+      // very selection. Without it, a re-entry under "always require PIN"
+      // (which leaves no grant behind) would prompt for the menu forever.
+      menuAlreadyApproved = false,
+    ) => {
       const menu = menusByName.get(menuName);
       if (!menu) return;
 
-      const isAvailable =
-        isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name);
+      const applySelection = () => {
+        setActiveTab("Menu");
+        setActiveMeal(menuName);
+        setActiveCategory(categoryName);
+        setLastSelectedMenuId(menu.id);
+        setIsMenuDialogOpen(false);
+      };
 
+      const isAvailable =
+        menuAlreadyApproved ||
+        isMenuAvailableNow(menu.id) ||
+        temporaryActiveMenuSet.has(menu.name);
+
+      // Each lock is cleared on its own — no global "manager is unlocked" state.
       if (!isAvailable) {
-        if (!isUnlocked()) {
-          requestPinOverride({ type: "select_menu", payload: { menuName } });
-          return;
-        }
-        addTemporaryMenuAccess(menuName);
+        requestPinOverride({ type: "select_menu", payload: { menuName } }, () =>
+          handleMenuCategorySelectRef.current(menuName, categoryName, true),
+        );
+        return;
       }
 
       const category = menu.categories.find(
@@ -730,49 +797,134 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       );
       const categoryKey = category?.id ?? categoryName;
       const isCategoryAvailable =
-        isCategoryAvailableNow(categoryName) &&
-        useMenuStore.getState().isCategoryActiveForMenu(menu.id, categoryKey);
+        // An existing grant on this category (or on the menu holding it) counts,
+        // so a still-valid unlock doesn't re-prompt on every tap.
+        temporaryActiveCategorySet.has(categoryName) ||
+        temporaryActiveMenuSet.has(menu.name) ||
+        (isCategoryAvailableNow(categoryName) &&
+          useMenuStore.getState().isCategoryActiveForMenu(menu.id, categoryKey));
 
       if (!isCategoryAvailable) {
-        if (!isUnlocked()) {
-          requestPinOverride({
+        requestPinOverride(
+          {
             type: "select_category",
             payload: { categoryName },
-          });
-          return;
-        }
-        addTemporaryCategoryAccess(categoryName);
+          },
+          applySelection,
+        );
+        return;
       }
 
-      setActiveTab("Menu");
-      setActiveMeal(menuName);
-      setActiveCategory(categoryName);
-      setLastSelectedMenuId(menu.id);
-      setIsMenuDialogOpen(false);
+      applySelection();
     },
     [
-      addTemporaryCategoryAccess,
-      addTemporaryMenuAccess,
       isCategoryAvailableNow,
       isMenuAvailableNow,
-      isUnlocked,
       menusByName,
+      temporaryActiveCategorySet,
       requestPinOverride,
       setLastSelectedMenuId,
       temporaryActiveMenuSet,
     ],
   );
 
-  const filteredMenuItems = useMemo(() => {
-    if (!activeCategoryEntry?.items || !activeCategory) return [];
-    if (!isCategoryAvailableNow(activeCategory)) return [];
-    return activeCategoryEntry.items.filter(
-      (item) => item.availability !== false,
+  handleMenuCategorySelectRef.current = handleMenuCategorySelect;
+
+  // A manager grant must not outlive what justified it. Without this, a grant
+  // issued once stayed in the store for the app's lifetime and every later
+  // access to that menu/category silently skipped the PIN gate.
+  //
+  //  - timeout 0 ("always require PIN"): the grant covers only the selection it
+  //    opened. Navigating elsewhere revokes it, so coming back re-prompts.
+  //  - timed session: grants die with the session.
+  useEffect(() => {
+    const store = useMenuStore.getState();
+    const { temporaryActiveMenus: grantedMenus, temporaryActiveCategories } =
+      store;
+    if (!grantedMenus.length && !temporaryActiveCategories.length) return;
+
+    if (overrideTimeoutMinutes > 0) {
+      if (!usePinOverrideStore.getState().isUnlocked()) {
+        store.clearTemporaryAccess();
+      }
+      return;
+    }
+
+    const staleMenus = grantedMenus.filter((name) => name !== activeMeal);
+    const staleCategories = temporaryActiveCategories.filter(
+      (name) => name !== activeCategory,
     );
+    if (staleMenus.length || staleCategories.length) {
+      store.revokeTemporaryAccess(staleMenus, staleCategories);
+    }
+  }, [activeMeal, activeCategory, overrideTimeoutMinutes, availabilityTick]);
+
+  const filteredMenuItems = useMemo(() => {
+    // TEMP(menu-override-debug): remove once the empty-grid report is resolved.
+    const debug = (stage: string, extra: Record<string, unknown> = {}) => {
+      if (!__DEV__) return;
+      console.log("[menu-override]", stage, {
+        activeMeal,
+        activeCategory,
+        menuGrants: [...temporaryActiveMenuSet],
+        categoryGrants: [...temporaryActiveCategorySet],
+        categoryEntryFound: !!activeCategoryEntry,
+        rawItemCount: activeCategoryEntry?.items?.length ?? 0,
+        // If more than one entry appears here, two menus share a name and
+        // Map-last-wins (MenuSection) disagrees with find-first-wins
+        // (MenuControls) about which one is open.
+        menusNamed: visibleMenus
+          .filter((m) => m.name === activeMeal)
+          .map((m) => `${m.id}:[${m.categories.map((c) => c.name).join("|")}]`),
+        ...extra,
+      });
+    };
+
+    if (!activeCategoryEntry?.items || !activeCategory) {
+      debug("bail:no-category-entry-or-name");
+      return [];
+    }
+    // isCategoryAvailableNow is schedule-only, so an off-schedule category that
+    // a manager just unlocked would otherwise render zero items. A manager
+    // grant on the category itself — or on the menu containing it, since
+    // unlocking a menu means browsing it — counts as reachable.
+    const unlockedByOverride =
+      temporaryActiveCategorySet.has(activeCategory) ||
+      (!!activeMeal && temporaryActiveMenuSet.has(activeMeal));
+    const scheduleAllows = isCategoryAvailableNow(activeCategory);
+    if (!scheduleAllows && !unlockedByOverride) {
+      debug("bail:category-gate", { scheduleAllows, unlockedByOverride });
+      return [];
+    }
+    // An item the merchant has not ticked for POS is REMOVED, not greyed out.
+    // "Not sold on this channel" is a menu-design decision, unlike 86ing — a
+    // disabled tile would invite staff to ask why they can't ring it up.
+    const visible = activeCategoryEntry.items.filter(
+      (item) => item.availability !== false && isItemOnChannel(item, "pos"),
+    );
+    debug("pass", {
+      scheduleAllows,
+      unlockedByOverride,
+      visibleItemCount: visible.length,
+      // If rawItemCount > 0 but visibleItemCount is 0, the culprit is in the
+      // sync payload rather than the override logic — either
+      // effective_availability or the POS sales channel.
+      availabilityValues: activeCategoryEntry.items
+        .slice(0, 8)
+        .map((i) => `${i.name}=${String(i.availability)}`),
+      channelValues: activeCategoryEntry.items
+        .slice(0, 8)
+        .map((i) => `${i.name}=[${(i.availableChannels ?? []).join("|")}]`),
+    });
+    return visible;
   }, [
     activeCategory,
     activeCategoryEntry,
+    activeMeal,
     isCategoryAvailableNow,
+    temporaryActiveCategorySet,
+    temporaryActiveMenuSet,
+    visibleMenus,
     availabilityTick,
   ]);
   const numColumns = 5;
@@ -1253,6 +1405,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
             >
               <MenuControls
                 activeMeal={activeMeal}
+                activeMenuId={activeMenu?.id}
                 menuOptions={visibleMenus}
                 showMenuButtons={usePopupMenuNavigation}
                 onMealChange={handleMealChange}

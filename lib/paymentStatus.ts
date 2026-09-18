@@ -1,6 +1,27 @@
-import type { OrderProfile } from "@/lib/types";
+import type { OrderProfile, PaymentStatus } from "@/lib/types";
 
 const REFUND_EPSILON = 0.001;
+
+/**
+ * Map an OrderProfile to the Previous Orders row payment status.
+ *
+ * Full refunds read as "Refunded" — NEVER "Unpaid" / "Awaiting Payment": the
+ * server sets paid_status='refunded' for full refunds (refund-aware branch in
+ * update_order_payment_status_after_refund_v2) and derivePaidStatus surfaces
+ * that first, so it must be mapped through here. Partial refunds stay
+ * 'partial' on the server, so they keep "In Progress" (the row also shows a
+ * Partial Refund badge via derivePaymentRefundState).
+ */
+export function derivePreviousOrderPaymentStatus(
+  profile: OrderProfile,
+): PaymentStatus {
+  const derived = derivePaidStatus(profile);
+  if (derived === "Paid") return "Paid";
+  if (derived === "Partial") return "In Progress";
+  if (derived === "Refunded") return "Refunded";
+  if (profile.paid_status === "Unpaid") return "Unpaid";
+  return "Unpaid";
+}
 
 export function derivePaymentRefundState(
   payments: OrderProfile["payments"] | null | undefined,
@@ -29,6 +50,25 @@ export function derivePaymentRefundState(
     isFullyRefunded,
     isPartiallyRefunded: hasRefund && !isFullyRefunded,
   };
+}
+
+/**
+ * True when the order has collected money a refund could reverse — at least
+ * one real (non-pre-auth, non-voided) captured payment with a positive
+ * amount. An unpaid order has no such payment, so the Process Refund action
+ * stays hidden even though the callback is wired. Pre-auth holds and voided
+ * rows are not refundable.
+ */
+export function hasCollectedPayment(
+  payments: OrderProfile["payments"] | null | undefined,
+): boolean {
+  return (payments ?? []).some(
+    (p) =>
+      !p.isPreAuth &&
+      !p.isVoided &&
+      p.status === "captured" &&
+      (p.amount ?? 0) > 0,
+  );
 }
 
 export function usesCashPricing(

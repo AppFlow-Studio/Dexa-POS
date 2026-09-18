@@ -353,3 +353,64 @@ describe("isTerminalTransportDead", () => {
     expect(isTerminalTransportDead(new Error(msg))).toBe(false);
   });
 });
+
+describe("explicit refund classification", () => {
+  it("keeps a full unsettled refund as refund instead of converting it to void", async () => {
+    const service = new RefundService({} as any);
+    const context = makeContext();
+    context.payment = {
+      ...context.payments[0],
+      availableForRefund: 25,
+      isVoidable: true,
+    };
+    (service as any).processTerminalRefund = jest
+      .fn()
+      .mockResolvedValue(okTerminalResult);
+    (service as any).buildFullRefundItems = jest.fn().mockResolvedValue([]);
+
+    const result = await (service as any).processFullPaymentRefund(
+      makeRequest(),
+      context,
+      "journal-id",
+      "refund-key",
+    );
+
+    expect(result.kind).toBe("success");
+    expect(mocked.createReversal.mock.calls[0][1].reversal_type).toBe("refund");
+    expect((service as any).processTerminalRefund.mock.calls[0][2]).toBe(false);
+    expect(mocked.applyRefundToPayment.mock.calls[0][3]).toBe("refund");
+  });
+
+  it("classifies a custom amount equal to the balance as refund, not void", async () => {
+    const client = {
+      from: jest.fn(() => ({
+        select: jest.fn(() => ({
+          eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+        })),
+      })),
+    };
+    const service = new RefundService(client as any);
+    const context = makeContext();
+    context.payment = {
+      ...context.payments[0],
+      availableForRefund: 25,
+      isVoidable: true,
+    };
+    (service as any).processTerminalRefund = jest
+      .fn()
+      .mockResolvedValue(okTerminalResult);
+
+    const result = await (service as any).processPartialRefund(
+      makeRequest(),
+      context,
+      25,
+      "journal-id",
+      "refund-key",
+    );
+
+    expect(result.kind).toBe("success");
+    expect(mocked.createReversal.mock.calls[0][1].reversal_type).toBe("refund");
+    expect((service as any).processTerminalRefund.mock.calls[0][2]).toBe(false);
+    expect(mocked.applyRefundToPayment.mock.calls[0][3]).toBe("refund");
+  });
+});

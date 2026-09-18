@@ -257,6 +257,61 @@ describe("PanelSheet", () => {
 
     expect(isOpen()).toBe(true);
   });
+
+  // Regression: "More" sometimes did nothing, especially after opening the sheet,
+  // tapping an action inside it, and reopening. The action handlers close the sheet
+  // while a backdrop tap / swipe / a second handler may already have one in flight.
+  // `closedRef` only flips true once onClose fires — AFTER the ~220ms animation — so
+  // it could not gate re-entry, and the redundant close started a rival animation on
+  // an already-unmounting panel. That orphan then landed after the next expand() and
+  // unmounted the freshly opened sheet: it flashed and vanished, and the button read
+  // as dead. `closingRef` gates re-entry synchronously; the open generation makes a
+  // superseded close's callback a no-op.
+  it("a second close during an in-flight close does not start a rival animation", () => {
+    const onClose = jest.fn();
+    const { ref, isOpen } = renderSheet({ onClose });
+    act(() => ref.current!.expand());
+
+    const pending: ((f: boolean) => void)[] = [];
+    mockTimingState.deferred = pending;
+    act(() => ref.current!.close());
+    act(() => ref.current!.close()); // swallowed by the closingRef guard
+    mockTimingState.deferred = null;
+
+    // Exactly one close animation was ever scheduled.
+    expect(pending).toHaveLength(1);
+    act(() => pending.forEach((cb) => cb(true)));
+    expect(isOpen()).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("reopens after close → in-sheet action → reopen (stale close cannot unmount it)", () => {
+    const { ref, isOpen } = renderSheet({});
+    act(() => ref.current!.expand());
+    expect(isOpen()).toBe(true);
+
+    // An action inside the sheet closes it, and something else (backdrop tap losing
+    // the race, a handler that also closes) issues a second close right behind it.
+    const pending: ((f: boolean) => void)[] = [];
+    mockTimingState.deferred = pending;
+    act(() => ref.current!.close());
+    act(() => ref.current!.close());
+    mockTimingState.deferred = null;
+    act(() => pending.forEach((cb) => cb(true)));
+    expect(isOpen()).toBe(false);
+
+    // The user presses "More" again. It must open — and stay open.
+    const late: ((f: boolean) => void)[] = [];
+    mockTimingState.deferred = late;
+    act(() => ref.current!.expand());
+    mockTimingState.deferred = null;
+    expect(isOpen()).toBe(true);
+
+    // Any straggling callback from the earlier close reports in now. It belongs to a
+    // superseded generation, so it must not tear down the panel we just opened.
+    act(() => pending.forEach((cb) => cb(false)));
+    expect(isOpen()).toBe(true);
+  });
 });
 
 describe("PanelSheet — presentation, snap index, footer, modal", () => {

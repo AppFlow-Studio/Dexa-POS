@@ -1,3 +1,4 @@
+import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
@@ -13,9 +14,9 @@ export interface CategoryPill {
 
 const NUDGE_PX = 120;
 const FADE_WIDTH = 40;
-const PILL_PADDING_V = 14;
+const PILL_PADDING_V = 16;
 const PILL_BORDER_WIDTH = 1;
-const PILL_FONT_SIZE = 16;
+const PILL_FONT_SIZE = 19;
 const PILL_LINE_HEIGHT = PILL_FONT_SIZE * 1.2;
 // Matches the pill's own full box height (2x vertical padding + text line
 // height + 2x border) so the nudge button is centered against the same
@@ -99,18 +100,19 @@ export function KioskCategoryPillBar({
         {pills.map(({ key, name }) => {
           const selected = key === resolvedKey;
           return (
-            <Pressable
+            <KioskPressable
               key={key}
               onPress={() => onSelect(key)}
+              pressedScale={0.94}
               style={{
                 marginRight: kioskPx(10, s),
-                paddingHorizontal: kioskPx(24, s),
-                paddingVertical: kioskPx(14, s),
+                paddingHorizontal: kioskPx(26, s),
+                paddingVertical: kioskPx(PILL_PADDING_V, s),
                 borderRadius: 999,
                 backgroundColor: selected
                   ? config.primaryColor
                   : `${config.primaryColor}0F`,
-                borderWidth: 1,
+                borderWidth: PILL_BORDER_WIDTH,
                 borderColor: selected
                   ? config.primaryColor
                   : `${config.textColor}14`,
@@ -119,14 +121,15 @@ export function KioskCategoryPillBar({
               <Text
                 numberOfLines={1}
                 style={{
-                  fontSize: kioskPx(16, s),
+                  fontSize: kioskPx(PILL_FONT_SIZE, s),
+                  lineHeight: kioskPx(PILL_LINE_HEIGHT, s),
                   fontWeight: selected ? "700" : "500",
                   color: selected ? "#FFFFFF" : config.textColor,
                 }}
               >
                 {name}
               </Text>
-            </Pressable>
+            </KioskPressable>
           );
         })}
       </ScrollView>

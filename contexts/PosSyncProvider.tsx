@@ -1,93 +1,114 @@
 import { queryClient } from "@/contexts/TanstackProvider";
+import { useDeltaSync } from "@/hooks/db/useDeltaSync";
+import { useOutboxDrain } from "@/hooks/db/useOutboxDrain";
 import { useAutoSettlementScheduler } from "@/hooks/pos/useAutoSettlementScheduler";
+import { isAutoSettleSupportedType } from "@/services/autoSettlementScheduler";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
-import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
+import { useMenuVersionWatch } from "@/hooks/pos/useMenuVersionWatch";
+import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { standaloneSyncQueryOptions } from "@/hooks/pos/useStandaloneSync";
 import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+  logMenuMirrorState,
+  readMenuSnapshot,
+  touchMenuFreshness,
+  writeMenuSnapshot,
+} from "@/lib/db/descriptors/menu";
+import { getDbSizeBytes, initLocalDb } from "@/lib/db/index";
+import { runMeasurementPass } from "@/lib/db/measure";
+import { stationKind } from "@/lib/db/policy";
+import { purgeForbiddenTables } from "@/lib/db/teardown";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import {
-    getBucketKeyCount,
-    getStorageSizeStats,
-    type StorageBucketName,
+  getBucketKeyCount,
+  getStorageSizeStats,
+  type StorageBucketName,
 } from "@/lib/storage";
+import { KEY_DB_SIZE_BYTES } from "@/lib/telemetry/keys";
+import { recordCount } from "@/lib/telemetry/registry";
 import { initLandiPrinter } from "@/native/LandiPrinter";
-import { applyRecipes } from "@/stores/applyRecipes";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
 import { syncEmployees as syncEmployeesService } from "@/services/employeeSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
 import {
-    detectAndStoreCapabilities,
-    startHeartbeat,
-    startStarPrinterHealthCheck,
-    startTerminalHealthCheck,
-    stopHeartbeat,
-    stopStarPrinterHealthCheck,
-    stopTerminalHealthCheck,
+  detectAndStoreCapabilities,
+  startHeartbeat,
+  startStarPrinterHealthCheck,
+  startTerminalHealthCheck,
+  stopHeartbeat,
+  stopStarPrinterHealthCheck,
+  stopTerminalHealthCheck,
 } from "@/services/hardware";
 import { initLocationConfigSync } from "@/services/locationConfigSync";
 import {
-    initializeOfflineSync,
-    isServiceInitialized,
-    setOfflineSyncSupabaseClient,
+  initializeOfflineSync,
+  isServiceInitialized,
+  setOfflineSyncSupabaseClient,
 } from "@/services/offlineSyncInit";
+import { drainPendingFinalizes } from "@/services/pendingFinalize";
 import {
-    startStarPrinterDiscoveryService,
-    stopStarPrinterDiscoveryService,
+  startStarPrinterDiscoveryService,
+  stopStarPrinterDiscoveryService,
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
 import { getDriver } from "@/services/printing/DriverFactory";
-import { drainPendingFinalizes } from "@/services/pendingFinalize";
-import { getSharedCastlesService } from "@/services/terminals/castles-service";
-import { getSharedValorService } from "@/services/terminals/valor-service";
 import {
-    startCastlesUsbAutoConnect,
-    stopCastlesUsbAutoConnect,
-} from "@/services/terminals/castlesUsbAutoConnect";
-import {
-    startValorUsbAutoConnect,
-    stopValorUsbAutoConnect,
-} from "@/services/terminals/valorUsbAutoConnect";
-import {
-    startAtomLoopbackDetect,
-    stopAtomLoopbackDetect,
+  startAtomLoopbackDetect,
+  stopAtomLoopbackDetect,
 } from "@/services/terminals/atomLoopbackDetector";
 import {
-    startTimeclockSyncProcessor,
-    stopTimeclockSyncProcessor,
+  startCodePayDetect,
+  stopCodePayDetect,
+} from "@/services/terminals/codepayDetector";
+import { setCodePayProvisionSupabaseClient } from "@/services/terminals/codepayAutoProvision";
+import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import {
+  startCastlesUsbAutoConnect,
+  stopCastlesUsbAutoConnect,
+} from "@/services/terminals/castlesUsbAutoConnect";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import {
+  startValorUsbAutoConnect,
+  stopValorUsbAutoConnect,
+} from "@/services/terminals/valorUsbAutoConnect";
+import {
+  startTimeclockSyncProcessor,
+  stopTimeclockSyncProcessor,
 } from "@/services/timeclockSyncProcessor";
+import { applyRecipes } from "@/stores/applyRecipes";
+import { menuOfflineCache } from "@/stores/menuOfflineCache";
 import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
 import {
-    setFloorPlanSupabaseClient,
-    useFloorPlanStore,
+  setFloorPlanSupabaseClient,
+  useFloorPlanStore,
 } from "@/stores/useFloorPlanStore";
-import { menuOfflineCache } from "@/stores/menuOfflineCache";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
-    setOrderStoreSupabaseClient,
-    useOrderStore,
+  setOrderStoreSupabaseClient,
+  useOrderStore,
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { setSeatingSupabaseClient } from "@/stores/useSeatingStore";
 import {
-    SyncableDiningSettings,
-    useSettingsStore,
+  SyncableDiningSettings,
+  useSettingsStore,
 } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
-import {
-  registerResumeTask,
-  registerSuspendTask,
-} from "@/lib/lifecycle/appLifecycleCoordinator";
 import { TaxRate } from "@/types/menu";
 import * as Sentry from "@sentry/react-native";
 import React, { useCallback, useEffect, useRef } from "react";
@@ -100,6 +121,15 @@ const DEBUG_EMPLOYEES_URL = __DEV__
   : null;
 
 /**
+ * Track A, Phase 4 — the menu mirror.
+ *
+ * When set, the last good `get_pos_bootstrap_v1` payload is written to SQLite
+ * and the boot fallback reads it from there instead of MMKV. Off: today's
+ * menuOfflineCache path, byte for byte. Rollback is unsetting this.
+ */
+const LOCAL_MENU_ENABLED = process.env.EXPO_PUBLIC_LOCAL_MENU === "1";
+
+/**
  * Component that handles POS sync logic.
  * Must be rendered inside ClerkProvider since it uses authenticated Supabase calls.
  */
@@ -110,6 +140,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     (state) => state.selectedStation,
   );
   const isKDS = selectedStation?.station_type === "kds";
+  // The station kind the menu mirror writes as. Memoized so it is a stable
+  // effect dependency rather than a new string on every render.
+  const menuStationKind = React.useMemo(
+    () => stationKind(selectedStation?.station_type),
+    [selectedStation?.station_type],
+  );
   const hasCheckedStorageSizeRef = useRef(false);
   const lastStoreSettingsRefreshRef = useRef<number>(0);
   const lastEmployeeSyncRefreshRef = useRef<number>(0);
@@ -137,6 +173,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
       setKDSSupabaseClient(supabase);
+      setCodePayProvisionSupabaseClient(supabase);
       // Initialize offline sync service (re-inits after Fast Refresh since module-level state resets)
       if (!isServiceInitialized()) {
         initializeOfflineSync()
@@ -163,20 +200,23 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
 
-  // Unattended daily Castles batch-out. Gated to the Castles terminal THIS
+  // Unattended daily batch-out. Gated to the Castles or CodePay terminal THIS
   // station owns with server auto_settle on (fail-safe OFF when the field is
-  // absent on un-migrated envs). Enablement is the server auto_settle column —
-  // there is no separate client flag.
+  // absent on un-migrated envs). Both are POS-driven on-demand batch-close models
+  // (Valor is excluded — host auto-batch + webhook). Enablement is the server
+  // auto_settle column — there is no separate client flag.
   useAutoSettlementScheduler({
     enabled: Boolean(
       supabase &&
-        selectedStore?.id &&
-        selectedStore?.merchant_id &&
-        selectedStore?.timezone &&
-        selectedStation?.payment_terminal?.id &&
-        selectedStation?.payment_terminal?.terminal_type === "castles" &&
-        (selectedStation?.payment_terminal?.auto_settle ?? false) &&
-        !isKDS,
+      selectedStore?.id &&
+      selectedStore?.merchant_id &&
+      selectedStore?.timezone &&
+      selectedStation?.payment_terminal?.id &&
+      isAutoSettleSupportedType(
+        selectedStation?.payment_terminal?.terminal_type,
+      ) &&
+      (selectedStation?.payment_terminal?.auto_settle ?? false) &&
+      !isKDS,
     ),
     supabase,
   });
@@ -185,6 +225,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // pos_sync is staleTime:Infinity, so without this a website 86 never reaches a
   // running POS. Surgical snooze-only reconcile (no full menu rebuild). KDS skips.
   useMenuSnoozeReconcile(isKDS ? undefined : selectedStore?.id);
+
+  // The other half of "the menu on screen is current": PRICES and menu
+  // structure. Snoozes above cover 86s; this polls the cheap version watermark
+  // and invalidates pos_sync only when it actually moves, so an edited price
+  // reaches a running station (kiosks especially) within the poll interval
+  // instead of at the next app restart. KDS skips — it renders no menu.
+  useMenuVersionWatch(isKDS ? undefined : selectedStore?.id);
 
   // Wave 3.0d-5: combined order reconcile on slow→fast + foreground recovery.
   // Sequenced: cart-shape push (3.0f-3) → 500ms gap → header pull (3.0d-5).
@@ -363,6 +410,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     startAtomLoopbackDetect();
     return () => {
       stopAtomLoopbackDetect();
+    };
+  }, [isKDS]);
+
+  // On-device ("internal") CodePay detection: presence-check the CodePay Register
+  // app (Intent) and, when a merchant app_id is set, surface it as an available
+  // terminal. Self-gates on the native CodePay bridge + a configured app_id, so
+  // it's a no-op on non-CodePay devices / before the app_id is entered. POS-only.
+  useEffect(() => {
+    if (isKDS) return;
+    startCodePayDetect();
+    return () => {
+      stopCodePayDetect();
     };
   }, [isKDS]);
 
@@ -586,7 +645,78 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         });
       }
     }
+
+    // Local SQLite growth is watched on the same schedule as the MMKV buckets,
+    // so there is one place to look when storage is the suspect. Async and
+    // detached: this must never delay boot.
+    void getDbSizeBytes().then((bytes) => {
+      if (bytes === null) return;
+      recordCount(KEY_DB_SIZE_BYTES, bytes);
+      if (bytes > TEN_MB) {
+        Sentry.captureMessage("Local DB size exceeded 10MB", {
+          level: "warning",
+          tags: { source: "storage_monitor", bucket: "sqlite" },
+          extra: { totalBytes: bytes, thresholdBytes: TEN_MB },
+        });
+      }
+    });
   }, []);
+
+  /**
+   * Local SQLite lifecycle (Track A, Phase 1).
+   *
+   * Opens the database, honours any purge owed from an env switch, and drops
+   * the tables this station kind may not hold. Runs on EVERY station kind
+   * including KDS and kiosk — unlike most subsystems here, which skip when
+   * isKDS. That is deliberate: a KDS or kiosk device is exactly where the
+   * station purge has to run, so gating this on isKDS would skip the case it
+   * exists for.
+   *
+   * Phase 1 writes nothing and reads nothing. This only creates the file and
+   * enforces the policy.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const kind = stationKind(selectedStation?.station_type);
+
+    void (async () => {
+      const db = await initLocalDb();
+      if (cancelled || !db) return;
+      // Re-provisioned devices (POS -> kiosk) must shed the data the new
+      // station kind may not hold. No-ops on a POS.
+      await purgeForbiddenTables(kind);
+      // Phase 1 measurement pass — dev-only, self-gated on
+      // EXPO_PUBLIC_DB_MEASURE=1. Seeds realistic rows, measures
+      // bytes-per-row, cleans up, logs the report (lib/db/measure.ts).
+      void runMeasurementPass();
+
+      // Census of the menu mirror, every boot. The write/read logs only fire
+      // when something happens; this one answers "is the menu cloned on this
+      // device right now?" BEFORE anyone pulls the plug to find out.
+      const locationId = selectedStore?.id;
+      if (LOCAL_MENU_ENABLED && locationId && !cancelled) {
+        await logMenuMirrorState(locationId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStation?.station_type, selectedStore?.id]);
+
+  // Track A, Phase 2 — the delta sync loop. Gated behind
+  // EXPO_PUBLIC_DELTA_SYNC (default off). Self-gates per station kind: a KDS
+  // has no syncable entities, so this no-ops there. Runs detached — a failed
+  // background sync must never take down a screen.
+  useDeltaSync({
+    supabase,
+    locationId: selectedStore?.id ?? null,
+    station: stationKind(selectedStation?.station_type),
+  });
+
+  // Pushes locally-committed order/item/seating writes to the server. No-ops
+  // entirely unless an EXPO_PUBLIC_LOCAL_WRITES_* flag is on.
+  useOutboxDrain();
 
   // Watermark of the menu currently applied to the store, scoped to the
   // location it came from. Drives the version reconcile below.
@@ -639,7 +769,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => handle.cancel();
-  }, [isKDS, supabase, selectedStore?.merchant_id, selectedStore?.id, posSyncData]);
+  }, [
+    isKDS,
+    supabase,
+    selectedStore?.merchant_id,
+    selectedStore?.id,
+    posSyncData,
+  ]);
 
   // --- SERVICE CHARGE RULES SYNC --- (skip for KDS)
   useServiceChargeRulesSync({
@@ -683,9 +819,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         applied.locationId === locationId &&
         applied.version === incomingVersion
       ) {
-        console.log("[PosSyncProvider] menu version unchanged — skipping rebuild", {
-          version: incomingVersion,
-        });
+        console.log(
+          "[PosSyncProvider] menu version unchanged — skipping rebuild",
+          {
+            version: incomingVersion,
+          },
+        );
 
         // The rebuild is skipped, but a live sync DID land and confirmed the
         // menu on screen is current. `setMenuData` is normally what clears the
@@ -699,6 +838,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           error: null,
           lastSyncedAt: posSyncData.synced_at,
         });
+
+        // The rows in the STORE are already right, but two things on disk may
+        // not be. The freshness stamp: a live sync landed and PROVED the menu
+        // current, and without recording that it would age all service on a
+        // menu nothing is wrong with. And the mirror itself: the version that
+        // matched is the one applied in memory, which on the first boot after
+        // this flag is turned on came from MMKV, not from SQLite. So this
+        // stamps when the mirror already holds the version and writes it in
+        // full when it does not.
+        if (LOCAL_MENU_ENABLED && locationId) {
+          void touchMenuFreshness(menuStationKind, locationId, posSyncData);
+        }
         return;
       }
 
@@ -707,8 +858,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       // Snapshot the last good sync so a future boot with no/bad network shows
       // this menu instead of an empty grid. Written after setMenuData so a
       // serialization problem can never block the live path.
+      //
+      // Two snapshots on purpose while Phase 4 soaks: the SQLite mirror is the
+      // one the boot path reads when the flag is on, and menuOfflineCache stays
+      // as the fallback until the mirror has run a clean week (the plan's
+      // "delete both caches after a clean week"). Writing both costs a few ms
+      // off the critical path and buys a rollback that is a flag flip.
       if (locationId) {
         menuOfflineCache.set(locationId, posSyncData);
+        if (LOCAL_MENU_ENABLED) {
+          void writeMenuSnapshot(menuStationKind, locationId, posSyncData);
+        }
       }
 
       // Re-apply recipes if available (since setMenuData might reset them)
@@ -744,39 +904,72 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       //     });
       // }
     }
-  }, [posSyncData, setMenuData, setSyncState, selectedStore?.id]);
+  }, [
+    posSyncData,
+    setMenuData,
+    setSyncState,
+    selectedStore?.id,
+    menuStationKind,
+  ]);
 
   // Boot fallback: paint the last known menu while the live sync is still in
   // flight (or after it has failed). Declared AFTER the effect above so that on
   // a commit where fresh data is already present, setMenuData has run first and
   // the `menus.length` guard below short-circuits — the snapshot can never
   // clobber a live sync.
+  //
+  // Phase 4 makes this async so it can read the SQLite mirror first, with
+  // menuOfflineCache as the fallback. The `menus.length` guard is re-checked
+  // AFTER the await for exactly that reason: an await opens a window in which
+  // the live sync can land, and hydrating a snapshot over fresh data is the one
+  // thing this effect must never do.
   useEffect(() => {
     if (isKDS) return;
     const locationId = selectedStore?.id;
     if (!locationId) return;
     if (useMenuStore.getState().menus.length > 0) return;
 
-    const cached = menuOfflineCache.get(locationId);
-    if (!cached) return;
+    let cancelled = false;
 
-    console.log(
-      "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
-      {
-        syncedAt: cached.synced_at,
-        menus: cached.menus?.length ?? 0,
-        version: cached.version ?? "(pre-versioning)",
-      },
-    );
-    setMenuData(cached, { fromCache: true });
+    void (async () => {
+      const started = Date.now();
+      let source: "sqlite" | "mmkv" = "mmkv";
 
-    // Record the snapshot's watermark so that when the live sync lands with the
-    // same version we skip the rebuild outright — the cached paint IS the
-    // current menu. Snapshots written before versioning existed have no
-    // version, so they always reconcile.
-    appliedMenuVersionRef.current = {
-      locationId,
-      version: cached.version ?? null,
+      let cached = LOCAL_MENU_ENABLED
+        ? await readMenuSnapshot(locationId)
+        : null;
+      if (cached) source = "sqlite";
+      else cached = menuOfflineCache.get(locationId);
+
+      if (cancelled) return;
+      // Re-checked after the await — see the note above.
+      if (useMenuStore.getState().menus.length > 0) return;
+      if (!cached) return;
+
+      console.log(
+        "[PosSyncProvider] Menu not loaded yet — hydrating from offline snapshot",
+        {
+          source,
+          hydrateMs: Date.now() - started,
+          syncedAt: cached.synced_at,
+          menus: cached.menus?.length ?? 0,
+          version: cached.version ?? "(pre-versioning)",
+        },
+      );
+      setMenuData(cached, { fromCache: true });
+
+      // Record the snapshot's watermark so that when the live sync lands with
+      // the same version we skip the rebuild outright — the cached paint IS the
+      // current menu. Snapshots written before versioning existed have no
+      // version, so they always reconcile.
+      appliedMenuVersionRef.current = {
+        locationId,
+        version: cached.version ?? null,
+      };
+    })();
+
+    return () => {
+      cancelled = true;
     };
   }, [selectedStore?.id, isKDS, setMenuData, posSyncData]);
 
@@ -936,18 +1129,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // getQueryState (exact-match).
         shouldRun: () => {
           if (isKDS) return false;
-          const locationId =
-            useStoreSettingsStore.getState().selectedStore?.id;
+          const locationId = useStoreSettingsStore.getState().selectedStore?.id;
           if (!locationId) return false;
           const cached = queryClient.getQueryCache().find({
             queryKey: orderQueryKeys.active(locationId),
             exact: false,
           });
-          return Date.now() - (cached?.state.dataUpdatedAt ?? 0) > 2 * 60 * 1000;
+          return (
+            Date.now() - (cached?.state.dataUpdatedAt ?? 0) > 2 * 60 * 1000
+          );
         },
         run: () => {
-          const locationId =
-            useStoreSettingsStore.getState().selectedStore?.id;
+          const locationId = useStoreSettingsStore.getState().selectedStore?.id;
           if (!locationId) return;
           queryClient.invalidateQueries({
             queryKey: orderQueryKeys.active(locationId),

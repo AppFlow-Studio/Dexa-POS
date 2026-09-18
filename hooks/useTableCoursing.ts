@@ -80,9 +80,17 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
         setCoursingInitialized(true);
       });
 
-    return () => {
-      setCoursingInitialized(false);
-    };
+    // NOTE: no cleanup that clears `coursingInitialized`.
+    //
+    // It used to reset to false on every re-run of this effect. Because
+    // `activeOrder?.db_order_id` transitions undefined -> set (and, on the
+    // local-first path, does so while items are still being added), the course
+    // list would blank out and re-render as "no courses + New Course" mid-flow,
+    // then pop back once the RPC resolved. That flash is a UI artefact of a
+    // reload, not a real state — the store's data is still there throughout.
+    //
+    // The order-change case is handled at the top of this effect, which resets
+    // to false only when there is genuinely no order to course.
   }, [enabled, orderId, activeOrder?.db_order_id]);
 
   // Merged effect: new-item detection + DB-item sync in one pass

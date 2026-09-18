@@ -1,14 +1,17 @@
 // components/cfd-client/CFDScreenRouter.tsx
 // Shared screen-state router used by both external CFD tablets and built-in secondary displays.
-import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext.base";
+import {
+  CFDDisplayDataContext,
+  useCFDDisplayData,
+} from "@/contexts/CFDDisplayDataContext.base";
 import {
   triggerCFDLoyaltyJoin,
   triggerCFDLoyaltySkip,
   triggerCFDPhoneSubmit,
 } from "@/lib/cfdLoyaltyTriggers";
 import { colors } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
-import { useEffect, useMemo, useRef } from "react";
+import { CFDScaleProvider, useUiScale } from "@/lib/uiScale";
+import { useContext, useEffect, useMemo, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { iosOnly } from "@/lib/safeAnimations";
@@ -36,7 +39,33 @@ interface Props {
   nativeLoyaltyPrompt?: boolean;
 }
 
-export function CFDScreenRouter({
+/**
+ * Publishes the operator's CFD-only scale override (Settings > Customer
+ * Display) to the whole CFD screen tree before anything inside it measures.
+ *
+ * Every CFD screen already calls `useUiScale()`, and that hook consults this
+ * context — so the override reaches all of them without touching a single
+ * screen component. It has to sit *outside* CFDScreenRouterInner because the
+ * router scales its own styles too.
+ *
+ * The override is read from display data rather than settings directly: the
+ * external CFD tablet and the WebView bundle have no access to the POS's
+ * MMKV, so the value arrives over the payload.
+ */
+export function CFDScreenRouter(props: Props) {
+  // Read the context directly rather than via useCFDDisplayData(), which
+  // throws when no provider is mounted (an unmount race would surface as an
+  // Android system crash dialog here). A missing provider just means no
+  // override — fall back to the automatic scale.
+  const displayData = useContext(CFDDisplayDataContext);
+  return (
+    <CFDScaleProvider override={displayData?.cfdUiScaleOverride ?? null}>
+      <CFDScreenRouterInner {...props} />
+    </CFDScaleProvider>
+  );
+}
+
+function CFDScreenRouterInner({
   onTipSelected,
   onPhoneSubmitted,
   onLoyaltySkip,

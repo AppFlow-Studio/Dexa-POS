@@ -57,9 +57,17 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.doubleHeight(false);
   b.bold(false);
 
-  if (data.storeAddress) {
+  const addressLines =
+    data.storeAddressLines && data.storeAddressLines.length > 0
+      ? data.storeAddressLines
+      : data.storeAddress
+        ? [data.storeAddress]
+        : [];
+  if (addressLines.length > 0) {
     b.bold(true);
-    b.textLine(data.storeAddress);
+    for (const line of addressLines) {
+      if (line) b.textLine(line);
+    }
     b.bold(false);
   }
   if (data.storePhone) {

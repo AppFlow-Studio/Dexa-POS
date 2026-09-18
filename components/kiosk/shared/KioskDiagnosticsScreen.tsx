@@ -1,8 +1,13 @@
 import appJson from "@/app.json";
+import { getKioskReviewOrder, resolveKioskReview } from "./checkoutGuard";
 import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
+import {
+    MENU_VERSION_POLL_MS,
+    menuVersionQueryKey,
+} from "@/hooks/pos/useMenuVersionWatch";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import { getDeviceId } from "@/lib/deviceId";
@@ -16,11 +21,18 @@ import {
 } from "@/services/terminals/terminalIdentity";
 import { clearStationData } from "@/services/cacheService";
 import {
+    resolveKioskOrientationMode,
     useKioskDeviceSettingsStore,
     type KioskMenuColumns,
+    type KioskOrientationMode,
 } from "@/stores/useKioskDeviceSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
+import { isCodePayBridgeAvailable } from "@/native/CodePayBridge";
+import { probeCodePayNow } from "@/services/terminals/codepayDetector";
+import { ensureCodePayTerminalProvisioned } from "@/services/terminals/codepayAutoProvision";
+import { useCodePayTerminalStore } from "@/stores/useCodePayTerminalStore";
+import { useProcessorPreferenceStore } from "@/stores/useProcessorPreferenceStore";
 import type { KioskConfig } from "@/types/kiosk";
 import type { StationPaymentTerminal } from "@/types/station";
 import { useUsbDevices } from "@/hooks/hardware/useUsbDevices";
@@ -52,12 +64,15 @@ import {
     Plus,
     Printer,
     RefreshCw,
+    RotateCcw,
     SlidersHorizontal,
     Usb,
+    UtensilsCrossed,
     Wifi,
     WifiOff,
     X,
 } from "lucide-react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -68,6 +83,7 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
+    useWindowDimensions,
     View,
     type ViewStyle,
 } from "react-native";
@@ -109,7 +125,7 @@ const SECTIONS: {
     label: "Menu Layout",
     Icon: LayoutGrid,
     title: "Menu Layout",
-    subtitle: "How menu items are arranged on this device",
+    subtitle: "Orientation and how menu items are arranged on this device",
   },
   {
     id: "printers",
@@ -167,6 +183,69 @@ export function KioskDiagnosticsScreen({
   const { isOnline, rawIsOnline, quality, pendingSyncCount } =
     useNetworkStatus();
 
+  // ── Menu freshness (on-demand) ──
+  //
+  // useMenuVersionWatch already polls the watermark in the background, so this
+  // is the "I just changed a price, don't make me wait out the interval" path.
+  // It probes the version first and only pulls the menu when it actually moved,
+  // so a no-op check costs bytes rather than the whole menu tree.
+  const menuVersionSupabase = useSupabaseClient();
+  const menuQueryClient = useQueryClient();
+  const [checkingMenu, setCheckingMenu] = useState(false);
+
+  const handleCheckMenuChanges = async () => {
+    const locationId = selectedStore?.id;
+    if (!menuVersionSupabase || !locationId) return;
+    setCheckingMenu(true);
+    try {
+      const { data, error } = await menuVersionSupabase.rpc(
+        "get_pos_menu_version_v1",
+        { p_location_id: locationId },
+      );
+      if (error) throw error;
+
+      const remoteVersion = (data as string | null) ?? null;
+      const appliedVersion =
+        menuQueryClient.getQueryData<{ version?: string | null }>([
+          "pos_sync",
+          locationId,
+        ])?.version ?? null;
+
+      if (remoteVersion && appliedVersion && remoteVersion === appliedVersion) {
+        toastService.show({
+          title: "Menu Up to Date",
+          message: "No menu or price changes since the last sync.",
+          type: "success",
+        });
+        return;
+      }
+
+      await menuQueryClient.invalidateQueries({
+        queryKey: ["pos_sync", locationId],
+      });
+      // Re-baseline the background watcher so it does not re-detect this same
+      // change on its next tick.
+      await menuQueryClient.invalidateQueries({
+        queryKey: menuVersionQueryKey(locationId),
+      });
+      toastService.show({
+        title: "Menu Updated",
+        message: "Menu and prices have been refreshed.",
+        type: "success",
+      });
+    } catch (e) {
+      console.error("[KioskDiagnostics] menu version check failed:", e);
+      toastService.show({
+        title: "Check Failed",
+        message:
+          "Could not check for menu changes. Check your connection and try again.",
+        type: "error",
+      });
+    } finally {
+      setCheckingMenu(false);
+    }
+  };
+
   // ── Active sidebar section ──
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
   const activeMeta =
@@ -175,6 +254,24 @@ export function KioskDiagnosticsScreen({
   // ── Menu layout (device-local) ──
   const menuColumns = useKioskDeviceSettingsStore((s) => s.menuColumns);
   const setMenuColumns = useKioskDeviceSettingsStore((s) => s.setMenuColumns);
+  const orientationMode = useKioskDeviceSettingsStore((s) => s.orientationMode);
+  const setOrientationMode = useKioskDeviceSettingsStore(
+    (s) => s.setOrientationMode,
+  );
+  // `config` here is the raw profile, so the orientation the customer-facing
+  // flow will actually render is re-derived the same way useKioskOrientation
+  // does it — device override first, then the panel's own shape for "auto".
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const orientationTarget = resolveKioskOrientationMode(
+    orientationMode,
+    config.orientation,
+  );
+  const effectiveOrientation =
+    orientationTarget === "auto"
+      ? winWidth >= winHeight
+        ? "horizontal"
+        : "vertical"
+      : orientationTarget;
 
   // ── Payment Terminal ──────────────────────────────────────────────
   const supabase = useSupabaseClient();
@@ -198,6 +295,85 @@ export function KioskDiagnosticsScreen({
     currentTerminal?.id ?? undefined,
     currentTerminal ?? undefined,
   );
+
+  // ── On-device CodePay (config card + auto-provision) ──────────────
+  // Mirrors the register settings card: enter the merchant app_id, detect the
+  // Register app, then auto-provision a real payment_terminals row (so batch-out
+  // works without SQL). Self-hides on non-CodePay hardware (no native bridge).
+  const codepayBridgeAvailable = isCodePayBridgeAvailable();
+  const codepayInternalTerminal = useCodePayTerminalStore(
+    (s) => s.internalTerminal,
+  );
+  const codepayAppId = useCodePayTerminalStore((s) => s.appId);
+  const setCodepayAppId = useCodePayTerminalStore((s) => s.setAppId);
+  const codepayEnabled = useProcessorPreferenceStore((s) => s.codepayEnabled);
+  const setCodepayEnabled = useProcessorPreferenceStore(
+    (s) => s.setCodepayEnabled,
+  );
+  const [codepayAppIdDraft, setCodepayAppIdDraft] = useState("");
+  const [codepayFieldTouched, setCodepayFieldTouched] = useState(false);
+  const [codepayDetecting, setCodepayDetecting] = useState(false);
+  useEffect(() => {
+    if (!codepayFieldTouched) setCodepayAppIdDraft(codepayAppId ?? "");
+  }, [codepayAppId, codepayFieldTouched]);
+  const codepayOtherDevices = codepayBridgeAvailable
+    ? terminals.filter(
+        (t) =>
+          t.terminalType === "codepay" && t.stationId !== selectedStation?.id,
+      )
+    : [];
+  const handleCodepaySetup = async () => {
+    const next = codepayAppIdDraft.trim();
+    if (!next) {
+      toastService.show({
+        title: "App ID required",
+        message: "Enter your CodePay merchant app_id, then tap Save & Set Up.",
+        type: "warning",
+      });
+      return;
+    }
+    setCodepayDetecting(true);
+    try {
+      if (next !== (codepayAppId ?? "").trim()) setCodepayAppId(next);
+      await probeCodePayNow();
+      const surfaced = !!useCodePayTerminalStore.getState().internalTerminal;
+      if (!surfaced) {
+        toastService.show({
+          title: "Not Detected",
+          message:
+            "CodePay Register app not found on this device. Make sure the Register app is installed.",
+          type: "error",
+        });
+        return;
+      }
+      const res = await ensureCodePayTerminalProvisioned({
+        supabase,
+        appId: next,
+      });
+      if (!res.ok) {
+        toastService.show({
+          title: "Detected — setup incomplete",
+          message:
+            res.reason === "missing_session"
+              ? "Detected CodePay, but no store/station is selected yet."
+              : res.reason === "no_serial"
+                ? "Detected CodePay, but could not read a device serial to register it."
+                : `Detected CodePay, but registering this device failed: ${res.reason ?? "unknown error"}.`,
+          type: "warning",
+        });
+        return;
+      }
+      if (selectedStore?.id) await loadTerminals(selectedStore.id);
+      if (res.terminalId) setActiveTerminal(res.terminalId);
+      toastService.show({
+        title: "CodePay Ready",
+        message: `This device is set up and registered (serial ${res.serial}). Card sales and batch-out are enabled.`,
+        type: "success",
+      });
+    } finally {
+      setCodepayDetecting(false);
+    }
+  };
 
   // ── Printers ──────────────────────────────────────────────────────
   const usbHw = useUsbDevices();
@@ -1099,6 +1275,30 @@ export function KioskDiagnosticsScreen({
 
   const renderOverview = () => (
     <>
+      {selectedStation?.id && getKioskReviewOrder(selectedStation.id) ? (
+        <Section title="Payment review required" Icon={CreditCard}>
+          <Row label="Order ID" value={getKioskReviewOrder(selectedStation.id) ?? ""} mono />
+          <TouchableOpacity
+            className="px-5 py-4"
+            onPress={() => Alert.alert(
+              "Confirm payment reconciliation",
+              "Check the Valor transaction and Supabase order/payment first. Record or resolve any captured payment and dispatch the paid order if needed. This only unlocks kiosk checkout; it does not refund, charge, or update payment records.",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Reconciled - unlock kiosk", onPress: () => {
+                  if (!resolveKioskReview(selectedStation.id)) {
+                    Alert.alert("Payment still running", "Wait for the terminal operation to finish.");
+                    return;
+                  }
+                  Alert.alert("Kiosk unlocked", "Close settings and start a new customer session.");
+                } },
+              ],
+            )}
+          >
+            <Text className="text-teal-700 font-bold">Resolve kiosk payment hold</Text>
+          </TouchableOpacity>
+        </Section>
+      ) : null}
       <Section
         title="Connectivity"
         Icon={rawIsOnline ? Wifi : WifiOff}
@@ -1123,6 +1323,44 @@ export function KioskDiagnosticsScreen({
         <Row label="Pending syncs" value={String(pendingSyncCount)} last />
       </Section>
 
+      <Section title="Menu" Icon={UtensilsCrossed}>
+        <Row
+          label="Menu version"
+          value={
+            menuQueryClient.getQueryData<{ version?: string | null }>([
+              "pos_sync",
+              selectedStore?.id,
+            ])?.version ?? "—"
+          }
+          mono
+        />
+        <Row
+          label="Auto-check"
+          value={
+            MENU_VERSION_POLL_MS >= 60_000
+              ? `Every ${Math.round(MENU_VERSION_POLL_MS / 60_000)} min`
+              : `Every ${Math.round(MENU_VERSION_POLL_MS / 1000)}s`
+          }
+          last
+        />
+        <View className="px-5 py-4 border-t border-gray-100">
+          <TouchableOpacity
+            onPress={handleCheckMenuChanges}
+            disabled={checkingMenu}
+            className="flex-row items-center justify-center py-3 rounded-2xl bg-teal-600"
+          >
+            {checkingMenu ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <RefreshCw size={16} color="#FFFFFF" />
+            )}
+            <Text className="text-sm font-bold text-white ml-2">
+              {checkingMenu ? "Checking…" : "Check for menu changes"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Section>
+
       <Section title="Station" Icon={MonitorSmartphone}>
         <Row label="Location" value={selectedStore?.name ?? "—"} />
         <Row label="Station" value={selectedStation?.station_name ?? "—"} />
@@ -1131,40 +1369,110 @@ export function KioskDiagnosticsScreen({
     </>
   );
 
+  const ORIENTATION_OPTIONS: {
+    id: KioskOrientationMode;
+    label: string;
+    hint: string;
+  }[] = [
+    {
+      id: "profile",
+      label: "Profile",
+      hint: `Follow the kiosk profile (${config.orientation === "vertical" ? "Vertical" : "Horizontal"})`,
+    },
+    {
+      id: "auto",
+      label: "Auto",
+      hint: "Detect from the device — lays out to match however this panel is mounted",
+    },
+    { id: "vertical", label: "Vertical", hint: "Force portrait on this device" },
+    {
+      id: "horizontal",
+      label: "Horizontal",
+      hint: "Force landscape on this device",
+    },
+  ];
+
+  const activeOrientationHint =
+    ORIENTATION_OPTIONS.find((o) => o.id === orientationMode)?.hint ?? "";
+
   const renderMenuLayout = () => (
-    <Section title="Items per row" Icon={LayoutGrid}>
-      <View className="px-5 py-5">
-        <Text className="text-sm text-gray-500 mb-4">
-          How many menu items show across each row. “Auto” uses the template
-          default ({config.orientation === "vertical" ? "3" : "4"} for this
-          orientation).
-        </Text>
-        <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
-          {(["auto", 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
-            const active = menuColumns === opt;
-            return (
-              <TouchableOpacity
-                key={String(opt)}
-                onPress={() => setMenuColumns(opt)}
-                activeOpacity={0.85}
-                className={`flex-1 py-3.5 items-center rounded-xl ${
-                  active ? "bg-white" : ""
-                }`}
-                style={active ? cardShadow : undefined}
-              >
-                <Text
-                  className={`text-base font-bold ${
-                    active ? "text-teal-700" : "text-gray-400"
+    <>
+      <Section title="Orientation" Icon={RotateCcw}>
+        <View className="px-5 py-5">
+          <Text className="text-sm text-gray-500 mb-4">
+            Which way this kiosk lays itself out. “Auto” stops locking the screen
+            and renders for whatever shape the panel reports — use it when the
+            hardware’s own mounting decides. The other options lock the screen.
+            This setting is device-local and overrides the profile.
+          </Text>
+          <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+            {ORIENTATION_OPTIONS.map((opt) => {
+              const active = orientationMode === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  onPress={() => setOrientationMode(opt.id)}
+                  activeOpacity={0.85}
+                  className={`flex-1 py-3.5 items-center rounded-xl ${
+                    active ? "bg-white" : ""
                   }`}
+                  style={active ? cardShadow : undefined}
                 >
-                  {opt === "auto" ? "Auto" : opt}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                  <Text
+                    className={`text-base font-bold ${
+                      active ? "text-teal-700" : "text-gray-400"
+                    }`}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text className="text-xs text-gray-400 mt-3">
+            {activeOrientationHint} · Currently rendering {effectiveOrientation}.
+          </Text>
         </View>
-      </View>
-    </Section>
+      </Section>
+
+      <Section title="Items per row" Icon={LayoutGrid}>
+        <View className="px-5 py-5">
+          <Text className="text-sm text-gray-500 mb-4">
+            How many menu items show across each row. “Auto” uses the template
+            default ({effectiveOrientation === "vertical" ? "3" : "4"} for this
+            orientation). Fewer columns means wider cards, larger item text, and
+            room for descriptions; more columns fits more on screen at smaller
+            type. “1” switches to the full-width feature row — name and
+            description on the left, photo blended into the right edge — which
+            suits tall vertical kiosks.
+          </Text>
+          <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
+            {(["auto", 1, 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
+              const active = menuColumns === opt;
+              return (
+                <TouchableOpacity
+                  key={String(opt)}
+                  onPress={() => setMenuColumns(opt)}
+                  activeOpacity={0.85}
+                  className={`flex-1 py-3.5 items-center rounded-xl ${
+                    active ? "bg-white" : ""
+                  }`}
+                  style={active ? cardShadow : undefined}
+                >
+                  <Text
+                    className={`text-base font-bold ${
+                      active ? "text-teal-700" : "text-gray-400"
+                    }`}
+                  >
+                    {opt === "auto" ? "Auto" : opt}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Section>
+    </>
   );
 
   const renderAbout = () => (
@@ -1343,6 +1651,152 @@ export function KioskDiagnosticsScreen({
       </Text>
     </>
   );
+
+  // On-device CodePay config + auto-provision card. Shown above the terminal
+  // panel in the Payment Terminal section on CodePay hardware only.
+  const renderCodePayCard = () => {
+    if (!codepayBridgeAvailable) return null;
+    return (
+      <View
+        className="rounded-3xl border border-gray-200 bg-white overflow-hidden mb-3"
+        style={cardShadow}
+      >
+        <View className="px-5 py-5">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2">
+              <View
+                className={`w-2.5 h-2.5 rounded-full ${
+                  codepayInternalTerminal ? "bg-green-500" : "bg-gray-300"
+                }`}
+              />
+              <Text className="text-base font-bold text-gray-900">
+                CodePay (on-terminal)
+              </Text>
+            </View>
+            <View
+              className={`px-2.5 py-1 rounded-lg border ${
+                codepayInternalTerminal ? "border-green-500" : "border-gray-200"
+              }`}
+            >
+              <Text
+                className={`text-[11px] font-bold ${
+                  codepayInternalTerminal ? "text-green-600" : "text-gray-400"
+                }`}
+              >
+                {codepayInternalTerminal ? "Online" : "Not detected"}
+              </Text>
+            </View>
+          </View>
+          <Text className="text-xs text-gray-500 mt-1.5">
+            On-device processor · drives the CodePay Register app via Intent.
+          </Text>
+
+          <Text className="text-[11px] font-bold text-gray-500 mt-4 mb-1.5">
+            MERCHANT APP ID
+          </Text>
+          <TextInput
+            value={codepayAppIdDraft}
+            onChangeText={(v) => {
+              setCodepayAppIdDraft(v);
+              setCodepayFieldTouched(true);
+            }}
+            placeholder="e.g. wz1f2e3295adc70112"
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="none"
+            autoCorrect={false}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-900"
+          />
+
+          <Text className="text-[11px] font-bold text-gray-500 mt-4 mb-1.5">
+            ACTIVE PROCESSOR FOR NEW SALES
+          </Text>
+          <View className="flex-row gap-1.5">
+            {[
+              { value: true, label: "Enabled" },
+              { value: false, label: "Off" },
+            ].map((opt) => {
+              const selected = codepayEnabled === opt.value;
+              return (
+                <Pressable
+                  key={String(opt.value)}
+                  onPress={() => setCodepayEnabled(opt.value)}
+                  className={`flex-1 py-2.5 rounded-xl border items-center ${
+                    selected ? "bg-teal-600 border-teal-600" : "border-gray-200"
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-semibold ${
+                      selected ? "text-white" : "text-gray-500"
+                    }`}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View className="flex-row items-center gap-2 mt-3">
+            <Pressable
+              onPress={handleCodepaySetup}
+              disabled={codepayDetecting}
+              className="px-3 py-2 rounded-xl border border-teal-600"
+              style={{ opacity: codepayDetecting ? 0.5 : 1 }}
+            >
+              <Text className="text-xs font-semibold text-teal-700">
+                {codepayDetecting ? "Setting up…" : "Save & Set Up"}
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text className="text-[11px] text-gray-500 mt-2">
+            {codepayInternalTerminal
+              ? "Detected. New card sales use CodePay."
+              : "Enter your merchant app_id and tap Save & Set Up. The CodePay Register app must be installed on this device."}
+          </Text>
+
+          {codepayOtherDevices.length > 0 && (
+            <View className="mt-3 pt-3 border-t border-gray-200">
+              <Text className="text-[11px] font-bold text-gray-500 mb-2">
+                OTHER CODEPAY DEVICES AT THIS LOCATION
+              </Text>
+              {codepayOtherDevices.map((t) => (
+                <View
+                  key={t.id}
+                  className="flex-row items-center px-2.5 py-2 rounded-xl border border-gray-200 bg-gray-50 mb-1.5"
+                >
+                  <View
+                    className={`w-2 h-2 rounded-full mr-2.5 ${
+                      t.isConnected ? "bg-green-500" : "bg-gray-300"
+                    }`}
+                  />
+                  <View className="flex-1">
+                    <Text
+                      className="text-xs font-semibold text-gray-900"
+                      numberOfLines={1}
+                    >
+                      {t.name}
+                    </Text>
+                    <Text
+                      className="text-[10px] text-gray-400 mt-0.5"
+                      numberOfLines={1}
+                    >
+                      {t.serialNumber ? `SN ${t.serialNumber}` : "No serial"}
+                    </Text>
+                  </View>
+                  <View className="px-1.5 py-0.5 rounded-md bg-teal-100">
+                    <Text className="text-[10px] font-semibold text-teal-700">
+                      CodePay
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
 
   const renderTerminalPanel = () => (
     <View
@@ -2191,7 +2645,12 @@ export function KioskDiagnosticsScreen({
           )}
           {activeSection === "menu" && renderMenuLayout()}
           {activeSection === "printers" && renderPrintersPanel()}
-          {activeSection === "terminal" && renderTerminalPanel()}
+          {activeSection === "terminal" && (
+            <>
+              {renderCodePayCard()}
+              {renderTerminalPanel()}
+            </>
+          )}
           {activeSection === "about" && renderAbout()}
         </ScrollView>
       </View>

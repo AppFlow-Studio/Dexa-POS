@@ -14,6 +14,7 @@ import { queryClient } from "@/contexts/TanstackProvider";
 import { getDeviceId } from "@/lib/deviceId";
 import {
     buildKitchenSendQueueParams,
+    clearKitchenSendInFlight,
     createKitchenSendContext,
     isTerminalKitchenMutationError,
     type KitchenSendQueueParams,
@@ -93,6 +94,19 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
+
+/**
+ * How long a send_to_kitchen may sit "blocked" before we stop retrying it.
+ *
+ * Blocking preserves the retry budget, which is right for the seconds an item
+ * spends draining and wrong forever after: a straggler queued in an earlier
+ * session, whose cart ids no longer map to anything, would otherwise re-log on
+ * every cycle and keep that order's kitchen send permanently pending.
+ *
+ * An hour is far past any legitimate drain (the outbox backs off to a 5-minute
+ * ceiling), so beyond it the items are genuinely unresolvable.
+ */
+const SEND_TO_KITCHEN_BLOCK_MAX_MS = 60 * 60 * 1000;
 
 const resolveTableNameForOrder = (
   tableIdOrName?: string | null,
@@ -185,6 +199,19 @@ function _getCalculatePaidStatus() {
 const MAX_KITCHEN_REQUEUE_GENERATIONS = 3;
 
 let _supabaseClient: any = null;
+
+/**
+ * Guards for the heavy online-reconnect sweep (menu refetch → queue flush →
+ * reconciliation). Without these, a flaky link that flaps online↔offline
+ * re-fires the whole sweep on every edge, saturating the network and starving
+ * the login/KDS RPCs. `_reconnectSweepInFlight` coalesces concurrent flaps;
+ * `_lastReconnectSweepAt` + the min-interval coalesces rapid successive ones.
+ * The periodic 60s sync and queue-change triggers remain the backstop for any
+ * flush skipped here.
+ */
+let _reconnectSweepInFlight = false;
+let _lastReconnectSweepAt = 0;
+const RECONNECT_SWEEP_MIN_INTERVAL_MS = 15_000;
 
 /**
  * Mirror of useOrderStore's getKioskSafeCreatorStaffId().
@@ -374,6 +401,26 @@ export async function initializeOfflineSync(): Promise<void> {
 
       // When we come back online, reconcile orders with failed syncs
       if (isOnline) {
+        // Debounce the heavy sweep so link flaps don't re-fire it back-to-back
+        // (network saturation was the primary "frozen login" amplifier for a
+        // flaky new location). Always let setOnlineStatus above run; only gate
+        // the expensive work here.
+        if (_reconnectSweepInFlight) {
+          console.log(
+            "[OfflineSync] Reconnect sweep already in flight — skipping duplicate",
+          );
+          return;
+        }
+        const nowMs = Date.now();
+        if (nowMs - _lastReconnectSweepAt < RECONNECT_SWEEP_MIN_INTERVAL_MS) {
+          console.log(
+            "[OfflineSync] Reconnect sweep debounced (ran <15s ago) — periodic sync will cover any pending ops",
+          );
+          return;
+        }
+        _reconnectSweepInFlight = true;
+        _lastReconnectSweepAt = nowMs;
+        try {
         // Refresh stale data if offline for a significant period
         const offlineDurationMs = getOfflineDurationMs();
         const STALENESS_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -465,6 +512,9 @@ export async function initializeOfflineSync(): Promise<void> {
             "[OfflineSync] Floor plan refresh on reconnect failed:",
             fpErr,
           );
+        }
+        } finally {
+          _reconnectSweepInFlight = false;
         }
       }
     },
@@ -2244,6 +2294,7 @@ async function executeQueuedOperation(
               _supabaseClient,
               [data.order_item_id],
               true,
+              { localOrderId: storeKey, localItemIds: [localItemId] },
             ).catch((err) => {
               console.warn(
                 "[OfflineSync:add_item] to-go reconcile failed:",
@@ -2919,7 +2970,69 @@ async function executeQueuedOperation(
                 console.log(
                   `[OfflineSync:send_to_kitchen] No items resolved yet, waiting`,
                 );
-                return OpBlocked("items_not_synced");
+                // Why are they unsynced? "Blocked" preserves the retry budget,
+              // so a permanently-rejected item op blocks this send FOREVER,
+              // silently. Name the cause once rather than letting it loop.
+              void (async () => {
+                try {
+                  const { unsyncedItemIds, failedOpCount } = await import(
+                    "@/lib/db/outbox"
+                  );
+                  const failed = await failedOpCount();
+                  // Only worth a warning when something is actually WEDGED.
+                  //
+                  // These are CART ids (composite merge keys), not row uuids,
+                  // so looking them up in order_items always "found nothing" —
+                  // the old message reported that as if it were a fault on
+                  // every single send. A block with zero parked ops is the
+                  // normal case: the item is still draining and the next
+                  // retry will resolve it.
+                  if (failed > 0) {
+                    const stuck = await unsyncedItemIds(unresolvedLocalItemIds);
+                    console.warn(
+                      `[LF] send_to_kitchen blocked on ${unresolvedLocalItemIds.length} item(s) ` +
+                        `and ${failed} op(s) are parked as FAILED — those items will never ` +
+                        `sync without a fix. ${stuck.length} have no synced local row. ` +
+                        `Clear them in Settings → Dev Flags → Local-First Outbox.`,
+                    );
+                  } else if (__DEV__) {
+                    console.log(
+                      `[LF] send_to_kitchen waiting on ${unresolvedLocalItemIds.length} item(s) still draining`,
+                    );
+                  }
+                } catch {
+                  /* diagnostics only */
+                }
+              })();
+              // ── Give up on a send that can never resolve. ───────────────
+              //
+              // "Blocked" preserves the retry budget, so an op whose items
+              // will never resolve retries FOREVER. That is right for a few
+              // seconds of drain latency and wrong for a straggler queued in
+              // an earlier session, whose cart ids no longer map to anything —
+              // it just re-logs on every cycle and keeps that order's kitchen
+              // send perpetually pending.
+              //
+              // An hour is far beyond any legitimate drain (the outbox retries
+              // with a 5-minute ceiling), so past it the items are genuinely
+              // unresolvable and the op should stop rather than pretend.
+              const blockedAgeMs =
+                Date.now() - new Date(op.timestamp).getTime();
+              if (blockedAgeMs > SEND_TO_KITCHEN_BLOCK_MAX_MS) {
+                console.error(
+                  `[LF] ✗ giving up on a send_to_kitchen queued ${Math.round(
+                    blockedAgeMs / 60000,
+                  )} min ago — its ${unresolvedLocalItemIds.length} item(s) never resolved. ` +
+                    `Re-send the order from the POS if the kitchen still needs it.`,
+                );
+                return OpTerminal(
+                  "ITEMS_NEVER_RESOLVED",
+                  "Items for this kitchen send never synced to the server.",
+                  "Re-send the order from the POS if the kitchen still needs it.",
+                );
+              }
+
+              return OpBlocked("items_not_synced");
               }
               // Resolved via live store — clear unresolved list so we don't re-queue them
               unresolvedLocalItemIds = stillUnresolvedLocalItemIds;
@@ -2945,6 +3058,68 @@ async function executeQueuedOperation(
               console.log(
                 "[OfflineSync:send_to_kitchen] Fired items exist but item IDs are not synced yet, waiting",
               );
+              // Why are they unsynced? "Blocked" preserves the retry budget,
+              // so a permanently-rejected item op blocks this send FOREVER,
+              // silently. Name the cause once rather than letting it loop.
+              void (async () => {
+                try {
+                  const { unsyncedItemIds, failedOpCount } = await import(
+                    "@/lib/db/outbox"
+                  );
+                  const failed = await failedOpCount();
+                  // Only worth a warning when something is actually WEDGED.
+                  //
+                  // These are CART ids (composite merge keys), not row uuids,
+                  // so looking them up in order_items always "found nothing" —
+                  // the old message reported that as if it were a fault on
+                  // every single send. A block with zero parked ops is the
+                  // normal case: the item is still draining and the next
+                  // retry will resolve it.
+                  if (failed > 0) {
+                    const stuck = await unsyncedItemIds(unresolvedLocalItemIds);
+                    console.warn(
+                      `[LF] send_to_kitchen blocked on ${unresolvedLocalItemIds.length} item(s) ` +
+                        `and ${failed} op(s) are parked as FAILED — those items will never ` +
+                        `sync without a fix. ${stuck.length} have no synced local row. ` +
+                        `Clear them in Settings → Dev Flags → Local-First Outbox.`,
+                    );
+                  } else if (__DEV__) {
+                    console.log(
+                      `[LF] send_to_kitchen waiting on ${unresolvedLocalItemIds.length} item(s) still draining`,
+                    );
+                  }
+                } catch {
+                  /* diagnostics only */
+                }
+              })();
+              // ── Give up on a send that can never resolve. ───────────────
+              //
+              // "Blocked" preserves the retry budget, so an op whose items
+              // will never resolve retries FOREVER. That is right for a few
+              // seconds of drain latency and wrong for a straggler queued in
+              // an earlier session, whose cart ids no longer map to anything —
+              // it just re-logs on every cycle and keeps that order's kitchen
+              // send perpetually pending.
+              //
+              // An hour is far beyond any legitimate drain (the outbox retries
+              // with a 5-minute ceiling), so past it the items are genuinely
+              // unresolvable and the op should stop rather than pretend.
+              const blockedAgeMs =
+                Date.now() - new Date(op.timestamp).getTime();
+              if (blockedAgeMs > SEND_TO_KITCHEN_BLOCK_MAX_MS) {
+                console.error(
+                  `[LF] ✗ giving up on a send_to_kitchen queued ${Math.round(
+                    blockedAgeMs / 60000,
+                  )} min ago — its ${unresolvedLocalItemIds.length} item(s) never resolved. ` +
+                    `Re-send the order from the POS if the kitchen still needs it.`,
+                );
+                return OpTerminal(
+                  "ITEMS_NEVER_RESOLVED",
+                  "Items for this kitchen send never synced to the server.",
+                  "Re-send the order from the POS if the kitchen still needs it.",
+                );
+              }
+
               return OpBlocked("items_not_synced");
             }
 
@@ -3076,6 +3251,9 @@ async function executeQueuedOperation(
           // Clear sync status for items that were successfully sent
           if (localItemIds?.length) {
             useSyncStatusStore.getState().clearAllForOrder(localItemIds);
+            // S3: the queued send is now confirmed by the server — drop the
+            // optimistic-status protection so the server owns the line.
+            clearKitchenSendInFlight(localItemIds);
           }
 
           // Log offline batch for KDS awareness
@@ -3227,6 +3405,92 @@ async function executeQueuedOperation(
           return true;
         } catch (err) {
           console.error("[OfflineSync] Error setting item seat:", err);
+          return false;
+        }
+      }
+
+      // ================================================================
+      // TOGGLE TO GO — durable per-item "TO GO" flag.
+      // is_to_go is set ONLY by toggle_to_go_order_items; no add/payment/
+      // kitchen RPC touches it. Before this op the toggle was a one-shot
+      // fire-and-forget, so any transient failure silently lost the flag and
+      // the next full re-fetch (payment / send-to-kitchen) reconciled the item
+      // back to the DB's false. Now it retries like every other mutation.
+      // The RPC is naturally idempotent (a boolean UPDATE), so replay is safe.
+      // ================================================================
+      case "toggle_to_go": {
+        const { dbItemIds, isToGo, localOrderId, localItemIds } =
+          op.params as {
+            dbItemIds?: string[];
+            isToGo: boolean;
+            localOrderId?: string;
+            localItemIds?: string[];
+          };
+
+        // Resolve local item ids that weren't UUIDs at queue time (an item
+        // toggled TO GO before its add synced). Mirrors update_item_status.
+        let resolvedItemIds: string[] = (dbItemIds ?? []).filter((id) =>
+          isValidUUID(id),
+        );
+
+        if (localItemIds?.length && localOrderId) {
+          for (const localItemId of localItemIds) {
+            const resolved = resolveItemId(localOrderId, localItemId);
+            if (resolved && !resolvedItemIds.includes(resolved)) {
+              resolvedItemIds.push(resolved);
+            }
+          }
+
+          if (resolvedItemIds.length === 0) {
+            const liveOrder = _getOrderStore().getState().ordersById[
+              localOrderId
+            ] as any;
+            if (liveOrder?.items) {
+              for (const localItemId of localItemIds) {
+                const liveItem = liveOrder.items.find(
+                  (i: any) => i.id === localItemId && i.db_order_item_id,
+                );
+                if (
+                  liveItem?.db_order_item_id &&
+                  !resolvedItemIds.includes(liveItem.db_order_item_id)
+                ) {
+                  resolvedItemIds.push(liveItem.db_order_item_id);
+                }
+              }
+            }
+          }
+        }
+
+        if (resolvedItemIds.length === 0) {
+          console.log(
+            "[OfflineSync:toggle_to_go] No items resolved yet, will retry",
+          );
+          return false;
+        }
+
+        try {
+          const { error } = await _supabaseClient.rpc(
+            "toggle_to_go_order_items",
+            {
+              p_order_item_ids: resolvedItemIds,
+              p_is_to_go: isToGo,
+            },
+          );
+          if (error) {
+            console.error("[OfflineSync:toggle_to_go] Failed:", error);
+            return false;
+          }
+          if (__DEV__)
+            console.log("[OfflineSync:toggle_to_go] OK", {
+              count: resolvedItemIds.length,
+              isToGo,
+            });
+          // Leave the pending-guard marker (if this device still holds it) for
+          // resolveInboundToGo to clear on the next confirming fetch — clearing
+          // here would briefly expose a stale pre-commit broadcast.
+          return true;
+        } catch (err) {
+          console.error("[OfflineSync:toggle_to_go] Exception:", err);
           return false;
         }
       }
@@ -3640,7 +3904,6 @@ async function executeQueuedOperation(
         const {
           dbOrderId,
           orderId,
-          totalAmount,
           reason,
           perPaymentDetails,
           selectedItems,
@@ -3666,28 +3929,60 @@ async function executeQueuedOperation(
             refundType === "full"
               ? ("refund" as const)
               : ("partial_refund" as const);
+          const completedReversalIds: string[] = [];
 
-          for (const detail of perPaymentDetails || []) {
+          for (const [detailIndex, detail] of (
+            perPaymentDetails || []
+          ).entries()) {
             if (!detail.dbPaymentId) continue;
+            const refundKeySeed = `${op.id}:cash-refund:${detail.dbPaymentId}:${detailIndex}`;
+            const createKey = toIdempotencyKey(`${refundKeySeed}:create`);
+            const statusKey = toIdempotencyKey(`${refundKeySeed}:status`);
+            const paymentKey = toIdempotencyKey(`${refundKeySeed}:payment`);
+            const itemsKey = toIdempotencyKey(`${refundKeySeed}:items`);
 
             // 1. Create reversal record
             const { data: reversal, error: reversalError } =
-              await OrderService.createReversal(_supabaseClient, {
-                original_payment_id: detail.dbPaymentId,
-                original_psp_reference: null,
-                reversal_reference_id: null,
-                reversal_type: selectedItems ? "item_return" : reversalType,
-                amount: detail.totalRefund,
-                reason_code: reason,
-                reason_description: reason,
-                initiated_by: initiatedBy,
-                approved_by: null,
-              });
+              await OrderService.createReversal(
+                _supabaseClient,
+                {
+                  original_payment_id: detail.dbPaymentId,
+                  original_psp_reference: null,
+                  reversal_reference_id: `REV_OFFLINE_${op.id.slice(-12)}_${detailIndex}`,
+                  reversal_type: selectedItems ? "item_return" : reversalType,
+                  amount: detail.totalRefund,
+                  reason_code: reason,
+                  reason_description: reason,
+                  initiated_by: initiatedBy,
+                  approved_by: null,
+                },
+                { keyOverride: createKey },
+              );
 
             if (reversalError || !reversal) {
               console.error(
                 "[OfflineSync:process_cash_refund] createReversal failed:",
                 reversalError,
+              );
+              return false;
+            }
+
+            const { error: reversalStatusError } =
+              await OrderService.updateReversalStatus(
+                _supabaseClient,
+                reversal.id,
+                "completed",
+                null,
+                null,
+                null,
+                "APPROVED",
+                null,
+                { keyOverride: statusKey },
+              );
+            if (reversalStatusError) {
+              console.error(
+                "[OfflineSync:process_cash_refund] updateReversalStatus failed:",
+                reversalStatusError,
               );
               return false;
             }
@@ -3699,6 +3994,12 @@ async function executeQueuedOperation(
                 detail.dbPaymentId,
                 detail.totalRefund,
                 selectedItems ? "item_return" : reversalType,
+                {
+                  reason,
+                  initiatedBy,
+                },
+                undefined,
+                { keyOverride: paymentKey },
               );
 
             if (paymentError) {
@@ -3706,6 +4007,7 @@ async function executeQueuedOperation(
                 "[OfflineSync:process_cash_refund] applyRefundToPayment failed:",
                 paymentError,
               );
+              return false;
             }
 
             // 3. Record refund items if item-level refund
@@ -3732,9 +4034,13 @@ async function executeQueuedOperation(
                   _supabaseClient,
                   reversal.id,
                   refundItems,
+                  false,
+                  { keyOverride: itemsKey },
                 );
               }
             }
+
+            completedReversalIds.push(reversal.id);
           }
 
           // 4. Update order payment status
@@ -3742,6 +4048,11 @@ async function executeQueuedOperation(
             await OrderService.updateOrderPaymentStatusAfterRefund(
               _supabaseClient,
               resolvedRefundOrderId,
+              {
+                keyOverride: toIdempotencyKey(
+                  `${op.id}:cash-refund:order-status`,
+                ),
+              },
             );
 
           if (statusError) {
@@ -3761,6 +4072,30 @@ async function executeQueuedOperation(
               "[OfflineSync:process_cash_refund] Background sync failed:",
               syncErr,
             );
+          }
+
+          const location = useStoreSettingsStore.getState().selectedStore;
+          if (location && completedReversalIds.length > 0) {
+            try {
+              const [{ RefundReceiptService }, { PrinterService }] =
+                await Promise.all([
+                  import("@/services/refundReceiptService"),
+                  import("@/services/printing/PrinterService"),
+                ]);
+              for (const reversalId of completedReversalIds) {
+                const receipt = await RefundReceiptService.load(
+                  _supabaseClient,
+                  reversalId,
+                  location,
+                );
+                await PrinterService.printRefundReceipt(receipt);
+              }
+            } catch (printError) {
+              console.warn(
+                "[OfflineSync:process_cash_refund] Refund receipt print failed:",
+                printError,
+              );
+            }
           }
 
           console.log(`[OfflineSync:process_cash_refund] SUCCESS`);

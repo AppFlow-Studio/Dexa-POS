@@ -1,3 +1,8 @@
+import {
+  formatAbsoluteTime,
+  formatRelativeAge,
+  useLocalFreshness,
+} from "@/hooks/db/useLocalFreshness";
 import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
@@ -20,6 +25,26 @@ import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
  * The retry loop in PosSyncProvider is already working the problem in the
  * background; this exists so staff can force it from where they noticed the
  * problem instead of hunting for Settings → Syncing.
+ *
+ * ---------------------------------------------------------------------------
+ * Phase 4: where the timestamp comes from, and why not the freshness STATE
+ * ---------------------------------------------------------------------------
+ * The stamp is read from the local mirror's `sync_state` row
+ * (`useLocalFreshness("menu")`), which records the last moment a live sync
+ * actually CONFIRMED this menu — including the version-unchanged path, where
+ * nothing was rewritten but the server still told us the menu on screen is
+ * current. That is a durable, cross-launch fact; `syncState.lastSyncedAt` is
+ * an in-memory copy of whatever payload happened to hydrate the store, and on
+ * a cache boot it is the snapshot's own age.
+ *
+ * What is deliberately NOT used is the freshness STATE as the trigger. The
+ * menu's `staleAfterMs` is a tight 2 minutes (a stale menu rings up yesterday's
+ * prices) but `usePosSync` is `staleTime: Infinity` and does not poll, so
+ * "stale" would be true on every station within two minutes of boot. A banner
+ * that is always up is a banner nobody reads, and it would bury the two cases
+ * that genuinely mean something. The trigger stays `isFromCache || isError`;
+ * freshness supplies the wording and the honest "and you are offline, so it
+ * cannot fix itself" case.
  */
 const MenuStaleBanner: React.FC = () => {
   const uiScale = useUiScale();
@@ -31,6 +56,7 @@ const MenuStaleBanner: React.FC = () => {
   const lastSyncedAt = useMenuStore((st) => st.syncState.lastSyncedAt);
   const hasAnyMenu = useMenuStore((st) => st.menus.length > 0);
   const selectedStore = useStoreSettingsStore((st) => st.selectedStore);
+  const freshness = useLocalFreshness("menu", selectedStore?.id ?? null);
   const triggerPosSync = useTriggerPosSync();
   const [isRetrying, setIsRetrying] = useState(false);
 
@@ -50,6 +76,21 @@ const MenuStaleBanner: React.FC = () => {
   if (!isFromCache && !isError) return null;
 
   const busy = isSyncing || isRetrying;
+  const isOffline = freshness.state === "offline";
+
+  // The mirror's stamp is the durable one — it survives a relaunch and records
+  // the last live CONFIRMATION, not the age of whatever payload hydrated the
+  // store. Fall back to the in-memory stamp on a device where the local DB
+  // never opened, or before the mirror's first write.
+  const confirmedAt = freshness.lastSuccessAt ?? lastSyncedAt;
+
+  const detail = busy
+    ? "Fetching the latest prices and availability."
+    : isOffline
+      ? // Absolute time, not "3 minutes ago": offline is the case where the
+        // operator wants to know WHEN, because it is not about to change.
+        `No connection. Last confirmed${confirmedAt ? ` at ${formatAbsoluteTime(confirmedAt)}` : ""}; prices and 86s may have changed since.`
+      : `Last confirmed ${formatRelativeAge(confirmedAt)}. Tap to sync now.`;
 
   return (
     <TouchableOpacity
@@ -82,9 +123,7 @@ const MenuStaleBanner: React.FC = () => {
           {busy ? "Syncing menu…" : "Menu may be out of date"}
         </Text>
         <Text style={{ color: colors.muted, fontSize: s(10), marginTop: s(1) }}>
-          {busy
-            ? "Fetching the latest prices and availability."
-            : `Showing the last synced menu${formatSyncedAt(lastSyncedAt)}. Tap to sync now.`}
+          {detail}
         </Text>
       </View>
 
@@ -111,17 +150,5 @@ const MenuStaleBanner: React.FC = () => {
     </TouchableOpacity>
   );
 };
-
-/** " from 2:45 PM" / " from Aug 11" — empty string when the stamp is unusable. */
-function formatSyncedAt(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const sameDay = new Date().toDateString() === date.toDateString();
-  return sameDay
-    ? ` from ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
-    : ` from ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
-}
 
 export default MenuStaleBanner;

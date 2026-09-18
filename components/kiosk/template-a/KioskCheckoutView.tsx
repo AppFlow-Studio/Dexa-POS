@@ -1,9 +1,11 @@
 import { KioskCustomerInfoStep } from "@/components/kiosk/shared/KioskCustomerInfoStep";
+import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import {
   useKioskCheckout,
   type KioskCheckoutTotals,
 } from "@/components/kiosk/shared/useKioskCheckout";
+import { useActiveProcessor } from "@/hooks/useActiveProcessor";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
@@ -14,7 +16,14 @@ import {
   Heart,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 /**
  * Template A checkout flow: prepare order (real totals incl. tax) → optional tip
@@ -39,12 +48,26 @@ export function KioskCheckoutView({
 }) {
   const scale = useKioskUiScale();
   const clearCart = useKioskCartStore((state) => state.clear);
-  const { status, error, totals, computeTotals, payOrder } = useKioskCheckout();
+  const { status, error, totals, assistanceRef, computeTotals, payOrder, cancelCharge } =
+    useKioskCheckout();
+
+  // The active processor decides whether the card read can be cancelled from the
+  // kiosk: Castles/Valor/Dejavoo support a cancel-before-card, ATOM does not (no
+  // endpoint in v1), so we hide the Back button for it rather than promise a
+  // cancel we can't honour.
+  const { activeType } = useActiveProcessor();
+  const canCancelCharge = activeType !== "atom";
 
   // No backend order exists until the customer pays, so backing out is a plain
   // navigation — nothing to void or clean up.
   const handleBack = () => {
     onBack();
+  };
+
+  // Back pressed during the card read — abort the sale on the terminal. payOrder
+  // resolves the real outcome (cancelled / verify-with-staff / raced-to-paid).
+  const handleCancelCharge = () => {
+    void cancelCharge();
   };
 
   const tipEnabled = config.tipScreenEnabled;
@@ -132,6 +155,16 @@ export function KioskCheckoutView({
     );
   }
 
+  // ---- CANCELLING (Back pressed during the card read) ----
+  if (status === "cancelling") {
+    return <CancellingScreen config={config} />;
+  }
+
+  // ---- CANCELLED (confirmed — no charge; order voided) ----
+  if (status === "cancelled") {
+    return <CancelledScreen config={config} onDone={handleBack} />;
+  }
+
   // ---- PROCESSING / ERROR ----
   return (
     <View
@@ -141,7 +174,61 @@ export function KioskCheckoutView({
         gap: kioskPx(20, scale),
       }}
     >
-      {status === "error" ? (
+      {status === "assistance" ? (
+        <>
+          <Text style={{ fontSize: kioskPx(24, scale), fontWeight: "800", color: config.textColor }}>
+            Please see a staff member
+          </Text>
+          <Text style={{ fontSize: kioskPx(16, scale), color: muted, textAlign: "center" }}>
+            {error}
+          </Text>
+          {assistanceRef && (
+            <Text
+              style={{
+                fontSize: kioskPx(13, scale),
+                color: muted,
+                textAlign: "center",
+              }}
+            >
+              {assistanceRef.displayNumber
+                ? `Order #${assistanceRef.displayNumber}`
+                : assistanceRef.dbOrderId
+                  ? `Order ${assistanceRef.dbOrderId.slice(0, 8)}`
+                  : "Order not started"}
+              {"  ·  "}
+              {new Date(assistanceRef.at).toLocaleTimeString()}
+            </Text>
+          )}
+          <View
+            style={{
+              flexDirection: "row",
+              gap: kioskPx(12, scale),
+              marginTop: kioskPx(8, scale),
+            }}
+          >
+            <Pressable
+              onPress={handleBack}
+              style={{
+                paddingHorizontal: kioskPx(28, scale),
+                paddingVertical: kioskPx(14, scale),
+                borderRadius: kioskPx(16, scale),
+                borderWidth: 1.5,
+                borderColor: `${config.textColor}30`,
+              }}
+            >
+              <Text
+                style={{
+                  color: config.textColor,
+                  fontSize: kioskPx(16, scale),
+                  fontWeight: "700",
+                }}
+              >
+                Back to order
+              </Text>
+            </Pressable>
+          </View>
+        </>
+      ) : status === "error" ? (
         <>
           <Text
             style={{
@@ -191,7 +278,11 @@ export function KioskCheckoutView({
           </View>
         </>
       ) : status === "charging" ? (
-        <TapCardScreen config={config} scale={scale} />
+        <TapCardScreen
+          config={config}
+          scale={scale}
+          onCancel={canCancelCharge ? handleCancelCharge : undefined}
+        />
       ) : (
         <>
           <ActivityIndicator size="large" color={config.primaryColor} />
@@ -205,7 +296,7 @@ export function KioskCheckoutView({
             Processing your order…
           </Text>
           <Text style={{ fontSize: kioskPx(15, scale), color: muted }}>
-            Please don't leave this screen.
+            Please don&apos;t leave this screen.
           </Text>
         </>
       )}
@@ -220,50 +311,186 @@ export function KioskCheckoutView({
 function TapCardScreen({
   config,
   scale,
+  onCancel,
 }: {
   config: KioskConfig;
   scale: number;
+  /** When provided, a circular Back button cancels the card read on the device. */
+  onCancel?: () => void;
 }) {
+  const muted = `${config.textColor}99`;
+
+  return (
+    // Full-bleed wrapper so the Back button anchors to the real screen edge.
+    // `self-stretch` overrides the parent's `items-center`, which would
+    // otherwise collapse this to content width and float the button mid-screen.
+    <View
+      className="flex-1 self-stretch"
+      style={{ backgroundColor: config.backgroundColor }}
+    >
+      <View
+        className="flex-1 items-center justify-center px-10"
+        style={{ gap: kioskPx(20, scale) }}
+      >
+        <CreditCard size={kioskPx(96, scale)} color={config.primaryColor} />
+
+        <Text
+          style={{
+            fontSize: kioskPx(26, scale),
+            fontWeight: "800",
+            color: config.textColor,
+            textAlign: "center",
+          }}
+        >
+          Swipe, Tap, or Insert your card
+        </Text>
+
+        <Text
+          style={{
+            fontSize: kioskPx(16, scale),
+            color: muted,
+            textAlign: "center",
+            lineHeight: kioskPx(24, scale),
+          }}
+        >
+          Follow the prompts on the card reader.
+          {"\n"}Please don&apos;t leave this screen.
+        </Text>
+
+        <ActivityIndicator
+          size="large"
+          color={config.primaryColor}
+          style={{ marginTop: kioskPx(8, scale) }}
+        />
+      </View>
+
+      {/* Back pill — bottom-left of the screen. Cancels the sale on the
+          terminal (return2Idle / cancel-before-card) and returns to cart. */}
+      {onCancel ? (
+        <KioskPressable
+          onPress={onCancel}
+          pressedScale={0.9}
+          accessibilityLabel="Cancel payment and go back"
+          style={{
+            position: "absolute",
+            bottom: kioskPx(28, scale),
+            left: kioskPx(28, scale),
+            zIndex: 10,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: kioskPx(8, scale),
+            height: kioskPx(56, scale),
+            paddingHorizontal: kioskPx(22, scale),
+            borderRadius: kioskPx(28, scale),
+            backgroundColor: `${config.textColor}12`,
+          }}
+        >
+          <ChevronLeft size={kioskPx(28, scale)} color={config.textColor} />
+          <Text
+            style={{
+              fontSize: kioskPx(18, scale),
+              fontWeight: "700",
+              color: config.textColor,
+            }}
+          >
+            Back
+          </Text>
+        </KioskPressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Shown while the Back-triggered cancel is being dispatched to the terminal.
+ * The real outcome (cancelled / verify-with-staff / raced-to-paid) is resolved
+ * by the checkout hook when the in-flight charge settles.
+ */
+function CancellingScreen({ config }: { config: KioskConfig }) {
+  const s = useKioskUiScale();
   const muted = `${config.textColor}99`;
 
   return (
     <View
       className="flex-1 items-center justify-center px-10"
-      style={{
-        backgroundColor: config.backgroundColor,
-        gap: kioskPx(20, scale),
-      }}
+      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
     >
-      <CreditCard size={kioskPx(96, scale)} color={config.primaryColor} />
-
+      <ActivityIndicator size="large" color={config.primaryColor} />
       <Text
         style={{
-          fontSize: kioskPx(26, scale),
+          fontSize: kioskPx(20, s),
+          fontWeight: "700",
+          color: config.textColor,
+        }}
+      >
+        Cancelling…
+      </Text>
+      <Text
+        style={{ fontSize: kioskPx(15, s), color: muted, textAlign: "center" }}
+      >
+        Cancelling the payment on the card reader.
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Confirmed cancellation — no charge was made and the half-built order has been
+ * voided. Auto-returns to the cart so the customer can retry, with an explicit
+ * Back-to-cart action if they don't want to wait.
+ */
+function CancelledScreen({
+  config,
+  onDone,
+}: {
+  config: KioskConfig;
+  onDone: () => void;
+}) {
+  const s = useKioskUiScale();
+  const muted = `${config.textColor}99`;
+
+  useEffect(() => {
+    const t = setTimeout(onDone, 1800);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <View
+      className="flex-1 items-center justify-center px-10"
+      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
+    >
+      <CheckCircle2 size={kioskPx(84, s)} color={config.primaryColor} />
+      <Text
+        style={{
+          fontSize: kioskPx(24, s),
           fontWeight: "800",
           color: config.textColor,
-          textAlign: "center",
         }}
       >
-        Swipe, Tap, or Insert your card
+        Payment cancelled
       </Text>
-
       <Text
+        style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}
+      >
+        No charge was made. Taking you back to your cart…
+      </Text>
+      <Pressable
+        onPress={onDone}
         style={{
-          fontSize: kioskPx(16, scale),
-          color: muted,
-          textAlign: "center",
-          lineHeight: kioskPx(24, scale),
+          marginTop: kioskPx(8, s),
+          paddingHorizontal: kioskPx(36, s),
+          paddingVertical: kioskPx(16, s),
+          borderRadius: kioskPx(16, s),
+          backgroundColor: config.primaryColor,
         }}
       >
-        Follow the prompts on the card reader.
-        {"\n"}Please don't leave this screen.
-      </Text>
-
-      <ActivityIndicator
-        size="large"
-        color={config.primaryColor}
-        style={{ marginTop: kioskPx(8, scale) }}
-      />
+        <Text
+          style={{ color: "#FFFFFF", fontSize: kioskPx(18, s), fontWeight: "700" }}
+        >
+          Back to cart
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -474,6 +701,13 @@ function TipStep({
   onConfirm: (tipAmount: number) => void;
 }) {
   const s = useKioskUiScale();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  // Landscape has roughly half the vertical budget of portrait but nearly
+  // double the width, and this screen was a single centred column either way:
+  // measured, it ran 32-47px past the viewport on every landscape panel, and
+  // since nothing scrolled the summary and Pay button were clipped. Two panes
+  // spend the width instead — same structure KioskItemDetail uses.
+  const isHorizontal = screenWidth > screenHeight;
   const [selected, setSelected] = useState<number | null>(null); // percent, -1 = no tip
   const muted = `${config.textColor}99`;
   const faint = `${config.textColor}12`;
@@ -493,36 +727,30 @@ function TipStep({
   const noTip = selected === -1;
   const disabled = selected == null || loading || !totals;
 
-  return (
-    <View
-      className="flex-1"
-      style={{ backgroundColor: config.backgroundColor }}
+  const backButton = (
+    <KioskPressable
+      onPress={onBack}
+      pressedScale={0.9}
+      style={{
+        position: "absolute",
+        top: kioskPx(20, s),
+        left: kioskPx(20, s),
+        zIndex: 10,
+        width: kioskPx(52, s),
+        height: kioskPx(52, s),
+        borderRadius: kioskPx(26, s),
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: faint,
+      }}
     >
-      {/* Back */}
-      <Pressable
-        onPress={onBack}
-        hitSlop={8}
-        style={{
-          position: "absolute",
-          top: kioskPx(20, s),
-          left: kioskPx(20, s),
-          zIndex: 10,
-          width: kioskPx(48, s),
-          height: kioskPx(48, s),
-          borderRadius: kioskPx(24, s),
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: faint,
-        }}
-      >
-        <ChevronLeft size={kioskPx(26, s)} color={config.textColor} />
-      </Pressable>
+      <ChevronLeft size={kioskPx(28, s)} color={config.textColor} />
+    </KioskPressable>
+  );
 
-      <View
-        className="flex-1 items-center justify-center px-8"
-        style={{ gap: kioskPx(28, s) }}
-      >
-        {/* Heading */}
+  const chooser = (
+    <>
+      {/* Heading */}
         <View style={{ alignItems: "center", gap: kioskPx(12, s) }}>
           <View
             style={{
@@ -569,7 +797,7 @@ function TipStep({
             flexDirection: "row",
             gap: kioskPx(12, s),
             width: "100%",
-            maxWidth: kioskPx(560, s),
+            maxWidth: kioskPx(isHorizontal ? 760 : 560, s),
           }}
         >
           {presets.map((pct) => {
@@ -634,17 +862,11 @@ function TipStep({
             No tip
           </Text>
         </Pressable>
-      </View>
+    </>
+  );
 
-      {/* Footer — summary card + pay */}
-      <View
-        style={{
-          paddingHorizontal: kioskPx(24, s),
-          paddingTop: kioskPx(18, s),
-          paddingBottom: kioskPx(24, s),
-          gap: kioskPx(14, s),
-        }}
-      >
+  const summary = (
+    <>
         <View
           style={{
             padding: kioskPx(16, s),
@@ -717,6 +939,83 @@ function TipStep({
               : `Pay $${grandTotal.toFixed(2)}`}
           </Text>
         </Pressable>
+    </>
+  );
+
+  // ─── Landscape: chooser left, summary + pay right ────────────────
+  if (isHorizontal) {
+    return (
+      <View
+        className="flex-1"
+        style={{ backgroundColor: config.backgroundColor }}
+      >
+        {backButton}
+        <View style={{ flex: 1, flexDirection: "row" }}>
+          <View
+            style={{
+              flex: 1.35,
+              alignItems: "center",
+              justifyContent: "center",
+              paddingHorizontal: kioskPx(32, s),
+              paddingVertical: kioskPx(24, s),
+              gap: kioskPx(22, s),
+            }}
+          >
+            {chooser}
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              justifyContent: "center",
+              paddingHorizontal: kioskPx(28, s),
+              paddingVertical: kioskPx(24, s),
+              gap: kioskPx(16, s),
+              borderLeftWidth: 1,
+              borderLeftColor: faint,
+              backgroundColor: `${config.primaryColor}06`,
+            }}
+          >
+            {summary}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ─── Portrait: single column, summary pinned at the foot ─────────
+  return (
+    <View
+      className="flex-1"
+      style={{ backgroundColor: config.backgroundColor }}
+    >
+      {backButton}
+
+      {/* Scrolls only if a long preset row ever exceeds the space; centred
+          otherwise, so short menus keep the original balanced look. */}
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          flexGrow: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: kioskPx(32, s),
+          gap: kioskPx(28, s),
+        }}
+      >
+        {chooser}
+      </ScrollView>
+
+      <View
+        style={{
+          paddingHorizontal: kioskPx(24, s),
+          paddingTop: kioskPx(18, s),
+          paddingBottom: kioskPx(24, s),
+          gap: kioskPx(14, s),
+        }}
+      >
+        {summary}
       </View>
     </View>
   );

@@ -1,5 +1,9 @@
 import { PrintDocument } from "@/types/print-document";
-import { PrinterConfig, PrinterStatusResult } from "@/types/printer";
+import {
+  DrawerKickSense,
+  PrinterConfig,
+  PrinterStatusResult,
+} from "@/types/printer";
 import { StarIO10InUseError } from "react-native-star-io10";
 import { renderDocumentToStarCommands } from "../renderers/StarXpandRenderer";
 import {
@@ -264,6 +268,44 @@ export class StarMicronicsDriver implements PrinterDriver {
   }
 
   async openCashDrawer(): Promise<void> {
+    await this._kickCashDrawer(false);
+  }
+
+  /**
+   * Strict-confirm variant: kick the drawer AND read drawer-sense on the SAME
+   * open connection (baseline before + after). Returns a polarity-agnostic
+   * transition. Used by PrinterService for strict-confirm. `ok` is still the
+   * print ACK — the sense here is advisory.
+   */
+  async openCashDrawerConfirmed(): Promise<DrawerKickSense> {
+    return this._kickCashDrawer(true);
+  }
+
+  /**
+   * Read drawer-sense from a status on an ALREADY-OPEN connection. NEVER
+   * throws — a read hiccup returns nulls so it can neither turn a delivered
+   * kick into a reported failure nor trip withInUseRetry into a re-kick.
+   */
+  private async readDrawerSenseSafe(
+    printer: ReturnType<typeof createStarPrinterInstance>,
+  ): Promise<{ detail: boolean | null; ext: boolean | null; top: boolean | null }> {
+    try {
+      const status = await printer.getStatus();
+      const detail = (status as any).detail;
+      const d1 = detail?.drawer1OpenCloseSignal;
+      const ext1 = detail?.externalDevice1Connected;
+      const top = (status as any).drawerOpenCloseSignal;
+      return {
+        detail: typeof d1 === "boolean" ? d1 : null,
+        ext: typeof ext1 === "boolean" ? ext1 : null,
+        top: typeof top === "boolean" ? top : null,
+      };
+    } catch {
+      return { detail: null, ext: null, top: null };
+    }
+  }
+
+  private async _kickCashDrawer(confirm: boolean): Promise<DrawerKickSense> {
     if (!this.config?.networkAddress) {
       throw new Error("Star Micronics driver not initialized");
     }
@@ -295,16 +337,34 @@ export class StarMicronicsDriver implements PrinterDriver {
     const commands = await commandBuilder.getCommands();
 
     const mutex = getStarPrinterMutex(this.config.networkAddress);
-    await mutex.runExclusive(() =>
+    return mutex.runExclusive(() =>
       this.withInUseRetry(async () => {
         const printer = createStarPrinterInstance(this.config!.networkAddress!, "print");
+        // All sense reads are best-effort; only printer.print() (the kick)
+        // defines success.
+        let baseDetail: boolean | null = null;
+        let baseTop: boolean | null = null;
+        let afterDetail: boolean | null = null;
+        let afterTop: boolean | null = null;
+        let ext: boolean | null = null;
         try {
           await printer.open();
+          if (confirm) {
+            const b = await this.readDrawerSenseSafe(printer);
+            baseDetail = b.detail;
+            baseTop = b.top;
+          }
           await printer.print(commands);
-          await printer.close();
           this.connected = true;
           this.lastSuccessAt = Date.now();
           recordStarSuccess(this.config!.networkAddress!);
+          if (confirm) {
+            const a = await this.readDrawerSenseSafe(printer);
+            afterDetail = a.detail;
+            afterTop = a.top;
+            ext = a.ext;
+          }
+          await printer.close();
         } catch (e: any) {
           this.connected = false;
           try { await printer.close(); } catch { /* ignore */ }
@@ -313,6 +373,24 @@ export class StarMicronicsDriver implements PrinterDriver {
         } finally {
           await disposeQuietly(printer);
         }
+
+        // Polarity-agnostic transition. Prefer the discriminating detail
+        // channel; fall back to the top-level signal; null = indeterminate
+        // (no sense channel or a read hiccup) — the caller treats null as
+        // "trust the ACK", never as failure.
+        let drawerConfirmed: boolean | null = null;
+        if (confirm) {
+          if (baseDetail !== null && afterDetail !== null) {
+            drawerConfirmed = baseDetail !== afterDetail;
+          } else if (baseTop !== null && afterTop !== null) {
+            drawerConfirmed = baseTop !== afterTop;
+          }
+        }
+        return {
+          externalDevice: ext,
+          drawerSignalDetail: afterDetail,
+          drawerConfirmed,
+        };
       }, "openCashDrawer"),
     );
   }

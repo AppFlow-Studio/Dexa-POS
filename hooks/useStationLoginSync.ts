@@ -3,6 +3,7 @@ import { getPinAuthFailure } from "@/lib/authFlow";
 import { getDeviceName } from "@/lib/deviceName";
 import { getPosAccessFailure } from "@/lib/posAccessControl";
 import { replaceRoute } from "@/lib/rootNavigation";
+import { refreshSelectedStationOperationalState } from "@/services/posAccessService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { PosStaffLoginResponse } from "@/types/station";
@@ -35,6 +36,18 @@ export function useStationLoginSync() {
       const action = pendingStationLogins[0];
 
       try {
+        const stationState = await refreshSelectedStationOperationalState(supabase);
+        if (!stationState.valid) {
+          const employeeStore = useEmployeeStore.getState();
+          employeeStore.removeStationLoginFromQueue(action.id);
+          employeeStore.rollbackSignIn();
+          employeeStore.signOut();
+          employeeStore.setPendingAuthError(stationState.failure.message);
+          useStoreSettingsStore.getState().clearSelectedStation();
+          replaceRoute("(auth)", "station-select");
+          return;
+        }
+
         const { data, error } = await supabase.rpc('pos_staff_login_v2', {
           p_location_id: action.locationId,
           p_pin_code: action.pin,

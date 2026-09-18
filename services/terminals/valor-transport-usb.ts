@@ -198,11 +198,11 @@ export class ValorUsbTransport implements ITerminalTransport {
   }
 
   private _findValorTerminal(devices: UsbDeviceInfo[]): UsbDeviceInfo | undefined {
-    const byVendor = devices.find((d) => isValorUsbVendorId(d.vendorId));
-    if (byVendor) return byVendor;
-    return devices.find((d) => {
+    const candidates = devices.filter((d) => {
       const name = (d.productName || "").toUpperCase();
-      return VALOR_PRODUCT_HINTS.some((h) => name.includes(h));
+      return isValorUsbVendorId(d.vendorId) || VALOR_PRODUCT_HINTS.some((h) => name.includes(h));
     });
+    if (candidates.length > 1) throw new Error("Multiple possible Valor USB terminals found. Connect only the station's registered terminal.");
+    return candidates[0];
   }
 }

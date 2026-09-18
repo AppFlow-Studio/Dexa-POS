@@ -282,7 +282,15 @@ export async function openTab(
       // Backend sync: order status + item statuses
       if (order.db_order_id) {
         const { OrderService } = require("@/services/orderService");
-        const sendItems = order.items.filter((item) => item.db_order_item_id);
+        // Fire ONLY the items this pre-auth just marked as sent. A scan by db
+        // id alone (no kitchen_status clause) re-fires everything already sent
+        // on the tab (K4): bulk_update_order_item_status_v2 rewrites fire_time
+        // and moves those items onto fresh KDS tickets (S2).
+        const sendItems = order.items.filter(
+          (item) =>
+            item.db_order_item_id &&
+            (!item.kitchen_status || item.kitchen_status === "new"),
+        );
         const dbItemIds = sendItems.map((item) => item.db_order_item_id!);
         const localItemIds = sendItems.map((item) => item.id);
         const sendContext = createKitchenSendContext({

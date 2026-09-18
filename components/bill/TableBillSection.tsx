@@ -2,6 +2,7 @@ import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
 import { CartItem, OrderProfile } from '@/lib/types'
+import { isKitchenItemSent } from '@/lib/kitchenStatusUtils'
 import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import {
@@ -63,10 +64,6 @@ function deriveAggregateStatus (items: CartItem[]): AggregateKitchenStatus {
   if (active.some(i => i.kitchen_status === 'preparing')) return 'preparing'
   if (active.some(i => i.kitchen_status === 'sent')) return 'sent'
   return null
-}
-
-function isSentToKitchen (item: CartItem): boolean {
-  return !!item.kitchen_status && item.kitchen_status !== 'new'
 }
 
 const DenseBillItemRow = React.memo(
@@ -571,7 +568,7 @@ const DenseSeatView = React.memo(
             )
             const isSent = !!sentCourses?.[course]
             const hasUnsentItems = courseNonVoided.some(
-              item => !isSentToKitchen(item)
+              item => !isKitchenItemSent(item)
             )
             const isCurrentCourse = currentCourse === course
 
@@ -593,7 +590,7 @@ const DenseSeatView = React.memo(
                 id: `item-${item.id}`,
                 type: 'item',
                 itemId: item.id,
-                isSent: isSentToKitchen(item) && !item.is_voided,
+                isSent: isKitchenItemSent(item) && !item.is_voided,
                 hasUnsentItems,
                 indentLeft: 14,
                 seatKey,
@@ -604,13 +601,13 @@ const DenseSeatView = React.memo(
           return
         }
 
-        const seatHasUnsentItems = allItems.some(item => !isSentToKitchen(item) && !item.is_voided)
+        const seatHasUnsentItems = allItems.some(item => !isKitchenItemSent(item) && !item.is_voided)
         allItems.forEach(item => {
           nextRows.push({
             id: `item-${item.id}`,
             type: 'item',
             itemId: item.id,
-            isSent: isSentToKitchen(item) && !item.is_voided,
+            isSent: isKitchenItemSent(item) && !item.is_voided,
             hasUnsentItems: seatHasUnsentItems,
             indentLeft: 6,
             seatKey

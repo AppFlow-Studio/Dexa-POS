@@ -21,7 +21,18 @@ export interface SideEffectContext {
   sessionId: string | undefined;
 }
 
-export type SideEffectHandler = (ctx: SideEffectContext) => Promise<void>;
+/**
+ * Discriminated outcome of a kitchen send, returned by sendToKitchenEffect so
+ * dispatchAction can carry the REAL result back to the caller (K6). Mirrors
+ * KitchenSendCommitResult in useOrderStore.
+ */
+export type KitchenEffectOutcome =
+  | { status: "sent" }
+  | { status: "queued" }
+  | { status: "rejected"; error: unknown }
+  | { status: "skipped" };
+
+export type SideEffectHandler = (ctx: SideEffectContext) => Promise<unknown>;
 
 interface RegisteredEffect {
   actionTypes: Set<SessionActionType>;
@@ -59,15 +70,18 @@ export function registerSessionSideEffect(
 /**
  * Fire all registered effects whose actionTypes match the dispatched action.
  * Uses Promise.allSettled so one failing effect doesn't block others.
+ *
+ * Returns the fulfilled values (e.g. a KitchenEffectOutcome) so dispatchAction
+ * can surface the real result when it opts in via `awaitEffects` (K6).
  */
-export async function _fireEffects(ctx: SideEffectContext): Promise<void> {
+export async function _fireEffects(ctx: SideEffectContext): Promise<unknown[]> {
   const matching = registry.filter((e) => e.actionTypes.has(ctx.action.type));
-  if (matching.length === 0) return;
+  if (matching.length === 0) return [];
 
   const results = await Promise.allSettled(
     matching.map(async (entry) => {
       try {
-        await entry.handler(ctx);
+        return await entry.handler(ctx);
       } catch (err) {
         console.error(
           `[SessionSideEffect] "${entry.label}" failed for ${ctx.action.type}:`,
@@ -86,6 +100,12 @@ export async function _fireEffects(ctx: SideEffectContext): Promise<void> {
       );
     }
   }
+
+  return results
+    .filter(
+      (r): r is PromiseFulfilledResult<unknown> => r.status === "fulfilled",
+    )
+    .map((r) => r.value);
 }
 
 /**

@@ -57,6 +57,23 @@ const MenuManagementImage: React.FC<MenuManagementImageProps> = ({
     return resolved;
   }, [image, decodeSize]);
 
+  // The native-bitmap problem above is specific to base64: a data URI has no
+  // URL key, so expo-image cannot disk-cache it and memory-only is the only
+  // option. Sources that DO have a key — http(s) CDN urls, and the file://
+  // paths the useMenuStore base64 offload rewrites items to — get the disk
+  // cache instead. That is what lets these thumbnails survive going offline,
+  // the way order-processing's already do via OptimizedListImage
+  // (cachePolicy="disk") and prefetchMenuItemRemoteImages. Memory-only here
+  // meant nothing was ever written to disk, and the clearMemoryCache() on
+  // screen unmount then wiped the only copy.
+  const cachePolicy = useMemo(() => {
+    if (typeof source === "object" && source !== null && "uri" in source) {
+      const uri = source.uri;
+      if (typeof uri === "string" && uri.startsWith("data:")) return "memory";
+    }
+    return "disk";
+  }, [source]);
+
   if (!source) return null;
 
   return (
@@ -65,9 +82,7 @@ const MenuManagementImage: React.FC<MenuManagementImageProps> = ({
       style={style}
       className={className}
       contentFit="cover"
-      // base64/data URIs can't be disk-cached; keep them in the (evictable)
-      // memory cache only, and clear it on screen exit.
-      cachePolicy="memory"
+      cachePolicy={cachePolicy}
       recyclingKey={recyclingKey}
     />
   );

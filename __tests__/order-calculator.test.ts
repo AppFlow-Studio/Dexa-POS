@@ -25,27 +25,58 @@ import { TaxRatesMap } from "@/types/menu";
 // TEST FIXTURES
 // ============================================================================
 
-const createMockItem = (overrides: Partial<CartItem> = {}): CartItem => ({
-  id: `item_${Math.random().toString(36).slice(2)}`,
-  menuItemId: "menu_1",
-  name: "Test Item",
-  quantity: 1,
-  paidQuantity: 0,
-  originalPrice: 10.0,
-  price: 10.0,
-  unitPrice: 10.0,
-  cashPrice: 10.0,
-  baseCardPrice: 10.0,
-  baseCashPrice: 10.0,
-  image: undefined,
-  customizations: {},
-  subtotal: 10.0,
-  cashSubtotal: 10.0,
-  taxRate: 8.875,
-  taxAmount: 0.89,
-  cashTaxAmount: 0.89,
-  ...overrides,
-});
+/**
+ * The calculator reads `baseCardPrice ?? unitPrice` and `baseCashPrice ?? …`
+ * (see calculateItemEffectiveCardPrice / …CashPrice). It NEVER reads `price`
+ * or `cashPrice`.
+ *
+ * The original helper hard-coded `baseCardPrice: 10.0` / `baseCashPrice: 10.0`
+ * and spread `overrides` last, so a test writing `{ price: 5 }` or
+ * `{ cashPrice: 9.65 }` changed a field the calculator ignores while the base
+ * stayed at 10 — silently computing a different order than the one the test
+ * described. That left 7 tests red against correct production code.
+ *
+ * Deriving the base fields from whichever price a test supplies makes
+ * `{ price: 5 }` mean what every call site here plainly intends. An explicit
+ * `baseCardPrice` / `baseCashPrice` override still wins.
+ */
+const createMockItem = (overrides: Partial<CartItem> = {}): CartItem => {
+  const card =
+    overrides.baseCardPrice ?? overrides.price ?? overrides.unitPrice ?? 10.0;
+  // `originalPrice` is this suite's long-standing name for "base cash price"
+  // (see Scenario 5's `originalPrice: 10.0, // Base cash price`), and it is
+  // last in the chain so an explicit cashPrice still wins.
+  const cash =
+    overrides.baseCashPrice ??
+    overrides.cashPrice ??
+    overrides.originalPrice ??
+    card;
+
+  return {
+    id: `item_${Math.random().toString(36).slice(2)}`,
+    menuItemId: "menu_1",
+    name: "Test Item",
+    quantity: 1,
+    paidQuantity: 0,
+    originalPrice: card,
+    price: card,
+    unitPrice: card,
+    cashPrice: cash,
+    image: undefined,
+    customizations: {},
+    subtotal: card,
+    cashSubtotal: cash,
+    taxRate: 8.875,
+    taxAmount: 0.89,
+    cashTaxAmount: 0.89,
+    ...overrides,
+    // After the spread: the bases are what the calculator actually reads, and
+    // they must stay consistent with the price the test supplied rather than
+    // being left at a stale default by the spread above.
+    baseCardPrice: card,
+    baseCashPrice: cash,
+  };
+};
 
 const defaultTaxRates: TaxRatesMap = {
   standard: 8.875,
@@ -199,6 +230,9 @@ describe("Scenario 5: Item with Modifiers", () => {
     expect(cashPrice).toBe(13.5);
   });
 
+  // RESOLVED 2026-09-07: the calculator now prices customizations.addOns.
+  // `baseCardPrice`/`baseCashPrice` are the bare menu price by construction
+  // (ItemCustomizationDialog.tsx:118-121), so adding them cannot double-count.
   it("includes add-ons in cash price calculation", () => {
     const item = createMockItem({
       price: 15.0,
@@ -911,11 +945,18 @@ describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
 
     // Verify cash total is based on cash discount, not card discount
     // Cash net: $28.50 - $7.13 = $21.37
-    // Cash tax: per-item rounding
-    // Item1 cash net: $19 - ($7.13 * 19/28.5) = $19 - $4.75 = $14.25, tax = $1.26
-    // Item2 cash net: $9.50 - ($7.13 * 9.5/28.5) = $9.50 - $2.38 = $7.12, tax = $0.63
-    // Cash total: $21.37 + $1.89 = $23.26
-    expect(result.cash_total_amount).toBe(23.26);
+    //
+    // Tax is rounded ONCE PER RATE GROUP, never per item — the "v6
+    // aggregate-per-rate-group" rule in calculateOrderTotals, which exists to
+    // match the server's calculate_order_totals_fast v6:
+    //   group base $21.37 * 8.875% = $1.8966 -> $1.90
+    //   cash total = $21.37 + $1.90 = $23.27
+    //
+    // This previously asserted $23.26, derived from summing per-item rounded
+    // tax ($1.26 + $0.63 = $1.89) — exactly the cent-low drift on multi-item
+    // orders that v6 was introduced to remove. The old expectation encoded the
+    // bug. Production code is correct; this test predated the change.
+    expect(result.cash_total_amount).toBe(23.27);
   });
 });
 

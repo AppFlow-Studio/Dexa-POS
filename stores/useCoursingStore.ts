@@ -126,6 +126,16 @@ type CoursingState = {
     dbItemId?: string,
     skipBackendSync?: boolean
   ) => void;
+  /**
+   * Drop the coursing entries for a cart line that was removed (S8). Keeps
+   * itemCourseMap / dbIdToCourseMap from leaking for the life of the order and
+   * resolving stale courses for reused deterministic ids.
+   */
+  removeItemCourse: (
+    orderId: string,
+    itemId: string,
+    dbItemId?: string,
+  ) => void;
   assignItemsToWorkingCourse: (orderId: string, itemIds: string[]) => void;
   finalizeCurrentCourse: (orderId: string, itemIds: string[]) => number;
 
@@ -525,6 +535,17 @@ export const useCoursingStore = create<CoursingState>()(
           }
         });
       }
+    },
+
+    removeItemCourse: (orderId, itemId, dbItemId?) => {
+      set((state) => {
+        const o = state.byOrderId[orderId];
+        if (!o) return;
+        // S8: prune the removed line's course pointers so the maps cannot leak
+        // for the life of the order or resolve stale courses for reused ids.
+        delete o.itemCourseMap[itemId];
+        if (dbItemId) delete o.dbIdToCourseMap[dbItemId];
+      });
     },
 
     assignItemsToWorkingCourse: (orderId: string, itemIds: string[]) => {

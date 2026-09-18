@@ -1471,13 +1471,25 @@ export const useKDSStore = create<KDSState>()(
         if (!client) return;
 
         try {
-          // Query kds_displays by station_id (1:1 FK)
-          const { data: display, error: displayError } = await client
-            .from("kds_displays")
-            .select("*")
-            .eq("station_id", stationId)
-            .eq("is_active", true)
-            .maybeSingle();
+          // Query kds_displays by station_id (1:1 FK). Deadline-wrapped so a
+          // slow link on KDS entry can't hang the display config load; on
+          // timeout we fall back to "show all" like any other display error.
+          const { data: display, error: displayError } =
+            await runWithDeadline<any>(
+              "fetch_kds_display",
+              DEADLINES.read,
+              (signal) =>
+                client
+                  .from("kds_displays")
+                  .select("*")
+                  .eq("station_id", stationId)
+                  .eq("is_active", true)
+                  .abortSignal(signal)
+                  .maybeSingle() as unknown as Promise<{
+                  data: any | null;
+                  error: any;
+                }>,
+            );
 
           if (displayError) {
             console.error("[KDSStore] fetchKDSDisplay error:", displayError);
@@ -1506,11 +1518,41 @@ export const useKDSStore = create<KDSState>()(
             return;
           }
 
-          // Fetch routing rules for this display
-          const { data: rules, error: rulesError } = await client
-            .from("kds_routing_rules")
-            .select("rule_type, rule_value")
-            .eq("kds_display_id", display.id);
+          // Routing rules and prep stations each only need `display`, so fetch
+          // them in parallel (deadline-wrapped) instead of three serial
+          // round-trips on KDS entry — the additive latency was amplified once
+          // this location switched to prep-station routing.
+          const [rulesRes, prepRes] = await Promise.all([
+            runWithDeadline<KDSRoutingRule[]>(
+              "fetch_kds_routing_rules",
+              DEADLINES.read,
+              (signal) =>
+                client
+                  .from("kds_routing_rules")
+                  .select("rule_type, rule_value")
+                  .eq("kds_display_id", display.id)
+                  .abortSignal(signal) as unknown as Promise<{
+                  data: KDSRoutingRule[] | null;
+                  error: any;
+                }>,
+            ),
+            runWithDeadline<any[]>(
+              "fetch_prep_stations",
+              DEADLINES.read,
+              (signal) =>
+                client
+                  .from("prep_stations")
+                  .select("id, name, color")
+                  .eq("location_id", display.location_id)
+                  .eq("is_active", true)
+                  .abortSignal(signal) as unknown as Promise<{
+                  data: any[] | null;
+                  error: any;
+                }>,
+            ),
+          ]);
+          const { data: rules, error: rulesError } = rulesRes;
+          const { data: prepStationsData, error: psError } = prepRes;
 
           if (rulesError) {
             console.error(
@@ -1518,13 +1560,6 @@ export const useKDSStore = create<KDSState>()(
               rulesError,
             );
           }
-
-          // Fetch prep stations for this location
-          const { data: prepStationsData, error: psError } = await client
-            .from("prep_stations")
-            .select("id, name, color")
-            .eq("location_id", display.location_id)
-            .eq("is_active", true);
 
           if (psError) {
             console.error(

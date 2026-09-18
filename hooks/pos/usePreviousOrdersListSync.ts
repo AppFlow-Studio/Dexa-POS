@@ -1,30 +1,31 @@
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useCallback, useEffect, useState } from "react";
-import { useRealtimeFallbackPolling } from "@/hooks/pos/useRealtimeFallbackPolling";
 
 /**
- * Shared list behavior: initial history load, realtime-first new-order
- * delivery with 15s polling fallback, pull-to-refresh with forced fetch.
+ * Shared list behavior: initial history load + pull-to-refresh with forced
+ * fetch.
  *
- * While the orders realtime channel is SUBSCRIBED, `_handleOrderBroadcast`
- * in `usePreviousOrdersStore` keeps the list fresh without any DB hits.
- * When the channel is disconnected (including the brief mount→SUBSCRIBED
- * window), `checkForNewOrders` runs as a 15s fallback.
+ * New-order delivery no longer uses a 15s polling badge — the local mirror
+ * (delta sync, every 30s) owns the list and realtime broadcast patches only
+ * update rows already on screen, so there is no separate "new orders" count
+ * to get out of sync with what the mirror holds.
  */
 export function usePreviousOrdersListSync() {
   const refreshPreviousOrders = usePreviousOrdersStore(
     (s) => s.refreshPreviousOrders,
   );
-  const checkForNewOrders = usePreviousOrdersStore((s) => s.checkForNewOrders);
-  const clearNewOrdersCount = usePreviousOrdersStore(
-    (s) => s.clearNewOrdersCount,
-  );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  // Initial bootstrap fires unconditionally at mount. This is the only path
-  // that seeds `_orderLookup`, and the fallback primitive's mount-fire below
-  // only handles deltas against an already-loaded lookup.
+  // Announce list mount so own-echo refreshes (schedulePreviousOrdersRefresh)
+  // only run while a Previous Orders surface is actually on screen.
+  useEffect(() => {
+    usePreviousOrdersStore.setState({ _isListMounted: true });
+    return () => usePreviousOrdersStore.setState({ _isListMounted: false });
+  }, []);
+
+  // Initial bootstrap fires unconditionally at mount — the only path that
+  // seeds `_orderLookup`.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -36,18 +37,8 @@ export function usePreviousOrdersListSync() {
     })();
     return () => {
       cancelled = true;
-      clearNewOrdersCount();
     };
-  }, [refreshPreviousOrders, clearNewOrdersCount]);
-
-  // Fallback polling — runs only while realtime orders channel is down.
-  useRealtimeFallbackPolling(
-    () => {
-      void checkForNewOrders();
-    },
-    { intervalMs: 15000 },
-  );
-
+  }, [refreshPreviousOrders]);
   const refresh = useCallback(async () => {
     setIsRefreshing(true);
     try {

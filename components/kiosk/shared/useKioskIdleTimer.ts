@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isKioskCheckoutHeld } from "./checkoutGuard";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 
 /**
  * Shared idle/inactivity timer for kiosk ordering flows.
@@ -38,6 +40,12 @@ export function useKioskIdleTimer({
 
   useEffect(() => {
     const interval = setInterval(() => {
+      const stationId = useStoreSettingsStore.getState().selectedStation?.id;
+      if (stationId && isKioskCheckoutHeld(stationId)) {
+        lastActivityRef.current = Date.now();
+        setShowWarning(false);
+        return;
+      }
       const elapsedSeconds = (Date.now() - lastActivityRef.current) / 1000;
 
       // Threshold to warn depends on whether there's an order to protect: an

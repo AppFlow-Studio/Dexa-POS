@@ -19,7 +19,6 @@ import React, {
   useState,
 } from "react";
 import {
-  Alert,
   LayoutChangeEvent,
   StyleSheet,
   Text,
@@ -47,11 +46,6 @@ import SkiaTableLayer from "./skia/SkiaTableLayer";
 import TableDataPublisher from "./skia/TableDataPublisher";
 import { useTableDrawStore } from "./skia/tableDrawStore";
 import TableLayoutSkeleton from "./TableLayoutSkeleton";
-
-// Feature flag (MMKV): render view-mode table SHAPES on one shared Skia surface
-// instead of one react-native-svg surface per table. Off by default; ships dark
-// until validated on-device. Edit mode / palette are never affected.
-const SKIA_VIEW_MODE_KEY = "floor_plan.skia_view_mode";
 
 // Precomputed grid paths — built once at module load, not on every render
 const GRID_MINOR = 20;
@@ -1104,26 +1098,12 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   );
 
   // ── Skia single-surface view mode ───────────────────────────────────────
-  // When enabled (and NOT in edit mode), real table/booth shapes are drawn on one
-  // shared Skia surface (SkiaTableLayer) with a lightweight RN text overlay, and a
-  // canvas-level hit-test replaces per-table GestureDetectors. Structures
-  // (walls/doors/etc.) still render through DraggableTable → ReadonlyStructure.
-  // Toggled on-device by long-pressing the "Focus Tables" (crosshair) button.
-  const [, setSkiaFlagTick] = useState(0);
-  const skiaViewMode =
-    !isEditMode && (storage.getBoolean(SKIA_VIEW_MODE_KEY) ?? false);
-
-  const toggleSkiaViewMode = useCallback(() => {
-    const next = !(storage.getBoolean(SKIA_VIEW_MODE_KEY) ?? false);
-    storage.set(SKIA_VIEW_MODE_KEY, next);
-    setSkiaFlagTick((t) => t + 1);
-    Alert.alert(
-      "Skia floor plan",
-      next
-        ? "Enabled — tables now render on a single Skia surface."
-        : "Disabled — back to the classic per-table renderer.",
-    );
-  }, []);
+  // View mode ALWAYS renders through Skia: real table/booth shapes are drawn on
+  // one shared Skia surface (SkiaTableLayer) with a lightweight RN text overlay,
+  // and a canvas-level hit-test replaces per-table GestureDetectors. Structures
+  // (walls/doors/etc.) are drawn on the same surface. Edit mode still uses the
+  // per-object DraggableTable path (drag/resize needs real RN views).
+  const skiaViewMode = !isEditMode;
 
   const isTableObject = useCallback((t: FloorPlanObject) => {
     const shapeDef = TABLE_SHAPES[t.shape_id as keyof typeof TABLE_SHAPES];
@@ -1226,9 +1206,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     [handleCanvasLongPress],
   );
 
-  // Root gesture: in Skia mode the canvas-level tap/long-press replaces per-table
-  // GestureDetectors. Composed Exclusive with pan/pinch so a drag doesn't also fire
-  // a tap. In the classic path only pan/pinch run (each table owns its own tap).
+  // Root gesture: in view (Skia) mode the canvas-level tap/long-press replaces
+  // per-table GestureDetectors. Composed Exclusive with pan/pinch so a drag doesn't
+  // also fire a tap. In edit mode only pan/pinch run (each table owns its own tap).
   // NOT memoized: pan/pinch are rebuilt every render (their `.enabled(!viewLocked)`
   // must track the lock state), so a memoized composition would hand the
   // GestureDetector stale instances and the lock toggle would only take effect
@@ -1583,9 +1563,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 })}
               </Svg>
             )}
-            {/* Classic path: every object as a DraggableTable.
-                Skia path: BOTH tables and structures are drawn on the shared Skia
-                surface above, so nothing renders through DraggableTable here. */}
+            {/* Edit mode: every object as a DraggableTable (drag/resize needs real
+                RN views). View mode: BOTH tables and structures are drawn on the
+                shared Skia surface above, so nothing renders here. */}
             {(skiaViewMode ? [] : windowedTables).map((table, index) => (
               <DraggableTable
                 key={table.id}
@@ -1650,11 +1630,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Focus Tables button — zooms to fit all canvas objects.
-          Long-press toggles the experimental Skia single-surface renderer. */}
+      {/* Focus Tables button — zooms to fit all canvas objects. */}
       <TouchableOpacity
-        onLongPress={isEditMode ? undefined : toggleSkiaViewMode}
-        delayLongPress={600}
         onPress={() => {
           const bb = tableBoundingBox;
           const idealScale =

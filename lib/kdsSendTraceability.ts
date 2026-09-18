@@ -7,6 +7,45 @@ export const KITCHEN_TRACE_CONTRACT_MISMATCH =
   "KITCHEN_TRACE_CONTRACT_MISMATCH";
 export const KITCHEN_NO_ACTIVE_ROUTE = "KITCHEN_NO_ACTIVE_ROUTE";
 
+// ---------------------------------------------------------------------------
+// S3 — bounded optimistic kitchen-status preservation
+// ---------------------------------------------------------------------------
+// Local item ids whose kitchen send is genuinely in flight or queued. While an
+// id is here, broadcast merges preserve the local optimistic kitchen_status.
+// The marker is cleared when the send RESOLVES as rejected/skipped (the server
+// wins and the line reads unsent again), when the server broadcast catches up,
+// or when the offline replay confirms. Without this bound, a send that never
+// succeeded left the line reading "sent" on the POS forever (S3).
+const inFlightKitchenSendItemIds = new Set<string>();
+
+/** Mark a batch of local item ids as having a kitchen send in flight/queued. */
+export function markKitchenSendInFlight(itemIds: string[]): void {
+  for (const id of itemIds) inFlightKitchenSendItemIds.add(id);
+}
+
+/** Clear the in-flight marker for a batch of local item ids. */
+export function clearKitchenSendInFlight(itemIds: string[]): void {
+  for (const id of itemIds) inFlightKitchenSendItemIds.delete(id);
+}
+
+/** True while a kitchen send for this local item id is in flight or queued. */
+export function isKitchenSendInFlight(itemId: string): boolean {
+  return inFlightKitchenSendItemIds.has(itemId);
+}
+
+/** Self-heal: a broadcast at/above the local status means the server caught up. */
+export function clearKitchenSendInFlightIfCaughtUp(
+  localKitchenStatus: string | null | undefined,
+  broadcastKitchenStatus: string | null | undefined,
+  itemId: string,
+): void {
+  const rank = (s: string | null | undefined) =>
+    s === "served" ? 4 : s === "ready" ? 3 : s === "preparing" ? 2 : s === "sent" ? 1 : 0;
+  if (rank(broadcastKitchenStatus) >= rank(localKitchenStatus)) {
+    inFlightKitchenSendItemIds.delete(itemId);
+  }
+}
+
 export type KitchenSendOrderStatus = "sent_to_kitchen" | "preparing";
 export type KitchenSendItemStatus = "sent" | "preparing";
 

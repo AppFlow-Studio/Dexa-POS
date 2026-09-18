@@ -74,6 +74,10 @@ export interface CFDDisplayData {
   // Controls which price totals the CFD ordering screen displays.
   pricingDisplayMode: 'dual' | 'card_only' | 'cash_only';
 
+  // Operator-chosen scale multiplier for CFD screens (Settings > Customer
+  // Display). `null` = follow the CFD's automatic per-device scale.
+  cfdUiScaleOverride: number | null;
+
   // Theme — propagated from POS so the CFD matches the operator's chosen mode.
   themeMode: "light" | "dark";
 }

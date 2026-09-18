@@ -9,6 +9,7 @@ import {
   registerResumeTask,
   registerSuspendTask,
 } from "@/lib/lifecycle/appLifecycleCoordinator";
+import { flushKdsDeviceTruth } from "@/services/kds/kdsDeviceTruth";
 
 // ============================================================================
 // SINGLETON STATE
@@ -86,6 +87,15 @@ async function sendHeartbeat(): Promise<void> {
 
     if (upsertError) {
       console.warn("[Heartbeat] Upsert error:", upsertError.message);
+    }
+
+    // 4. Flush any pending KDS device-truth events (Architecture B, 80/20).
+    //    No-ops on stations that are not showing a KDS screen, and never
+    //    throws — a device-truth failure must not break the heartbeat.
+    try {
+      await flushKdsDeviceTruth(supabase);
+    } catch (e) {
+      console.warn("[Heartbeat] KDS device-truth flush failed:", e);
     }
 
   } catch (e) {

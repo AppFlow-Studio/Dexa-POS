@@ -6,7 +6,7 @@ import { useTableTimerTick } from "@/hooks/useTableTimerTick";
 import { NotifyContext, TemplateKey } from "@/lib/notifyTemplates";
 import { formatUsPhone, normalizeUsPhoneDigits } from "@/lib/phone";
 import { bottomSheetTheme, colors } from "@/lib/theme";
-import { getCachedCustomers } from "@/services/customer";
+import { useCustomerDirectory } from "@/hooks/customers/useCustomerDirectory";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
@@ -249,9 +249,6 @@ const AddEntryForm: React.FC<{
   onCancel: () => void;
   isLoading: boolean;
 }> = ({ onSubmit, onCancel, isLoading }) => {
-  const [allCustomers, setAllCustomers] = useState<CustomerWithMeta[]>(() =>
-    getCachedCustomers(),
-  );
   const [name, setName] = useState("");
   const [partySize, setPartySize] = useState("");
   const [quotedTime, setQuotedTime] = useState("15");
@@ -262,9 +259,10 @@ const AddEntryForm: React.FC<{
     null,
   );
 
-  useEffect(() => {
-    setAllCustomers(getCachedCustomers());
-  }, []);
+  // Phase 5: candidates from the SQLite mirror (the whole directory) instead
+  // of the 200-row MMKV cache. The filter below is unchanged — this list is a
+  // SUPERSET of what it matches on.
+  const { customers: allCustomers } = useCustomerDirectory(customerQuery);
 
   const customerResults = useMemo(() => {
     const query = customerQuery.toLowerCase().trim();

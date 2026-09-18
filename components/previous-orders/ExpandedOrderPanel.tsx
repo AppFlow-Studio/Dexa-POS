@@ -2,6 +2,7 @@ import { INKIND_LABEL } from "@/lib/paymentMethod";
 import {
     derivePaymentRefundState,
     getCashPricedOrderTotal,
+    hasCollectedPayment,
     usesCashPricing,
 } from "@/lib/paymentStatus";
 import { colors } from "@/lib/theme";
@@ -87,7 +88,8 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
     // per-item cash fields + SC + (SC tax IFF the SC is flagged taxable).
     const cashItemsSubtotal = order.items.reduce(
       (sum, item) =>
-        sum + (item.cashSubtotal ?? item.subtotal ?? item.price * item.quantity),
+        sum +
+        (item.cashSubtotal ?? item.subtotal ?? item.price * item.quantity),
       0,
     );
     const cashItemsTax = order.items.reduce(
@@ -173,7 +175,9 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
 
   const canRefund = useMemo(
     () =>
-      !!onRefund && !derivePaymentRefundState(order.payments).isFullyRefunded,
+      !!onRefund &&
+      hasCollectedPayment(order.payments) &&
+      !derivePaymentRefundState(order.payments).isFullyRefunded,
     [onRefund, order.payments],
   );
 
@@ -342,7 +346,9 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             </View>
           ))}
           {order.items.length > 3 && (
-            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(4) }}>
+            <Text
+              style={{ fontSize: s(12), color: colors.muted, marginTop: s(4) }}
+            >
               ...and {order.items.length - 3} more items
             </Text>
           )}
@@ -403,15 +409,29 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
               colorValue={colors.danger}
             />
           )}
-          <View className="border-t border-border" style={{ marginVertical: s(6) }} />
-          <View className="flex-row justify-between" style={{ marginBottom: s(2) }}>
+          <View
+            className="border-t border-border"
+            style={{ marginVertical: s(6) }}
+          />
+          <View
+            className="flex-row justify-between"
+            style={{ marginBottom: s(2) }}
+          >
             <Text
-              style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+              style={{
+                fontSize: s(13),
+                fontWeight: "700",
+                color: colors.heading,
+              }}
             >
               Net Total
             </Text>
             <Text
-              style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+              style={{
+                fontSize: s(13),
+                fontWeight: "700",
+                color: colors.heading,
+              }}
             >
               ${paymentSummary.net.toFixed(2)}
             </Text>
@@ -431,7 +451,10 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             </View>
           ) : null}
           {paymentSummary.paymentMethodLabel ? (
-            <View className="flex-row items-center" style={{ gap: s(2), marginTop: s(3) }}>
+            <View
+              className="flex-row items-center"
+              style={{ gap: s(2), marginTop: s(3) }}
+            >
               {paymentSummary.isCashPayment ? (
                 <Banknote color={colors.teal} size={s(14)} />
               ) : paymentSummary.isInKindPayment ? (

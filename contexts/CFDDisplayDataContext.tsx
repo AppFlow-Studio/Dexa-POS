@@ -67,6 +67,7 @@ export function CFDExternalDisplayProvider ({
     paymentMethod: s.paymentMethod,
     merchantHasLoyalty: s.merchantHasLoyalty,
     pricingDisplayMode: s.pricingDisplayMode,
+    cfdUiScaleOverride: s.cfdUiScaleOverride,
     themeMode: s.themeMode
   })))
 
@@ -110,6 +111,7 @@ export function CFDExternalDisplayProvider ({
     paymentMethod: store.paymentMethod ?? null,
     merchantHasLoyalty: store.merchantHasLoyalty,
     pricingDisplayMode: store.pricingDisplayMode ?? 'dual',
+    cfdUiScaleOverride: store.cfdUiScaleOverride ?? null,
     themeMode: store.themeMode
   }), [store])
 
@@ -164,6 +166,7 @@ export function CFDBuiltinDisplayProvider ({
     paymentMethod: s.paymentMethod,
     merchantHasLoyalty: s.merchantHasLoyalty,
     pricingDisplayMode: s.pricingDisplayMode,
+    cfdUiScaleOverride: s.cfdUiScaleOverride,
     themeMode: s.themeMode
   })))
 
@@ -207,6 +210,7 @@ export function CFDBuiltinDisplayProvider ({
     paymentMethod: store.paymentMethod ?? null,
     merchantHasLoyalty: store.merchantHasLoyalty,
     pricingDisplayMode: store.pricingDisplayMode ?? 'dual',
+    cfdUiScaleOverride: store.cfdUiScaleOverride ?? null,
     themeMode: store.themeMode
   }), [store])
 

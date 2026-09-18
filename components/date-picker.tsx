@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Calendar as CalendarIcon } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity } from "react-native";
@@ -18,9 +19,17 @@ const DatePicker: React.FC<DatePickerProps> = ({ date, onDateChange }) => {
     <Popover>
       <PopoverTrigger asChild>
         <TouchableOpacity className="flex-row items-center p-3 gap-2 mr-20">
-          <Text className="text-xl font-semibold text-gray-300">Date:</Text>
-          <CalendarIcon color="#9CA3AF" size={20} />
-          <Text className="text-xl font-semibold text-gray-300">
+          <Text
+            className="text-xl font-semibold"
+            style={{ color: colors.label }}
+          >
+            Date:
+          </Text>
+          <CalendarIcon color={colors.label} size={20} />
+          <Text
+            className="text-xl font-semibold"
+            style={{ color: colors.heading }}
+          >
             {date.toLocaleDateString("en-US", {
               month: "2-digit",
               day: "2-digit",
@@ -35,19 +44,19 @@ const DatePicker: React.FC<DatePickerProps> = ({ date, onDateChange }) => {
           markedDates={{
             [date.toISOString().split("T")[0]]: {
               selected: true,
-              selectedColor: "#60A5FA",
+              selectedColor: colors.info,
             },
           }}
           theme={{
-            backgroundColor: "#212121",
-            calendarBackground: "#212121",
-            textSectionTitleColor: "#9CA3AF",
-            selectedDayBackgroundColor: "#60A5FA",
-            selectedDayTextColor: "#ffffff",
-            todayTextColor: "#60A5FA",
-            dayTextColor: "#FFFFFF",
-            arrowColor: "#60A5FA",
-            monthTextColor: "#FFFFFF",
+            backgroundColor: colors.panel,
+            calendarBackground: colors.panel,
+            textSectionTitleColor: colors.label,
+            selectedDayBackgroundColor: colors.info,
+            selectedDayTextColor: colors.onSolid,
+            todayTextColor: colors.info,
+            dayTextColor: colors.heading,
+            arrowColor: colors.info,
+            monthTextColor: colors.heading,
             textMonthFontWeight: "bold",
             textDayFontSize: 16,
             textMonthFontSize: 20,

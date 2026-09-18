@@ -4,6 +4,7 @@ import {
 } from "@/components/bill/SendToKitchenButton";
 import { colors } from "@/lib/theme";
 import { CartItem, OrderProfile } from "@/lib/types";
+import { isKitchenItemUnsent } from "@/lib/kitchenStatusUtils";
 import { useUiScale } from "@/lib/uiScale";
 import { useOrderItem } from "@/stores/selectors/orderSelectors";
 import { useCoursingStore } from "@/stores/useCoursingStore";
@@ -118,10 +119,6 @@ function deriveAggregateStatus(items: CartItem[]): AggregateKitchenStatus {
   if (active.some((i) => i.kitchen_status === "preparing")) return "preparing";
   if (active.some((i) => i.kitchen_status === "sent")) return "sent";
   return null;
-}
-
-function isKitchenItemUnsent(item: CartItem): boolean {
-  return !item.kitchen_status || item.kitchen_status === "new";
 }
 
 const CourseBillItemRow = React.memo(function CourseBillItemRow({

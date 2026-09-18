@@ -151,10 +151,19 @@ export function valorAmountToCents(amount: string | undefined): number {
 }
 
 /**
+ * Dollars → integer cents. The single conversion used by every call site that
+ * only has a dollar float (sale and refund alike), so the two paths cannot
+ * drift — a $4.08 refund must send 408, never 4 ($0.04).
+ */
+export function dollarsToValorCents(dollars: number): number {
+  return Math.round((dollars + Number.EPSILON) * 100);
+}
+
+/**
  * Dollars → cents string. Prefer passing integer cents from the money layer
  * (decimal.js) and using centsToValorAmount; this convenience exists for
  * call sites that only have a dollar float, and rounds defensively.
  */
 export function dollarsToCentsString(dollars: number): string {
-  return String(Math.round((dollars + Number.EPSILON) * 100));
+  return String(dollarsToValorCents(dollars));
 }

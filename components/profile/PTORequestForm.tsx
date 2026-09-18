@@ -65,6 +65,22 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
     [maxRequestDate]
   )
 
+  // Keep the two pickers mutually exclusive: start can never land after end,
+  // and end can never land before start.
+  const startMaxDateFormatted = useMemo(() => {
+    if (!endDate) return maxRequestDateFormatted
+    const endFormatted = format(endDate, 'yyyy-MM-dd')
+    return endFormatted < maxRequestDateFormatted
+      ? endFormatted
+      : maxRequestDateFormatted
+  }, [endDate, maxRequestDateFormatted])
+
+  const endMinDateFormatted = useMemo(() => {
+    if (!startDate) return todayFormatted
+    const startFormatted = format(startDate, 'yyyy-MM-dd')
+    return startFormatted > todayFormatted ? startFormatted : todayFormatted
+  }, [startDate, todayFormatted])
+
   const totalAccruedBalance = useMemo(() => {
     if (!loggedInEmployee) return 0
     return balances[loggedInEmployee.id]?.totalAccrued || 0
@@ -158,6 +174,10 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
     const selectedDate = new Date(day.timestamp)
     if (type === 'start') {
       setStartDate(selectedDate)
+      // A previously chosen end date that now precedes the start is invalid.
+      setEndDate(current =>
+        current && isBefore(current, selectedDate) ? null : current
+      )
       setIsStartDatePickerOpen(false)
     } else {
       setEndDate(selectedDate)
@@ -167,11 +187,11 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
 
   const calendarTheme = {
     calendarBackground: colors.panel,
-    monthTextColor: '#FFFFFF',
-    dayTextColor: '#FFFFFF',
+    monthTextColor: colors.heading,
+    dayTextColor: colors.heading,
     textDisabledColor: colors.muted,
     selectedDayBackgroundColor: colors.teal,
-    selectedDayTextColor: '#0C0F1A',
+    selectedDayTextColor: colors.onSolid,
     todayTextColor: colors.teal,
     arrowColor: colors.teal,
     textSectionTitleColor: colors.label
@@ -269,7 +289,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
                     onDayPress={day => onDayPress(day, 'start')}
                     theme={calendarTheme}
                     minDate={todayFormatted}
-                    maxDate={maxRequestDateFormatted}
+                    maxDate={startMaxDateFormatted}
                     markedDates={{
                       [startDate ? format(startDate, 'yyyy-MM-dd') : '']: {
                         selected: true,
@@ -336,7 +356,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
                   <Calendar
                     onDayPress={day => onDayPress(day, 'end')}
                     theme={calendarTheme}
-                    minDate={todayFormatted}
+                    minDate={endMinDateFormatted}
                     maxDate={maxRequestDateFormatted}
                     markedDates={{
                       [endDate ? format(endDate, 'yyyy-MM-dd') : '']: {

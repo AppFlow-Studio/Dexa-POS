@@ -5,6 +5,7 @@ import { toastService } from '@/lib/toastService'
 import type { MerchantRole } from '@/lib/types'
 import { OrderService } from '@/services/orderService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
@@ -109,7 +110,9 @@ const ManagerPinModal = () => {
   const { isPinModalOpen, closePinModal, actionToPerform, setUnlocked } = usePinOverrideStore()
   const addTemporaryMenuAccess = useMenuStore(s => s.addTemporaryMenuAccess)
   const addTemporaryCategoryAccess = useMenuStore(s => s.addTemporaryCategoryAccess)
-  const timeoutMinutes = useStoreSettingsStore(s => s.managerOverrideTimeoutMinutes)
+  const timeoutMinutes = useLocationConfigStore(
+    s => s.config.security.managerOverrideTimeoutMinutes
+  )
   const supabase = useSupabaseClient()
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
@@ -134,15 +137,18 @@ const ManagerPinModal = () => {
     }
   }, [isPinModalOpen])
 
-  // Auto-submit when PIN_LENGTH digits are entered. isSubmitting must be in
-  // deps AND the guard so a digit that lands while an earlier submit is still
-  // in flight doesn't double-fire.
-  useEffect(() => {
-    if (pin.length === PIN_LENGTH && !isSubmitting) {
-      submitPin(pin)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pin, isSubmitting])
+  // NOTE: no auto-submit on the 4th digit. The operator presses Submit. Now
+  // that a successful PIN completes the navigation itself, auto-submitting made
+  // the screen jump the instant the last digit landed — before the operator had
+  // any chance to review or correct what they typed.
+
+  /**
+   * Run the navigation the operator was blocked on. Must be called before
+   * closePinModal(), which clears the pending grant.
+   */
+  const completePendingGrant = () => {
+    usePinOverrideStore.getState().pendingGrant?.()
+  }
 
   const submitPin = async (currentPin: string) => {
     const employee = useEmployeeStore.getState().findEmployeeByPin(currentPin)
@@ -169,15 +175,20 @@ const ManagerPinModal = () => {
     // modal open until the server responds so failures keep the cashier here
     // with a toast instead of dumping them back to the floor unsure if it
     // worked.
+    // The grant is what makes the unlocked menu/category actually render and
+    // stay selected, so it is always issued. Its *lifetime* is what the
+    // override timeout controls — see the revoke effect in MenuSection.
     if (actionToPerform?.type === 'select_menu') {
       addTemporaryMenuAccess(actionToPerform.payload.menuName)
       setUnlocked(timeoutMinutes)
+      completePendingGrant()
       closePinModal()
       return
     }
     if (actionToPerform?.type === 'select_category') {
       addTemporaryCategoryAccess(actionToPerform.payload.categoryName)
       setUnlocked(timeoutMinutes)
+      completePendingGrant()
       closePinModal()
       return
     }
@@ -269,6 +280,7 @@ const ManagerPinModal = () => {
     // Unknown / unhandled action — still close (preserves prior behavior for
     // the generic "Manager Override" entry point).
     setUnlocked(timeoutMinutes)
+    completePendingGrant()
     closePinModal()
   }
 
@@ -406,32 +418,34 @@ const ManagerPinModal = () => {
 
             {/* Submit button */}
             <TouchableOpacity
-              onPress={() => pin.length > 0 && submitPin(pin)}
-              disabled={pin.length === 0}
+              onPress={() =>
+                pin.length === PIN_LENGTH && !isSubmitting && submitPin(pin)
+              }
+              disabled={pin.length !== PIN_LENGTH || isSubmitting}
               activeOpacity={0.7}
               style={{
                 marginTop: s(16),
                 width: '100%',
                 height: s(48),
                 borderRadius: s(14),
-                backgroundColor: pin.length === 0 ? colors.teal + '15' : colors.teal + '20',
+                backgroundColor: pin.length === PIN_LENGTH ? colors.teal + '20' : colors.teal + '15',
                 borderWidth: 1,
-                borderColor: pin.length === 0 ? colors.teal + '20' : colors.teal + '60',
+                borderColor: pin.length === PIN_LENGTH ? colors.teal + '60' : colors.teal + '20',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ fontSize: s(14), fontWeight: '700', color: pin.length === 0 ? colors.muted : colors.teal }}>
-                Submit
+              <Text style={{ fontSize: s(14), fontWeight: '700', color: pin.length === PIN_LENGTH ? colors.teal : colors.muted }}>
+                {isSubmitting ? 'Verifying…' : 'Submit'}
               </Text>
             </TouchableOpacity>
 
             {/* Timeout hint */}
-            {timeoutMinutes > 0 && (
-              <Text style={{ fontSize: s(10), color: colors.muted, textAlign: 'center', marginTop: s(12) }}>
-                Access stays unlocked for {timeoutMinutes} min after verification
-              </Text>
-            )}
+            <Text style={{ fontSize: s(10), color: colors.muted, textAlign: 'center', marginTop: s(12) }}>
+              {timeoutMinutes > 0
+                ? `Access stays unlocked for ${timeoutMinutes} min after verification`
+                : 'A PIN is required every time a locked item is opened'}
+            </Text>
           </View>
         </Pressable>
       </Pressable>

@@ -153,8 +153,10 @@ export interface StoreSettings {
   // Tips settings
   openDrawerOnTip: boolean;
 
-  // Manager override for schedule-restricted menus/categories
-  managerOverrideTimeoutMinutes: 0 | 5 | 15 | 30 | 60;
+  // NOTE: managerOverrideTimeoutMinutes and autoCreateOrder moved to
+  // locations.pos_config (`security` / `ordering` namespaces). They were
+  // device-local here, so an app reinstall dropped them and they never reached
+  // other stations. Read them from useLocationConfigStore.
 
   // Order completion mode
   orderCompletionMode: "manual" | "auto" | "auto_on_payment";
@@ -164,12 +166,6 @@ export interface StoreSettings {
   // crediting the PIN-entered staff as that order's creator. Synced from the
   // backend location setting; defaults false (no behavior change when unset).
   requirePinPerOrder: boolean;
-
-  // When true (default, legacy behavior), the register auto-creates orders:
-  // eager backend create on screen entry, auto local draft when none is active,
-  // and auto-start the next order after payment. When false, the operator must
-  // explicitly start each order (e.g. "New Order").
-  autoCreateOrder: boolean;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -333,17 +329,11 @@ const initialData: StoreSettings = {
   // Tips settings
   openDrawerOnTip: false,
 
-  // Manager override
-  managerOverrideTimeoutMinutes: 0,
-
   // Order completion mode
   orderCompletionMode: "manual",
 
   // Per-order staff PIN attribution (off until backend setting hydrates it)
   requirePinPerOrder: false,
-
-  // Auto-create orders on by default (legacy behavior)
-  autoCreateOrder: true,
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -677,14 +667,10 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         preAuthSettings: state.preAuthSettings,
         // Tips settings
         openDrawerOnTip: state.openDrawerOnTip,
-        // Manager override
-        managerOverrideTimeoutMinutes: state.managerOverrideTimeoutMinutes,
         // Order completion mode
         orderCompletionMode: state.orderCompletionMode,
         // Per-order staff PIN attribution
         requirePinPerOrder: state.requirePinPerOrder,
-        // Auto-create orders
-        autoCreateOrder: state.autoCreateOrder,
       }),
     },
   ),

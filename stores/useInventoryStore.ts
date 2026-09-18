@@ -1,4 +1,12 @@
 import {
+  INVENTORY_ITEM_COLUMNS,
+  mapInventorySyncPayload,
+  VENDOR_COLUMNS,
+  type DirectInventoryRow,
+  type RawVendorRow,
+  type RpcInventoryRow,
+} from "@/lib/inventory/inventorySyncPayload";
+import {
   CartItem,
   ExternalExpense,
   ExternalExpenseLineItem,
@@ -17,22 +25,79 @@ import { useStoreSettingsStore } from "./useStoreSettingsStore";
 type PurchaseOrderStatus = PurchaseOrder["status"];
 type InventoryTrackingMode = InventoryItem["stockTrackingMode"];
 
-const normalizeInventoryTrackingMode = (
-  mode: string | null | undefined,
-  currentStock?: number | null,
-  reorderPoint?: number | null,
-): InventoryTrackingMode => {
-  if (mode === "stock_tracking") return "quantity";
-  if (
-    mode === "in_stock" &&
-    ((currentStock !== null && currentStock !== undefined) ||
-      (reorderPoint !== null && reorderPoint !== undefined))
-  ) {
-    return "quantity";
+/**
+ * THE inventory write gate — Phase 5, and the boundary Track A stops at.
+ *
+ * Every mutation in this store goes straight to Supabase: vendors and items are
+ * plain table writes, stock moves through `adjust_stock`, deliveries through
+ * `log_purchase_order_delivery`, and a purchase order is a header insert
+ * followed by a separate line-item insert with a manual `.delete()` rollback.
+ * None of that can be accepted offline yet, and the reason is not "we haven't
+ * wired the outbox":
+ *
+ *   - The row's identity is minted SERVER-side, which is the exact instability
+ *     §1 blames for the last local-first attempt being reverted.
+ *   - Stock movements are NOT IDEMPOTENT. A queued "received 12 cases" replayed
+ *     after a reconnect double-counts, and unlike a duplicated order there is
+ *     no receipt anyone will ever compare it against. Silently wrong inventory
+ *     is worse than a blocked button.
+ *
+ * So the gate refuses, up front, with a reason. It is checked HERE rather than
+ * on each of the ~20 buttons that reach these actions for the same reason
+ * lib/db/write.ts checks station policy at one choke point: a call site that
+ * forgets is then impossible, not merely unlikely. `useInventoryWriteGate`
+ * disables the buttons so the refusal is visible before a form is filled in;
+ * this is what makes it true.
+ *
+ * Nothing here writes the local mirror, either — the mirror is only ever
+ * written from a server payload, so it cannot drift from the server while
+ * Track A owns it. Offline stock counts and receiving arrive in Track B, where
+ * the outbox can make them safe.
+ */
+export const INVENTORY_OFFLINE_MESSAGE =
+  "You're offline. Inventory changes need a connection.";
+
+/** Thrown, not returned — see the note on `canWriteInventory`. */
+export class InventoryOfflineError extends Error {
+  readonly action: string;
+  constructor(action: string) {
+    super(INVENTORY_OFFLINE_MESSAGE);
+    this.name = "InventoryOfflineError";
+    this.action = action;
   }
-  if (mode === "in_stock" || mode === "out_of_stock") return mode;
-  return "quantity";
-};
+}
+
+/** Lazily required: offlineSyncService imports stores, so a static import is a cycle. */
+function isDeviceOnline(): boolean {
+  try {
+    const { getRawIsOnline } = require("@/services/offlineSyncService");
+    return getRawIsOnline();
+  } catch {
+    // Default to online so a missing service can never lock the screen out of
+    // writes it could actually make.
+    return true;
+  }
+}
+
+/**
+ * Refuse the write, by THROWING rather than returning early.
+ *
+ * The distinction matters and it is not stylistic. The purchase-order actions
+ * already throw on a Supabase error, and every screen that calls them is built
+ * around that: `await logPaymentForPO(...)` then a success toast, with a
+ * `catch` that reports the failure. A gate that returned quietly would slot in
+ * ABOVE that and produce a green "Payment logged" for a payment that was never
+ * recorded — strictly worse than the raw network error it replaced.
+ *
+ * Throwing keeps every one of those handlers behaving exactly as it does today
+ * and only improves the reason. Callers that do not await (a couple of vendor
+ * actions) are given a `.catch` at the call site for the same reason.
+ */
+function canWriteInventory(action: string): true {
+  if (isDeviceOnline()) return true;
+  console.warn(`[InventoryStore] ${action} blocked — device is offline`);
+  throw new InventoryOfflineError(action);
+}
 
 const toDbInventoryTrackingMode = (
   mode: InventoryTrackingMode | undefined,
@@ -282,57 +347,18 @@ const mapExternalExpenseFromDb = (po: any): ExternalExpense => {
   };
 };
 
-const getNextPurchaseOrderNumber = async (
-  supabase: SupabaseClient,
-  merchantId: string,
-  locationId: string,
-) => {
-  // Count only POs (not expenses) for this merchant+location
-  const { count, error } = await supabase
-    .from("purchase_orders")
-    .select("id", { count: "exact", head: true })
-    .eq("merchant_id", merchantId)
-    .eq("location_id", locationId)
-    .or("is_adhoc_expense.is.null,is_adhoc_expense.eq.false");
-
-  if (error) {
-    throw error;
-  }
-
-  const nextSeq = (count ?? 0) + 1;
-  // Pad to at least 4 digits; auto-extends to 5, 6, etc. as the counter grows
-  const padded = String(nextSeq).padStart(
-    Math.max(4, String(nextSeq).length),
-    "0",
-  );
-  return `PO-${padded}`;
-};
-
-const getNextExpenseNumber = async (
-  supabase: SupabaseClient,
-  merchantId: string,
-  locationId: string,
-) => {
-  // Count only expenses for this merchant+location
-  const { count, error } = await supabase
-    .from("purchase_orders")
-    .select("id", { count: "exact", head: true })
-    .eq("merchant_id", merchantId)
-    .eq("location_id", locationId)
-    .eq("is_adhoc_expense", true);
-
-  if (error) {
-    throw error;
-  }
-
-  const nextSeq = (count ?? 0) + 1;
-  // Pad to at least 4 digits; auto-extends to 5, 6, etc. as the counter grows
-  const padded = String(nextSeq).padStart(
-    Math.max(4, String(nextSeq).length),
-    "0",
-  );
-  return `EXP-${padded}`;
-};
+// PO and expense numbers are assigned by the database, not here.
+//
+// This used to be two client-side generators that read COUNT(*) and wrote
+// COUNT+1. Two stations creating a PO at the same moment both read N and
+// both wrote N+1, and a deleted PO made the count reuse a number that was
+// already taken. Both are now handled by the BEFORE INSERT trigger in
+// utils/supabase/migrations/purchase_orders_po_number_integrity.sql, which
+// allocates MAX+1 under a per-scope advisory lock. Omit po_number on
+// insert and read the assigned value back from the returning row.
+//
+// Scope is unchanged: numbering runs per (merchant, location), PO- for
+// purchase orders and EXP- for ad-hoc expenses.
 
 // --- STORE INTERFACE ---
 interface InventoryState {
@@ -439,6 +465,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     });
   },
 
+  // Both fetches map through lib/inventory/inventorySyncPayload — the same
+  // function useInventorySync and the local mirror use. This file used to carry
+  // its own character-for-character copy of that mapping, which meant the
+  // catalog could resolve differently depending on which path happened to
+  // populate it.
   fetchInventoryItems: async (locationId) => {
     const { supabase } = get();
     if (!supabase) return;
@@ -452,98 +483,28 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       return;
     }
 
-    // RPC returns a flat JSON array of inventory rows
-    const rows = (data as any[]) ?? [];
-
     const { data: itemRows } = await supabase
       .from("inventory_items")
-      .select(
-        "id, name, category, current_stock, unit_type, reorder_point, cost_per_unit, vendor_id, stock_mode",
-      )
+      .select(INVENTORY_ITEM_COLUMNS)
       .eq("location_id", locationId)
       .eq("is_active", true);
-
-    const itemRowMap = new Map(
-      (itemRows ?? []).map((row: any) => [row.id, row]),
-    );
-
-    const inventoryItems: InventoryItem[] = rows
-      .filter((i: any) => itemRowMap.has(i.id))
-      .map((i: any) => {
-        const directRow = itemRowMap.get(i.id);
-        return {
-          id: i.id,
-          name: directRow?.name ?? i.name,
-          category: directRow?.category ?? "",
-          description: null,
-          image: null,
-          stockQuantity: i.stock_quantity ?? directRow?.current_stock ?? 0,
-          unit: directRow?.unit_type ?? i.unit_type,
-          unitType: directRow?.unit_type ?? i.unit_type,
-          reorderThreshold:
-            directRow?.reorder_point ??
-            i.effective_reorder_point ??
-            i.reorder_point ??
-            0,
-          cost: directRow?.cost_per_unit ?? i.effective_cost ?? 0,
-          vendorId: directRow?.vendor_id ?? null,
-          locationId,
-          isGlobal: false,
-          stockTrackingMode: normalizeInventoryTrackingMode(
-            directRow?.stock_mode,
-            directRow?.current_stock,
-            directRow?.reorder_point,
-          ),
-        };
-      });
-
-    const rpcItemIds = new Set(inventoryItems.map((item) => item.id));
-    const missingDirectItems: InventoryItem[] = (itemRows ?? [])
-      .filter((row: any) => !rpcItemIds.has(row.id))
-      .map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        category: row.category ?? "",
-        description: null,
-        image: null,
-        stockQuantity: row.current_stock ?? 0,
-        unit: row.unit_type,
-        unitType: row.unit_type,
-        reorderThreshold: row.reorder_point ?? 0,
-        cost: row.cost_per_unit ?? 0,
-        vendorId: row.vendor_id ?? null,
-        locationId,
-        isGlobal: false,
-        stockTrackingMode: normalizeInventoryTrackingMode(
-          row.stock_mode,
-          row.current_stock,
-          row.reorder_point,
-        ),
-      }));
-
-    const itemsWithVendor = [...inventoryItems, ...missingDirectItems];
 
     const { data: vendorsData } = await supabase
       .from("vendors")
-      .select(
-        "id, name, contact_name, email, phone, address_line1, city, state, zip_code",
-      )
+      .select(VENDOR_COLUMNS)
       .eq("location_id", locationId)
       .eq("is_active", true);
 
-    const vendors: Vendor[] = (vendorsData ?? []).map((v: any) => ({
-      id: v.id,
-      name: v.name,
-      contactName: v.contact_name ?? "",
-      email: v.email ?? null,
-      phone: v.phone ?? null,
-      address:
-        [v.address_line1, v.city, v.state].filter(Boolean).join(", ") || null,
-      website: null,
-      description: "",
-    }));
+    const mapped = mapInventorySyncPayload(
+      {
+        rpcRows: (data as RpcInventoryRow[] | null) ?? [],
+        itemRows: (itemRows as unknown as DirectInventoryRow[] | null) ?? [],
+        vendorRows: (vendorsData as unknown as RawVendorRow[] | null) ?? [],
+      },
+      locationId,
+    );
 
-    set({ inventoryItems: itemsWithVendor, vendors });
+    set({ inventoryItems: mapped.inventoryItems, vendors: mapped.vendors });
   },
 
   fetchVendors: async (locationId) => {
@@ -552,9 +513,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
     const { data, error } = await supabase
       .from("vendors")
-      .select(
-        "id, name, contact_name, email, phone, address_line1, city, state, zip_code",
-      )
+      .select(VENDOR_COLUMNS)
       .eq("location_id", locationId)
       .eq("is_active", true);
 
@@ -563,17 +522,14 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       return;
     }
 
-    const vendors: Vendor[] = (data ?? []).map((v: any) => ({
-      id: v.id,
-      name: v.name,
-      contactName: v.contact_name ?? "",
-      email: v.email ?? null,
-      phone: v.phone ?? null,
-      address:
-        [v.address_line1, v.city, v.state].filter(Boolean).join(", ") || null,
-      website: null,
-      description: "",
-    }));
+    const { vendors } = mapInventorySyncPayload(
+      {
+        rpcRows: [],
+        itemRows: [],
+        vendorRows: (data as unknown as RawVendorRow[] | null) ?? [],
+      },
+      locationId,
+    );
 
     set({ vendors });
   },
@@ -644,6 +600,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   addVendor: async (vendorData, merchantId, locationId) => {
+    canWriteInventory("addVendor");
     const { supabase } = get();
     if (!supabase || !merchantId) return;
 
@@ -667,6 +624,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   updateVendor: async (vendorId, updates) => {
+    canWriteInventory("updateVendor");
     const { supabase } = get();
     if (!supabase) return;
 
@@ -695,6 +653,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   deleteVendor: async (vendorId) => {
+    canWriteInventory("deleteVendor");
     const { supabase, vendors } = get();
     if (!supabase) return;
 
@@ -716,6 +675,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   addInventoryItem: async (itemData, locationId) => {
+    canWriteInventory("addInventoryItem");
     const { supabase } = get();
     if (!supabase) return;
 
@@ -775,6 +735,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   updateInventoryItem: async (itemId, updates, locationId) => {
+    canWriteInventory("updateInventoryItem");
     const { supabase, inventoryItems } = get();
     if (!supabase) return;
 
@@ -878,6 +839,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   deleteInventoryItem: async (itemId) => {
+    canWriteInventory("deleteInventoryItem");
     const { supabase, inventoryItems } = get();
     if (!supabase) return;
 
@@ -896,20 +858,17 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   createPurchaseOrder: async (poData) => {
+    canWriteInventory("createPurchaseOrder");
     const { supabase } = get();
     if (!supabase) return;
 
     const { merchantId, locationId } = getCurrentStoreContext();
     const { userId } = getActiveEmployeeContext();
     const now = new Date().toISOString();
-    const poNumber = await getNextPurchaseOrderNumber(
-      supabase,
-      merchantId,
-      locationId,
-    );
     const totalAmount = calculatePurchaseOrderTotal(poData.items);
     const createdByUserId = poData.createdByEmployeeId ?? userId ?? null;
 
+    // po_number is omitted on purpose — the database assigns it.
     const { data: purchaseOrderRow, error: purchaseOrderError } = await supabase
       .from("purchase_orders")
       .insert({
@@ -917,12 +876,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         location_id: locationId,
         vendor_id: poData.vendorId,
         status: purchaseOrderStatusToDb(poData.status),
-        po_number: poNumber,
         created_by: createdByUserId,
         ordered_at: poData.status === "Pending Delivery" ? now : null,
         total_amount: totalAmount,
       })
-      .select("id")
+      .select("id, po_number")
       .single();
 
     if (purchaseOrderError) {
@@ -968,6 +926,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     await get().fetchPurchaseOrders(locationId);
   },
   updatePurchaseOrder: async (poId, updates) => {
+    canWriteInventory("updatePurchaseOrder");
     const { supabase, purchaseOrders } = get();
     if (!supabase) return;
 
@@ -1044,6 +1003,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   deletePurchaseOrder: async (poId) => {
+    canWriteInventory("deletePurchaseOrder");
     const { supabase } = get();
     if (!supabase) return;
 
@@ -1080,6 +1040,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   submitPurchaseOrder: async (poId) => {
+    canWriteInventory("submitPurchaseOrder");
     const { supabase } = get();
     if (!supabase) return;
 
@@ -1101,6 +1062,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   logDeliveryForPO: async (poId, data) => {
+    canWriteInventory("logDeliveryForPO");
     const { supabase } = get();
     if (!supabase) return;
 
@@ -1157,6 +1119,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   logPaymentForPO: async (poId, data) => {
+    canWriteInventory("logPaymentForPO");
     const { supabase } = get();
     if (!supabase) return;
 
@@ -1216,6 +1179,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     await get().fetchPurchaseOrders(locationId);
   },
   cancelPurchaseOrder: async (poId) => {
+    canWriteInventory("cancelPurchaseOrder");
     const { supabase } = get();
     if (!supabase) return;
 
@@ -1233,24 +1197,20 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   addExternalExpense: async (expense) => {
+    canWriteInventory("addExternalExpense");
     const { supabase } = get();
     if (!supabase) return;
 
     const { merchantId, locationId } = getCurrentStoreContext();
-    const expenseNumber = await getNextExpenseNumber(
-      supabase,
-      merchantId,
-      locationId,
-    );
     const purchasedAt = expense.purchasedAt || new Date().toISOString();
 
+    // po_number is omitted on purpose — the database assigns the EXP-####.
     const { data: expenseRow, error: expenseError } = await supabase
       .from("purchase_orders")
       .insert({
         merchant_id: merchantId,
         location_id: locationId,
         created_by: expense.purchasedByEmployeeId || null,
-        po_number: expenseNumber,
         status: purchaseOrderStatusToDb("Paid"),
         is_adhoc_expense: true,
         total_amount: expense.totalAmount,
@@ -1261,7 +1221,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         expense_vendor_name: expense.storeName ?? null,
         expense_notes: buildExpenseNotes(expense),
       })
-      .select("id")
+      .select("id, po_number")
       .single();
 
     if (expenseError) {
@@ -1323,6 +1283,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   removeExternalExpense: async (expenseId) => {
+    canWriteInventory("removeExternalExpense");
     const { supabase } = get();
     if (!supabase) return;
 

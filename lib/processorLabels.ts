@@ -12,6 +12,8 @@ export function terminalTypeLabel(type: string | null | undefined): string {
   switch (type) {
     case "atom":
       return "ATOM (on-device)";
+    case "codepay":
+      return "CodePay (on-terminal)";
     case "valor":
       return "Valor";
     case "castles":
@@ -40,6 +42,8 @@ export function processorName(type: string | null | undefined): string | null {
   switch (type) {
     case "atom":
       return "TSYS";
+    case "codepay":
+      return "CodePay";
     case "valor":
       return "Valor";
     case "castles":

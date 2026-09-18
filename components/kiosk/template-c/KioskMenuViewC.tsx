@@ -1,7 +1,16 @@
 import { KioskCategoryPillBar, type CategoryPill } from "@/components/kiosk/shared/KioskCategoryPillBar";
-import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
+import {
+  hasOrderableItem,
+  useModifierGroupResolver,
+  useOrderableItems,
+} from "@/components/kiosk/shared/kioskItemAvailability";
+import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
+import { kioskBannerHeight } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
+import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
+import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
 import type { Category, MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
@@ -11,7 +20,7 @@ import {
 import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 
 /**
  * Template C menu view — media banner (same carousel as Template B), then a
@@ -25,6 +34,10 @@ import { FlatList, Text, View } from "react-native";
  * Template B. In horizontal orientation the screen is too short for a tall
  * top banner, so the carousel instead becomes a left-hand sidebar (media
  * fills the vertical strip) with the pill bar + grid stacked to its right.
+ *
+ * The search bar leads the menu content in both orientations — under the banner
+ * in portrait, at the top of the right column in landscape, so the media strip
+ * keeps its full height — and opens KioskSearchOverlay over the whole view.
  */
 export function KioskMenuViewC({
   config,
@@ -35,6 +48,7 @@ export function KioskMenuViewC({
 }) {
   const s = useKioskUiScale();
   const menus = useMenuStore((s) => s.menus);
+  const resolveGroups = useModifierGroupResolver();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
@@ -48,16 +62,18 @@ export function KioskMenuViewC({
     const seen = new Set<string>();
     const entries: { key: string; name: string; category: Category }[] = [];
     for (const m of menus) {
+      if (!isMenuVisibleOnChannel(m, "kiosk")) continue;
       if (!isMenuAvailableNow(m.id)) continue;
       for (const c of m.categories as Category[]) {
-        if (!c.isActive || !isCategoryAvailableNow(c.name) || !c.items?.length) continue;
+        if (!c.isActive || !isCategoryAvailableNow(c.name)) continue;
+        if (!hasOrderableItem(c.items, resolveGroups)) continue;
         if (seen.has(c.name)) continue;
         seen.add(c.name);
         entries.push({ key: `${m.id}:${c.id}`, name: c.name, category: c });
       }
     }
     return entries;
-  }, [menus, isMenuAvailableNow, isCategoryAvailableNow]);
+  }, [menus, isMenuAvailableNow, isCategoryAvailableNow, resolveGroups]);
 
   const pills = useMemo<CategoryPill[]>(
     () => categoryEntries.map((e) => ({ key: e.key, name: e.name })),
@@ -74,10 +90,7 @@ export function KioskMenuViewC({
     };
   }, [categoryEntries, activeKey]);
 
-  const items = useMemo(
-    () => (activeCategory?.items ?? []).filter((i) => i.availability !== false),
-    [activeCategory],
-  );
+  const items = useOrderableItems(activeCategory?.items);
 
   const isVertical = config.orientation === "vertical";
   // Template C's grid is 4-wide by default (both orientations); a manager
@@ -86,14 +99,35 @@ export function KioskMenuViewC({
   const numColumns = resolveKioskColumns(columnsPref, 4);
   const bannerImages = kioskOrderBannerImages(config);
   const hasMedia = bannerImages.length > 0;
-  const bannerHeight = kioskPx(420, s);
+  const { height: screenHeight } = useWindowDimensions();
+  const bannerHeight = kioskBannerHeight(screenHeight);
 
   const renderMedia = (style: object) => (
     <KioskMediaCarousel imageUrls={bannerImages} videoUrl={null} style={style} />
   );
 
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Absolutely positioned, so it fills whichever root it's dropped into and is
+  // unaffected by that root's flex direction — the landscape branch is a row.
+  const searchOverlay = searchOpen ? (
+    <KioskSearchOverlay
+      config={config}
+      onClose={() => setSearchOpen(false)}
+      onSelectItem={(item) => {
+        setSearchOpen(false);
+        onSelectItem(item);
+      }}
+    />
+  ) : null;
+
   const menuContent = (
     <>
+      {/* Top of the menu content in both orientations — above the banner's
+          sibling column in landscape, under the banner in portrait — so the
+          media strip keeps its full height either way. */}
+      <KioskSearchBar config={config} onPress={() => setSearchOpen(true)} />
+
       <KioskCategoryPillBar
         config={config}
         pills={pills}
@@ -101,37 +135,12 @@ export function KioskMenuViewC({
         onSelect={setActiveKey}
       />
 
-      <FlatList
-        key={numColumns}
-        data={items}
-        keyExtractor={(i) => i.id}
+      <KioskItemGrid
+        config={config}
+        items={items}
         numColumns={numColumns}
-        columnWrapperStyle={{
-          gap: kioskPx(12, s),
-          marginBottom: kioskPx(12, s),
-        }}
-        contentContainerStyle={{
-          padding: kioskPx(16, s),
-          flexGrow: items.length === 0 ? 1 : undefined,
-        }}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <View style={{ flex: 1 / numColumns }}>
-            <KioskMenuItem item={item} config={config} onPress={onSelectItem} />
-          </View>
-        )}
-        ListEmptyComponent={
-          <View className="flex-1 items-center justify-center py-20">
-            <Text
-              style={{
-                fontSize: kioskPx(18, s),
-                color: `${config.textColor}99`,
-              }}
-            >
-              No items in this category.
-            </Text>
-          </View>
-        }
+        resetKey={resolvedKey}
+        onSelectItem={onSelectItem}
       />
     </>
   );
@@ -167,6 +176,8 @@ export function KioskMenuViewC({
         ) : null}
 
         <View className="flex-1">{menuContent}</View>
+
+        {searchOverlay}
       </View>
     );
   }
@@ -200,6 +211,8 @@ export function KioskMenuViewC({
       ) : null}
 
       {menuContent}
+
+      {searchOverlay}
     </View>
   );
 }

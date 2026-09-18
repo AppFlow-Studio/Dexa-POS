@@ -46,8 +46,10 @@ import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useLoyaltyStore } from '@/stores/useLoyaltyStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
+import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useSeatingStore } from '@/stores/useSeatingStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTipAdjustStore } from '@/stores/useTipAdjustStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -216,6 +218,10 @@ export function CFDProvider ({ children }: { children: React.ReactNode }) {
 function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const controllerRef = useRef<CFDController | null>(null)
   const pathname = usePathname()
+  // Table orders are opened via an always-on overlay (TableOrderOverlay),
+  // not real navigation — pathname alone can't tell the CFD a table's order
+  // is open (see lib/cfdRouting.ts).
+  const tableOverlayOpen = usePendingTableOverlay(s => !!s.openTableId)
 
   // Status states
   const [serverStatus, setServerStatus] = useState<CFDServerStatus>('disabled')
@@ -360,6 +366,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const cfdOrderingRightPanelMode = useStoreSettingsStore(
     s => s.cfdOrderingRightPanelMode
   )
+  // Operator-chosen CFD-only scale (Settings > Customer Display). Lives in
+  // POS settings but is consumed on the customer display, so it rides the
+  // payload out to every CFD transport like any other CFD setting.
+  const cfdUiScaleOverride = useSettingsStore(s => s.cfdUiScaleOverride)
   const tipsConfig = useLocationConfigStore(s => s.config.tips)
   const tipPresetPercentages = tipsConfig.presetPercentages
 
@@ -422,6 +432,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         paymentMethod: s.paymentMethod,
         merchantHasLoyalty: s.merchantHasLoyalty,
         pricingDisplayMode: s.pricingDisplayMode,
+        cfdUiScaleOverride: s.cfdUiScaleOverride,
         themeMode: s.themeMode
       }
     })
@@ -485,6 +496,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     useCFDBuiltinStore.getState().update({ pricingDisplayMode: cfdPricingDisplayMode })
   }, [cfdPricingDisplayMode])
+
+  // Mirror the CFD scale override into useCFDBuiltinStore so the on-device
+  // WebView applies it on every load, not just on the next payload flush.
+  useEffect(() => {
+    useCFDBuiltinStore.getState().update({ cfdUiScaleOverride })
+  }, [cfdUiScaleOverride])
 
   // Order store selectors - Individual selectors for stability
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -554,20 +571,21 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     clearOrderProcessingIdleTimer
   ])
 
-  const activeOrderSubtotal = useOrderStore(s => s.activeOrderSubtotal)
-  const activeOrderTax = useOrderStore(s => s.activeOrderTax)
-  const activeOrderTotal = useOrderStore(s => s.activeOrderTotal)
-  const activeOrderDiscount = useOrderStore(s => s.activeOrderDiscount)
-  const activeOrderOutstandingTotal = useOrderStore(
-    s => s.activeOrderOutstandingTotal
-  )
+  // §4.3 — derived from the item set. These were the store's mirrored
+  // `activeOrder*` fields, which are now deleted: they were a second source of
+  // truth for money, refreshed on a deferred microtask, so between an item
+  // mutation and that microtask the CFD could show the guest a stale total.
+  const cfdTotals = useActiveOrderTotals()
+  const activeOrderSubtotal = cfdTotals?.subtotal ?? 0
+  const activeOrderTax = cfdTotals?.tax ?? 0
+  const activeOrderTotal = cfdTotals?.total ?? 0
+  const activeOrderDiscount = cfdTotals?.discount ?? 0
+  const activeOrderOutstandingTotal = cfdTotals?.amountDue ?? 0
   // Cash-side outstanding. On a cash-discounted split the payment RPC can leave
   // the card-side outstanding at 0 while the cash side still owes a portion, so
   // a non-split CFD payload that reads only the card side shows $0 due. Use
   // whichever side still owes for the order-level (non-split) outstanding.
-  const activeOrderOutstandingCash = useOrderStore(
-    s => s.activeOrderOutstandingCash
-  )
+  const activeOrderOutstandingCash = cfdTotals?.cashAmountDue ?? 0
   const activeOrderOutstandingEffective = Math.max(
     activeOrderOutstandingTotal ?? 0,
     activeOrderOutstandingCash ?? 0
@@ -1211,7 +1229,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
     // A "Sales Screen" indicates the cashier is actively taking or editing an order.
     // Shared with the builtin (WebView) sync effect — see `lib/cfdRouting.ts`.
-    const isSalesScreen = isCFDSalesPathname(pathname)
+    const isSalesScreen = isCFDSalesPathname(pathname, tableOverlayOpen)
 
     // We show order data IF:
     // 1. We are in an active transaction state (Tip Selection, Payment, etc.)
@@ -1431,6 +1449,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           : null,
       merchantHasLoyalty,
       pricingDisplayMode: cfdPricingDisplayMode,
+      cfdUiScaleOverride,
       themeMode: colorScheme
     }
 
@@ -1453,7 +1472,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       `${displayOutstandingTotal}|${displayAmountPaid}|${savingsAmount}|` +
       `${showCFDOrderingRightPanel ? 1 : 0}|${cfdOrderingRightPanelMode}|${
         merchantHasLoyalty ? 1 : 0
-      }|${cfdPricingDisplayMode}`
+      }|${cfdPricingDisplayMode}|${cfdUiScaleOverride ?? ''}`
 
     if (wsFingerprint === lastPayloadHashRef.current) {
       return () => {
@@ -1511,12 +1530,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activePaymentMethod,
     baseAmountOverride,
     pathname, // Essential for responding to screen changes
+    tableOverlayOpen,
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
     paymentActiveSplit,
     colorScheme,
     merchantHasLoyalty,
-    cfdPricingDisplayMode
+    cfdPricingDisplayMode,
+    cfdUiScaleOverride
   ])
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
@@ -1581,7 +1602,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
       // Shared helper — see lib/cfdRouting.ts. Floor-plan / waitlist /
       // edit-layout / clean-table are NOT sales context.
-      const isSalesScreen = isCFDSalesPathname(pathname)
+      const isSalesScreen = isCFDSalesPathname(pathname, tableOverlayOpen)
 
       // A sale just finished (Done/Skip) but the operator hasn't closed the
       // payment sheet yet. Stay idle and clear the latch once they actually
@@ -1928,6 +1949,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     paymentView,
     baseAmountOverride,
     pathname,
+    tableOverlayOpen,
     selectedStore?.name,
     selectedStore?.code,
     organizationLogoUrl,
@@ -2792,7 +2814,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // the next tick. Without this, the CFD would keep showing the previous
   // screen for up to ~4s after the operator's already moved on.
   useEffect(() => {
-    if (isCFDSalesPathname(pathname)) return
+    if (isCFDSalesPathname(pathname, tableOverlayOpen)) return
     const stuck = activeScreenStateRef.current
     if (
       stuck === 'approved' ||
@@ -2804,7 +2826,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       frozenTotalsRef.current = null
       setActiveScreenState(null)
     }
-  }, [pathname, clearResultAutoIdleTimer, clearLoyaltyTimer])
+  }, [pathname, tableOverlayOpen, clearResultAutoIdleTimer, clearLoyaltyTimer])
 
   // Loyalty screens (prompt + confirmation) are now MANUAL-ONLY: no auto-idle
   // timer. The customer must press Skip / submit a phone, or the operator

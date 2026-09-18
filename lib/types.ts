@@ -266,6 +266,10 @@ export interface MenuItemType {
   // null/undefined = live, ISO timestamp = timed 86, "infinity" = until manual.
   snoozedUntil?: string | null;
   snoozeReason?: string | null;
+  // Sales channels this item is sold on ("pos" | "kiosk" | "online"), resolved
+  // server-side from the L1 item and its L2 location override. Undefined on
+  // pre-field snapshots; every consumer fails open. See `isItemOnChannel`.
+  availableChannels?: string[];
 }
 
 export interface CustomPricing {
@@ -286,6 +290,11 @@ export interface Menu {
   description?: string;
   isActive: boolean;
   displayOrder?: number;
+  channelVisibility?: {
+    pos: boolean;
+    kiosk: boolean;
+    online: boolean;
+  };
   categories: Category[]; // Changed to array of full Category objects (Tree Structure)
   schedules?: Schedule[];
   createdAt: string;
@@ -359,6 +368,22 @@ export interface CartItem {
   id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string; // The original ID from the menu data
   db_order_item_id?: string; // Backend order_item_id after sync (for update/void RPC calls)
+  /**
+   * The `order_items` PRIMARY KEY this line owns — known from the first frame
+   * on the local-first path, where `addLocalItem` mints it.
+   *
+   * Deliberately separate from `db_order_item_id`, which across this codebase
+   * means "the SERVER has this row" and is only written by the outbox drain.
+   * Dozens of paths gate on that meaning and fail hard if it lies, so it could
+   * not simply be set early.
+   *
+   * But everything that MUTATES an item — quantity, void, remove, seat,
+   * modifiers, kitchen send — needs the row's identity, not its sync state.
+   * Without this field those paths had nothing to address a row by while
+   * offline, so they queued the CART id into the legacy queue, which cannot
+   * resolve it, and the mutation was lost. This is the id they address.
+   */
+  item_row_id?: string;
   locationExclusiveItemId?: string; // Optional location-exclusive item ID
   // Open item support
   is_open_item?: boolean;
@@ -785,6 +810,8 @@ export interface OrderPaymentTransactionDetails {
   valorTransaction?: Record<string, unknown>;
   // Full ATOM response JSONB (from buildAtomTerminalResponse)
   atomTransaction?: Record<string, unknown>;
+  // Full CodePay response JSONB (from buildCodePayTerminalResponse)
+  codepayTransaction?: Record<string, unknown>;
   [key: string]: unknown;
 }
 

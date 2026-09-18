@@ -5,6 +5,9 @@ import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosti
 import { KioskErrorBoundary } from "@/components/kiosk/shared/KioskErrorBoundary";
 import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { refreshSelectedStationOperationalState } from "@/services/posAccessService";
+import { isKioskCheckoutHeld } from "@/components/kiosk/shared/checkoutGuard";
 import {
     kioskProfileQueryKeys,
     useKioskProfile,
@@ -14,8 +17,8 @@ import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 
 /**
  * Kiosk entry point.
@@ -34,6 +37,7 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
  * "ordering" branch is below.
  */
 export default function KioskScreen() {
+  const supabase = useSupabaseClient();
   const { config, status, error } = useKioskProfile();
   const isIdle = useKioskProfileStore((s) => s.isIdle);
   const setIdle = useKioskProfileStore((s) => s.setIdle);
@@ -42,6 +46,24 @@ export default function KioskScreen() {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const handleStart = async () => {
+    try {
+      const stationId = useStoreSettingsStore.getState().selectedStation?.id;
+      const location = useStoreSettingsStore.getState().selectedStore;
+      if (!stationId || !location?.id || !location.merchant_id || isKioskCheckoutHeld(stationId)) {
+        Alert.alert("Staff assistance required", "Please ask a staff member to check this kiosk's payment status.");
+        return;
+      }
+      const access = await refreshSelectedStationOperationalState(supabase);
+      if (!access.valid) {
+        Alert.alert(access.failure.title, access.failure.message);
+        return;
+      }
+      setIdle(false);
+    } catch {
+      Alert.alert("Kiosk unavailable", "Could not verify kiosk access. Please see a staff member.");
+    }
+  };
 
   // Warm the image cache once per profile (not on every render — configsEqual
   // in the store keeps `config` referentially stable across identical polls,
@@ -65,13 +87,26 @@ export default function KioskScreen() {
     });
   }, [queryClient]);
 
-  // Lock the device to the configured orientation. Re-locks when the config's
-  // orientation changes (e.g. a committed edit).
-  useKioskOrientation(config?.orientation);
+  // Lock the device to the configured orientation and resolve which one the
+  // layouts should render for. The device-local override (Kiosk Settings →
+  // Menu Layout) wins over the profile, and its "Auto" mode follows the panel.
+  const orientation = useKioskOrientation(config?.orientation);
+
+  // Everything downstream reads `config.orientation`, so the resolved value is
+  // folded back into the config rather than threaded through as a second prop.
+  // Identity is preserved when nothing changed — `configsEqual` in the store
+  // keeps `config` referentially stable, and this memo must not undo that.
+  const effectiveConfig = useMemo(
+    () =>
+      !config || config.orientation === orientation
+        ? config
+        : { ...config, orientation },
+    [config, orientation],
+  );
 
   // No config yet (first ever load, nothing cached). A persisted config renders
   // immediately even while the background poll refreshes.
-  if (!config) {
+  if (!config || !effectiveConfig) {
     if (status === "error") {
       return (
         <View className="flex-1 items-center justify-center bg-black px-8">
@@ -95,6 +130,9 @@ export default function KioskScreen() {
   if (showDiagnostics) {
     return (
       <KioskScaleProvider>
+        {/* Raw config, not `effectiveConfig` — this screen inspects and edits
+            the profile, so it must show what the profile actually says. It
+            resolves the device's own orientation override itself. */}
         <KioskDiagnosticsScreen
           config={config}
           onClose={() => setShowDiagnostics(false)}
@@ -119,19 +157,19 @@ export default function KioskScreen() {
           clearCart();
           setIdle(true);
         }}
-        backgroundColor={config.backgroundColor}
-        textColor={config.headerTextColor}
-        accentColor={config.primaryColor}
+        backgroundColor={effectiveConfig.backgroundColor}
+        textColor={effectiveConfig.headerTextColor}
+        accentColor={effectiveConfig.primaryColor}
       >
         {isIdle ? (
           <KioskAttractScreen
-            config={config}
-            onStart={() => setIdle(false)}
+            config={effectiveConfig}
+            onStart={handleStart}
             onLogoLongPress={() => setShowPinModal(true)}
           />
         ) : (
           <KioskTemplateRouter
-            config={config}
+            config={effectiveConfig}
             onExit={() => {
               clearCart();
               setIdle(true);

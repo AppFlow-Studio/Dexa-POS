@@ -55,16 +55,20 @@ describe('Wave 2.6 — addItemToActiveOrder clears stale sync state on cross-ord
 
     const branchSlice = orderStoreSrc.slice(
       newItemBranchIdx,
-      newItemBranchIdx + 2500
+      newItemBranchIdx + 8000
     )
-    const clearIdx = branchSlice.indexOf(
-      'useSyncStatusStore.getState().clearSyncStatus(syncItemId)'
-    )
+    // The explicit clearSyncStatus() call was intentionally removed: the
+    // deferred setSyncStatus(syncItemId, 'pending') overwrites the status,
+    // drops itemFailedAt and clears the stale error in a single commit.
+    // What still matters is that the reused id is re-stamped 'pending', so
+    // no stale 'failed' state can survive onto the new cart line.
     const pushIdx = branchSlice.indexOf(
       'updatedCart = [...updatedCart, newCartItem]'
     )
-    expect(clearIdx).toBeGreaterThan(0)
-    expect(pushIdx).toBeGreaterThan(clearIdx)
+    expect(pushIdx).toBeGreaterThan(0)
+    expect(branchSlice).toMatch(
+      /setSyncStatus\(syncItemId, ['"]pending['"]\)/
+    )
   })
 
   it('drops any pending or dead-lettered ops for the synthetic id (otherwise the dead-letter UI re-fires `setSyncStatusBatch` from offlineSyncInit:441)', () => {
@@ -79,7 +83,7 @@ describe('Wave 2.6 — addItemToActiveOrder clears stale sync state on cross-ord
     )
     const branchSlice = orderStoreSrc.slice(
       newItemBranchIdx,
-      newItemBranchIdx + 2500
+      newItemBranchIdx + 8000
     )
     expect(branchSlice).toMatch(/dropQueuedOpsForItem\(syncItemId\)/)
   })
@@ -120,7 +124,7 @@ describe('Wave 2.6 — addItemToActiveOrder clears stale sync state on cross-ord
     )
     const branchSlice = orderStoreSrc.slice(
       newItemBranchIdx,
-      newItemBranchIdx + 2500
+      newItemBranchIdx + 8000
     )
 
     // No `await dropQueuedOpsForItem` — that would gate the optimistic add.

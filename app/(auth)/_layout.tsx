@@ -17,7 +17,7 @@ export default function AuthLayout() {
   // Lock to the kiosk's configured orientation while still on the auth/PIN
   // screens, so the device rotates before the customer-facing UI appears.
   const { config: kioskConfig } = useKioskProfile();
-  useKioskOrientation(isKiosk ? kioskConfig?.orientation : undefined);
+  useKioskOrientation(kioskConfig?.orientation, isKiosk);
 
   // Show loading indicator while Clerk is loading
   if (!isLoaded) {

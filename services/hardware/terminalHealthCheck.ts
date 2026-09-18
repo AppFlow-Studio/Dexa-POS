@@ -13,6 +13,7 @@ import {
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getSharedValorService } from "@/services/terminals/valor-service";
+import { codepayIsRegisterAvailable } from "@/native/CodePayBridge";
 import { reconcileTerminalSerial } from "@/services/terminals/terminalIdentity";
 import { isValorUsbVendorId } from "@/services/terminals/valor-transport-usb";
 import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
@@ -70,8 +71,34 @@ async function performHealthCheck(): Promise<void> {
     await performCastlesHealthCheck();
   } else if (terminalType === "valor") {
     await performValorHealthCheck();
+  } else if (terminalType === "codepay") {
+    await performCodePayHealthCheck();
   } else {
     await performDejavooHealthCheck();
+  }
+}
+
+/**
+ * CodePay (on-terminal) health check. CodePay is driven by an Intent to the
+ * on-device CodePay Register app — there is no socket to probe. A non-intrusive
+ * presence check (does an installed app resolve the transaction action?) is the
+ * right liveness signal; it never launches CodePay Register, so it can't
+ * foreground the card screen or wedge a sale.
+ */
+async function performCodePayHealthCheck(): Promise<void> {
+  try {
+    const available = await codepayIsRegisterAvailable();
+    if (available) {
+      handleSuccess();
+    } else {
+      handleFailure(
+        "CodePay Register app not found on this terminal (install or update it).",
+      );
+    }
+  } catch (err) {
+    handleFailure(
+      err instanceof Error ? err.message : "CodePay presence check failed",
+    );
   }
 }
 

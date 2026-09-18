@@ -223,6 +223,7 @@ const TRANSITIONS: Partial<
     BEGIN_CLOSING: "closing",
   },
   paying: {
+    SEND_TO_KITCHEN: "ordered", // K7: a server ringing one more drink while the check is open is ordinary floor behaviour
     FULL_PAYMENT: "paid",
     RECEIVE_PAYMENT: "paid",
     CANCEL_INTERMEDIATE: "check_presented",
@@ -233,6 +234,7 @@ const TRANSITIONS: Partial<
     BEGIN_CLOSING: "closing",
   },
   closing: {
+    SEND_TO_KITCHEN: "ordered", // K7: same rationale as paying — local-only intermediate
     FULL_PAYMENT: "paid",
     RECEIVE_PAYMENT: "paid",
     CLEAR_TABLE: "cleaning",

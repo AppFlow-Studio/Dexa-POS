@@ -451,13 +451,25 @@ const OverviewTab: React.FC<{ data: any }> = ({ data }) => {
         </View>
       </SectionCard>
 
-      {/* Table sessions */}
+      {/* Table sessions.
+          `table_sessions` is the one thing on this page the local mirror does
+          not hold, so `data.sessions` is null when the numbers were resolved
+          from disk with no connection. The cards show "—" and say why: a 0
+          here would read as "nobody sat down today". */}
       <SectionCard title="Table Sessions" icon={<Table2 size={s(14)} color={colors.teal} />}>
-        <View style={{ flexDirection: 'row', gap: s(8) }}>
-          <StatCard icon={<Hash size={s(14)} color={colors.teal} />} label="Sessions" value={String(data.sessions.totalSessions)} sub={`${data.sessions.totalCovers} covers`} />
-          <StatCard icon={<Users size={s(14)} color={colors.teal} />} label="Avg Party" value={data.sessions.averagePartySize.toFixed(1)} sub="guests / session" />
-          <StatCard icon={<Clock size={s(14)} color={colors.teal} />} label="Avg Duration" value={data.sessions.averageDurationMinutes > 0 ? `${Math.round(data.sessions.averageDurationMinutes)}m` : '—'} />
-        </View>
+        {data.sessions ? (
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
+            <StatCard icon={<Hash size={s(14)} color={colors.teal} />} label="Sessions" value={String(data.sessions.totalSessions)} sub={`${data.sessions.totalCovers} covers`} />
+            <StatCard icon={<Users size={s(14)} color={colors.teal} />} label="Avg Party" value={data.sessions.averagePartySize.toFixed(1)} sub="guests / session" />
+            <StatCard icon={<Clock size={s(14)} color={colors.teal} />} label="Avg Duration" value={data.sessions.averageDurationMinutes > 0 ? `${Math.round(data.sessions.averageDurationMinutes)}m` : '—'} />
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
+            <StatCard icon={<Hash size={s(14)} color={colors.muted} />} label="Sessions" value="—" sub="needs a connection" />
+            <StatCard icon={<Users size={s(14)} color={colors.muted} />} label="Avg Party" value="—" sub="needs a connection" />
+            <StatCard icon={<Clock size={s(14)} color={colors.muted} />} label="Avg Duration" value="—" sub="needs a connection" />
+          </View>
+        )}
       </SectionCard>
 
     </>
@@ -817,7 +829,7 @@ const AnalyticsDashboardScreen = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore)
   const locationId = selectedStore?.id || ''
   const merchantId = selectedStore?.merchant_id || ''
-  const { filters, activePresetLabel, data, isLoading, error, setDateRange, fetchData } = useAnalyticsStore()
+  const { filters, activePresetLabel, data, coverage, isLoading, error, setDateRange, fetchData } = useAnalyticsStore()
 
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [showDateModal, setShowDateModal] = useState(false)
@@ -988,6 +1000,21 @@ const AnalyticsDashboardScreen = () => {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8), backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '30', borderRadius: s(10), padding: s(10), marginBottom: s(12) }}>
             <AlertCircle size={s(14)} color={colors.danger} />
             <Text style={{ fontSize: s(12), color: colors.danger, flex: 1 }}>{error}</Text>
+          </View>
+        )}
+
+        {/* Coverage notice. Only ever shown for a LOCAL answer whose window
+            reaches past what this device retains — the case where a total is
+            genuinely lower than the server's. Saying so is the whole rule for
+            this page: never silently under-report revenue. */}
+        {coverage?.source === 'local' && coverage.windowExceedsRetention && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8), backgroundColor: colors.warning + '15', borderWidth: 1, borderColor: colors.warning + '30', borderRadius: s(10), padding: s(10), marginBottom: s(12) }}>
+            <AlertCircle size={s(14)} color={colors.warning} />
+            <Text style={{ fontSize: s(12), color: colors.heading, flex: 1 }}>
+              {coverage.retentionFloor
+                ? `Offline — showing orders from ${fmtInTz(new Date(coverage.retentionFloor), bizConfig.timezone, false)} onward. Older data needs a connection.`
+                : 'Offline — this range may extend past what this device holds. Older data needs a connection.'}
+            </Text>
           </View>
         )}
 

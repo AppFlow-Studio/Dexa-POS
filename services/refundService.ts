@@ -1,6 +1,7 @@
 import { isTransientRpcError } from "@/lib/network/idempotencyKey";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { isInKindMethod } from "@/lib/paymentMethod";
+import { parseRefundApproval } from "@/lib/refundApproval";
 import { computeItemRefundAmount } from "@/lib/refundScShare";
 import { OrderService } from "@/services/orderService";
 import {
@@ -16,6 +17,7 @@ import {
     isTerminalTransportDead,
 } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { dollarsToValorCents } from "@/services/terminals/valor-framing";
 import { getSharedValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
@@ -26,6 +28,8 @@ import {
 } from "@/services/terminals/atomLoopbackDetector";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
 import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from "@/types/atom";
+import { getSharedCodePayService } from "@/services/terminals/codepay-service";
+import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
 import {
     CASTLES_DEFAULT_PORT,
     CASTLES_SOCKET_TIMEOUT_MS,
@@ -239,8 +243,16 @@ export class RefundService {
         // ATOM linked refund/void references the original by paymentId.
         const atomTxn = p.processor_response?.atom_transaction;
         const atomPaymentId = atomTxn?.paymentId || "";
+        // CodePay references the original by orig_merchant_order_no.
+        const codepayTxn = p.processor_response?.codepay_transaction;
+        const codepayMerchantOrderNo =
+          codepayTxn?.merchantOrderNo || "";
         const cardLast4 =
-          valorTxn?.cardLast4 || castlesTxn?.cardLast4 || atomTxn?.cardLast4 || "";
+          valorTxn?.cardLast4 ||
+          castlesTxn?.cardLast4 ||
+          atomTxn?.cardLast4 ||
+          codepayTxn?.cardLast4 ||
+          "";
         return {
           paymentId: p.id,
           referenceId: p.reference_number || p.transaction_id || "",
@@ -248,6 +260,7 @@ export class RefundService {
           stan,
           tranNo,
           atomPaymentId,
+          codepayMerchantOrderNo,
           cardLast4,
           authCode: p.auth_code || "",
           amount,
@@ -296,8 +309,11 @@ export class RefundService {
       return { kind: "error", error: "Payment not found for refund." };
     }
 
-    const useVoid = payment.isVoidable;
-    const reversalType = useVoid ? "void" : "refund";
+    // This method is reached from the explicit Refund action. Do not silently
+    // convert an unsettled full refund into a void; Void has its own UI/path and
+    // a refund receipt must remain auditable as reversal_type='refund'.
+    const useVoid = false;
+    const reversalType = "refund" as const;
 
     // Step 1 — create_reversal (key: step 'create_reversal')
     const { data: reversal, error: reversalError } =
@@ -402,27 +418,12 @@ export class RefundService {
     const terminalResponse = terminalResult.terminalResponse as
       | Record<string, unknown>
       | undefined;
-    const generalResponse =
-      (terminalResponse?.GeneralResponse as {
-        ResultCode?: string;
-        Message?: string;
-      }) ?? undefined;
-    const castlesTxn = terminalResponse?.castles_transaction as
-      | Record<string, unknown>
-      | undefined;
+    const approval = parseRefundApproval(terminalResponse);
     const returnDetails = {
-      rrn: (terminalResponse?.RRN ??
-        terminalResponse?.rrn ??
-        castlesTxn?.rrn) as string | undefined,
-      authCode: (terminalResponse?.AuthCode ??
-        terminalResponse?.authCode ??
-        castlesTxn?.approvalCode) as string | undefined,
-      referenceId: (terminalResponse?.ReferenceId ??
-        terminalResponse?.referenceId ??
-        castlesTxn?.referenceId) as string | undefined,
-      transactionNumber: (terminalResponse?.TransactionNumber ??
-        terminalResponse?.transactionNumber ??
-        castlesTxn?.stan) as string | undefined,
+      rrn: approval.rrn ?? undefined,
+      authCode: approval.authCode ?? undefined,
+      referenceId: approval.referenceId ?? undefined,
+      transactionNumber: approval.transactionNumber ?? undefined,
       reason: request.reasonDetail,
       initiatedBy: request.initiatedBy,
     };
@@ -435,12 +436,9 @@ export class RefundService {
         "completed",
         terminalResponse ?? null,
         (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
-        generalResponse?.ResultCode ?? null,
-        generalResponse?.Message ?? null,
-        ((terminalResponse?.RRN ??
-          terminalResponse?.rrn ??
-          castlesTxn?.rrn ??
-          terminalResponse?.PNReferenceId) as string) ?? null,
+        approval.resultCode,
+        approval.responseMessage,
+        approval.rrn,
         {
           keyOverride: toRefundStepKey(
             idempotencyKey,
@@ -454,7 +452,7 @@ export class RefundService {
         payment.availableForRefund,
         reversalType,
         returnDetails,
-        { restorePaidQuantity: true },
+        undefined,
         {
           keyOverride: toRefundStepKey(
             idempotencyKey,
@@ -600,8 +598,9 @@ export class RefundService {
       return { kind: "error", error: "Invalid refund amount." };
     }
 
-    const useVoid = payment.isVoidable && amount >= payment.availableForRefund;
-    const reversalType = useVoid ? "void" : "partial_refund";
+    const useVoid = false;
+    const reversalType =
+      amount >= payment.availableForRefund ? "refund" : "partial_refund";
 
     // Step 1 — create_reversal
     const { data: reversal, error: reversalError } =
@@ -704,27 +703,12 @@ export class RefundService {
     const terminalResponse = terminalResult.terminalResponse as
       | Record<string, unknown>
       | undefined;
-    const generalResponse =
-      (terminalResponse?.GeneralResponse as {
-        ResultCode?: string;
-        Message?: string;
-      }) ?? undefined;
-    const castlesTxn = terminalResponse?.castles_transaction as
-      | Record<string, unknown>
-      | undefined;
+    const approval = parseRefundApproval(terminalResponse);
     const returnDetails = {
-      rrn: (terminalResponse?.RRN ??
-        terminalResponse?.rrn ??
-        castlesTxn?.rrn) as string | undefined,
-      authCode: (terminalResponse?.AuthCode ??
-        terminalResponse?.authCode ??
-        castlesTxn?.approvalCode) as string | undefined,
-      referenceId: (terminalResponse?.ReferenceId ??
-        terminalResponse?.referenceId ??
-        castlesTxn?.referenceId) as string | undefined,
-      transactionNumber: (terminalResponse?.TransactionNumber ??
-        terminalResponse?.transactionNumber ??
-        castlesTxn?.stan) as string | undefined,
+      rrn: approval.rrn ?? undefined,
+      authCode: approval.authCode ?? undefined,
+      referenceId: approval.referenceId ?? undefined,
+      transactionNumber: approval.transactionNumber ?? undefined,
       reason: request.reasonDetail,
       initiatedBy: request.initiatedBy,
     };
@@ -739,12 +723,9 @@ export class RefundService {
         "completed",
         terminalResponse ?? null,
         (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
-        generalResponse?.ResultCode ?? null,
-        generalResponse?.Message ?? null,
-        ((terminalResponse?.RRN ??
-          terminalResponse?.rrn ??
-          castlesTxn?.rrn ??
-          terminalResponse?.PNReferenceId) as string) ?? null,
+        approval.resultCode,
+        approval.responseMessage,
+        approval.rrn,
         {
           keyOverride: toRefundStepKey(
             idempotencyKey,
@@ -1109,21 +1090,12 @@ export class RefundService {
         const terminalResponse = terminalResult.terminalResponse as
           | Record<string, unknown>
           | undefined;
-        const generalResponse =
-          (terminalResponse?.GeneralResponse as {
-            ResultCode?: string;
-            Message?: string;
-          }) ?? undefined;
+        const approval = parseRefundApproval(terminalResponse);
         const returnDetails = {
-          rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn) as
-            | string
-            | undefined,
-          authCode: (terminalResponse?.AuthCode ??
-            terminalResponse?.authCode) as string | undefined,
-          referenceId: (terminalResponse?.ReferenceId ??
-            terminalResponse?.referenceId) as string | undefined,
-          transactionNumber: (terminalResponse?.TransactionNumber ??
-            terminalResponse?.transactionNumber) as string | undefined,
+          rrn: approval.rrn ?? undefined,
+          authCode: approval.authCode ?? undefined,
+          referenceId: approval.referenceId ?? undefined,
+          transactionNumber: approval.transactionNumber ?? undefined,
           reason: request.reasonDetail,
           initiatedBy: request.initiatedBy,
         };
@@ -1135,10 +1107,9 @@ export class RefundService {
             "completed",
             terminalResponse ?? null,
             (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
-            generalResponse?.ResultCode ?? null,
-            generalResponse?.Message ?? null,
-            ((terminalResponse?.RRN ??
-              terminalResponse?.PNReferenceId) as string) ?? null,
+            approval.resultCode,
+            approval.responseMessage,
+            approval.rrn,
             { keyOverride: toRefundStepKey(subKey, "update_reversal_status") },
           ),
           OrderService.applyRefundToPayment(
@@ -1374,6 +1345,15 @@ export class RefundService {
       );
     }
 
+    if (terminalType === "codepay") {
+      return this.processCodePayTerminalRefund(
+        payment,
+        amount,
+        useVoid,
+        terminal!,
+      );
+    }
+
     // Dejavoo flow
     const api = new DejavooSpinAPI(this.supabase);
     const loaded = await api.loadTerminal(terminalId, terminal);
@@ -1546,7 +1526,13 @@ export class RefundService {
         };
       }
 
-      const result = await valor.processRefund({ amount, referenceId });
+      // `amount` is DOLLARS here; the Valor service expects integer CENTS
+      // (centsToValorAmount). Convert like the sale path so a $4.08 refund
+      // sends 408, not 4 ($0.04).
+      const result = await valor.processRefund({
+        amount: dollarsToValorCents(amount),
+        referenceId,
+      });
       return {
         success: result.success,
         terminalResponse: result.terminalResponse,
@@ -1628,6 +1614,80 @@ export class RefundService {
       console.error("[RefundService] ATOM terminal refund error:", message);
       Sentry.captureException(err instanceof Error ? err : new Error(message), {
         tags: { source: "atom_refund" },
+      });
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * CodePay (on-terminal Intent) reversal. Both refund and void are REFERENCED
+   * by the original sale's merchant_order_no (orig_merchant_order_no) — no card
+   * re-presentment. Void (trans_type 2) works only while the batch is open
+   * (isVoidable); otherwise a refund (trans_type 3) is issued for the amount.
+   * Amounts are DOLLARS. Config (app_id) comes from the station's configured
+   * CodePay terminal row (app_id, falling back to register_id).
+   */
+  private async processCodePayTerminalRefund(
+    payment: PaymentRefundContext,
+    amount: number,
+    useVoid: boolean,
+    terminal: StationPaymentTerminal,
+  ): Promise<{
+    success: boolean;
+    terminalResponse?: Record<string, unknown>;
+    error?: string;
+  }> {
+    const appId = terminal.app_id ?? terminal.register_id ?? "";
+    if (!appId.trim()) {
+      return { success: false, error: "CodePay terminal has no app_id configured." };
+    }
+    // Referenced reversal needs the ORIGINAL merchant_order_no. Prefer the value
+    // pulled from processor_response.codepay_transaction; fall back to the
+    // generic reference_number/transaction_id.
+    const origMerchantOrderNo =
+      payment.codepayMerchantOrderNo || payment.referenceId;
+    if (!origMerchantOrderNo) {
+      return {
+        success: false,
+        error: "Cannot reverse: missing original CodePay merchant order number.",
+      };
+    }
+
+    try {
+      const service = getSharedCodePayService();
+      service.configure({
+        appId,
+        terminalId: terminal.id,
+        terminalSn: terminal.serial_number ?? undefined,
+        timeout: CODEPAY_SALE_TIMEOUT_MS,
+      });
+      // merchant_order_no for this reversal (≤32 chars).
+      const referenceId = `${useVoid ? "CPVD" : "CPRF"}_${Date.now()}`;
+      const result = useVoid
+        ? await service.void({ referenceId, origMerchantOrderNo, amount })
+        : await service.refund({ referenceId, origMerchantOrderNo, amount });
+
+      // An indeterminate reversal (Intent timed out) must NOT be reported as a
+      // clean success; surface it so staff can verify on the terminal.
+      if (result.indeterminate) {
+        return {
+          success: false,
+          terminalResponse: result.terminalResponse,
+          error:
+            result.error ??
+            "CodePay reversal result could not be confirmed. Check the terminal before retrying.",
+        };
+      }
+      return {
+        success: result.success,
+        terminalResponse: result.terminalResponse,
+        error: result.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[RefundService] CodePay terminal refund error:", message);
+      Sentry.captureException(err instanceof Error ? err : new Error(message), {
+        tags: { source: "codepay_refund" },
       });
       return { success: false, error: message };
     }

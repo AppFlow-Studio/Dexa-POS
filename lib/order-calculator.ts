@@ -135,11 +135,46 @@ function pruneCache (): void {
 //   console.log('CalculateItemEffective Cash Price After Modifiers', effectivePrice)
 //   return round2(effectivePrice);
 // }
-export function calculateItemEffectiveCashPrice (item: CartItem): number {
-  let effectivePrice = new Decimal(item.baseCashPrice ?? item.unitPrice ?? 0)
+/**
+ * Compose an item's unit price: base + size + modifiers + add-ons, rounded to
+ * 2dp ONCE at the end.
+ *
+ * ── §4.2's integer rewrite was attempted here and REVERTED. Do not retry it
+ *    without reading this. ───────────────────────────────────────────────────
+ *
+ * The plan proposed replacing decimal.js with scaled-integer arithmetic —
+ * measured at 12.6× faster on the same arithmetic shape. It was implemented at
+ * scale 1e6 and `orderCalculatorDifferential.test.ts` rejected it: the two
+ * disagreed on ~1 in 3,000 generated items.
+ *
+ * WHY. Converting each component to a fixed scale rounds each component
+ * SEPARATELY, and no scale removes that — it only moves the boundary. A
+ * modifier priced 0.0049999 becomes 0.005 at 1e6, and the final 2dp rounding
+ * then takes it to a cent that decimal.js never produces, because decimal.js
+ * sums exactly and only rounds once. Seeds 10, 15, 43, 45 and 68 in that file
+ * are the counterexamples; the failure is a wrong charge, one cent at a time.
+ *
+ * Summing in plain float and rounding once avoids per-component rounding but
+ * reintroduces representation error at exactly the .005 boundaries where the
+ * cent is decided — trading a systematic error for a rarer, harder one.
+ *
+ * The measurement that makes this an easy call: §4.0.1 put the WHOLE
+ * calculator at ~0.6 ms for a 50-item order, ~98% of it decimal.js. Even a
+ * perfect integer rewrite saves well under a millisecond on a path whose
+ * visible latency is dominated by the re-render fan-out (§4.3) and the RPC
+ * round trip. That is not worth a rounding risk in money code.
+ *
+ * What the attempt DID leave behind, and why this function still exists:
+ * card and cash now share one composition, so they can never disagree about
+ * which components an item has — they differ only in the base price. That
+ * asymmetry was a real bug class (dual pricing drifting by the add-on total).
+ */
+function composeUnitPrice (item: CartItem, base: number): number {
+  let effectivePrice = new Decimal(base)
 
-  if (item.customizations?.size?.priceModifier) {
-    effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier)
+  const sizeModifier = item.customizations?.size?.priceModifier
+  if (sizeModifier) {
+    effectivePrice = effectivePrice.plus(sizeModifier)
   }
 
   if (item.customizations?.modifiers) {
@@ -150,7 +185,51 @@ export function calculateItemEffectiveCashPrice (item: CartItem): number {
     }
   }
 
+  for (const addOn of item.customizations?.addOns ?? []) {
+    effectivePrice = effectivePrice.plus(addOn.price ?? 0)
+  }
+
   return effectivePrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()
+}
+
+export function calculateItemEffectiveCashPrice (item: CartItem): number {
+  return composeUnitPrice(item, item.baseCashPrice ?? item.unitPrice ?? 0)
+}
+
+/**
+ * Sum of `customizations.addOns` prices.
+ *
+ * ── Why this was missing, and why adding it cannot double-count ────────────
+ *
+ * `addOns` appeared NOWHERE in this file. The calculator priced
+ * `customizations.size.priceModifier` and `customizations.modifiers[]` only,
+ * while ItemCustomizationDialog.tsx:118-121 writes
+ * `baseCardPrice: menuItem.price` — the bare menu price, WITHOUT add-ons — and
+ * puts the add-on-inclusive figure in `price`, which the calculator never
+ * reads. So an item's add-ons were simply not charged.
+ *
+ * Double-counting is structurally impossible: the base fields this adds to are
+ * explicitly documented at that call site as "Base prices (no modifiers)",
+ * because the server's own `add_order_item` RPC needs them bare to compute
+ * `p_unit_price`. If that ever changes, this is the line that has to change
+ * with it.
+ *
+ * Not a live undercharge before now only because `menuItem.addOns` is
+ * populated exclusively from `lib/mockData.ts` — real Supabase menus deliver
+ * everything through `customizations.modifiers`. It was a live TRAP: the
+ * moment anything populated `addOns` from real menu data, every item carrying
+ * one would have silently undercharged. `addOns` is still read by receipts,
+ * printing, cartShapeReconcile and the online-order detail screen, so the
+ * concept is not dead — only its pricing was.
+ */
+function addOnTotal (item: CartItem): number {
+  const addOns = item.customizations?.addOns
+  if (!addOns || addOns.length === 0) return 0
+  let total = 0
+  for (const addOn of addOns) {
+    total += addOn.price ?? 0
+  }
+  return total
 }
 
 /**
@@ -206,21 +285,9 @@ export function calculateItemEffectiveCashPrice (item: CartItem): number {
 // }
 // Use Decimal for modifier calculations too
 export function calculateItemEffectiveCardPrice (item: CartItem): number {
-  let effectivePrice = new Decimal(item.baseCardPrice ?? item.unitPrice ?? 0)
-
-  if (item.customizations?.size?.priceModifier) {
-    effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier)
-  }
-
-  if (item.customizations?.modifiers) {
-    for (const modifierGroup of item.customizations.modifiers) {
-      for (const option of modifierGroup.options) {
-        effectivePrice = effectivePrice.plus(option.price ?? 0)
-      }
-    }
-  }
-
-  return effectivePrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()
+  // Shares composeUnitPrice with the cash path so the two can never disagree
+  // about WHICH components exist. They differ only in the base price.
+  return composeUnitPrice(item, item.baseCardPrice ?? item.unitPrice ?? 0)
 }
 
 /**

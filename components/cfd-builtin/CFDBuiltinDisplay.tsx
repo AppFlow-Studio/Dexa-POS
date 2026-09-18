@@ -28,7 +28,7 @@ import {
   markReady,
   setWebView,
 } from "@/services/cfd/CFDWebViewBridge";
-import { UiScaleProvider } from "@/lib/uiScale";
+import { CFDScaleProvider, UiScaleProvider } from "@/lib/uiScale";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { AppRegistry, StyleSheet, View } from "react-native";
@@ -169,6 +169,10 @@ function CFDWebViewHost() {
       ? s.screenState
       : null,
   );
+
+  // Operator's CFD-only scale (Settings > Customer Display), mirrored into
+  // the built-in store by CFDProvider.
+  const cfdUiScaleOverride = useCFDBuiltinStore((s) => s.cfdUiScaleOverride);
 
   // Bridge registration tied to WebView mount status.
   // When the WebView unmounts (native overlay active), we unregister
@@ -314,20 +318,26 @@ function CFDWebViewHost() {
         // hardware-layer compositing conflicts. NativeLoyalty
         // uses plain TouchableOpacity + React state (no
         // setNativeProps — removed in RN 0.76+).
-        <UiScaleProvider>
-          <View style={styles.root}>
-            <CFDBuiltinDisplayProvider>
-              {nativeLoyaltyScreen === "loyalty_prompt" ? (
-                <NativeLoyaltyPromptScreen
-                  onPhoneSubmitted={triggerCFDPhoneSubmit}
-                  onSkip={triggerCFDLoyaltySkip}
-                />
-              ) : (
-                <NativeLoyaltyConfirmationScreen />
-              )}
-            </CFDBuiltinDisplayProvider>
-          </View>
-        </UiScaleProvider>
+        /* CFDScaleProvider sits outside UiScaleProvider so the operator's
+           CFD-only scale feeds both the `--ui-scale` variable and the
+           useUiScale() calls inside this overlay — it renders outside
+           CFDScreenRouter, which is where the rest of the CFD gets it. */
+        <CFDScaleProvider override={cfdUiScaleOverride}>
+          <UiScaleProvider>
+            <View style={styles.root}>
+              <CFDBuiltinDisplayProvider>
+                {nativeLoyaltyScreen === "loyalty_prompt" ? (
+                  <NativeLoyaltyPromptScreen
+                    onPhoneSubmitted={triggerCFDPhoneSubmit}
+                    onSkip={triggerCFDLoyaltySkip}
+                  />
+                ) : (
+                  <NativeLoyaltyConfirmationScreen />
+                )}
+              </CFDBuiltinDisplayProvider>
+            </View>
+          </UiScaleProvider>
+        </CFDScaleProvider>
       ) : (
         // ── WebView for all non-loyalty-prompt screens ──
         // Boots fresh after native overlay dismisses. Bridge's

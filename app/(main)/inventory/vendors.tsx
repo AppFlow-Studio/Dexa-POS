@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useInventoryWriteGate } from "@/hooks/inventory/useInventoryWriteGate";
 import { getHeaderHeight } from "@/lib/headerHeight";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 import { PurchaseOrder, Vendor } from "@/lib/types";
@@ -1095,6 +1096,9 @@ const VendorScreen = () => {
   } = useInventoryStore();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const merchantId = selectedStore?.merchant_id ?? "";
+  // Reads work offline from the mirror; writes do not. See Phase 5 in
+  // docs/engineering/architecture/sqlite-offline-first.md.
+  const { canWrite, blockedReason, runGuarded } = useInventoryWriteGate();
 
   const locationId = selectedStore?.id ?? "";
 
@@ -1185,12 +1189,12 @@ const VendorScreen = () => {
     setSelectedVendor(null);
   };
 
+  // Guarded because neither call is awaited by the modal: offline, the store
+  // refuses the write and the rejection would otherwise be unhandled.
   const handleSaveVendor = (data: Omit<Vendor, "id">, id?: string) => {
-    if (id) {
-      updateVendor(id, data);
-    } else {
-      addVendor(data, merchantId, locationId);
-    }
+    void runGuarded(() =>
+      id ? updateVendor(id, data) : addVendor(data, merchantId, locationId),
+    );
   };
 
   const handleOpenDeleteConfirm = (vendor: Vendor) => {
@@ -1200,7 +1204,7 @@ const VendorScreen = () => {
 
   const handleConfirmDelete = () => {
     if (selectedVendor) {
-      deleteVendor(selectedVendor.id);
+      void runGuarded(() => deleteVendor(selectedVendor.id));
     }
     setDeleteConfirmOpen(false);
     setSelectedVendor(null);
@@ -1250,6 +1254,9 @@ const VendorScreen = () => {
 
         <TouchableOpacity
           onPress={handleOpenAddModal}
+          disabled={!canWrite}
+          accessibilityState={{ disabled: !canWrite }}
+          accessibilityHint={blockedReason ?? undefined}
           style={{
             height: 40,
             width: 40,
@@ -1257,6 +1264,7 @@ const VendorScreen = () => {
             backgroundColor: colors.teal + "20",
             justifyContent: "center",
             alignItems: "center",
+            opacity: canWrite ? 1 : 0.4,
           }}
         >
           <Plus size={18} color={colors.teal} />

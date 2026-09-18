@@ -73,6 +73,8 @@ export type OperationType =
   | "remove_course"
   // Seating operations
   | "set_item_seat"
+  // Per-item TO GO flag (durable; is_to_go is set ONLY by toggle_to_go_order_items)
+  | "toggle_to_go"
   // Pre-auth operations (terminal call must be online; only backend sync queued)
   | "process_preauth"
   | "capture_preauth"
@@ -116,6 +118,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   fire_course: 4,
   remove_course: 4,
   set_item_seat: 3,
+  toggle_to_go: 3, // item-level flag, same tier as set_item_seat
   update_order_status: 4,
   send_to_kitchen: 4, // Kitchen send after items synced
   update_item_status: 4, // KDS bulk status — Wave 3.0d-3
@@ -371,6 +374,14 @@ let unsubscribeNetInfo: (() => void) | null = null;
 let periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
 let netInfoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let netInfoPollTimer: ReturnType<typeof setInterval> | null = null;
+/**
+ * True while we hold a prior ONLINE state through a single ambiguous
+ * reachability reading (isConnected=true, isInternetReachable=null) awaiting a
+ * re-probe. Bounds the hold to one re-probe so a genuinely-offline link still
+ * flips us offline instead of latching online forever.
+ */
+let netInfoAmbiguousReprobePending = false;
+const NETINFO_AMBIGUOUS_REPROBE_MS = 4000;
 /** Unregister fns for the lifecycle-coordinator tasks (was an AppState sub). */
 let lifecycleUnregister: (() => void)[] = [];
 
@@ -464,6 +475,7 @@ const ORDER_SCOPED_OPS: Partial<Record<OperationType, true>> = {
   void_discount: true,
   send_to_kitchen: true,
   update_item_status: true,
+  toggle_to_go: true, // is_to_go lives on the order item in the persisted slice
   process_payment: true,
   process_cash_payment: true,
   process_card_payment: true,
@@ -772,8 +784,10 @@ function handleNetworkChange(state: NetInfoState): void {
 
   if (state.isConnected === false) {
     isOnline = false;
+    netInfoAmbiguousReprobePending = false;
   } else if (state.isConnected === true && state.isInternetReachable === true) {
     isOnline = true;
+    netInfoAmbiguousReprobePending = false;
     if (netInfoRefreshTimer) {
       clearTimeout(netInfoRefreshTimer);
       netInfoRefreshTimer = null;
@@ -783,10 +797,28 @@ function handleNetworkChange(state: NetInfoState): void {
     state.isInternetReachable === false
   ) {
     isOnline = false;
+    netInfoAmbiguousReprobePending = false;
   } else {
-    // isConnected=true but isInternetReachable=null (ambiguous — common on Android emulator).
-    // Treat as offline immediately (pessimistic). NetInfo will fire again when
-    // reachability resolves to true after its probe (configured above).
+    // isConnected=true but isInternetReachable=null (ambiguous — common on
+    // flaky links and Android). A transient null often appears right after a
+    // `true`; flipping straight to offline caused an online↔offline flap that
+    // re-fired the heavy reconnect sweep and reset connectionQuality every
+    // edge. If we're currently ONLINE, hold that state and re-probe once; only
+    // fall back to offline when the re-probe is still not definitively
+    // reachable (or we were already offline). A definitive `false` (branch
+    // above) always flips us offline immediately.
+    if (isOnline && !netInfoAmbiguousReprobePending) {
+      netInfoAmbiguousReprobePending = true;
+      if (netInfoRefreshTimer) clearTimeout(netInfoRefreshTimer);
+      netInfoRefreshTimer = setTimeout(() => {
+        netInfoRefreshTimer = null;
+        NetInfo.fetch().then(handleNetworkChange).catch(() => {});
+      }, NETINFO_AMBIGUOUS_REPROBE_MS);
+      return; // hold prior (online) state; no transition this tick
+    }
+    // Already offline, or the held re-probe is still ambiguous → pessimistic
+    // offline (NetInfo will fire again when reachability resolves to true).
+    netInfoAmbiguousReprobePending = false;
     isOnline = false;
     if (netInfoRefreshTimer) {
       clearTimeout(netInfoRefreshTimer);
@@ -931,6 +963,42 @@ function findCollapseTarget(
 }
 
 /**
+ * S7: find an existing PENDING send_to_kitchen op for the same order to fold a
+ * new send into. Repeated presses while offline must not queue N distinct sends
+ * with fresh idempotency keys over overlapping item sets — every replay would
+ * re-run the fire_time rewrite in bulk_update_order_item_status_v2 and churn
+ * KDS tickets (S2). Folding reuses the existing op (and its idempotency key),
+ * so the server-side dedupe can collapse the batch.
+ *
+ * Only folds when the new press overlaps the existing batch's item set (same
+ * items or a superset). A completely disjoint batch is a genuinely different
+ * send and stays separate.
+ */
+function findSendToKitchenDedupeTarget(
+  localOrderId: string,
+  newLocalItemIds: string[],
+): OfflineOperation | null {
+  if (!localOrderId || newLocalItemIds.length === 0) return null;
+  const newSet = new Set(newLocalItemIds);
+  let best: OfflineOperation | null = null;
+  let bestOverlap = -1;
+  for (const op of pendingOperations) {
+    if (op.status !== "pending" || op.type !== "send_to_kitchen") continue;
+    if (op.localOrderId !== localOrderId) continue;
+    const existing = new Set<string>(
+      (op.params?.localItemIds as string[] | undefined) ?? [],
+    );
+    const overlap = [...newSet].filter((id) => existing.has(id)).length;
+    if (overlap === 0) continue;
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      best = op;
+    }
+  }
+  return best;
+}
+
+/**
  * Add an operation to the offline queue.
  * Supports priority ordering, dependency tracking, and operation collapsing.
  */
@@ -972,6 +1040,34 @@ export async function queueOperation(
         collapseTarget.type,
       );
       return collapseTarget.id;
+    }
+  }
+
+  // S7: deduplicate queued kitchen sends per order — repeated presses while
+  // offline must collapse into one logical send with one idempotency key.
+  if (op.type === "send_to_kitchen") {
+    const sendParams = op.params as { localItemIds?: string[] } | undefined;
+    const dedupeTarget = findSendToKitchenDedupeTarget(
+      op.localOrderId,
+      sendParams?.localItemIds ?? [],
+    );
+    if (dedupeTarget) {
+      const union = new Set<string>(
+        (dedupeTarget.params?.localItemIds as string[] | undefined) ?? [],
+      );
+      for (const id of sendParams?.localItemIds ?? []) union.add(id);
+      dedupeTarget.params = {
+        ...dedupeTarget.params,
+        localItemIds: [...union],
+      };
+      dedupeTarget.timestamp = new Date().toISOString();
+      await saveQueueToStorage();
+      console.log(
+        "[OfflineSync] Deduplicated send_to_kitchen into:",
+        dedupeTarget.id,
+        `(union ${union.size} items)`,
+      );
+      return dedupeTarget.id;
     }
   }
 

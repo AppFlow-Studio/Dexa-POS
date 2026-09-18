@@ -19,6 +19,8 @@ import {
 } from "@/lib/authFlow";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDeviceName } from "@/lib/deviceName";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { markStart } from "@/lib/perf";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
@@ -193,6 +195,7 @@ const PinLoginScreen = () => {
       const access = await fetchMerchantBillingAccess(
         supabase,
         selectedStore.merchant_id,
+        selectedStore.id,
       );
       setBillingAccess(access);
 
@@ -202,12 +205,27 @@ const PinLoginScreen = () => {
         return false;
       }
     } catch (error) {
-      console.warn("[PinLogin] Billing access precheck failed:", error);
-      // Let pos_staff_login_v2 remain the final gate if this precheck is unavailable.
+      // Fail OPEN: a slow / unreachable billing endpoint (deadline exceeded,
+      // network error) is not a definitive "unpaid" verdict, and this runs on
+      // the critical sign-in path. Blocking here bricked whole stores when the
+      // billing RPC hung (esp. new locations with cold billing state, or a
+      // device just back from a long offline stretch). Only an explicit
+      // `!allowed` response (handled above) blocks login.
+      console.warn(
+        "[PinLogin] Billing access precheck failed — proceeding (fail open):",
+        error,
+      );
+      return true;
     }
 
     return true;
-  }, [isOnline, selectedStore?.merchant_id, setBillingAccess, supabase]);
+  }, [
+    isOnline,
+    selectedStore?.id,
+    selectedStore?.merchant_id,
+    setBillingAccess,
+    supabase,
+  ]);
 
   // Handle takeover when user confirms
   const handleTakeover = async () => {
@@ -310,16 +328,27 @@ const PinLoginScreen = () => {
       // If not found locally, re-sync employees and retry
       if (!employee && response.staff?.staff_profile_id && selectedStore?.id) {
         console.log("Employee not found locally (takeover), re-syncing...");
-        const { data } = await supabase
-          .from("location_members")
-          .select(
-            `
+        // Deadline-wrapped: on timeout `data` is null, the block below is
+        // skipped, and login still proceeds (navigation is unconditional).
+        const { data } = await runWithDeadline<any[]>(
+          "resync_location_members",
+          DEADLINES.read,
+          (signal) =>
+            supabase
+              .from("location_members")
+              .select(
+                `
             id, pin_code, pin_plain, role_code, staff_profile_id,
             staff_profiles (id, first_name, last_name, display_name, avatar_url, email, phone)
           `,
-          )
-          .eq("location_id", selectedStore.id)
-          .eq("is_active", true);
+              )
+              .eq("location_id", selectedStore.id)
+              .eq("is_active", true)
+              .abortSignal(signal) as unknown as Promise<{
+              data: any[] | null;
+              error: any;
+            }>,
+        );
 
         if (data?.length) {
           const mappedEmployees: EmployeeProfile[] = data.map((row: any) => {
@@ -544,16 +573,27 @@ const PinLoginScreen = () => {
       // If not found locally, re-sync employees and retry
       if (!employee && response.staff?.staff_profile_id && selectedStore?.id) {
         console.log("Employee not found locally, re-syncing...");
-        const { data: membersData } = await supabase
-          .from("location_members")
-          .select(
-            `
+        // Deadline-wrapped: on timeout `membersData` is null, the block below
+        // is skipped, and login still proceeds (navigation is unconditional).
+        const { data: membersData } = await runWithDeadline<any[]>(
+          "resync_location_members",
+          DEADLINES.read,
+          (signal) =>
+            supabase
+              .from("location_members")
+              .select(
+                `
             id, pin_code, pin_plain, role_code, staff_profile_id,
             staff_profiles (id, first_name, last_name, display_name, avatar_url, email, phone)
           `,
-          )
-          .eq("location_id", selectedStore.id)
-          .eq("is_active", true);
+              )
+              .eq("location_id", selectedStore.id)
+              .eq("is_active", true)
+              .abortSignal(signal) as unknown as Promise<{
+              data: any[] | null;
+              error: any;
+            }>,
+        );
 
         if (membersData?.length) {
           const mappedEmployees: EmployeeProfile[] = membersData.map(

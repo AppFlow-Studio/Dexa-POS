@@ -5,15 +5,17 @@ import { isValidUUID } from "@/lib/offlineIdRegistry";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
+import { useCustomerDirectory } from "@/hooks/customers/useCustomerDirectory";
 import {
     createCustomerOffline,
     createCustomerOnline,
     fetchAndCacheCustomers,
-    getCachedCustomers,
     linkCustomerToOrder,
+    loadTopCustomers,
     processCustomerQueue,
     updateCustomerInfo,
 } from "@/services/customer";
+import { FlashList } from "@shopify/flash-list";
 import { getIsOnline } from "@/services/offlineSyncService";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
@@ -31,11 +33,7 @@ import React, {
 } from "react";
 import {
     Keyboard,
-    KeyboardAvoidingView,
     Modal,
-    Platform,
-    ScrollView,
-    SectionList,
     Text,
     TextInput,
     TouchableOpacity,
@@ -60,17 +58,29 @@ const CustomerSheet: React.FC = () => {
   const supabase = useSupabaseClient();
 
   const [viewMode, setViewMode] = useState<"search" | "add" | "edit">("search");
+  const isForm = viewMode === "add" || viewMode === "edit";
   const [editingCustomer, setEditingCustomer] =
     useState<CustomerWithMeta | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [isNameFocused, setIsNameFocused] = useState(false);
+  const [isPhoneFocused, setIsPhoneFocused] = useState(false);
+  const [isAddressFocused, setIsAddressFocused] = useState(false);
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("");
   const [stateCode, setStateCode] = useState("");
   const [zip, setZip] = useState("");
   const [addressDisplay, setAddressDisplay] = useState("");
-  const [customers, setCustomers] = useState<CustomerWithMeta[]>([]);
+  // Phase 5: the directory comes from the SQLite mirror (5,000 rows) rather
+  // than the 200-row MMKV cache, narrowed server-side by the search box. The
+  // client-side `filteredCustomers` below still runs, unchanged — this is a
+  // SUPERSET of what it matches on. See hooks/customers/useCustomerDirectory.
+  const { customers, reload: reloadDirectory } = useCustomerDirectory(
+    searchQuery,
+    { enabled: isOpen },
+  );
+  const [topCustomers, setTopCustomers] = useState<CustomerWithMeta[]>([]);
   // Wave 2.2: defense-in-depth — block customer assignment when the active
   // order is owned by another station. Server-side enforcement lands in
   // Wave 2.4 via `update_order_details_v1`; this UI gate prevents the
@@ -82,20 +92,23 @@ const CustomerSheet: React.FC = () => {
   storeRef.current = { selectedStore, supabase };
 
   const refreshCustomers = useCallback(async () => {
-    setCustomers(getCachedCustomers());
-
     const { selectedStore: store, supabase: client } = storeRef.current;
 
     if (store && getIsOnline()) {
       try {
-        const updated = await fetchAndCacheCustomers(client, store.merchant_id);
-        setCustomers(updated);
+        // Writes the mirror as a side effect, at the seam where the payload
+        // has already arrived — one fetch, one cadence.
+        await fetchAndCacheCustomers(client, store.merchant_id);
         await processCustomerQueue(client);
       } catch (err) {
         console.warn("Failed to refresh customers:", err);
       }
     }
-  }, []);
+    // Re-read after the fetch either way: offline, this still paints the
+    // mirror, which is the whole point.
+    reloadDirectory();
+    setTopCustomers(await loadTopCustomers(3));
+  }, [reloadDirectory]);
 
   useEffect(() => {
     if (isOpen) {
@@ -120,14 +133,17 @@ const CustomerSheet: React.FC = () => {
     return list;
   }, [searchQuery, customers]);
 
-  const topCustomers = useMemo(() => {
-    return [...customers]
-      .filter((c) => (c.total_orders ?? 0) > 0)
-      .sort((a, b) => (b.total_orders ?? 0) - (a.total_orders ?? 0))
-      .slice(0, 3);
-  }, [customers]);
-
-  const groupedCustomers = useMemo(() => {
+  /**
+   * FlashList has no sections, so the A/B/C grouping is FLATTENED into one
+   * array of headers and rows and told apart by `getItemType`. That is
+   * FlashList's own recommended shape for sectioned data: it lets the two
+   * cell kinds recycle into separate pools, so a header never gets reused as
+   * a customer row (which is what produces the classic wrong-height flicker
+   * when sections are faked with a single item type).
+   *
+   * The grouping itself is unchanged from the SectionList version.
+   */
+  const directoryRows = useMemo(() => {
     const map: Record<string, CustomerWithMeta[]> = {};
     for (const c of filteredCustomers) {
       const first = (c.name || "?")[0].toUpperCase();
@@ -140,7 +156,12 @@ const CustomerSheet: React.FC = () => {
       if (b === "#") return -1;
       return a.localeCompare(b);
     });
-    return letters.map((letter) => ({ title: letter, data: map[letter] }));
+    const rows: (string | CustomerWithMeta)[] = [];
+    for (const letter of letters) {
+      rows.push(letter);
+      rows.push(...map[letter]);
+    }
+    return rows;
   }, [filteredCustomers]);
 
   const handleSelectCustomer = async (customer: CustomerWithMeta) => {
@@ -274,7 +295,7 @@ const CustomerSheet: React.FC = () => {
             address: addressString,
           });
 
-      setCustomers(getCachedCustomers());
+      reloadDirectory();
       await handleSelectCustomer(newCustomer);
     } catch (error: any) {
       show({
@@ -358,7 +379,7 @@ const CustomerSheet: React.FC = () => {
         { name: newName.trim(), address: addressString },
         supabase,
       );
-      setCustomers(getCachedCustomers());
+      reloadDirectory();
       show({
         title: "Customer Updated",
         message: `${newName.trim()} has been updated.`,
@@ -373,6 +394,29 @@ const CustomerSheet: React.FC = () => {
         type: "error",
       });
     }
+  };
+
+  const fieldLabelStyle = {
+    color: colors.label,
+    fontSize: s(10),
+    fontWeight: "600" as const,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.8,
+  };
+
+  const fieldInputStyle = {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: s(8),
+    height: s(46),
+    paddingHorizontal: s(12),
+    color: colors.heading,
+    fontSize: s(14),
+    textAlignVertical: "center" as const,
+    includeFontPadding: false,
+    paddingTop: 0,
+    paddingBottom: 0,
   };
 
   const handleClose = () => {
@@ -392,7 +436,11 @@ const CustomerSheet: React.FC = () => {
         <View
           style={{
             flex: 1,
-            justifyContent: "center",
+            // The form is top-anchored: it then does not move at all when the
+            // soft keyboard opens, the keyboard simply covers empty space
+            // below it. Search keeps its centered, full-height directory.
+            justifyContent: isForm ? "flex-start" : "center",
+            paddingTop: isForm ? s(24) : 0,
             alignItems: "center",
             backgroundColor: "rgba(0,0,0,0.5)",
           }}
@@ -400,11 +448,17 @@ const CustomerSheet: React.FC = () => {
           <TouchableWithoutFeedback onPress={() => {}}>
             <View
               style={{
-                width: s(480),
-                height: "80%",
+                width: s(600),
+                // The form sizes to its content (~320px) so it fits inside the
+                // keyboard safe zone by construction - see the two-column row
+                // and conditional address field below.
+                height: isForm ? undefined : "80%",
                 backgroundColor: colors.screen,
                 borderRadius: s(16),
-                overflow: "hidden",
+                // AddressAutocomplete renders its dropdown upward
+                // (dropdownPosition="top") and absolutely positioned; clipping
+                // it to the now-short modal would cut off suggestions.
+                overflow: isForm ? "visible" : "hidden",
                 borderWidth: 1,
                 borderColor: colors.border,
               }}
@@ -626,14 +680,25 @@ const CustomerSheet: React.FC = () => {
                     </View>
                   )}
 
-                  <SectionList
-                    sections={groupedCustomers}
-                    keyExtractor={(item) => item.id}
+                  <FlashList
+                    data={directoryRows}
+                    // Two cell kinds recycle into separate pools — see the
+                    // note on `directoryRows`.
+                    getItemType={(item) =>
+                      typeof item === "string" ? "header" : "row"
+                    }
+                    keyExtractor={(item) =>
+                      typeof item === "string" ? `hdr-${item}` : item.id
+                    }
+                    // A ballpark for virtualization; FlashList self-corrects
+                    // after first layout. Rows are avatar + 2-3 text lines.
+                    estimatedItemSize={s(58)}
                     contentContainerStyle={{
                       paddingHorizontal: s(12),
                       paddingBottom: s(20),
                     }}
-                    renderSectionHeader={({ section }) => (
+                    renderItem={({ item }) =>
+                      typeof item === "string" ? (
                       <View
                         style={{
                           paddingVertical: s(4),
@@ -652,11 +717,10 @@ const CustomerSheet: React.FC = () => {
                             letterSpacing: 1,
                           }}
                         >
-                          {section.title}
+                          {item}
                         </Text>
                       </View>
-                    )}
-                    renderItem={({ item }: { item: CustomerWithMeta }) => (
+                      ) : (
                       <TouchableOpacity
                         disabled={isAssignDisabled}
                         onPress={() => handleSelectCustomer(item)}
@@ -746,7 +810,8 @@ const CustomerSheet: React.FC = () => {
                           </View>
                         )}
                       </TouchableOpacity>
-                    )}
+                      )
+                    }
                     ListEmptyComponent={
                       <Text
                         style={{
@@ -762,64 +827,50 @@ const CustomerSheet: React.FC = () => {
                   />
                 </View>
               ) : (
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === "ios" ? "padding" : "height"}
-                  style={{ flex: 1 }}
-                >
-                  <ScrollView
-                    contentContainerStyle={{ padding: s(16), gap: s(14) }}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    <Text style={{ color: colors.muted, fontSize: s(11) }}>
-                      {viewMode === "edit"
-                        ? "Update customer name or address. Phone number cannot be changed."
-                        : "Address fields are optional."}
-                    </Text>
+                <View style={{ padding: s(16), gap: s(14) }}>
+                  {/* No ScrollView. The form is sized to fit inside the
+                      keyboard safe zone, so any future field that would
+                      overflow shows up as a visible QA failure instead of a
+                      silent scroll. Taps on the address suggestions still land
+                      without keyboardShouldPersistTaps because the modal box
+                      sits in its own no-op TouchableWithoutFeedback, which
+                      keeps the overlay Keyboard.dismiss handler from
+                      swallowing the first tap. */}
+                  <Text style={{ color: colors.muted, fontSize: s(11) }}>
+                    {viewMode === "edit"
+                      ? "Update customer name or address. Phone number cannot be changed."
+                      : "Phone and address are optional."}
+                  </Text>
 
-                    <View style={{ gap: s(5) }}>
-                      <Text
-                        style={{
-                          color: colors.label,
-                          fontSize: s(10),
-                          fontWeight: "600",
-                          textTransform: "uppercase",
-                          letterSpacing: 0.8,
-                        }}
-                      >
-                        Full Name *
-                      </Text>
+                  {/* Name and phone share one row. Landscape has the width to
+                      spare, and dropping a whole field row (~90px) is what
+                      lets the form clear the keyboard. */}
+                  <View style={{ flexDirection: "row", gap: s(12) }}>
+                    <View style={{ flex: 1, gap: s(5) }}>
+                      <Text style={fieldLabelStyle}>Full Name *</Text>
                       <TextInput
                         value={newName}
                         onChangeText={setNewName}
+                        // Name leads the form, so it's the field that should
+                        // be focused when the "add" form first opens.
+                        autoFocus={viewMode === "add"}
+                        onFocus={() => setIsNameFocused(true)}
+                        onBlur={() => setIsNameFocused(false)}
                         placeholder="e.g. John Doe"
                         placeholderTextColor={colors.muted}
-                        style={{
-                          backgroundColor: colors.card,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: s(8),
-                          height: s(46),
-                          paddingHorizontal: s(12),
-                          color: colors.heading,
-                          fontSize: s(14),
-                          textAlignVertical: "center",
-                          includeFontPadding: false,
-                          paddingTop: 0,
-                          paddingBottom: 0,
-                        }}
+                        style={[
+                          fieldInputStyle,
+                          {
+                            borderColor: isNameFocused
+                              ? colors.teal
+                              : colors.border,
+                          },
+                        ]}
                       />
                     </View>
 
-                    <View style={{ gap: s(5) }}>
-                      <Text
-                        style={{
-                          color: colors.label,
-                          fontSize: s(10),
-                          fontWeight: "600",
-                          textTransform: "uppercase",
-                          letterSpacing: 0.8,
-                        }}
-                      >
+                    <View style={{ flex: 1, gap: s(5) }}>
+                      <Text style={fieldLabelStyle}>
                         Phone Number{" "}
                         {viewMode === "add" ? "(optional)" : "(read-only)"}
                       </Text>
@@ -829,133 +880,131 @@ const CustomerSheet: React.FC = () => {
                           viewMode === "edit" ? undefined : handlePhoneChange
                         }
                         editable={viewMode !== "edit"}
+                        onFocus={() => setIsPhoneFocused(true)}
+                        onBlur={() => setIsPhoneFocused(false)}
                         placeholder="(555) 555-5555"
                         maxLength={14}
                         keyboardType="phone-pad"
+                        inputMode="tel"
                         placeholderTextColor={colors.muted}
-                        style={{
-                          backgroundColor:
-                            viewMode === "edit"
-                              ? colors.card + "80"
-                              : colors.card,
-                          borderWidth: 1,
-                          borderColor:
-                            viewMode === "edit"
-                              ? colors.border
-                              : colors.teal + "60",
-                          borderRadius: s(8),
-                          height: s(46),
-                          paddingHorizontal: s(12),
-                          color:
-                            viewMode === "edit" ? colors.muted : colors.heading,
-                          fontSize: s(14),
-                          textAlignVertical: "center",
-                          includeFontPadding: false,
-                          paddingTop: 0,
-                          paddingBottom: 0,
-                        }}
+                        style={[
+                          fieldInputStyle,
+                          {
+                            backgroundColor:
+                              viewMode === "edit"
+                                ? colors.card + "80"
+                                : colors.card,
+                            borderColor:
+                              viewMode === "edit"
+                                ? colors.border
+                                : isPhoneFocused
+                                  ? colors.teal
+                                  : colors.border,
+                            color:
+                              viewMode === "edit"
+                                ? colors.muted
+                                : colors.heading,
+                          },
+                        ]}
                       />
                     </View>
+                  </View>
 
-                    <View style={{ gap: s(5) }}>
-                      <Text
+                  <View style={{ gap: s(5) }}>
+                    <Text style={fieldLabelStyle}>Delivery Address</Text>
+                    <AddressAutocomplete
+                      value={addressDisplay}
+                      onChangeText={(text) => {
+                        setAddressDisplay(text);
+                        setStreet(text);
+                        setCity("");
+                        setStateCode("");
+                        setZip("");
+                      }}
+                      onAddressSelected={(addr) => {
+                        setStreet(addr.street);
+                        setCity(addr.city);
+                        setStateCode(addr.state);
+                        setZip(addr.zip);
+                        setAddressDisplay(
+                          [addr.street, addr.city, addr.state, addr.zip]
+                            .filter(Boolean)
+                            .join(", "),
+                        );
+                      }}
+                      placeholder="Search address..."
+                      dropdownPosition="top"
+                      onFocus={() => setIsAddressFocused(true)}
+                      onBlur={() => setIsAddressFocused(false)}
+                      inputStyle={{
+                        borderColor: isAddressFocused
+                          ? colors.teal
+                          : colors.border,
+                      }}
+                    />
+                    {(city || stateCode || zip) && (
+                      <View
                         style={{
-                          color: colors.label,
-                          fontSize: s(10),
-                          fontWeight: "600",
-                          textTransform: "uppercase",
-                          letterSpacing: 0.8,
+                          flexDirection: "row",
+                          gap: s(6),
+                          flexWrap: "wrap",
+                          marginTop: s(4),
                         }}
                       >
-                        Delivery Address
-                      </Text>
-                      <AddressAutocomplete
-                        value={addressDisplay}
-                        onChangeText={(text) => {
-                          setAddressDisplay(text);
-                          setStreet(text);
-                          setCity("");
-                          setStateCode("");
-                          setZip("");
-                        }}
-                        onAddressSelected={(addr) => {
-                          setStreet(addr.street);
-                          setCity(addr.city);
-                          setStateCode(addr.state);
-                          setZip(addr.zip);
-                          setAddressDisplay(
-                            [addr.street, addr.city, addr.state, addr.zip]
-                              .filter(Boolean)
-                              .join(", "),
-                          );
-                        }}
-                        placeholder="Search address..."
-                        dropdownPosition="top"
-                      />
-                      {(city || stateCode || zip) && (
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            gap: s(6),
-                            flexWrap: "wrap",
-                            marginTop: s(4),
-                          }}
-                        >
-                          {[street, city, stateCode, zip]
-                            .filter(Boolean)
-                            .map((v, i) => (
-                              <Text
-                                key={i}
-                                style={{
-                                  fontSize: s(11),
-                                  color: colors.muted,
-                                  backgroundColor: colors.card,
-                                  paddingHorizontal: s(6),
-                                  paddingVertical: s(2),
-                                  borderRadius: s(4),
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                }}
-                              >
-                                {v}
-                              </Text>
-                            ))}
-                        </View>
-                      )}
-                    </View>
+                        {[street, city, stateCode, zip]
+                          .filter(Boolean)
+                          .map((v, i) => (
+                            <Text
+                              key={i}
+                              style={{
+                                fontSize: s(11),
+                                color: colors.muted,
+                                backgroundColor: colors.card,
+                                paddingHorizontal: s(6),
+                                paddingVertical: s(2),
+                                borderRadius: s(4),
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                              }}
+                            >
+                              {v}
+                            </Text>
+                          ))}
+                      </View>
+                    )}
+                  </View>
 
-                    <TouchableOpacity
-                      onPress={
-                        viewMode === "edit"
-                          ? handleSaveEditCustomer
-                          : handleSaveNewCustomer
-                      }
+                  <TouchableOpacity
+                    onPress={
+                      viewMode === "edit"
+                        ? handleSaveEditCustomer
+                        : handleSaveNewCustomer
+                    }
+                    style={{
+                      borderRadius: s(8),
+                      height: s(46),
+                      paddingHorizontal: s(16),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginTop: s(4),
+                      backgroundColor: colors.teal + "18",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                    }}
+                  >
+                    <Text
                       style={{
-                        borderRadius: s(8),
-                        height: s(46),
-                        paddingHorizontal: s(16),
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginTop: s(4),
-                        backgroundColor: colors.teal + "18",
-                        borderWidth: 1,
-                        borderColor: colors.teal + "50",
+                        color: colors.teal,
+                        fontSize: s(14),
+                        fontWeight: "700",
                       }}
                     >
-                      <Text
-                        style={{
-                          color: colors.teal,
-                          fontSize: s(14),
-                          fontWeight: "700",
-                        }}
-                      >
-                        {viewMode === "edit"
-                          ? "Update Customer"
-                          : "Save Customer"}
-                      </Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </KeyboardAvoidingView>
+                      {viewMode === "edit"
+                        ? "Update Customer"
+                        : "Save Customer"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </TouchableWithoutFeedback>

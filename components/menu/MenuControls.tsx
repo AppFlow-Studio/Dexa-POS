@@ -10,7 +10,6 @@ import {
   ChevronRight,
   Clock,
   Lock,
-  ShieldCheck,
   UtensilsCrossed,
   X
 } from 'lucide-react-native'
@@ -28,6 +27,13 @@ import {
 
 interface MenuControlsProps {
   activeMeal: string
+  /**
+   * Id of the menu the parent considers open. Menu names are not unique, and
+   * resolving by name here (find → first match) disagreed with MenuSection
+   * (Map → last match), so the category tabs could come from a different menu
+   * than the items below them. The id is authoritative; the name is a fallback.
+   */
+  activeMenuId?: string
   menuOptions?: Menu[]
   showMenuButtons?: boolean
   onMealChange?: (meal: string) => void
@@ -273,60 +279,15 @@ const getStylesForScheme = (scheme: string) => {
   return next
 }
 
-// ─── Unlock session badge ────────────────────────────────────────────────────
-
-const UnlockBadge = React.memo(() => {
-  const uiScale = useUiScale()
-  const s = (n: number) => Math.round(n * uiScale)
-  const { isUnlocked, unlockedUntil, lockNow } = usePinOverrideStore()
-  const [, tick] = useState(0)
-
-  // Re-render every 30 s to keep countdown fresh
-  useEffect(() => {
-    const id = setInterval(() => tick(n => n + 1), 30_000)
-    return () => clearInterval(id)
-  }, [])
-
-  if (!isUnlocked() || !unlockedUntil) return null
-
-  const remainingMs = unlockedUntil - Date.now()
-  const remainingMin = Math.max(1, Math.ceil(remainingMs / 60_000))
-
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: s(5),
-        paddingHorizontal: s(10),
-        paddingVertical: s(6),
-        borderRadius: s(8),
-        backgroundColor: colors.teal + '15',
-        borderWidth: 1,
-        borderColor: colors.teal + '30',
-        marginRight: s(4),
-        marginLeft: s(8)
-      }}
-    >
-      <ShieldCheck size={s(12)} color={colors.teal} />
-      <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.teal }}>
-        Manager Mode · {remainingMin}m
-      </Text>
-      <TouchableOpacity
-        onPress={lockNow}
-        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-      >
-        <X size={s(11)} color={colors.teal} />
-      </TouchableOpacity>
-    </View>
-  )
-})
-UnlockBadge.displayName = 'UnlockBadge'
+// NOTE: the "Manager Mode · Nm" badge was removed along with the global unlock
+// session it advertised. A PIN now unlocks only the menu/category it was
+// entered for, so there is no app-wide unlocked state to surface.
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const MenuControls: React.FC<MenuControlsProps> = ({
   activeMeal,
+  activeMenuId,
   menuOptions,
   showMenuButtons = true,
   onMealChange,
@@ -347,14 +308,16 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   const temporaryActiveCategories = useMenuStore(
     s => s.temporaryActiveCategories
   )
+  const { requestPinOverride } = usePinOverrideStore()
   const temporaryActiveCategorySet = useMemo(
     () => new Set(temporaryActiveCategories),
     [temporaryActiveCategories]
   )
-  const addTemporaryCategoryAccess = useMenuStore(
-    s => s.addTemporaryCategoryAccess
+  const temporaryActiveMenus = useMenuStore(s => s.temporaryActiveMenus)
+  const temporaryActiveMenuSet = useMemo(
+    () => new Set(temporaryActiveMenus),
+    [temporaryActiveMenus]
   )
-  const { requestPinOverride, isUnlocked } = usePinOverrideStore()
   const menuScrollRef = useRef<ScrollView>(null)
   const categoriesScrollRef = useRef<ScrollView>(null)
   const menuButtonRefs = useRef<Record<string, any>>({})
@@ -396,8 +359,10 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   }, [])
 
   const currentMenu = useMemo(
-    () => menus.find(m => m.name === activeMeal),
-    [menus, activeMeal]
+    () =>
+      (activeMenuId ? menus.find(m => m.id === activeMenuId) : undefined) ??
+      menus.find(m => m.name === activeMeal),
+    [menus, activeMenuId, activeMeal]
   )
   const categories = currentMenu?.categories
   const popupMenu = useMemo(
@@ -460,23 +425,20 @@ const MenuControls: React.FC<MenuControlsProps> = ({
         onCategoryChange(tab)
         return
       }
-      // If a manager session is active, bypass PIN and grant directly
-      if (isUnlocked()) {
-        addTemporaryCategoryAccess(tab)
-        onCategoryChange(tab)
-        return
-      }
-      requestPinOverride({
-        type: 'select_category',
-        payload: { categoryName: tab }
-      })
+      // Every locked category needs its own PIN. There is deliberately no
+      // "a manager is already unlocked" shortcut — that made one PIN open every
+      // locked menu and category at once.
+      requestPinOverride(
+        {
+          type: 'select_category',
+          payload: { categoryName: tab }
+        },
+        // Completes the navigation the operator was blocked on, so no lingering
+        // grant is needed when the timeout is "always require PIN".
+        () => onCategoryChange(tab)
+      )
     },
-    [
-      onCategoryChange,
-      requestPinOverride,
-      isUnlocked,
-      addTemporaryCategoryAccess
-    ]
+    [onCategoryChange, requestPinOverride]
   )
 
   return (
@@ -623,7 +585,6 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
       <View style={[styles.controlsRow, { paddingBottom: s(8), minHeight: s(52) }]}>
         {/* Unlock session badge — only visible when manager mode is active */}
-        <UnlockBadge />
 
         <View style={[styles.categoriesArea, { minHeight: s(40) }]}>
           <ScrollView
@@ -665,7 +626,13 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                       typeof cat === 'string' ? tab : cat.id
                     )
                   : false
-              const hasOverride = temporaryActiveCategorySet.has(tab)
+              // A grant on the containing menu counts too: unlocking a menu is
+              // what lets staff browse it, and MenuSection renders its items on
+              // the same basis. Without this the tab would show a lock while
+              // the items below it were visible.
+              const hasOverride =
+                temporaryActiveCategorySet.has(tab) ||
+                (!!currentMenu && temporaryActiveMenuSet.has(currentMenu.name))
               const isAvailable = isNormallyAvailable || hasOverride
               const isActive = activeCategory === tab
               const showLock = isScheduled && !isAvailable

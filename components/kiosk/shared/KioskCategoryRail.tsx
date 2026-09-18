@@ -1,8 +1,15 @@
+import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import type { Category } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
-import { Pressable, SectionList, Text, View } from "react-native";
+import { ChevronRight } from "lucide-react-native";
+import { SectionList, Text, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useDerivedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 export interface CategorySection {
   menuId: string;
@@ -13,8 +20,9 @@ export interface CategorySection {
 /**
  * Shared category rail (the menu-screen sidebar) used by every kiosk
  * template. Card-style selected state — soft tinted background, a left
- * accent bar, and a small color dot — echoing KioskMenuItem's rounded,
- * softly-bordered look instead of a flat solid fill.
+ * accent bar, and a chevron — echoing KioskMenuItem's rounded, softly-bordered
+ * look instead of a flat solid fill. The accent bar and tint cross-fade
+ * between rows rather than snapping, so the eye can follow the selection.
  */
 export function KioskCategoryRail({
   config,
@@ -60,7 +68,7 @@ export function KioskCategoryRail({
           >
             <Text
               style={{
-                fontSize: kioskPx(11, s),
+                fontSize: kioskPx(13, s),
                 fontWeight: "800",
                 letterSpacing: 1.8,
                 textTransform: "uppercase",
@@ -71,60 +79,19 @@ export function KioskCategoryRail({
             </Text>
           </View>
         )}
-        renderItem={({ item: cat, section }) => {
-          const key = `${section.menuId}:${cat.id}`;
-          const selected = key === resolvedKey;
-          return (
-            <Pressable
-              onPress={() => onSelect(key)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: kioskPx(12, s),
-                paddingHorizontal: kioskPx(16, s),
-                paddingVertical: kioskPx(16, s),
-                marginBottom: kioskPx(8, s),
-                borderRadius: kioskPx(18, s),
-                backgroundColor: selected
-                  ? `${config.primaryColor}12`
-                  : "transparent",
-                borderWidth: 1,
-                borderColor: selected
-                  ? `${config.primaryColor}30`
-                  : "transparent",
-                overflow: "hidden",
-              }}
-            >
-              {/* Left accent bar — the selected marker, in place of a flat fill */}
-              <View
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: kioskPx(10, s),
-                  bottom: kioskPx(10, s),
-                  width: kioskPx(4, s),
-                  borderRadius: kioskPx(2, s),
-                  backgroundColor: selected ? config.primaryColor : "transparent",
-                }}
-              />
-              <Text
-                style={{
-                  flex: 1,
-                  fontSize: kioskPx(16, s),
-                  fontWeight: selected ? "700" : "500",
-                  color: selected ? config.primaryColor : config.textColor,
-                }}
-                numberOfLines={2}
-              >
-                {cat.name}
-              </Text>
-            </Pressable>
-          );
-        }}
+        renderItem={({ item: cat, section }) => (
+          <CategoryRow
+            config={config}
+            name={cat.name}
+            selected={`${section.menuId}:${cat.id}` === resolvedKey}
+            onPress={() => onSelect(`${section.menuId}:${cat.id}`)}
+          />
+        )}
         ListEmptyComponent={
           <Text
             style={{
               padding: kioskPx(20, s),
+              fontSize: kioskPx(16, s),
               color: `${config.textColor}99`,
             }}
           >
@@ -133,5 +100,103 @@ export function KioskCategoryRail({
         }
       />
     </View>
+  );
+}
+
+function CategoryRow({
+  config,
+  name,
+  selected,
+  onPress,
+}: {
+  config: KioskConfig;
+  name: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const s = useKioskUiScale();
+  // Drives every selected-state visual off one animated 0→1 value so the
+  // tint, border and accent bar all move together.
+  const progress = useDerivedValue(
+    () => withTiming(selected ? 1 : 0, { duration: 200 }),
+    [selected],
+  );
+
+  const surfaceStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+  }));
+
+  const barStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ scaleY: 0.4 + progress.value * 0.6 }],
+  }));
+
+  return (
+    <KioskPressable
+      onPress={onPress}
+      pressedScale={0.97}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: kioskPx(12, s),
+        paddingHorizontal: kioskPx(18, s),
+        paddingVertical: kioskPx(18, s),
+        marginBottom: kioskPx(8, s),
+        borderRadius: kioskPx(18, s),
+        overflow: "hidden",
+      }}
+    >
+      {/* Animated selected surface — sits under the content */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          {
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: kioskPx(18, s),
+            backgroundColor: `${config.primaryColor}12`,
+            borderWidth: 1,
+            borderColor: `${config.primaryColor}30`,
+          },
+          surfaceStyle,
+        ]}
+      />
+
+      {/* Left accent bar — the selected marker, in place of a flat fill */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          {
+            position: "absolute",
+            left: 0,
+            top: kioskPx(10, s),
+            bottom: kioskPx(10, s),
+            width: kioskPx(5, s),
+            borderRadius: kioskPx(3, s),
+            backgroundColor: config.primaryColor,
+          },
+          barStyle,
+        ]}
+      />
+
+      <Text
+        style={{
+          flex: 1,
+          fontSize: kioskPx(19, s),
+          fontWeight: selected ? "700" : "500",
+          color: selected ? config.primaryColor : config.textColor,
+        }}
+        numberOfLines={2}
+      >
+        {name}
+      </Text>
+
+      {selected && (
+        <ChevronRight size={kioskPx(20, s)} color={config.primaryColor} />
+      )}
+    </KioskPressable>
   );
 }

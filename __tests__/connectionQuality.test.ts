@@ -50,9 +50,9 @@ describe('connectionQuality state machine', () => {
     await new Promise((r) => setTimeout(r, DEADLINES.notifyDebounceMs + 50))
     expect(listener).toHaveBeenCalled()
     unsubscribe()
-  })
+  }, DEADLINES.notifyDebounceMs + 5000)
 
-  it('debounces multiple notifications into one within 500ms', async () => {
+  it('debounces multiple notifications into one within the debounce window', async () => {
     const listener = jest.fn()
     const unsubscribe = connectionQuality.subscribe(listener)
     connectionQuality.reportTimeout('a', 100)
@@ -62,7 +62,7 @@ describe('connectionQuality state machine', () => {
     // Even though 3 reports fired, listener notified once due to debounce
     expect(listener).toHaveBeenCalledTimes(1)
     unsubscribe()
-  })
+  }, DEADLINES.notifyDebounceMs + 5000)
 
   it('exposes metrics counters', () => {
     const before = connectionQuality.getMetrics().deadlineExceeded.exposes_op ?? 0

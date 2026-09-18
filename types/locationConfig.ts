@@ -183,6 +183,25 @@ export interface FraudDetectionConfig {
   windowMinutes: number; // Sliding window in minutes for velocity detection
 }
 
+export interface OrderingConfig {
+  /**
+   * When true (default, legacy behavior), the register auto-creates orders:
+   * eager backend create on screen entry, auto local draft when none is active,
+   * and auto-start the next order after payment. When false, the operator must
+   * explicitly start each order (e.g. "New Order").
+   */
+  autoCreateOrder: boolean;
+}
+
+export interface SecurityConfig {
+  /**
+   * How long a manager PIN unlock stays valid. `0` means "always require PIN" —
+   * every locked menu/category access re-prompts and no unlock session is
+   * started (see usePinOverrideStore.setUnlocked).
+   */
+  managerOverrideTimeoutMinutes: 0 | 5 | 15 | 30 | 60;
+}
+
 // ============================================================================
 // ROOT CONFIG TYPE
 // ============================================================================
@@ -203,6 +222,8 @@ export interface LocationPosConfig {
   notifications: NotificationsConfig;
   timeclock: TimeclockConfig;
   fraudDetection: FraudDetectionConfig;
+  ordering: OrderingConfig;
+  security: SecurityConfig;
 }
 
 /** All valid namespace keys */
@@ -380,6 +401,17 @@ export const DEFAULT_FRAUD_DETECTION_CONFIG: FraudDetectionConfig = {
   windowMinutes: 60,
 };
 
+export const DEFAULT_ORDERING_CONFIG: OrderingConfig = {
+  // Matches the pre-sync device-local default so no merchant sees a behavior
+  // change when this namespace lands.
+  autoCreateOrder: true,
+};
+
+export const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
+  // 0 = always require PIN. Matches the pre-sync device-local default.
+  managerOverrideTimeoutMinutes: 0,
+};
+
 export const DEFAULT_POS_CONFIG: LocationPosConfig = {
   _version: 1,
   _updated_at: null,
@@ -396,4 +428,6 @@ export const DEFAULT_POS_CONFIG: LocationPosConfig = {
   notifications: DEFAULT_NOTIFICATIONS_CONFIG,
   timeclock: DEFAULT_TIMECLOCK_CONFIG,
   fraudDetection: DEFAULT_FRAUD_DETECTION_CONFIG,
+  ordering: DEFAULT_ORDERING_CONFIG,
+  security: DEFAULT_SECURITY_CONFIG,
 };

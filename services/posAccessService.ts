@@ -1,9 +1,12 @@
 import {
+  createFailOpenBillingAccess,
   createStationInactiveFailure,
   normalizeMerchantBillingAccess,
   PosBillingAccessStatus,
   PosAccessFailure,
 } from "@/lib/posAccessControl";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { SelectedStation, Station } from "@/types/station";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -13,6 +16,7 @@ export function stationToSelectedStation(station: Station): SelectedStation {
     id: station.id,
     station_name: station.station_name,
     station_type: station.station_type,
+    kiosk_profile_id: station.kiosk_profile_id,
     station_number: station.station_number,
     view_scope: station.view_scope,
     can_create_orders: station.can_create_orders,
@@ -28,26 +32,104 @@ export function stationToSelectedStation(station: Station): SelectedStation {
 export async function fetchMerchantBillingAccess(
   supabase: SupabaseClient,
   merchantId: string | null | undefined,
+  locationId: string | null | undefined,
 ): Promise<PosBillingAccessStatus> {
-  if (!merchantId) return { allowed: true, failure: null, status: null };
+  if (!merchantId || !locationId) {
+    return normalizeMerchantBillingAccess(null);
+  }
 
-  const { data, error } = await supabase.rpc(
-    "get_merchant_subscription_status",
-    { p_merchant_id: merchantId },
+  // database.types.ts must be regenerated after the shared website migration
+  // is deployed. Keep this single cast at the contract boundary until then.
+  //
+  // Deadline-wrapped: this runs on the critical sign-in path (see pin-login's
+  // ensureBillingAccess) and previously had no timeout, so a slow billing
+  // endpoint could hang login indefinitely. On timeout runWithDeadline returns
+  // a DEADLINE_EXCEEDED error which we throw like any other RPC error — callers
+  // on the login path catch it and fail open.
+  const { data, error } = await runWithDeadline<any>(
+    "get_subscription_access_state",
+    DEADLINES.paymentAuthCheck,
+    (signal) =>
+      (supabase.rpc as any)("get_subscription_access_state", {
+        p_merchant_id: merchantId,
+        p_location_id: locationId,
+      }).abortSignal(signal),
   );
 
   if (error) throw error;
   return normalizeMerchantBillingAccess(data);
 }
 
+export interface PosSubscriptionEntitlement {
+  entitled: boolean;
+  status: string | null;
+  reason: string | null;
+  raw?: unknown;
+}
+
+export async function fetchLocationSubscriptionEntitlement(
+  supabase: SupabaseClient,
+  params: {
+    merchantId: string;
+    locationId: string;
+    serviceCode: string;
+  },
+): Promise<PosSubscriptionEntitlement> {
+  const serviceCode = params.serviceCode.trim();
+  if (!params.merchantId || !params.locationId || !serviceCode) {
+    return {
+      entitled: false,
+      status: "invalid_request",
+      reason: "Merchant, location, and service code are required.",
+    };
+  }
+
+  const { data, error } = await (supabase.rpc as any)(
+    "get_subscription_entitlement",
+    {
+      p_merchant_id: params.merchantId,
+      p_location_id: params.locationId,
+      p_service_code: serviceCode,
+    },
+  );
+
+  if (error) throw error;
+  const candidate = Array.isArray(data) ? data[0] : data;
+  const payload =
+    candidate && typeof candidate === "object"
+      ? (candidate as Record<string, unknown>)
+      : {};
+
+  return {
+    // Fail closed: an exemption never manufactures an entitlement.
+    entitled: payload.entitled === true,
+    status: typeof payload.status === "string" ? payload.status : null,
+    reason: typeof payload.reason === "string" ? payload.reason : null,
+    raw: data,
+  };
+}
+
 export async function fetchLocationStationsWithBillingGate(
   supabase: SupabaseClient,
   params: { locationId: string; merchantId: string | null | undefined },
 ): Promise<{ stations: Station[]; billingAccess: PosBillingAccessStatus }> {
-  const billingAccess = await fetchMerchantBillingAccess(
-    supabase,
-    params.merchantId,
-  );
+  // Fail open on the sign-in path: a billing timeout / network error is not a
+  // definitive "unpaid" verdict and must not block staff from selecting a
+  // station. Only an explicit `allowed: false` response gates them out.
+  let billingAccess: PosBillingAccessStatus;
+  try {
+    billingAccess = await fetchMerchantBillingAccess(
+      supabase,
+      params.merchantId,
+      params.locationId,
+    );
+  } catch (err) {
+    console.warn(
+      "[posAccessService] Billing precheck failed on station load — proceeding (fail open):",
+      err,
+    );
+    billingAccess = createFailOpenBillingAccess();
+  }
 
   useStoreSettingsStore.getState().setBillingAccess(billingAccess);
 
@@ -55,9 +137,18 @@ export async function fetchLocationStationsWithBillingGate(
     return { stations: [], billingAccess };
   }
 
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await runWithDeadline<Station[]>(
     "get_location_stations_with_status",
-    { p_location_id: params.locationId },
+    DEADLINES.read,
+    (signal) =>
+      supabase
+        .rpc("get_location_stations_with_status", {
+          p_location_id: params.locationId,
+        })
+        .abortSignal(signal) as unknown as Promise<{
+        data: Station[] | null;
+        error: any;
+      }>,
   );
 
   if (error) throw error;
@@ -79,9 +170,14 @@ export async function refreshSelectedStationOperationalState(
     return { valid: true };
   }
 
+  // Fail CLOSED here (unlike the sign-in path): this guards an in-progress
+  // kiosk checkout, so acting on a stale verdict is the larger risk — a
+  // timeout/network error propagates rather than optimistically allowing.
+  // The deadline just makes it fail fast instead of hanging.
   const billingAccess = await fetchMerchantBillingAccess(
     supabase,
     selectedStore.merchant_id,
+    selectedStore.id,
   );
   useStoreSettingsStore.getState().setBillingAccess(billingAccess);
 
@@ -89,9 +185,18 @@ export async function refreshSelectedStationOperationalState(
     return { valid: false, failure: billingAccess.failure };
   }
 
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await runWithDeadline<Station[]>(
     "get_location_stations_with_status",
-    { p_location_id: selectedStore.id },
+    DEADLINES.read,
+    (signal) =>
+      supabase
+        .rpc("get_location_stations_with_status", {
+          p_location_id: selectedStore.id,
+        })
+        .abortSignal(signal) as unknown as Promise<{
+        data: Station[] | null;
+        error: any;
+      }>,
   );
 
   if (error) {
@@ -101,7 +206,7 @@ export async function refreshSelectedStationOperationalState(
   const stations = (Array.isArray(data) ? data : []) as Station[];
   const freshStation = stations.find((station) => station.id === selectedStation.id);
 
-  if (!freshStation) {
+  if (!freshStation || freshStation.is_active === false) {
     return { valid: false, failure: createStationInactiveFailure() };
   }
 

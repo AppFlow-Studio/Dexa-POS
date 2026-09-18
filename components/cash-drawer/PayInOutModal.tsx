@@ -9,6 +9,11 @@ import PinDisplay from '@/components/auth/PinDisplay'
 import PinNumpad from '@/components/auth/PinNumpad'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import {
+  classifyKickOutcome,
+  describeCashDrawerKickError,
+  DRAWER_UNCONFIRMED_MESSAGE
+} from '@/lib/cashDrawerKick'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import type { MerchantRole } from '@/lib/types'
@@ -166,14 +171,13 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
       approvedBy: approvedBy || undefined
     })
 
-    // Open physical drawer for pay_in/pay_out (not cash_drop — goes to safe)
-    if (mode !== 'cash_drop') {
-      try {
-        await PrinterService.openCashDrawer()
-      } catch {
-        // Non-blocking
-      }
-    }
+    // Open physical drawer for pay_in/pay_out (not cash_drop — goes to safe).
+    // The money movement is recorded regardless; a failed kick is surfaced as a
+    // SEPARATE toast below so the two facts aren't conflated.
+    const kick =
+      mode !== 'cash_drop'
+        ? await PrinterService.openCashDrawer({ trigger: mode })
+        : null
 
     show({
       title: MODE_TITLES[mode],
@@ -182,6 +186,23 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
       )} recorded.`,
       type: 'success'
     })
+
+    if (kick) {
+      const outcome = classifyKickOutcome(kick)
+      if (outcome === 'failed') {
+        show({
+          title: 'Drawer Did Not Open',
+          message: describeCashDrawerKickError(kick),
+          type: 'error'
+        })
+      } else if (outcome === 'unconfirmed') {
+        show({
+          title: 'Check the Drawer',
+          message: DRAWER_UNCONFIRMED_MESSAGE,
+          type: 'warning'
+        })
+      }
+    }
 
     setIsSubmitting(false)
     resetState()

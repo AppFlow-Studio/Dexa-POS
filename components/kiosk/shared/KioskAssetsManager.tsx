@@ -3,8 +3,11 @@ import { toastService } from "@/lib/toastService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { useAuth } from "@clerk/clerk-expo";
+import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import { ImagePlus, Plus, RefreshCw, Trash2, X } from "lucide-react-native";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { Film, ImagePlus, Plus, RefreshCw, Trash2, X } from "lucide-react-native";
+import { Video as VideoCompressor } from "react-native-compressor";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,6 +22,18 @@ import {
 
 const TEAL = "#0D9488";
 const MAX_PER_GROUP = 5;
+// Upload cap for the COMPRESSED output (kept in sync with MAX_VIDEO_SIZE_BYTES in
+// the website's cdn-upload edge function).
+const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
+// Sanity cap on the picked ORIGINAL before we spend time compressing it. The
+// output is normalized to a much smaller fast-start MP4, so the source can be
+// larger than the upload cap.
+const MAX_SOURCE_VIDEO_BYTES = 200 * 1024 * 1024;
+
+// Videos are streamed straight to the edge function (see uploadVideoToCdn), which
+// needs the function URL + anon key directly rather than going through supabase-js.
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY;
 
 /** Array-backed media groups on the kiosk profile → their DB columns. */
 type GroupKey =
@@ -27,13 +42,91 @@ type GroupKey =
   | "orderBannerImagesVertical"
   | "orderBannerImagesHorizontal";
 
-const COLUMN: Record<GroupKey | "logoUrl", string> = {
+/** Single-value idle video slots (one per orientation) → their DB columns. */
+type VideoKey = "idleVideoVertical" | "idleVideoHorizontal";
+
+const COLUMN: Record<GroupKey | VideoKey | "logoUrl", string> = {
   logoUrl: "logo_url",
   idleImagesVertical: "idle_images_vertical",
   idleImagesHorizontal: "idle_images_horizontal",
   orderBannerImagesVertical: "order_banner_images_vertical",
   orderBannerImagesHorizontal: "order_banner_images_horizontal",
+  idleVideoVertical: "idle_video_vertical",
+  idleVideoHorizontal: "idle_video_horizontal",
 };
+
+const VIDEO_SLOTS: {
+  key: VideoKey;
+  title: string;
+  sub: string;
+  ratioLabel: string;
+  aspect: [number, number];
+}[] = [
+  {
+    key: "idleVideoVertical",
+    title: "Idle video · Vertical",
+    sub: "Plays after the portrait idle images, muted and looping.",
+    ratioLabel: "9:16",
+    aspect: [9, 16],
+  },
+  {
+    key: "idleVideoHorizontal",
+    title: "Idle video · Horizontal",
+    sub: "Plays after the landscape idle images, muted and looping.",
+    ratioLabel: "16:9",
+    aspect: [16, 9],
+  },
+];
+
+const VIDEO_PREVIEW_H = 110;
+const videoPreviewWidth = (aspect: [number, number]) =>
+  Math.max(48, Math.round((VIDEO_PREVIEW_H * aspect[0]) / aspect[1]));
+
+/** Full, readable description of any thrown value — native modules throw errors
+ * with a `code`, plain strings, or opaque objects; surface whatever we can. */
+function describeError(err: unknown): string {
+  if (err instanceof Error) {
+    const code = (err as { code?: string | number }).code;
+    return `${err.name}: ${err.message}${code != null ? ` (code ${code})` : ""}`;
+  }
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+/**
+ * Muted, looping preview of a slot's video — a faithful `contentFit="cover"`
+ * center-crop of what the kiosk renders. Keyed by uri at the call site so a new
+ * player is created when the source swaps (local pick -> uploaded CDN url).
+ */
+function VideoSlotPreview({
+  uri,
+  width,
+  height,
+}: {
+  uri: string;
+  width: number;
+  height: number;
+}) {
+  const player = useVideoPlayer({ uri }, (p) => {
+    // loop=true for a continuous settings preview, unlike KioskMediaCarousel
+    // which uses loop=false to advance to the next idle slide on playToEnd.
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+  return (
+    <VideoView
+      player={player}
+      style={{ width, height }}
+      contentFit="cover"
+      nativeControls={false}
+    />
+  );
+}
 
 const GROUPS: {
   key: GroupKey;
@@ -78,11 +171,11 @@ const thumbWidth = (aspect: [number, number]) =>
 
 /**
  * On-device kiosk asset management — mirrors the website's kiosk-profile Assets
- * panel. Manages the logo plus the placement-scoped idle-screen and in-order
- * banner image sets (vertical + horizontal). Images are picked from the device,
- * pushed to the CDN via the shared `cdn-upload` edge function, and their URLs
- * written straight into the `kiosk_profiles` array columns. Video stays web-only
- * (it replaces the idle carousel, and isn't managed here).
+ * panel. Manages the logo, the placement-scoped idle-screen and in-order banner
+ * image sets (vertical + horizontal), and the single idle video per orientation.
+ * Media is picked from the device, pushed to the CDN via the shared `cdn-upload`
+ * edge function, and its URL written straight into the `kiosk_profiles` columns
+ * (array columns for images, text columns for the idle videos).
  */
 export function KioskAssetsManager({
   config,
@@ -102,8 +195,15 @@ export function KioskAssetsManager({
     orderBannerImagesVertical: config.orderBannerImagesVertical,
     orderBannerImagesHorizontal: config.orderBannerImagesHorizontal,
   });
-  // Which slot is mid-upload, e.g. "logo" or a GroupKey — drives spinners.
+  const [videos, setVideos] = useState<Record<VideoKey, string | null>>({
+    idleVideoVertical: config.idleVideoVertical,
+    idleVideoHorizontal: config.idleVideoHorizontal,
+  });
+  // Which slot is mid-upload, e.g. "logo", a GroupKey, or a VideoKey — drives spinners.
   const [busy, setBusy] = useState<string | null>(null);
+  // Video compression progress (0..1) for the active video slot; null once
+  // compression finishes and we're uploading (indeterminate) or idle.
+  const [videoProgress, setVideoProgress] = useState<number | null>(null);
 
   // Re-sync from a background config refresh, but never mid-upload.
   useEffect(() => {
@@ -114,6 +214,10 @@ export function KioskAssetsManager({
       idleImagesHorizontal: config.idleImagesHorizontal,
       orderBannerImagesVertical: config.orderBannerImagesVertical,
       orderBannerImagesHorizontal: config.orderBannerImagesHorizontal,
+    });
+    setVideos({
+      idleVideoVertical: config.idleVideoVertical,
+      idleVideoHorizontal: config.idleVideoHorizontal,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
@@ -140,9 +244,13 @@ export function KioskAssetsManager({
     return result.assets[0].base64;
   };
 
-  const uploadToCdn = async (
-    base64: string,
-    label: string,
+  // Single entry point to the shared cdn-upload edge function. All kiosk media
+  // (logo, images, videos) lives under the "kiosk" category — matching the web
+  // dashboard — so callers vary only the file name and content type.
+  const invokeCdnUpload = async (
+    fileBase64: string,
+    fileName: string,
+    contentType: string,
   ): Promise<string> => {
     if (!selectedStore) throw new Error("No store selected.");
     const token = await getToken();
@@ -150,10 +258,10 @@ export function KioskAssetsManager({
       body: {
         scope: "merchant",
         merchantId: selectedStore.merchant_id,
-        category: "kiosk-images",
-        fileName: `kiosk_${label}_${Date.now()}.jpg`,
-        fileBase64: base64,
-        contentType: "image/jpeg",
+        category: "kiosk",
+        fileName,
+        fileBase64,
+        contentType,
       },
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -161,6 +269,9 @@ export function KioskAssetsManager({
       throw error ?? new Error("Upload returned no URL.");
     return data.cdnUrl as string;
   };
+
+  const uploadToCdn = (base64: string, label: string): Promise<string> =>
+    invokeCdnUpload(base64, `kiosk_${label}_${Date.now()}.jpg`, "image/jpeg");
 
   const persist = async (column: string, value: unknown) => {
     const { error } = await supabase
@@ -256,6 +367,164 @@ export function KioskAssetsManager({
     } catch {
       toastService.show({
         title: "Couldn't remove image",
+        message: "Please try again.",
+        type: "error",
+      });
+    }
+  };
+
+  // ── Idle videos ──
+  const pickVideo = async (): Promise<string | null> => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Allow photo access to add kiosk videos.");
+      return null;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: false,
+      quality: 1,
+    });
+    if (result.canceled || !result.assets[0]?.uri) return null;
+    const asset = result.assets[0];
+    // Any container is fine here — compression below transcodes to a fast-start
+    // MP4 regardless of the source format. Only guard against an absurdly large
+    // original so we don't burn minutes transcoding a huge file.
+    let size = asset.fileSize ?? 0;
+    if (!size) {
+      const info = await FileSystem.getInfoAsync(asset.uri);
+      size = info.exists ? (info.size ?? 0) : 0;
+    }
+    if (size > MAX_SOURCE_VIDEO_BYTES) {
+      toastService.show({
+        title: "Video too large",
+        message: "That clip is very large — pick a shorter one.",
+        type: "warning",
+      });
+      return null;
+    }
+    return asset.uri;
+  };
+
+  // Videos stream straight to the edge function as raw bytes (no base64), so the
+  // tablet never materializes a ~27MB string and the worker never holds several
+  // copies at once — the base64-in-JSON path exceeded the edge function's memory
+  // limit on real-world clips.
+  const uploadVideoToCdn = async (
+    uri: string,
+    label: string,
+  ): Promise<string> => {
+    if (!selectedStore) throw new Error("No store selected.");
+    if (!SUPABASE_URL) throw new Error("Supabase URL is not configured.");
+    const token = await getToken();
+    const result = await FileSystem.uploadAsync(
+      `${SUPABASE_URL}/functions/v1/cdn-upload`,
+      uri,
+      {
+        httpMethod: "POST",
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+          apikey: SUPABASE_ANON_KEY ?? "",
+          Authorization: `Bearer ${token}`,
+          "x-cdn-scope": "merchant",
+          "x-cdn-merchant-id": selectedStore.merchant_id,
+          "x-cdn-category": "kiosk",
+          "x-cdn-file-name": `kiosk_${label}_${Date.now()}.mp4`,
+          "x-cdn-content-type": "video/mp4",
+        },
+      },
+    );
+    if (result.status < 200 || result.status >= 300) {
+      let detail = result.body?.slice(0, 300) || "no response body";
+      try {
+        detail = JSON.parse(result.body)?.error ?? detail;
+      } catch {
+        // Non-JSON error body — keep the raw (truncated) body.
+      }
+      throw new Error(`HTTP ${result.status}: ${detail}`);
+    }
+    const data = JSON.parse(result.body);
+    if (!data?.cdnUrl) throw new Error("Upload returned no URL.");
+    return data.cdnUrl as string;
+  };
+
+  const replaceVideo = async (key: VideoKey) => {
+    if (busy) return;
+    const uri = await pickVideo();
+    if (!uri) return;
+    setBusy(key);
+    setVideoProgress(0);
+    // Tracks which step is running so an error names the failing stage.
+    let stage = "compress";
+    try {
+      // Re-encode to a fast-start (moov-at-front) 1080p H.264 MP4 on the device.
+      // Source clips are often 4K / High-profile / Level 5.2 — beyond the POS
+      // decoder — and put moov at the END (black frame until fully downloaded).
+      // Re-encoding on-device yields a stream this hardware can decode, while
+      // capping at 1080p keeps it HD/sharp (not the blurry low-res `auto` default)
+      // and a ~6 Mbps bitrate stays under the 20MB cap for short loops. Audio is
+      // stripped (the kiosk is always muted).
+      const compressed = await VideoCompressor.compress(
+        uri,
+        {
+          compressionMethod: "manual",
+          maxSize: 1920, // long side -> 1080p (downscales 4K, never upscales)
+          bitrate: 6_000_000,
+          minimumFileSizeForCompress: 0, // always re-encode, even a small 4K clip
+          stripAudio: true,
+          progressDivider: 10,
+        },
+        (p) => setVideoProgress(p),
+      );
+      setVideoProgress(null); // compression done → uploading (indeterminate)
+
+      stage = "size check";
+      const info = await FileSystem.getInfoAsync(compressed);
+      const size = info.exists ? (info.size ?? 0) : 0;
+      if (size > MAX_VIDEO_BYTES) {
+        toastService.show({
+          title: "Video still too large",
+          message: `Even after compression it's ${(size / 1024 / 1024).toFixed(1)}MB (max 20MB). Use a shorter clip.`,
+          type: "warning",
+        });
+        return;
+      }
+
+      stage = "upload";
+      const url = await uploadVideoToCdn(compressed, key);
+      stage = "save";
+      await persist(COLUMN[key], url);
+      setVideos((v) => ({ ...v, [key]: url }));
+      onRefreshKioskConfig?.();
+      toastService.show({
+        title: "Video updated",
+        message: "Saved to this kiosk profile.",
+        type: "success",
+      });
+    } catch (err) {
+      const detail = describeError(err);
+      // Log for adb/Sentry, and show the FULL message in an alert (toasts truncate).
+      console.error(`[kiosk-video] ${stage} failed:`, err);
+      Alert.alert(`Video ${stage} failed`, detail);
+      toastService.show({
+        title: `Video ${stage} failed`,
+        message: detail,
+        type: "error",
+      });
+    } finally {
+      setBusy(null);
+      setVideoProgress(null);
+    }
+  };
+
+  const removeVideo = async (key: VideoKey) => {
+    setVideos((v) => ({ ...v, [key]: null })); // optimistic
+    try {
+      await persist(COLUMN[key], null);
+      onRefreshKioskConfig?.();
+    } catch {
+      toastService.show({
+        title: "Couldn't remove video",
         message: "Please try again.",
         type: "error",
       });
@@ -389,8 +658,79 @@ export function KioskAssetsManager({
         );
       })}
 
+      {/* Idle videos (one per orientation) */}
+      {VIDEO_SLOTS.map((slot) => {
+        const uri = videos[slot.key];
+        const uploading = busy === slot.key;
+        const w = videoPreviewWidth(slot.aspect);
+        return (
+          <View key={slot.key}>
+            <View className="flex-row items-center gap-2 mb-0.5">
+              <Text className="text-xs font-semibold text-gray-500">
+                {slot.title}
+              </Text>
+              <View className="px-1.5 py-0.5 rounded bg-gray-100">
+                <Text className="text-[10px] font-bold text-gray-500">
+                  {slot.ratioLabel}
+                </Text>
+              </View>
+            </View>
+            <Text className="text-[11px] text-gray-400 mb-2">{slot.sub}</Text>
+
+            <View className="flex-row items-center gap-3">
+              <View
+                className="rounded-lg overflow-hidden border border-gray-200 bg-black items-center justify-center"
+                style={{ width: w, height: VIDEO_PREVIEW_H }}
+              >
+                {uri ? (
+                  <VideoSlotPreview
+                    key={uri}
+                    uri={uri}
+                    width={w}
+                    height={VIDEO_PREVIEW_H}
+                  />
+                ) : (
+                  <Film size={20} color="#9CA3AF" />
+                )}
+              </View>
+              <TouchableOpacity
+                onPress={() => replaceVideo(slot.key)}
+                disabled={uploading}
+                activeOpacity={0.85}
+                className="flex-row items-center px-3.5 py-2.5 rounded-xl border border-teal-300 bg-teal-50"
+              >
+                {uploading ? (
+                  <ActivityIndicator size="small" color={TEAL} />
+                ) : (
+                  <RefreshCw size={15} color={TEAL} />
+                )}
+                <Text className="text-sm font-bold text-teal-700 ml-1.5">
+                  {uploading
+                    ? videoProgress !== null
+                      ? `Processing ${Math.round(videoProgress * 100)}%`
+                      : "Uploading…"
+                    : uri
+                      ? "Replace"
+                      : "Add video"}
+                </Text>
+              </TouchableOpacity>
+              {uri ? (
+                <TouchableOpacity
+                  onPress={() => removeVideo(slot.key)}
+                  activeOpacity={0.85}
+                  className="w-10 h-10 rounded-xl border border-gray-200 bg-white items-center justify-center"
+                >
+                  <Trash2 size={16} color="#DC2626" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+
       <Text className="text-[11px] text-gray-400">
-        Videos and other advanced media are managed on the web dashboard.
+        Idle videos are MP4, up to 20MB, and loop after the idle images. Longer or
+        higher-resolution media is best managed on the web dashboard.
       </Text>
     </View>
   );

@@ -24,7 +24,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
-import ClockInOutModal from "./timeclock/ClockInOutModal";
 import CashTipDeclarationModal from "./timeclock/CashTipDeclarationModal";
 import PinInputModal from "./timeclock/PinInputModal";
 import {
@@ -108,7 +107,6 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const openProfile = useProfileOverlayStore((state) => state.openProfile);
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
-  const [isClockInOutOpen, setClockInOutOpen] = useState(false);
   const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
   const [isBreakPinModalOpen, setBreakPinModalOpen] = useState(false);
   const [isLogoutPinModalOpen, setLogoutPinModalOpen] = useState(false);
@@ -294,9 +292,15 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     return (
       <>
         <DropdownMenu onOpenChange={setMenuOpen}>
-          <View className="flex-row items-center gap-2">
-            {/* Avatar circle — tapping opens dropdown */}
-            <DropdownMenuTrigger
+          {/* Avatar + name — tapping either one opens the dropdown */}
+          <DropdownMenuTrigger
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(8),
+            }}
+          >
+            <View
               style={{
                 width: s(30),
                 height: s(30),
@@ -331,8 +335,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   }}
                 />
               )}
-            </DropdownMenuTrigger>
-            {/* Name — non-interactive */}
+            </View>
             <View>
               <Text
                 className="font-medium text-xs leading-tight"
@@ -344,7 +347,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 <BreakCountdown startTime={session.breakStartTime} />
               )}
             </View>
-          </View>
+          </DropdownMenuTrigger>
 
           <DropdownMenuContent
             className="w-[300px] rounded-2xl shadow-2xl mt-3 overflow-hidden p-0"
@@ -549,38 +552,6 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 }}
               />
 
-              {/* Clock In / Out — PIN-driven, does NOT switch the active account */}
-              <DropdownMenuItem
-                onPress={() => setClockInOutOpen(true)}
-                className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
-              >
-                <View
-                  className="w-8 h-8 rounded-lg items-center justify-center"
-                  style={{ backgroundColor: `${colors.teal}20` }}
-                >
-                  <Clock size={s(16)} color={colors.teal} />
-                </View>
-                <Text
-                  style={{
-                    color: colors.heading,
-                    fontSize: s(14),
-                    fontWeight: "500",
-                    flex: 1,
-                  }}
-                >
-                  Clock In / Out
-                </Text>
-              </DropdownMenuItem>
-
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: colors.border,
-                  marginHorizontal: 16,
-                  marginVertical: 4,
-                }}
-              />
-
               <DropdownMenuItem
                 onPress={handleStartBreak}
                 disabled={!isClockedIn || isOnBreak}
@@ -636,7 +607,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   className="text-sm font-medium flex-1"
                   style={{ color: colors.danger }}
                 >
-                  Sign out
+                  Clock out
                 </Text>
               </DropdownMenuItem>
             </View>
@@ -645,10 +616,6 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         <SwitchAccountModal
           isOpen={isPinModalOpen}
           onClose={() => setPinModalOpen(false)}
-        />
-        <ClockInOutModal
-          isOpen={isClockInOutOpen}
-          onClose={() => setClockInOutOpen(false)}
         />
         <BreakEndedModal
           isOpen={isBreakEndedModalOpen}
@@ -667,7 +634,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         />
         <PinInputModal
           isOpen={isLogoutPinModalOpen}
-          title="Sign Out"
+          title="Clock Out"
           subtitle="Enter your PIN to clock out"
           onConfirm={handleLogoutPinConfirm}
           onCancel={handleLogoutPinCancel}

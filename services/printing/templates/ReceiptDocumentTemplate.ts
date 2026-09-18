@@ -420,11 +420,21 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       format: BOLD,
     });
   }
-  if (validated.storeAddress) {
+  // Address: one centered line per component so a long address does not
+  // center-clip on the Star raster path. Falls back to the joined string.
+  const addressLines =
+    validated.storeAddressLines && validated.storeAddressLines.length > 0
+      ? validated.storeAddressLines
+      : validated.storeAddress
+        ? [validated.storeAddress]
+        : [];
+  for (const line of addressLines) {
+    if (!line) continue;
     nodes.push({
       type: "text_line",
-      content: sanitizeForPrint(validated.storeAddress),
+      content: sanitizeForPrint(line),
       align: "center",
+      format: BOLD,
     });
   }
   if (validated.storePhone) {

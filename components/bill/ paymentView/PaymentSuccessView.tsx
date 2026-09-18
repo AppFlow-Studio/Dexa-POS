@@ -9,10 +9,6 @@ import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { finalizeDineInPaymentClear } from "@/services/tables/finalizeDineInPaymentClear";
-import {
-  findLatestReusableEmptyDraftId,
-  getRefreshedReusableDraftNumbers,
-} from "@/lib/reusableEmptyDraft";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
@@ -140,8 +136,6 @@ const PaymentSuccessView = () => {
       setOpenedAt,
       updateOrderStatus,
       markOrderAsPaid,
-      startNewOrder,
-      setActiveOrder,
       archiveOrder,
       sendNewItemsToKitchenForOrder,
     } = useOrderStore.getState();
@@ -191,45 +185,10 @@ const PaymentSuccessView = () => {
       useDineInStore.getState().clearSelectedTable();
 
       setTimeout(() => {
-        const { orderIds: latestOrderIds, ordersById: latestOrdersById } =
-          useOrderStore.getState();
-        const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-          latestOrdersById,
-          latestOrderIds,
-          activeOrderId,
-          useStoreSettingsStore.getState().selectedStation?.id ?? null,
-        );
-
-        if (reusableEmptyDraftId) {
-          useOrderStore.setState((state) => {
-            const draft = state.ordersById[reusableEmptyDraftId];
-            if (!draft) return;
-            // Reset stale dine-in fields so the bill shows as a clean new order.
-            draft.order_type = "takeout";
-            draft.service_location_id = null;
-            draft.session_id = undefined;
-            draft.local_session_id = undefined;
-            if (selectedStore) {
-              const refreshedNumbers = getRefreshedReusableDraftNumbers({
-                draftId: reusableEmptyDraftId,
-                ordersById: latestOrdersById,
-                orderIds: latestOrderIds,
-                locationId: selectedStore.id,
-                stationNumber:
-                  useStoreSettingsStore.getState().selectedStation
-                    ?.station_number ?? null,
-              });
-              if (refreshedNumbers) {
-                draft.order_number = refreshedNumbers.orderNumber;
-                draft.display_number = refreshedNumbers.displayNumber;
-              }
-            }
-          });
-          setActiveOrder(reusableEmptyDraftId);
-        } else {
-          const fresh = startNewOrder();
-          setActiveOrder(fresh.id);
-        }
+        useOrderStore.getState().startOrResumeOrder({
+          excludeOrderId: activeOrderId,
+          resetDineInFields: true,
+        });
       }, 100);
 
       close();
@@ -243,43 +202,9 @@ const PaymentSuccessView = () => {
 
     // For quick service / takeout, start a new order immediately
     setTimeout(() => {
-      const { orderIds, ordersById } = useOrderStore.getState();
-      const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
-        ordersById,
-        orderIds,
-        activeOrderId,
-        useStoreSettingsStore.getState().selectedStation?.id ?? null,
-      );
-
-      if (reusableEmptyDraftId) {
-        if (selectedStore) {
-          const stationNumber =
-            useStoreSettingsStore.getState().selectedStation?.station_number ??
-            null;
-          const refreshedNumbers = getRefreshedReusableDraftNumbers({
-            draftId: reusableEmptyDraftId,
-            ordersById,
-            orderIds,
-            locationId: selectedStore.id,
-            stationNumber,
-          });
-
-          if (refreshedNumbers) {
-            useOrderStore.setState((state) => {
-              const draft = state.ordersById[reusableEmptyDraftId];
-              if (!draft) return;
-              draft.order_number = refreshedNumbers.orderNumber;
-              draft.display_number = refreshedNumbers.displayNumber;
-            });
-          }
-        }
-
-        setActiveOrder(reusableEmptyDraftId);
-        return;
-      }
-
-      const newOrder = startNewOrder();
-      setActiveOrder(newOrder.id);
+      useOrderStore
+        .getState()
+        .startOrResumeOrder({ excludeOrderId: activeOrderId });
     }, 100);
 
     // Only update these for non-completed orders (which shouldn't happen here anyway)
