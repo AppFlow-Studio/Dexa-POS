@@ -7,6 +7,7 @@ in the owning feature, engineering, quality, or handoff folder.
 
 | Date | Ticket | Status | Plan |
 | --- | --- | --- | --- |
+| 2026-09-18 | Backend Messaging Telnyx webhook ledger go-live - POS send paths | POS code and focused tests complete; Website migration/webhook deployment, secrets, real-phone QA, and verifier sign-off pending | `docs/features/notifications-messaging/telnyx-webhook-ledger-pos.md` |
 | 2026-09-08 | POS merchant SaaS billing exemption + location entitlement contract | POS code complete; 75 focused tests passed; shared migration deployment, generated types, and device QA pending | `docs/features/billing/billing-pos-suspended-access.md` |
 | 2026-09-08 | Kiosk Valor validation - shared adapter and payment safety | Confirmed code gaps implemented; 131 tests passed; draft review, physical QA, billing grace contract and deployment verification pending | `docs/features/kiosk/valor-validation.md` |
 | 2026-08-18 | P0 refund receipts - approval persistence, physical print, and reprint | POS code complete - migration, physical QA, and website hosted/email/SMS handoff remain | `docs/features/payments-terminals/refund-receipt-printing.md` |
