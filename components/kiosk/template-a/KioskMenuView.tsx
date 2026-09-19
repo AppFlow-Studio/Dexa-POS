@@ -1,7 +1,6 @@
 import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
-import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
 import {
   hasOrderableItem,
   useModifierGroupResolver,
@@ -9,8 +8,13 @@ import {
 } from "@/components/kiosk/shared/kioskItemAvailability";
 import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
 import { kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
+import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
 import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
 import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
+import {
+  useIsStationMenuScopeEmpty,
+  useVisibleMenus,
+} from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
 import {
   resolveKioskColumns,
@@ -43,7 +47,9 @@ export function KioskMenuView({
   config: KioskConfig;
   onSelectItem: (item: MenuItemType) => void;
 }) {
-  const menus = useMenuStore((s) => s.menus);
+  // Kiosk channel + per-station scope are applied by the shared selector.
+  const menus = useVisibleMenus();
+  const scopedToNothing = useIsStationMenuScopeEmpty();
   const resolveGroups = useModifierGroupResolver();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
@@ -57,10 +63,7 @@ export function KioskMenuView({
   // Build one section per available menu, listing its available categories.
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter(
-        (m) =>
-          isMenuVisibleOnChannel(m, "kiosk") && isMenuAvailableNow(m.id),
-      )
+      .filter((m) => isMenuAvailableNow(m.id))
       .map((m) => ({
         menuId: m.id,
         title: m.name,
@@ -92,6 +95,10 @@ export function KioskMenuView({
   const items = useOrderableItems(activeCategory?.items);
 
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // Scoped to a selection that leaves nothing: fail closed to the empty state,
+  // never to the full menu. After every hook, so the hook order is stable.
+  if (scopedToNothing) return <KioskNoMenusState config={config} />;
 
   return (
     <View className="flex-1">

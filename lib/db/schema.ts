@@ -89,7 +89,15 @@
  * EXPO_PUBLIC_LOCAL_WRITES_ITEMS is on, so a v11 -> v12 rebuild is as safe as
  * every rebuild before it.
  */
-export const SCHEMA_VERSION = 12;
+/**
+ * v13 (2026-09-19, per-station menu scope): `menu_station_scopes`, one row per
+ * location holding the bootstrap envelope's `station_menu_scopes` map. A new
+ * table rather than a column on `menu_bootstrap`, so the upgrade stays purely
+ * additive (`CREATE TABLE IF NOT EXISTS`) and no device drops its mirror. It
+ * exists so an offline cold start scopes the menu exactly as the last live
+ * sync did — a mirror that dropped the map would fail OPEN to every menu.
+ */
+export const SCHEMA_VERSION = 13;
 
 /**
  * True while the local DB is a disposable projection. Read by the migration
@@ -144,7 +152,11 @@ export const SCHEMA_REBUILD_IS_SAFE = true;
  * leaving a v12 file claiming to be v13 with the wrong columns.
  */
 export const ADDITIVE_UPGRADES: ReadonlyArray<{ from: number; to: number }> = [
-  { from: 11, to: 12 },
+  // v13 adds `menu_station_scopes` only. Every DDL statement is still
+  // `CREATE ... IF NOT EXISTS`, so re-running them brings a v11 or v12 file
+  // to v13 with the data intact.
+  { from: 12, to: 13 },
+  { from: 11, to: 13 },
 ];
 
 /** True when `current` can reach SCHEMA_VERSION without dropping anything. */
@@ -160,6 +172,7 @@ export const TABLES = [
   "order_items",
   "order_payments",
   "menu_bootstrap",
+  "menu_station_scopes",
   "menus",
   "menu_categories",
   "menu_items",
@@ -225,6 +238,7 @@ export const TABLE_CONFLICT_KEYS: Partial<Record<TableName, readonly string[]>> 
       "modifier_group_id",
     ],
     menu_bootstrap: ["location_id"],
+    menu_station_scopes: ["location_id"],
     inventory_items: ["location_id", "id"],
     vendors: ["location_id", "id"],
     customers: ["location_id", "id"],
@@ -562,6 +576,17 @@ export const SCHEMA_STATEMENTS: string[] = [
     snoozes                         TEXT NOT NULL DEFAULT '[]',
     modifier_snoozes                TEXT NOT NULL DEFAULT '[]',
     _server_seen_at                 TEXT NOT NULL
+  )`,
+
+  // v13 — the envelope's `station_menu_scopes` map (station_id -> { scope,
+  // menu_ids }), verbatim JSON, one row per location. Its own table rather
+  // than a column on menu_bootstrap so the upgrade is additive. Written only
+  // when the payload carried the map, so a pre-scope snapshot round-trips
+  // exactly and the client's one fail-open path (no map = all) still applies.
+  `CREATE TABLE IF NOT EXISTS menu_station_scopes (
+    location_id      TEXT PRIMARY KEY NOT NULL,
+    payload          TEXT NOT NULL DEFAULT '{}',
+    _server_seen_at  TEXT NOT NULL
   )`,
 
   // The entity root. `payload` is the menu verbatim MINUS `categories`, which

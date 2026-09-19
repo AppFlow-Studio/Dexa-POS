@@ -20,7 +20,8 @@ import {
   MenuWithCategories,
   ModifierIngredientSync,
   PosSyncData,
-  PosSyncState
+  PosSyncState,
+  StationMenuScopeMap
 } from '@/types/menu'
 import { create } from 'zustand'
 
@@ -33,6 +34,11 @@ interface MenuState {
   // ============================================================
   posSyncData: PosSyncData | null
   syncState: PosSyncState
+  // Per-station menu scopes from the bootstrap envelope, keyed by station id.
+  // Read ONLY through useVisibleMenus / selectVisibleMenus — no screen filters
+  // on this directly. `{}` until a sync lands, which resolves every station to
+  // 'all' (today's behaviour).
+  stationMenuScopes: StationMenuScopeMap
 
   // ============================================================
   // DERIVED/LOCAL STATE - For backward compatibility
@@ -733,6 +739,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
       lastSyncedAt: null,
       isFromCache: false
     },
+    stationMenuScopes: {},
 
     // ============================================================
     // DERIVED/LOCAL STATE - Start empty, populated from sync
@@ -846,6 +853,9 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
       set({
         posSyncData: data,
+        // Same transform for a live sync and a snapshot hydrate, so an offline
+        // cold start scopes the menu exactly as the last live sync did.
+        stationMenuScopes: data.station_menu_scopes ?? {},
         menus,
         categories,
         menuItems,
@@ -922,6 +932,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     clearMenuData: () => {
       set({
         posSyncData: null,
+        stationMenuScopes: {},
         menus: [],
         categories: [],
         menuItems: [],
