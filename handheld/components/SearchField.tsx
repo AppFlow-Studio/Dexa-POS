@@ -2,17 +2,19 @@ import { colors } from "@/lib/theme";
 import { Search, X } from "lucide-react-native";
 import React from "react";
 import { Pressable, TextInput, View } from "react-native";
-import { type } from "../../lib/type";
+import { type } from "../lib/type";
 
 /** The artifact's `.search`: a 52dp pill with an icon and a plain text input. */
 export function SearchField({
   value,
   onChange,
   placeholder,
+  autoFocus = false,
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
+  autoFocus?: boolean;
 }) {
   return (
     <View
@@ -27,6 +29,7 @@ export function SearchField({
         placeholderTextColor={colors.label}
         returnKeyType="search"
         autoCorrect={false}
+        autoFocus={autoFocus}
         className="flex-1 py-0"
         style={[type.value, { fontWeight: "400", color: colors.heading }]}
         accessibilityLabel={placeholder}

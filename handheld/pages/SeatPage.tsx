@@ -1,6 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useTableAnywhere } from "../hooks/useFloors";
 import { StickyNote } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -14,9 +15,9 @@ import { useSeatTable } from "../screens/seat/useSeatTable";
 /** Screen 2: guest count and nothing else, then straight to the check. Route: /handheld/seat/[tableId]. */
 export default function SeatPage({ tableId }: { tableId: string }) {
   const router = useRouter();
-  const table = useFloorPlanStore((s) => s.tablesById[tableId] ?? null);
-  const floorName = useFloorPlanStore(
-    (s) => s.floorPlans.find((p) => p.id === s.activeFloorPlanId)?.name ?? "Floor",
+  const { table } = useTableAnywhere(tableId);
+  const planName = useFloorPlanStore(
+    (s) => s.floorPlans.find((p) => p.id === table?.floor_plan_id)?.name ?? "",
   );
   const me = useEmployeeStore((s) => s.loggedInEmployee?.displayName ?? null);
   const { seat, busy } = useSeatTable(tableId);
@@ -35,7 +36,7 @@ export default function SeatPage({ tableId }: { tableId: string }) {
     <View className="flex-1" style={{ backgroundColor: colors.screen }}>
       <PageHeader
         title={`Seat ${lower}`}
-        subtitle={table?.capacity ? `${floorName} · seats ${table.capacity}` : floorName}
+        subtitle={[planName, table?.capacity ? `seats ${table.capacity}` : ""].filter(Boolean).join(" · ") || undefined}
         onBack={() => router.back()}
       />
       <ScrollView className="flex-1" keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 16 }}>

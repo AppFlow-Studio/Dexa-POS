@@ -2,7 +2,6 @@ import { colors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
-import { useHandheldTab } from "../lib/tabStore";
 import { type } from "../lib/type";
 import { PageHeader, StickyActionBar } from "../primitives";
 import { CustomerField } from "../screens/neworder/CustomerField";
@@ -19,12 +18,11 @@ function Label({ text, top = false }: { text: string; top?: boolean }) {
 
 /**
  * S2: type first, then who it's for. Takeout and delivery want a name and
- * number; dine in asks for a table instead, so it pops back onto the Tables
- * tab. Route: /handheld/order/new.
+ * number; dine in asks for a table instead, so it swaps itself for the free-
+ * table picker. Route: /handheld/order/new.
  */
 export default function NewOrderPage() {
   const router = useRouter();
-  const setTab = useHandheldTab((s) => s.setTab);
   const { start, busy } = useStartOrder();
   const [kind, setKind] = useState<TileType>("takeout");
   const [name, setName] = useState("");
@@ -35,8 +33,7 @@ export default function NewOrderPage() {
 
   const submit = async () => {
     if (dineIn) {
-      setTab("tables");
-      router.back();
+      router.replace("/handheld/tables/pick");
       return;
     }
     const id = await start(kind, { name, phone });
@@ -51,7 +48,7 @@ export default function NewOrderPage() {
         <OrderTypeTiles value={kind} onChange={setKind} />
         {dineIn ? (
           <Text className="px-5" style={[type.sheetDesc, { paddingTop: 28, color: colors.label }]}>
-            Dine-in checks start from a table. Pick one on the Tables tab and seat it.
+            Dine-in checks start from a table. Pick a free one next, then seat it.
           </Text>
         ) : (
           <>

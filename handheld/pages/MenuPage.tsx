@@ -8,15 +8,14 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { FlatList, View } from "react-native";
 import { EmptyState } from "../components/EmptyState";
+import { SearchField } from "../components/SearchField";
 import { useMinuteTick } from "../hooks/useMinuteTick";
 import { checkPageTitle, orderKind } from "../lib/checks";
-import { Button, PageHeader } from "../primitives";
+import { Button, ChipRow, PageHeader } from "../primitives";
 import { CartButton } from "../screens/menu/CartButton";
-import { CategoryChips } from "../screens/menu/CategoryChips";
 import { CustomItemSheet } from "../screens/menu/CustomItemSheet";
 import { MenuRow } from "../screens/menu/MenuRow";
 import { OptionsSheet } from "../screens/menu/OptionsSheet";
-import { SearchField } from "../screens/menu/SearchField";
 import { useAddItem } from "../screens/menu/useAddItem";
 import { useMenuRows, type MenuRowData } from "../screens/menu/useMenuRows";
 
@@ -69,7 +68,7 @@ export default function MenuPage({ orderId }: { orderId: string }) {
     <View className="flex-1" style={{ backgroundColor: colors.screen }}>
       <PageHeader title={title} subtitle={subtitle} onBack={() => router.back()} />
       <SearchField value={query} onChange={setQuery} placeholder="Search the menu" />
-      {query.trim() ? null : <CategoryChips chips={chips} active={chip} onChange={setChip} />}
+      {query.trim() ? null : <ChipRow chips={chips} active={chip} onChange={setChip} />}
       <FlatList
         data={rows}
         keyExtractor={(r) => r.item.id}

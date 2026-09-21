@@ -2,11 +2,11 @@ import { getDeviceId } from "@/lib/deviceId";
 import { logError } from "@/lib/logError";
 import { toastService } from "@/lib/toastService";
 import { PENDING_SEAT_ATTRIBUTION, useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { registerPendingOrderCreation, useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useCallback, useState } from "react";
+import { findTableAnywhere } from "../../hooks/useFloors";
 
 /** tables/index.tsx's canSeatFromSidebar: free or reserved only. */
 export function canSeat(status?: string | null): boolean {
@@ -28,7 +28,7 @@ export function useSeatTable(tableId: string) {
 
   const seat = useCallback(
     (guestCount: number, note: string): boolean => {
-      const fresh = useFloorPlanStore.getState().getTableById(tableId);
+      const fresh = findTableAnywhere(tableId);
       if (!canSeat(fresh?.session?.status)) {
         toastService.show({
           title: "Table occupied",

@@ -47,7 +47,7 @@ export default function TablePage({ tableId }: { tableId: string }) {
   useHydrateOrder(summary?.orderDbId ?? null, !!order);
 
   if (!summary) {
-    return <CheckPage title="Table" orderId={null} emptyText="This table is no longer on the floor plan." />;
+    return <CheckPage title="Table" orderId={null} emptyText="This table is no longer on the plan." />;
   }
   return (
     <CheckPage

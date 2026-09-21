@@ -1,17 +1,24 @@
 import { colors } from "@/lib/theme";
 import React from "react";
 import { Pressable, ScrollView, Text } from "react-native";
-import { tint } from "../../lib/tokens";
-import { type } from "../../lib/type";
-import type { MenuChip } from "./useMenuRows";
+import { tint } from "../lib/tokens";
+import { type } from "../lib/type";
 
-/** The artifact's `.chips`: a horizontal row of 38dp pills, the active one accent-tinted. */
-export function CategoryChips({
+export interface Chip {
+  key: string;
+  label: string;
+}
+
+/**
+ * The artifact's `.chips`: a horizontal row of 38dp pills, the active one
+ * accent-tinted. Menu categories on screen 3, floors on the Tables tab.
+ */
+export function ChipRow({
   chips,
   active,
   onChange,
 }: {
-  chips: MenuChip[];
+  chips: readonly Chip[];
   active: string | null;
   onChange: (key: string) => void;
 }) {
