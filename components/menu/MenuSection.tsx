@@ -65,6 +65,7 @@ import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
 import MenuStaleBanner from "./MenuStaleBanner";
 import MenuUnavailableState from "./MenuUnavailableState";
+import { useVisibleMenus } from "@/hooks/menu/useVisibleMenus";
 import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
 import MenuItem from "./MenuItem";
@@ -296,8 +297,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const { colorScheme } = useColorScheme();
   const uiScale = useUiScale();
   const sc = (n: number) => Math.round(n * uiScale);
-  // State for the active filters
-  const menus = useMenuStore((s) => s.menus);
+  // State for the active filters.
+  // Per-station scope + channel toggle applied by the shared selector; the
+  // device-local hidden list and schedules are layered on below as before.
+  const menus = useVisibleMenus();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const temporaryActiveMenus = useMenuStore((s) => s.temporaryActiveMenus);
   const temporaryActiveCategories = useMenuStore(

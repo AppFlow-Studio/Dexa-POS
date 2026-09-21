@@ -135,50 +135,62 @@ describe("schema declarations stay in sync with the DDL", () => {
 
 // ---------------------------------------------------------------------------
 
-describe("v11 -> v12 upgrade keeps production data", () => {
+describe("additive upgrades keep production data", () => {
   /**
-   * Track A is LIVE. Every tablet holds a populated mirror, so the v12 bump
-   * must not go through DROP_STATEMENTS — that would force a full cold
+   * Track A is LIVE. Every tablet holds a populated mirror, so an additive
+   * bump must not go through DROP_STATEMENTS — that would force a full cold
    * re-sync (up to the 20,000-order retention cap) on every device, on the
-   * update that ships v12.
+   * update that ships it.
    *
-   * v12 only ADDS tables, so re-running the CREATE ... IF NOT EXISTS
-   * statements is enough.
+   * v12 and v13 only ADD tables, so re-running the CREATE ... IF NOT EXISTS
+   * statements is enough. Asserted from BOTH shipped versions: a device that
+   * skipped v12 must reach SCHEMA_VERSION the same way.
    */
-  it("preserves existing rows and still creates the new tables", async () => {
-    const db = getDb()!;
+  it.each([
+    // v11 devices are missing every table v12 and v13 added.
+    { from: 11, missing: ["outbox", "menu_station_scopes"] },
+    // v12 devices are missing only the v13 table.
+    { from: 12, missing: ["menu_station_scopes"] },
+  ])(
+    "from v$from: preserves existing rows and still creates the new tables",
+    async ({ from, missing }) => {
+      const db = getDb()!;
 
-    await db.runAsync(
-      `INSERT INTO orders (id, location_id, order_number, status, created_at, updated_at, _sync_status, _server_seen_at, payload)
+      await db.runAsync(
+        `INSERT INTO orders (id, location_id, order_number, status, created_at, updated_at, _sync_status, _server_seen_at, payload)
        VALUES ('survivor', ?, 'ORD-1', 'completed', ?, ?, 'synced', ?, '{}')`,
-      [LOCATION, isoAt(0), isoAt(0), isoAt(0)],
-    );
+        [LOCATION, isoAt(0), isoAt(0), isoAt(0)],
+      );
 
-    // Simulate a device that upgraded from the shipped v11 build: the v11
-    // tables exist and hold data, and user_version still says 11.
-    await db.execAsync("PRAGMA user_version = 11");
-    await db.execAsync("DROP TABLE IF EXISTS outbox");
+      // Simulate a device that upgraded from a shipped build: the older
+      // tables exist and hold data, and user_version still says `from`.
+      await db.execAsync(`PRAGMA user_version = ${from}`);
+      for (const table of missing) {
+        await db.execAsync(`DROP TABLE IF EXISTS ${table}`);
+      }
 
-    __resetLocalDbForTests();
-    await initLocalDb();
+      __resetLocalDbForTests();
+      await initLocalDb();
 
-    const reopened = getDb()!;
+      const reopened = getDb()!;
 
-    const survivor = await reopened.getFirstAsync<{ id: string }>(
-      `SELECT id FROM orders WHERE id = 'survivor'`,
-    );
-    const version = await reopened.getFirstAsync<{ user_version: number }>(
-      "PRAGMA user_version",
-    );
-    const outbox = await reopened.getAllAsync(`SELECT * FROM outbox`);
+      const survivor = await reopened.getFirstAsync<{ id: string }>(
+        `SELECT id FROM orders WHERE id = 'survivor'`,
+      );
+      const version = await reopened.getFirstAsync<{ user_version: number }>(
+        "PRAGMA user_version",
+      );
 
-    // The order the store had is still there...
-    expect(survivor?.id).toBe("survivor");
-    // ...the version advanced...
-    expect(version?.user_version).toBe(12);
-    // ...and the new table exists (querying a missing table would throw).
-    expect(outbox).toEqual([]);
-  });
+      // The order the store had is still there...
+      expect(survivor?.id).toBe("survivor");
+      // ...the version advanced...
+      expect(version?.user_version).toBe(SCHEMA_VERSION);
+      // ...and every new table exists (querying a missing table would throw).
+      for (const table of missing) {
+        expect(await reopened.getAllAsync(`SELECT * FROM ${table}`)).toEqual([]);
+      }
+    },
+  );
 
   it("isAdditiveUpgrade pins the target so a later destructive bump rebuilds", () => {
     // If SCHEMA_VERSION moves to 13 and nobody updates ADDITIVE_UPGRADES, the

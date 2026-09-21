@@ -22,6 +22,7 @@ import {
   type MerchantTemplateConfig,
   type WaitlistTemplateContext
 } from '../_shared/notifyTemplates.ts'
+import { sendSMS } from '../_shared/telnyx.ts'
 
 const ALLOWED_ORIGIN_PATTERNS: RegExp[] = [
   /^https:\/\/([a-z0-9-]+\.)*dexapos\.com$/,
@@ -241,50 +242,8 @@ serve(async (req: Request) => {
       )
     }
 
-    const apiKey = Deno.env.get('TELNYX_API_KEY')
-    const fromNumber = Deno.env.get('TELNYX_FROM_NUMBER') ?? '+18556810275'
-    if (!apiKey) {
-      console.error('Missing Telnyx credentials')
-      return new Response(
-        JSON.stringify({
-          success: false,
-          sms: false,
-          error: 'sms_failed',
-          message:
-            'SMS provider is not configured. Please notify guest verbally and contact admin.'
-        }),
-        { status: 500, headers: jsonHeaders }
-      )
-    }
-
-    const telnyxResp = await fetch('https://api.telnyx.com/v2/messages', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json'
-      },
-      body: JSON.stringify({
-        from: fromNumber,
-        to: e164Phone,
-        text: message
-      })
-    })
-
-    let telnyxJson: Record<string, any> = {}
-    try {
-      telnyxJson = await telnyxResp.json()
-    } catch {
-      telnyxJson = {}
-    }
-    const data = telnyxJson?.data
-    const firstError = telnyxJson?.errors?.[0]
-    const providerStatus = data?.status as string | undefined
-    const smsOk =
-      telnyxResp.ok &&
-      !!data?.id &&
-      providerStatus !== 'sending_failed' &&
-      providerStatus !== 'delivery_failed'
+    const smsResult = await sendSMS(e164Phone, message)
+    const smsOk = !('error' in smsResult)
 
     await adminClient.rpc('record_waitlist_sms_result', {
       p_waitlist_id: waitlistId,
@@ -292,13 +251,36 @@ serve(async (req: Request) => {
       p_notification_type: 'sms'
     })
 
+    const { error: ledgerError } = await adminClient.rpc(
+      'log_outbound_message',
+      {
+        p_merchant_id: waitlist.merchant_id,
+        p_to_number: e164Phone,
+        p_body: message,
+        p_telnyx_message_id: smsResult.id ?? null,
+        p_channel: 'sms',
+        p_status: 'error' in smsResult ? 'failed' : 'sent',
+        p_error_code:
+          'error' in smsResult
+            ? (smsResult.errorCode ?? smsResult.error)
+            : null,
+        p_from_number: smsResult.fromNumber ?? null,
+        p_messaging_profile_id: smsResult.messagingProfileId ?? null
+      }
+    )
+    if (ledgerError) {
+      console.error('waitlist SMS ledger write failed', {
+        code: ledgerError.code
+      })
+    }
+
     if (smsOk) {
       return new Response(JSON.stringify({ success: true, sms: true }), {
         headers: jsonHeaders
       })
     }
 
-    const providerError = firstError?.detail || firstError?.title || undefined
+    const providerError = 'error' in smsResult ? smsResult.error : undefined
     return new Response(
       JSON.stringify({
         success: false,

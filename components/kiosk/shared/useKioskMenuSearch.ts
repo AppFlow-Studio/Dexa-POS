@@ -6,7 +6,7 @@ import {
   buildKioskSearchEntry,
   type KioskSearchEntry,
 } from "@/components/kiosk/shared/kioskMenuSearch";
-import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
+import { useVisibleMenus } from "@/hooks/menu/useVisibleMenus";
 import type { Category } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useMemo } from "react";
@@ -16,14 +16,15 @@ import { useMemo } from "react";
  * flattened out of the menu tree with its folded text precomputed.
  *
  * Applies exactly the same visibility filters the menu templates apply to the
- * rail and the grid — kiosk channel, menu and category schedules, 86 state and
- * unbuildable required modifier groups — so search can never surface something
- * the browsing path deliberately hides. It is built from the same inputs, in
- * one `useMemo`, so it recomputes only when the menu itself changes, not per
+ * rail and the grid — kiosk channel and per-station scope (both inside
+ * `useVisibleMenus`), menu and category schedules, 86 state and unbuildable
+ * required modifier groups — so search can never surface something the
+ * browsing path deliberately hides. It is built from the same inputs, in one
+ * `useMemo`, so it recomputes only when the menu itself changes, not per
  * keystroke.
  */
 export function useKioskSearchEntries(): KioskSearchEntry[] {
-  const menus = useMenuStore((s) => s.menus);
+  const menus = useVisibleMenus();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
   const resolveGroups = useModifierGroupResolver();
@@ -36,7 +37,6 @@ export function useKioskSearchEntries(): KioskSearchEntry[] {
     const seen = new Set<string>();
 
     for (const menu of menus) {
-      if (!isMenuVisibleOnChannel(menu, "kiosk")) continue;
       if (!isMenuAvailableNow(menu.id)) continue;
 
       for (const category of menu.categories as Category[]) {
