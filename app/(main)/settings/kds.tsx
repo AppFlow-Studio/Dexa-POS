@@ -1362,6 +1362,7 @@ function KdsAddPrinterModal({ onClose }: { onClose: () => void }) {
               onRefresh={scan}
               onProvision={(p, role) => provisionStar(p, role)}
               onTest={() => {}}
+              provisionRoles={["kitchen"]}
             />
           </ScrollView>
         </View>
