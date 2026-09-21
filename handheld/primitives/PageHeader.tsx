@@ -4,7 +4,9 @@ import React from "react";
 import { Text, View } from "react-native";
 import { metrics } from "../lib/tokens";
 import { type } from "../lib/type";
+import { DropdownPill } from "./DropdownPill";
 import { IconButton } from "./IconButton";
+import type { HeaderPicker } from "./Screen";
 
 /**
  * The artifact's `.bar`, the header of a pushed page: 64dp, a 48dp back
@@ -14,11 +16,14 @@ import { IconButton } from "./IconButton";
 export function PageHeader({
   title,
   subtitle,
+  picker,
   onBack,
   right,
 }: {
   title: string;
   subtitle?: string;
+  /** A dropdown pill before the subtitle: the plan picker on Choose a table. */
+  picker?: HeaderPicker;
   onBack: () => void;
   right?: React.ReactNode;
 }) {
@@ -34,14 +39,15 @@ export function PageHeader({
         >
           {title}
         </Text>
-        {subtitle ? (
-          <Text
-            className="mt-0.5"
-            style={[type.pageSubtitle, { color: colors.label }]}
-            numberOfLines={1}
-          >
-            {subtitle}
-          </Text>
+        {subtitle || picker ? (
+          <View className="mt-0.5 flex-row items-center gap-2">
+            {picker ? <DropdownPill {...picker} /> : null}
+            {subtitle ? (
+              <Text className="shrink" style={[type.pageSubtitle, { color: colors.label }]} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
         ) : null}
       </View>
       {right}

@@ -12,7 +12,8 @@ import { SectionLabel } from "../../components/SectionLabel";
 import { useFloors } from "../../hooks/useFloors";
 import { useMinuteTick } from "../../hooks/useMinuteTick";
 import { metrics } from "../../lib/tokens";
-import { ChipRow, IconButton, Screen, SegmentedTabs, type SegmentedOption } from "../../primitives";
+import { IconButton, Screen, SegmentedTabs, type SegmentedOption } from "../../primitives";
+import { PlanSheet } from "./PlanSheet";
 import { TableRow } from "./TableRow";
 import { useTableRows, type TableRowData, type TablesScope } from "./useTableRows";
 
@@ -39,10 +40,11 @@ const EMPTY: Record<TablesScope, { title: string; hint: string }> = {
 };
 
 /**
- * Artifact screen 1 — Tables. Mine / All / Free segments, a floor chip row
- * when the location has more than one plan, and the header's search button
- * (the artifact's `.ib`) opens a name filter. Tapping a row pushes its page;
- * a free row opens the seat page.
+ * Artifact screen 1 — Tables. Mine / All / Free segments; with more than
+ * one plan the subtitle is the plan picker (a sheet, so the list starts
+ * 50dp higher than a chip row would allow); the header's search button (the
+ * artifact's `.ib`) opens a name filter. Tapping a row pushes its page; a
+ * free row opens the seat page.
  */
 export function TablesScreen() {
   const router = useRouter();
@@ -50,6 +52,7 @@ export function TablesScreen() {
   const [scope, setScope] = useState<TablesScope>("mine");
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
+  const [pickingPlan, setPickingPlan] = useState(false);
   const now = useMinuteTick();
   const rows = useTableRows(scope, now, searching ? query : "");
   const floors = useFloors();
@@ -93,7 +96,16 @@ export function TablesScreen() {
   return (
     <Screen
       title="Tables"
-      subtitle={[rows.floorName, `${rows.occupied} of ${rows.allCount} seated`].filter(Boolean).join(" · ")}
+      subtitle={
+        floors.chips.length
+          ? `${rows.occupied} of ${rows.allCount} seated`
+          : [rows.floorName, `${rows.occupied} of ${rows.allCount} seated`].filter(Boolean).join(" · ")
+      }
+      picker={
+        floors.chips.length
+          ? { label: rows.floorName || "All", onPress: () => setPickingPlan(true), accessibilityLabel: "Choose which tables to show" }
+          : undefined
+      }
       right={
         <>
           <IconButton label={searching ? "Close search" : "Search tables"} onPress={toggleSearch}>
@@ -105,7 +117,6 @@ export function TablesScreen() {
     >
       {searching ? <SearchField value={query} onChange={setQuery} placeholder="Table number or name" autoFocus /> : null}
       <SegmentedTabs value={scope} options={options} onChange={setScope} />
-      <ChipRow chips={floors.chips} active={floors.floorId} onChange={floors.setFloorId} />
       {items.length === 0 ? (
         <EmptyState title={empty.title} hint={empty.hint} />
       ) : (
@@ -119,6 +130,9 @@ export function TablesScreen() {
           keyboardShouldPersistTaps="handled"
         />
       )}
+      {pickingPlan ? (
+        <PlanSheet plans={floors.chips} active={floors.floorId} onPick={floors.setFloorId} onClose={() => setPickingPlan(false)} />
+      ) : null}
     </Screen>
   );
 }

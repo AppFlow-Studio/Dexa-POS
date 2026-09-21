@@ -1,6 +1,7 @@
 export { BottomSheet } from "./BottomSheet";
 export { Button, type ButtonProps, type ButtonVariant } from "./Button";
 export { ChipRow, type Chip } from "./ChipRow";
+export { DropdownPill } from "./DropdownPill";
 export { IconButton } from "./IconButton";
 export { Keypad, type KeypadKey } from "./Keypad";
 export { ListRow, type ListRowProps, type RowTile } from "./ListRow";

@@ -9,14 +9,15 @@ import { SearchField } from "../components/SearchField";
 import { useFloors } from "../hooks/useFloors";
 import { useMinuteTick } from "../hooks/useMinuteTick";
 import { metrics } from "../lib/tokens";
-import { ChipRow, PageHeader } from "../primitives";
+import { PageHeader } from "../primitives";
+import { PlanSheet } from "../screens/tables/PlanSheet";
 import { TableRow } from "../screens/tables/TableRow";
 import { useTableRows, type TableRowData } from "../screens/tables/useTableRows";
 
 const keyExtractor = (row: TableRowData) => row.id;
 
 /**
- * New order → Dine in: free tables only, with the same floor chips and
+ * New order → Dine in: free tables only, with the same plan picker and
  * search as the Tables tab. Tapping one replaces this page with the seat
  * page, so Back from the seated table lands on the tabs. Route:
  * /handheld/tables/pick.
@@ -25,6 +26,7 @@ export default function PickTablePage() {
   const router = useRouter();
   const { isDarkColorScheme: dark } = useColorScheme();
   const [query, setQuery] = useState("");
+  const [pickingPlan, setPickingPlan] = useState(false);
   const now = useMinuteTick();
   const rows = useTableRows("free", now, query);
   const floors = useFloors();
@@ -42,11 +44,17 @@ export default function PickTablePage() {
     <View className="flex-1" style={{ backgroundColor: colors.screen }}>
       <PageHeader
         title="Choose a table"
-        subtitle={[rows.floorName, `${rows.freeCount} free`].filter(Boolean).join(" · ")}
+        subtitle={
+          floors.chips.length ? `${rows.freeCount} free` : [rows.floorName, `${rows.freeCount} free`].filter(Boolean).join(" · ")
+        }
+        picker={
+          floors.chips.length
+            ? { label: rows.floorName || "All", onPress: () => setPickingPlan(true), accessibilityLabel: "Choose which tables to show" }
+            : undefined
+        }
         onBack={() => router.back()}
       />
       <SearchField value={query} onChange={setQuery} placeholder="Table number or name" />
-      <ChipRow chips={floors.chips} active={floors.floorId} onChange={floors.setFloorId} />
       {rows.section.length === 0 ? (
         <EmptyState
           title={query.trim() ? "No table matches" : "No free tables"}
@@ -62,6 +70,9 @@ export default function PickTablePage() {
           keyboardShouldPersistTaps="handled"
         />
       )}
+      {pickingPlan ? (
+        <PlanSheet plans={floors.chips} active={floors.floorId} onPick={floors.setFloorId} onClose={() => setPickingPlan(false)} />
+      ) : null}
     </View>
   );
 }

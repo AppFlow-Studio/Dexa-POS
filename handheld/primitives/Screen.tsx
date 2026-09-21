@@ -4,6 +4,13 @@ import { Text, View } from "react-native";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { metrics } from "../lib/tokens";
 import { type } from "../lib/type";
+import { DropdownPill } from "./DropdownPill";
+
+export interface HeaderPicker {
+  label: string;
+  onPress: () => void;
+  accessibilityLabel: string;
+}
 
 /**
  * Root header from the artifact (`.top`): 80dp, a 30/700 title with a 14dp
@@ -14,11 +21,14 @@ import { type } from "../lib/type";
 export function Screen({
   title,
   subtitle,
+  picker,
   right,
   children,
 }: {
   title: string;
   subtitle?: string;
+  /** A dropdown pill before the subtitle: the plan picker on Tables. */
+  picker?: HeaderPicker;
   right?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -32,14 +42,15 @@ export function Screen({
           <Text style={[type.title, { color: colors.heading }]} numberOfLines={1}>
             {title}
           </Text>
-          {subtitle ? (
-            <Text
-              className="mt-0.5"
-              style={[type.detail, { color: colors.label }]}
-              numberOfLines={1}
-            >
-              {subtitle}
-            </Text>
+          {subtitle || picker ? (
+            <View className="mt-1 flex-row items-center gap-2">
+              {picker ? <DropdownPill {...picker} /> : null}
+              {subtitle ? (
+                <Text className="shrink" style={[type.detail, { color: colors.label }]} numberOfLines={1}>
+                  {subtitle}
+                </Text>
+              ) : null}
+            </View>
           ) : null}
         </View>
         {right ? <View className="flex-row items-center gap-1">{right}</View> : null}
