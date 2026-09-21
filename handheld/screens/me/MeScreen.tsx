@@ -11,8 +11,11 @@ import React, { useCallback, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { Avatar } from "../../components/Avatar";
 import { Card, CardHeader } from "../../components/check/Card";
+import { ManagerPinScreen } from "../../components/check/ManagerPinScreen";
 import { type } from "../../lib/type";
 import { ListRow, Screen, StickyActionBar, SwitchRow } from "../../primitives";
+import { OrderingRows } from "./OrderingRows";
+import { useRequirePinSetting } from "./useRequirePinSetting";
 
 function GroupLabel({ text }: { text: string }) {
   return (
@@ -73,10 +76,11 @@ function AppearanceRow() {
   );
 }
 
-/** Me tab: identity, device rows, appearance, Sync now and Switch user. */
+/** Me tab: identity, device rows, ordering (behind a manager PIN), appearance, Sync now and Switch user. */
 export function MeScreen() {
   const signOut = useEmployeeStore((s) => s.signOut);
   const [syncing, setSyncing] = useState(false);
+  const requirePin = useRequirePinSetting();
 
   // The service directly: the network hook would subscribe this whole tab to
   // connectivity churn just to reach the same function.
@@ -96,26 +100,36 @@ export function MeScreen() {
     replaceRoute("(auth)", "pin-login");
   }, [signOut]);
 
+  // The PIN screen is a sibling of Screen, not a child: Screen renders its
+  // children under the header, so an overlay inside it would leave the "Me"
+  // title stacked above "Manager approval".
   return (
-    <Screen title="Me">
-      <ScrollView className="flex-1">
-        <IdentityCard />
-        <GroupLabel text="This device" />
-        <StationRows />
-        <GroupLabel text="Appearance" />
-        <AppearanceRow />
-      </ScrollView>
-      <StickyActionBar
-        actions={[
-          {
-            label: syncing ? "Syncing…" : "Sync now",
-            onPress: () => void handleSync(),
-            variant: "tonal",
-            disabled: syncing,
-          },
-          { label: "Switch user", onPress: handleSwitchUser },
-        ]}
-      />
-    </Screen>
+    <View className="flex-1">
+      <Screen title="Me">
+        <ScrollView className="flex-1">
+          <IdentityCard />
+          <GroupLabel text="This device" />
+          <StationRows />
+          <GroupLabel text="Ordering" />
+          <OrderingRows requirePin={requirePin.on} onRequest={requirePin.request} />
+          <GroupLabel text="Appearance" />
+          <AppearanceRow />
+        </ScrollView>
+        <StickyActionBar
+          actions={[
+            {
+              label: syncing ? "Syncing…" : "Sync now",
+              onPress: () => void handleSync(),
+              variant: "tonal",
+              disabled: syncing,
+            },
+            { label: "Switch user", onPress: handleSwitchUser },
+          ]}
+        />
+      </Screen>
+      {requirePin.pending !== null ? (
+        <ManagerPinScreen action={requirePin.approvalLabel} onApproved={requirePin.approve} onCancel={requirePin.cancel} />
+      ) : null}
+    </View>
   );
 }

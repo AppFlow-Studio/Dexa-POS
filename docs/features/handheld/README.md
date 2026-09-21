@@ -24,6 +24,8 @@ prod apply, merge: Temur.
 | Screens | `handheld/screens/{tables,checks,me}/` | Screen 1 (Tables), S1 (Checks), Me (with Sync now, Switch user, Dark mode). |
 | Pages | `handheld/pages/{TablePage,OrderPage,CheckPage,MenuPage,SeatPage,NewOrderPage}.tsx` | Screen 5 / S3 (check with Send, more sheet, PIN overlay), 3 / 4 / S4 (menu, options, custom item), 2 (seat), S2 (new order). Pushed by tapping a row. |
 | Check actions | `handheld/components/check/{CheckFooter,MoreSheet,ManagerPinScreen,DiscountSheet,NoteSheet,TakeOverCard,useCheckActions}.tsx` | Send / more / manager PIN / discount / note / station take-over. |
+| PIN screens | `handheld/components/{PinScreen,StaffPinScreen}.tsx` | S6 overlay with the rule injected: `ManagerPinScreen` (manager roles, approvals) and `StaffPinScreen` (any staff via `useVerifyStaffPin`, per-order attribution). |
+| Me tab setting | `handheld/screens/me/{OrderingRows,useRequirePinSetting}.tsx` | "Require PIN per order" switch; flips only after `ManagerPinScreen` approves, since the handheld has no Settings route. |
 | Menu | `handheld/screens/menu/` | `useMenuRows` (menu tree → chips → rows), `MenuRow`, `OptionsSheet` + `useOptionsDraft`, `CustomItemSheet`, `CartButton`. |
 | Seat / new order | `handheld/screens/seat/`, `handheld/screens/neworder/` | `useSeatTable` (the register's seat flow), `useStartOrder`. |
 | Write rules | `handheld/lib/{cartItem,sendCourse,discounts,managerPin}.ts` | The register's CartItem shape, send path, discount pre-checks and manager-role rule, as pure functions. Plan and checklist: `wave2-3-plan.md`. |
@@ -227,8 +229,9 @@ undeliverable items) and the outbox apply unchanged.
 | Send | table check: `batchUpdateItemKitchenStatus` → `markCourseSent` → `dispatchAction SEND_TO_KITCHEN` (`lib/sendCourse.ts`, mirrors TableOrderView); other: `sendNewItemsToKitchenForOrder` | "Queued" chip = sent locally, items still `sync_status` pending. |
 | Void / discount | manager PIN first (`lib/managerPin.ts`, same roles as ManagerPinModal) → `dispatchAction VOID_ORDER` / `voidOrder`; `applyDiscountToCheck` with DiscountBottomSheet's pre-checks | Handheld station has `can_void_orders = false`; the PIN is the approval. |
 | Take over | `claimOrderById` | A check another station opened is read-only until claimed (`isOrderReadOnly`), same as the tablet's banner. |
-| Seat | `startNewOrder` → `registerPendingOrderCreation` → `seatGuests({ createOrder: true, serverId: me })` | Signed-in employee is the server ("you'll be the server"). With per-order PIN on, that employee is also the attributed creator — no second PIN on a personal device. |
-| New takeout / delivery | `startOrResumeOrder` → `updateActiveOrderDetails` → `ensureActiveOrderCreated` | Dine in on S2 lands on the Tables tab (`lib/tabStore.ts`). |
+| Seat | `startNewOrder` → `registerPendingOrderCreation` → `seatGuests({ createOrder: true, serverId })` | Signed-in employee is the server ("you'll be the server"). With per-order PIN on, `SeatPage` puts up `StaffPinScreen` first and the staff who enters it is both server and attributed creator (`setOrderAttributionStaff(..., PENDING_SEAT_ATTRIBUTION)`). |
+| New takeout / delivery | `startOrResumeOrder` → `updateActiveOrderDetails` → `ensureActiveOrderCreated` | Dine in on S2 lands on the Tables tab (`lib/tabStore.ts`). With per-order PIN on, `NewOrderPage` collects the staff PIN before `start` and that staff is attributed to the order (what `ensureOrderCreated`'s PIN gate checks). |
+| Require PIN per order | `useStoreSettingsStore.updateField("requirePinPerOrder")` | Me tab › Ordering, behind `ManagerPinScreen`. Same device-local field as the register's Settings › Order Line toggle; it is not synced between devices. |
 
 Not built (not drawn in the artifact): editing or removing a line item, seat
 picker per item, custom discount amounts, the register's tax-exempt toggle.

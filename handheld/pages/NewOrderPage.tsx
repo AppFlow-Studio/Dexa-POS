@@ -2,6 +2,7 @@ import { colors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
+import { StaffPinScreen } from "../components/StaffPinScreen";
 import { type } from "../lib/type";
 import { PageHeader, StickyActionBar } from "../primitives";
 import { CustomerField } from "../screens/neworder/CustomerField";
@@ -19,25 +20,34 @@ function Label({ text, top = false }: { text: string; top?: boolean }) {
 /**
  * S2: type first, then who it's for. Takeout and delivery want a name and
  * number; dine in asks for a table instead, so it swaps itself for the free-
- * table picker. Route: /handheld/order/new.
+ * table picker (the PIN, if required, is asked at seating). With per-order
+ * PIN on, the submit puts up StaffPinScreen and starts the order with the
+ * staff who entered it. Route: /handheld/order/new.
  */
 export default function NewOrderPage() {
   const router = useRouter();
-  const { start, busy } = useStartOrder();
+  const { start, busy, needsPin } = useStartOrder();
   const [kind, setKind] = useState<TileType>("takeout");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [askingPin, setAskingPin] = useState(false);
 
   const dineIn = kind === "dine_in";
   const label = dineIn ? "Choose a table" : kind === "takeout" ? "Start takeout order" : "Start delivery order";
 
-  const submit = async () => {
+  const go = async (ringingStaffId?: string) => {
+    if (dineIn) return;
+    const id = await start(kind, { name, phone }, ringingStaffId);
+    if (id) router.replace({ pathname: "/handheld/order/[id]", params: { id } });
+  };
+
+  const submit = () => {
     if (dineIn) {
       router.replace("/handheld/tables/pick");
       return;
     }
-    const id = await start(kind, { name, phone });
-    if (id) router.replace({ pathname: "/handheld/order/[id]", params: { id } });
+    if (needsPin) setAskingPin(true);
+    else void go();
   };
 
   return (
@@ -66,7 +76,17 @@ export default function NewOrderPage() {
           </>
         )}
       </ScrollView>
-      <StickyActionBar column actions={[{ label, onPress: () => void submit(), disabled: busy }]} />
+      <StickyActionBar column actions={[{ label, onPress: submit, disabled: busy }]} />
+      {askingPin ? (
+        <StaffPinScreen
+          action={label}
+          onVerified={(staff) => {
+            setAskingPin(false);
+            void go(staff.staffProfileId);
+          }}
+          onCancel={() => setAskingPin(false)}
+        />
+      ) : null}
     </View>
   );
 }

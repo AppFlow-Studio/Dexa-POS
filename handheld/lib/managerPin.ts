@@ -6,13 +6,14 @@ const MANAGER_ROLES: readonly MerchantRole[] = ["merchant.manager", "merchant.ad
 
 export const PIN_LENGTH = 4;
 
-export type PinVerdict = { ok: true; name: string } | { ok: false; message: string };
+/** What a PinScreen rule resolves to: the verified thing, or why not. */
+export type PinVerdict<T = string> = { ok: true; value: T } | { ok: false; message: string };
 
-/** The register's rule, verbatim: the PIN must belong to a manager-role employee. */
-export function verifyManagerPin(pin: string): PinVerdict {
+/** The register's rule, verbatim: the PIN must belong to a manager-role employee. Resolves to their name. */
+export function verifyManagerPin(pin: string): PinVerdict<string> {
   const employee = useEmployeeStore.getState().findEmployeeByPin(pin);
   if (employee && MANAGER_ROLES.includes(employee.role)) {
-    return { ok: true, name: employee.displayName || employee.fullName };
+    return { ok: true, value: employee.displayName || employee.fullName };
   }
   return {
     ok: false,

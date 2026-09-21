@@ -11,15 +11,22 @@ export type NewOrderType = "takeout" | "delivery";
  * S2's submit for takeout and delivery: `startOrResumeOrder` (the register's
  * one entry point for a new ticket — it reuses an empty draft rather than
  * stranding its number), the type and customer on the profile, then the
- * eager backend create the register does for takeout. With per-order PIN on,
- * the signed-in employee is the attributed creator (this device is theirs —
- * see useSeatTable). Resolves to the local order id to push, or null.
+ * eager backend create the register does for takeout. With per-order PIN on
+ * the page collects a staff PIN first (StaffPinScreen) and passes that
+ * staff as `ringingStaffId`; they become the attributed creator, which is
+ * what `ensureOrderCreated`'s PIN gate checks. Resolves to the local order
+ * id to push, or null.
  */
 export function useStartOrder() {
   const [busy, setBusy] = useState(false);
+  const needsPin = useStoreSettingsStore((s) => s.requirePinPerOrder);
 
   const start = useCallback(
-    async (type: NewOrderType, customer: { name: string; phone: string }): Promise<string | null> => {
+    async (
+      type: NewOrderType,
+      customer: { name: string; phone: string },
+      ringingStaffId?: string,
+    ): Promise<string | null> => {
       setBusy(true);
       try {
         const orders = useOrderStore.getState();
@@ -28,9 +35,9 @@ export function useStartOrder() {
           toastService.show({ title: "Couldn't start an order", message: "Try again in a moment.", type: "error" });
           return null;
         }
-        const me = useEmployeeStore.getState().loggedInEmployee;
-        if (useStoreSettingsStore.getState().requirePinPerOrder && me) {
-          useEmployeeStore.getState().setOrderAttributionStaff(me.profileId, order.id);
+        const staffId = ringingStaffId ?? useEmployeeStore.getState().loggedInEmployee?.profileId;
+        if (useStoreSettingsStore.getState().requirePinPerOrder && staffId) {
+          useEmployeeStore.getState().setOrderAttributionStaff(staffId, order.id);
         }
         await orders.updateActiveOrderDetails({
           order_type: type,
@@ -50,5 +57,5 @@ export function useStartOrder() {
     [],
   );
 
-  return { start, busy };
+  return { start, busy, needsPin };
 }

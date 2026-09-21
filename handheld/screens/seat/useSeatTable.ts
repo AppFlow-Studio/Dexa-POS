@@ -59,16 +59,17 @@ export function canSeat(status?: string | null): boolean {
  * Screen 2's submit, step for step the register's handleGuestCountSubmit:
  * a local order first (synchronous), the pending-creation guard so nothing
  * double-creates, the optimistic session, then `seatGuests` in the
- * background. Two handheld-specific choices: the signed-in employee is the
- * server (the artifact's "you'll be the server"), and with per-order PIN on
- * that same employee is the attributed creator — this device is theirs, so
- * a second PIN would only re-prove what sign-in already did.
+ * background. The server is the signed-in employee (the artifact's "you'll
+ * be the server") — unless per-order PIN is on, when SeatPage collects a
+ * staff PIN first and passes that staff as `ringingStaffId`: on a shared
+ * handheld they are both the server and the attributed creator.
  */
 export function useSeatTable(tableId: string) {
   const [busy, setBusy] = useState(false);
+  const needsPin = useStoreSettingsStore((s) => s.requirePinPerOrder);
 
   const seat = useCallback(
-    (guestCount: number, note: string): boolean => {
+    (guestCount: number, note: string, ringingStaffId?: string): boolean => {
       const fresh = findTableAnywhere(tableId);
       if (!canSeat(fresh?.session?.status)) {
         toastService.show({
@@ -80,9 +81,9 @@ export function useSeatTable(tableId: string) {
       }
       setBusy(true);
       const employees = useEmployeeStore.getState();
-      const me = employees.loggedInEmployee;
-      if (useStoreSettingsStore.getState().requirePinPerOrder && me) {
-        employees.setOrderAttributionStaff(me.profileId, PENDING_SEAT_ATTRIBUTION);
+      const serverId = ringingStaffId ?? employees.loggedInEmployee?.profileId;
+      if (useStoreSettingsStore.getState().requirePinPerOrder && serverId) {
+        employees.setOrderAttributionStaff(serverId, PENDING_SEAT_ATTRIBUTION);
       }
 
       const orders = useOrderStore.getState();
@@ -101,7 +102,7 @@ export function useSeatTable(tableId: string) {
           localOrderId: newOrder.id,
           selected_station: useStoreSettingsStore.getState().selectedStation?.id,
           device_id: getDeviceId(),
-          serverId: me?.profileId,
+          serverId,
         })
         .then(({ orderId }) => {
           useEmployeeStore.getState().clearOrderAttributionStaff();
@@ -124,5 +125,5 @@ export function useSeatTable(tableId: string) {
     [tableId],
   );
 
-  return { seat, busy };
+  return { seat, busy, needsPin };
 }

@@ -6,13 +6,18 @@ import { StickyNote } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
+import { StaffPinScreen } from "../components/StaffPinScreen";
 import { tableTitle } from "../lib/tableName";
 import { type } from "../lib/type";
 import { PageHeader, StickyActionBar } from "../primitives";
 import { GuestCountGrid } from "../screens/seat/GuestCountGrid";
 import { useSeatTable } from "../screens/seat/useSeatTable";
 
-/** Screen 2: guest count and nothing else, then straight to the check. Route: /handheld/seat/[tableId]. */
+/**
+ * Screen 2: guest count and nothing else, then straight to the check. With
+ * per-order PIN on, Seat puts up StaffPinScreen first and the staff who
+ * enters it is the server. Route: /handheld/seat/[tableId].
+ */
 export default function SeatPage({ tableId }: { tableId: string }) {
   const router = useRouter();
   const { table } = useTableAnywhere(tableId);
@@ -20,16 +25,27 @@ export default function SeatPage({ tableId }: { tableId: string }) {
     (s) => s.floorPlans.find((p) => p.id === table?.floor_plan_id)?.name ?? "",
   );
   const me = useEmployeeStore((s) => s.loggedInEmployee?.displayName ?? null);
-  const { seat, busy } = useSeatTable(tableId);
+  const { seat, busy, needsPin } = useSeatTable(tableId);
   const [guests, setGuests] = useState(() => Math.min(table?.capacity ?? 2, 8) || 2);
   const [note, setNote] = useState("");
+  const [askingPin, setAskingPin] = useState(false);
 
   const name = table ? tableTitle(table.name, []) : "Table";
   const lower = name.charAt(0).toLowerCase() + name.slice(1);
   const seatLabel = guests === 1 ? "Seat 1 guest" : `Seat ${guests} guests`;
+  const hint = needsPin
+    ? "Whoever enters their PIN will be the server"
+    : me
+      ? `You'll be the server for ${lower}`
+      : undefined;
+
+  const go = (ringingStaffId?: string) => {
+    if (seat(guests, note, ringingStaffId)) router.replace({ pathname: "/handheld/table/[id]", params: { id: tableId } });
+  };
 
   const submit = () => {
-    if (seat(guests, note)) router.replace({ pathname: "/handheld/table/[id]", params: { id: tableId } });
+    if (needsPin) setAskingPin(true);
+    else go();
   };
 
   return (
@@ -62,11 +78,17 @@ export default function SeatPage({ tableId }: { tableId: string }) {
           />
         </View>
       </ScrollView>
-      <StickyActionBar
-        column
-        actions={[{ label: seatLabel, onPress: submit, disabled: busy || !table }]}
-        hint={me ? `You'll be the server for ${lower}` : undefined}
-      />
+      <StickyActionBar column actions={[{ label: seatLabel, onPress: submit, disabled: busy || !table }]} hint={hint} />
+      {askingPin ? (
+        <StaffPinScreen
+          action={`Seat ${lower}`}
+          onVerified={(staff) => {
+            setAskingPin(false);
+            go(staff.staffProfileId);
+          }}
+          onCancel={() => setAskingPin(false)}
+        />
+      ) : null}
     </View>
   );
 }
