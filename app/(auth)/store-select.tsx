@@ -1,7 +1,7 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getJSON, setJSON } from "@/lib/storage";
 import { colors, spinnerColor } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
+import { isCompactViewport, useUiScale } from "@/lib/uiScale";
 import { clearLocationData } from "@/services/cacheService";
 import {
   SelectedLocation,
@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
+  useWindowDimensions,
   Text,
   TouchableOpacity,
   View,
@@ -127,6 +128,11 @@ const StoreSelectScreen = () => {
   const supabase = useSupabaseClient();
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+  // The list owns its scroll inside the stacked auth frame (see station-select).
+  const { width: winW, height: winH } = useWindowDimensions();
+  const listMaxHeight = isCompactViewport(winW, winH)
+    ? Math.max(s(150), Math.min(s(320), Math.round(winH * 0.45)))
+    : s(320);
 
   const handleLogout = async () => {
     try {
@@ -315,7 +321,11 @@ const StoreSelectScreen = () => {
         Choose a location to continue
       </Text>
 
-      <ScrollView style={{ maxHeight: s(320) }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ maxHeight: listMaxHeight }}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
         {locations.map((store) => (
           <StoreSelectItem
             key={store.id}

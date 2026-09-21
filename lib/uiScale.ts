@@ -172,6 +172,57 @@ export function useCFDScaleOverride(): number | null {
 }
 
 /**
+ * A pinned scale for one subtree, honoured by BOTH `useUiScale()` and the
+ * `--ui-scale` variable. The auth screens use it: the automatic scale floors
+ * at 0.6 on a phone, which shrinks every `s()`-sized control to 60%, so the
+ * auth layout pins a phone to 1 (dp-true) and a portrait kiosk to ≥0.8.
+ */
+const FixedUiScaleContext = React.createContext<number | null>(null);
+
+export function FixedUiScaleProvider({
+  scale,
+  fill = true,
+  pointerEvents,
+  children,
+}: {
+  /** `null` = no pin, the automatic scale applies. */
+  scale: number | null;
+  /** `false` for an overlay that must size to its content (the toast stack). */
+  fill?: boolean;
+  pointerEvents?: "box-none" | "none" | "auto";
+  children: React.ReactNode;
+}) {
+  if (scale == null) return React.createElement(React.Fragment, null, children);
+  return React.createElement(
+    FixedUiScaleContext.Provider,
+    { value: scale },
+    React.createElement(
+      View,
+      { style: [fill ? { flex: 1 } : null, vars({ "--ui-scale": scale })], pointerEvents },
+      children,
+    ),
+  );
+}
+
+/**
+ * Portrait: the auth frame stacks and the toast spans the width. Landscape
+ * is untouched on every device — the tablet layouts stay exactly as drawn.
+ */
+export function isCompactViewport(widthDp: number, heightDp: number): boolean {
+  return heightDp > widthDp;
+}
+
+/**
+ * Scale for the auth screens on a compact viewport: a phone reads dp-true,
+ * a portrait tablet / kiosk keeps the automatic scale but never below 0.8
+ * (staff set the device up standing at it; the kiosk boost is for guests).
+ */
+export function computeAuthUiScale(widthDp: number, heightDp: number): number {
+  if (Math.min(widthDp, heightDp) < 600) return 1;
+  return Math.max(0.8, computeUiScale(widthDp, heightDp));
+}
+
+/**
  * Reactive UI scale. Re-computes if the window dimensions change (e.g. a
  * foldable, or split-screen). Use this in components that do raw numeric
  * sizing off Dimensions and need to scale manually.
@@ -184,7 +235,9 @@ export function useUiScale(): number {
   const { width, height } = useWindowDimensions();
   const posOverride = useSettingsStore((s) => s.uiScaleOverride);
   const cfdOverride = useCFDScaleOverride();
+  const fixed = React.useContext(FixedUiScaleContext);
   const base = computeUiScale(width, height);
+  if (fixed != null) return fixed;
   if (cfdOverride != null) {
     return Math.min(
       MAX_CFD_UI_SCALE,

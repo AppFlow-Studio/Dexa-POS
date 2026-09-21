@@ -2,7 +2,7 @@ import ConfirmationModal from "@/components/settings/reset-application/Confirmat
 import { replaceRoute } from "@/lib/rootNavigation";
 import { createSupabaseClient } from "@/lib/supabase";
 import { colors, spinnerColor } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
+import { isCompactViewport, useUiScale } from "@/lib/uiScale";
 import {
   fetchLocationStationsWithBillingGate,
   stationToSelectedStation,
@@ -25,6 +25,7 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
+  useWindowDimensions,
   Text,
   TouchableOpacity,
   View,
@@ -46,6 +47,97 @@ const StationSelectItem = ({
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const isAvailable = station.is_available;
+  // Phone / portrait: the status pill and Take Over drop under the name
+  // instead of squeezing it from the right (these screens were drawn for a
+  // landscape tablet's wide row).
+  const { width, height } = useWindowDimensions();
+  const compact = isCompactViewport(width, height);
+
+  const status = (
+    <View style={{ alignItems: compact ? "flex-start" : "flex-end" }}>
+      {isAvailable ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: s(4),
+            backgroundColor: colors.teal + "15",
+            borderRadius: s(20),
+            paddingHorizontal: s(9),
+            paddingVertical: s(3),
+            borderWidth: 1,
+            borderColor: colors.teal + "40",
+          }}
+        >
+          <Wifi size={s(11)} color={colors.teal} />
+          <Text
+            style={{
+              fontSize: s(11),
+              fontWeight: "600",
+              color: colors.teal,
+            }}
+          >
+            Available
+          </Text>
+        </View>
+      ) : (
+        <View
+          style={{
+            flexDirection: compact ? "row" : "column",
+            alignItems: compact ? "center" : "flex-end",
+            gap: s(6),
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(4),
+              backgroundColor: colors.border,
+              borderRadius: s(20),
+              paddingHorizontal: s(9),
+              paddingVertical: s(3),
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <WifiOff size={s(11)} color={colors.muted} />
+            <Text
+              style={{
+                fontSize: s(11),
+                fontWeight: "600",
+                color: colors.muted,
+              }}
+            >
+              In Use
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={onTakeOver}
+            style={{
+              backgroundColor: colors.teal + "15",
+              borderWidth: 1,
+              borderColor: colors.teal + "40",
+              borderRadius: s(8),
+              paddingHorizontal: s(10),
+              paddingVertical: s(4),
+            }}
+          >
+            <Text
+              style={{
+                fontSize: s(11),
+                fontWeight: "600",
+                color: colors.teal,
+              }}
+            >
+              Take Over
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
 
   return (
     <TouchableOpacity
@@ -164,84 +256,10 @@ const StationSelectItem = ({
           </View>
         </View>
 
-        {/* Right: status / action */}
-        <View style={{ alignItems: "flex-end" }}>
-          {isAvailable ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: s(4),
-                backgroundColor: colors.teal + "15",
-                borderRadius: s(20),
-                paddingHorizontal: s(9),
-                paddingVertical: s(3),
-                borderWidth: 1,
-                borderColor: colors.teal + "40",
-              }}
-            >
-              <Wifi size={s(11)} color={colors.teal} />
-              <Text
-                style={{
-                  fontSize: s(11),
-                  fontWeight: "600",
-                  color: colors.teal,
-                }}
-              >
-                Available
-              </Text>
-            </View>
-          ) : (
-            <View style={{ alignItems: "flex-end", gap: s(6) }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: s(4),
-                  backgroundColor: colors.border,
-                  borderRadius: s(20),
-                  paddingHorizontal: s(9),
-                  paddingVertical: s(3),
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <WifiOff size={s(11)} color={colors.muted} />
-                <Text
-                  style={{
-                    fontSize: s(11),
-                    fontWeight: "600",
-                    color: colors.muted,
-                  }}
-                >
-                  In Use
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={onTakeOver}
-                style={{
-                  backgroundColor: colors.teal + "15",
-                  borderWidth: 1,
-                  borderColor: colors.teal + "40",
-                  borderRadius: s(8),
-                  paddingHorizontal: s(10),
-                  paddingVertical: s(4),
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: s(11),
-                    fontWeight: "600",
-                    color: colors.teal,
-                  }}
-                >
-                  Take Over
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        {/* Right: status / action — under the name on a compact viewport */}
+        {compact ? null : status}
       </View>
+      {compact ? <View style={{ marginTop: s(8), marginLeft: s(46) }}>{status}</View> : null}
     </TouchableOpacity>
   );
 };
@@ -257,6 +275,15 @@ const StationSelectScreen = () => {
   const setIsCFDMode = useStoreSettingsStore((state) => state.setIsCFDMode);
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+  // Inside the stacked (scrolling) auth frame the list must own its scroll:
+  // Android gives a nested vertical scroll to the outer page unless the
+  // inner list opts in, and on a short landscape phone the list is capped
+  // to the window so it scrolls instead of the whole page.
+  const { width: winW, height: winH } = useWindowDimensions();
+  const compact = isCompactViewport(winW, winH);
+  const listMaxHeight = compact
+    ? Math.max(s(150), Math.min(s(320), Math.round(winH * 0.45)))
+    : s(320);
 
   const [selectedStationId, setSelectedStationId] = useState<string | null>(
     null,
@@ -615,8 +642,9 @@ const StationSelectScreen = () => {
 
       {/* Station list */}
       <ScrollView
-        style={{ maxHeight: s(320) }}
+        style={{ maxHeight: listMaxHeight }}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
       >
         {stations.map((station) => (
           <StationSelectItem
@@ -668,12 +696,14 @@ const StationSelectScreen = () => {
           borderColor: colors.border,
           backgroundColor: colors.panel,
           flexDirection: "row",
-          justifyContent: "center",
+          // Portrait: the text column takes the rest of the row and wraps
+          // instead of being centred against the padding; landscape unchanged.
+          justifyContent: compact ? "flex-start" : "center",
           gap: s(12),
         }}
       >
         <MonitorPlay size={s(20)} color={colors.label} />
-        <View>
+        <View style={compact ? { flex: 1, minWidth: 0 } : undefined}>
           <Text
             style={{
               fontSize: s(16),

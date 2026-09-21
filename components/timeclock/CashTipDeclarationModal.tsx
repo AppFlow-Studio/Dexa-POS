@@ -587,7 +587,8 @@ const CashTipDeclarationModal: React.FC<CashTipDeclarationModalProps> = ({
       >
         <View
           style={{
-            width: s(460),
+            width: "100%",
+            maxWidth: s(460),
             borderRadius: s(20),
             backgroundColor: colors.screen,
             borderWidth: 1,

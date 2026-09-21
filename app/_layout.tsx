@@ -614,6 +614,15 @@ export default Sentry.wrap(function RootLayout() {
   // (auth)/_layout or (main)/_layout.
   React.useEffect(() => {
     if (Platform.OS === "web") return;
+    if (!hasSelectedStation) {
+      // Login / store / station select: nothing says what this device is
+      // yet, so follow it (a phone or a portrait-mounted kiosk would
+      // otherwise sign in sideways). Landscape renders the original tablet
+      // frame; portrait stacks it. The locks below apply once a station is
+      // chosen.
+      ScreenOrientation.unlockAsync().catch(() => {});
+      return;
+    }
     if (isKiosk) {
       // Kiosk orientation is set by useKioskOrientation in the kiosk page.
       // This effect only handles the non-kiosk lock path. Let the
@@ -637,7 +646,7 @@ export default Sentry.wrap(function RootLayout() {
     ScreenOrientation.lockAsync(
       ScreenOrientation.OrientationLock.LANDSCAPE,
     ).catch(() => {});
-  }, [isKiosk, isHandheld]);
+  }, [isKiosk, isHandheld, hasSelectedStation]);
 
   // Store the navigation container ref for cross-group navigation + Sentry tracing
   const navigationRef = useNavigationContainerRef();

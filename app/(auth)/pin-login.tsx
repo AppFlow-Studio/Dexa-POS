@@ -1052,7 +1052,7 @@ const PinLoginScreen = () => {
       </Animated.View>
 
       <Dialog open={dialog.visible} onOpenChange={hideDialog}>
-        <DialogContent className="min-w-xl w-[500px]">
+        <DialogContent className="w-full max-w-[500px]">
           <View
             style={{
               width: "100%",

@@ -11,7 +11,8 @@ import { Cloud, MapPin, Monitor, Power, RefreshCw } from "lucide-react-native";
 import { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
-const MerchantBrandingPanel = () => {
+/** `compact`: one row (logo, store + station, clock, refresh, power) for the stacked auth frame. */
+const MerchantBrandingPanel = ({ compact = false }: { compact?: boolean }) => {
   const [deactivateModalOpen, setDeactivateModalOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [logoError, setLogoError] = useState(false);
@@ -51,6 +52,84 @@ const MerchantBrandingPanel = () => {
       setIsRefreshing(false);
     }
   };
+
+  const logo = showOrgLogo ? { uri: organizationLogoUrl } : images.dexalogo;
+
+  if (compact) {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: s(12),
+          borderRadius: s(16),
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          paddingVertical: s(12),
+          paddingHorizontal: s(14),
+        }}
+      >
+        <Image
+          source={logo}
+          style={{ width: s(44), height: s(44), borderRadius: s(10) }}
+          resizeMode="contain"
+          onError={() => setLogoError(true)}
+        />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {selectedStore && (
+            <Text style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }} numberOfLines={1}>
+              {selectedStore.name}
+            </Text>
+          )}
+          <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }} numberOfLines={1}>
+            {[
+              selectedStation
+                ? `${selectedStation.station_name}${selectedStation.station_number > 0 ? ` #${selectedStation.station_number}` : ""}`
+                : null,
+              time,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={handleRefresh}
+          disabled={isRefreshing}
+          accessibilityLabel="Refresh data"
+          style={{
+            width: s(36),
+            height: s(36),
+            borderRadius: s(10),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colors.teal + "15",
+            opacity: isRefreshing ? 0.5 : 1,
+          }}
+        >
+          <RefreshCw size={s(16)} color={colors.teal} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setDeactivateModalOpen(true)}
+          accessibilityLabel="Deactivate terminal"
+          style={{
+            width: s(36),
+            height: s(36),
+            borderRadius: s(10),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colors.danger + "15",
+          }}
+        >
+          <Power size={s(16)} color={colors.danger} />
+        </TouchableOpacity>
+        <DeactivateTerminalModal
+          isOpen={deactivateModalOpen}
+          onClose={() => setDeactivateModalOpen(false)}
+        />
+      </View>
+    );
+  }
 
   return (
     <View

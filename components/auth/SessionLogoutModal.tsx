@@ -36,7 +36,8 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
       <DialogContent
         className="p-6 rounded-2xl"
         style={{
-          width: s(480),
+          width: "100%",
+          maxWidth: s(480),
           backgroundColor: colors.panel,
           borderColor: colors.border,
         }}

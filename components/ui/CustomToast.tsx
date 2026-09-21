@@ -28,6 +28,8 @@ interface CustomToastProps {
   message: string;
   onUndo?: () => void;
   type?: "success" | "error" | "warning";
+  /** Span the container (phone / portrait kiosk) instead of the tablet's fixed 380dp card. */
+  compact?: boolean;
 }
 
 const SWIPE_THRESHOLD = 80;
@@ -38,6 +40,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
   message,
   onUndo,
   type = "success",
+  compact = false,
 }) => {
   const hide = useToastStore((s) => s.hide);
 
@@ -134,8 +137,8 @@ const CustomToast: React.FC<CustomToastProps> = ({
         <Reanimated.View
           style={[
             {
-              maxWidth: 300,
-              width: 300,
+              maxWidth: compact ? undefined : 300,
+              width: compact ? "100%" : 300,
               marginBottom: 6,
             },
             enterStyle,
@@ -226,8 +229,8 @@ const CustomToast: React.FC<CustomToastProps> = ({
       <Reanimated.View
         style={[
           {
-            width: 380,
-            maxWidth: 400,
+            width: compact ? "100%" : 380,
+            maxWidth: compact ? undefined : 400,
             marginBottom: 10,
           },
           enterStyle,
