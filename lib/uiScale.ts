@@ -192,13 +192,18 @@ export function FixedUiScaleProvider({
   pointerEvents?: "box-none" | "none" | "auto";
   children: React.ReactNode;
 }) {
-  if (scale == null) return React.createElement(React.Fragment, null, children);
+  // Always the same element shape: a subtree that toggles between a pinned
+  // and an automatic scale must not remount (expo-router's Slot navigator
+  // lives below this in the auth layout).
   return React.createElement(
     FixedUiScaleContext.Provider,
     { value: scale },
     React.createElement(
       View,
-      { style: [fill ? { flex: 1 } : null, vars({ "--ui-scale": scale })], pointerEvents },
+      {
+        style: [fill ? { flex: 1 } : null, scale == null ? null : vars({ "--ui-scale": scale })],
+        pointerEvents,
+      },
       children,
     ),
   );
