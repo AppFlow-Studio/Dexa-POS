@@ -1,7 +1,9 @@
 // Unit tests for the P0 cash-drawer kick fix:
 //   - structured CashDrawerKickResult (no_candidate / ok / all_failed)
-//   - Star-first, sense-evidenced selection (host binding → wired Star → Landi)
-//   - explicit binding precedence, Landi last-resort, candidate fallback
+//   - sense-evidenced selection: host binding → sense-wired Star → the
+//     station's declared receipt printer (the ONLY path by which the built-in
+//     Landi participates) → other Stars
+//   - explicit binding precedence, candidate fallback
 //   - strict-confirm sense plumbed through to the result
 //   - operator-facing outcome helpers (lib/cashDrawerKick)
 //
@@ -223,6 +225,79 @@ describe("PrinterService.openCashDrawer — Star-first selection", () => {
     expect(r.ok).toBe(true);
     expect(r.printerId).toBe("alive");
     expect(r.candidatesTried).toEqual(["dead", "alive"]);
+  });
+});
+
+describe("PrinterService.openCashDrawer — receipt-driven Landi participation", () => {
+  // The station declares its main/receipt printer via
+  // stations.current_receipt_printer_id, which getReceiptPrinter resolves. The
+  // built-in Landi participates in the drawer kick ONLY when it is that printer.
+  function claimReceiptPrinter(printerId: string) {
+    useStoreSettingsStore.setState({
+      selectedStation: { id: "station-1", current_receipt_printer_id: printerId },
+      selectedStore: { id: "loc-1" },
+    } as any);
+  }
+
+  it("kicks the built-in Landi when it is the station's receipt printer and no Star exists", async () => {
+    // Bread & Butter shape: single Landi-only POS. The Landi resolves as the
+    // receipt printer, so it is the drawer host by default — no manual binding.
+    claimReceiptPrinter("landi");
+    setPrinters([landi("landi")]);
+    drivers["landi"] = fakeDriver({ ack: true });
+    const r = await PrinterService.openCashDrawer();
+    expect(r.ok).toBe(true);
+    expect(r.printerId).toBe("landi");
+    expect(r.candidatesTried).toEqual(["landi"]);
+  });
+
+  it("leads with the Landi over an unknown-sense Star when the Landi is the station's receipt printer", async () => {
+    // Operator deliberately set the Landi as this station's main printer; kick
+    // from there by default. A Star with no drawer-sense does not preempt it.
+    claimReceiptPrinter("landi");
+    setPrinters([landi("landi"), star("s1")]);
+    drivers["landi"] = fakeDriver({ ack: true });
+    drivers["s1"] = fakeDriver({
+      ack: true,
+      sense: { externalDevice: false, drawerSignalDetail: null, drawerConfirmed: null },
+    });
+    const r = await PrinterService.openCashDrawer();
+    expect(r.ok).toBe(true);
+    expect(r.printerId).toBe("landi");
+  });
+
+  it("excludes the built-in Landi when a Star is the station's receipt printer", async () => {
+    // Star-main station: the false-ACK Landi must never be tried.
+    claimReceiptPrinter("s1");
+    setPrinters([landi("landi"), star("s1")]);
+    drivers["s1"] = fakeDriver({
+      ack: true,
+      sense: { externalDevice: false, drawerSignalDetail: null, drawerConfirmed: null },
+    });
+    drivers["landi"] = fakeDriver({ ack: true }); // would falsely succeed
+    const r = await PrinterService.openCashDrawer();
+    expect(r.ok).toBe(true);
+    expect(r.printerId).toBe("s1");
+    expect(r.candidatesTried).toEqual(["s1"]); // landi never a candidate
+  });
+
+  it("a sense-wired Star still preempts the Landi even when the Landi is the receipt printer", async () => {
+    // Safety net: positive drawer-on-Star evidence (tier 2) outranks the
+    // station's receipt-printer declaration.
+    claimReceiptPrinter("landi");
+    setPrinters([
+      landi("landi"),
+      star("wired", { metadata: { lastDrawerExternalDevice: true } }),
+    ]);
+    drivers["landi"] = fakeDriver({ ack: true }); // would falsely succeed
+    drivers["wired"] = fakeDriver({
+      ack: true,
+      sense: { externalDevice: true, drawerSignalDetail: true, drawerConfirmed: true },
+    });
+    const r = await PrinterService.openCashDrawer();
+    expect(r.ok).toBe(true);
+    expect(r.printerId).toBe("wired");
+    expect(r.candidatesTried).toEqual(["wired"]); // landi never a candidate
   });
 });
 

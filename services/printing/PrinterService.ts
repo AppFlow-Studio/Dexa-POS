@@ -137,21 +137,24 @@ function dedupeDrawerCandidates (printers: PrinterConfig[]): PrinterConfig[] {
   return [...new Map(printers.map(p => [p.id, p])).values()]
 }
 
-// Star-first candidate selection. Guiding rule: NEVER fall through to a printer
-// that would ACK a drawer pulse WITHOUT actually holding the drawer — a
-// drawer-less Star, or the built-in Landi whose dead DK port resolves success
-// regardless. That fallthrough IS the P0 "silent success": the host printer is
-// down, the kick lands on the wrong printer, and we report OK while the real
-// drawer stays shut.
+// Candidate selection. Guiding rule: NEVER auto-fall-through to a printer that
+// would ACK a drawer pulse WITHOUT actually holding the drawer — a drawer-less
+// Star, or a built-in Landi that a station has NOT declared as its host. That
+// fallthrough IS the P0 "silent success": the kick lands on the wrong printer
+// and we report OK while the real drawer stays shut.
 //
 //   1. Explicit binding (host_printer_id) → kick ONLY that printer. If it's
 //      down, fail honestly — no fallthrough.
 //   2. Sense-wired Star(s) known (externalDevice===true OR signalDetail!==null)
 //      → the drawer is positively on a Star; restrict to those (receipt-first)
-//      so a drawer-less fallback can't mask a host failure.
-//   3. Host unknown → best-effort guess across Stars only (receipt-first,
-//      unwired Stars last). The built-in Landi is EXCLUDED — its port is
-//      non-functional and it ACKs falsely.
+//      so a drawer-less fallback can't mask a host failure. This stays ahead of
+//      the Landi: a Star that positively reports a wired drawer always wins.
+//   3. Host unknown → the station's declared main/receipt printer leads. This
+//      is the ONLY path by which the built-in Landi participates — when the
+//      station has chosen it as the receipt printer (e.g. a Landi-only POS,
+//      whose receipt printer resolves to the Landi). Then other Stars
+//      (receipt-first, unwired last). A built-in Landi that is NOT the station's
+//      receipt printer stays EXCLUDED — it has no sense read and ACKs falsely.
 function rankDrawerCandidates (
   drawerPrinters: PrinterConfig[],
   locationId: string | null,
@@ -188,16 +191,24 @@ function rankDrawerCandidates (
     ])
   }
 
-  // 3) Host unknown — guess across Stars only (never the false-ACK built-in),
-  //    receipt-first, unwired Stars last. Any non-Star, non-builtin
-  //    drawer-capable printer is a final resort (rare; these mostly throw
+  // 3) Host unknown — the station's declared main/receipt printer leads. This is
+  //    the ONLY path by which the built-in Landi participates (when the station
+  //    has chosen it as its receipt printer); a built-in Landi that is NOT the
+  //    receipt printer stays excluded (it ACKs falsely and has no sense read).
+  //    Then other Stars (receipt already consumed), unwired Stars last, then any
+  //    non-Star, non-builtin drawer-capable printer (rare; these mostly throw
   //    rather than falsely ACK).
+  const receiptDrawer = receipt
+    ? drawerPrinters.find(p => p.id === receipt.id)
+    : undefined
   const stars = drawerPrinters.filter(isStar)
   return dedupeDrawerCandidates([
-    ...stars.filter(p => p.id === receipt?.id),
+    ...(receiptDrawer ? [receiptDrawer] : []),
     ...stars.filter(p => p.id !== receipt?.id && !unwiredStar(p)),
-    ...stars.filter(unwiredStar),
-    ...drawerPrinters.filter(p => !isStar(p) && !isBuiltin(p))
+    ...stars.filter(p => p.id !== receipt?.id && unwiredStar(p)),
+    ...drawerPrinters.filter(
+      p => !isStar(p) && !isBuiltin(p) && p.id !== receipt?.id
+    )
   ])
 }
 
@@ -749,9 +760,10 @@ export const PrinterService = {
    * Kick the cash drawer. Returns a structured result — `ok` is driven ONLY by
    * the driver command ACK; the sense fields are advisory (strict-confirm).
    *
-   * Selection is Star-first and sense-evidenced (see rankDrawerCandidates):
-   * explicit host binding → wired Stars (receipt-preferred) → unknown-sense
-   * Stars → Landi built-in last-resort. Each candidate is bounded by a
+   * Selection is sense-evidenced (see rankDrawerCandidates): explicit host
+   * binding → sense-wired Stars (receipt-preferred) → the station's declared
+   * main/receipt printer (this is the ONLY path by which the built-in Landi
+   * participates) → other Stars (unwired last). Each candidate is bounded by a
    * per-candidate timeout so a dead printer can't stall the kick.
    */
   async openCashDrawer (opts?: {
