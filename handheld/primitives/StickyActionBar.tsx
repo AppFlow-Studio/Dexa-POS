@@ -23,10 +23,20 @@ export function StickyActionBar({
   return (
     <View className="px-4 pb-3 pt-3">
       <View className={column ? "gap-1.5" : "flex-row gap-2.5"}>
-        {actions.map((a, i) => (
-          // Positional: a label that changes ("Sync now" → "Syncing…") must not remount the button.
-          <Button key={i} {...a} fit={column ? false : a.fit} />
-        ))}
+        {actions.map((a, i) =>
+          // Positional keys: a label that changes ("Sync now" → "Syncing…")
+          // must not remount the button. In column mode each button gets its
+          // own row: a `flex-1` button directly in a column measures as 0dp
+          // while Yoga sizes the page, then paints at 56dp — the bar came out
+          // 56dp short and the button slid off the bottom of the screen.
+          column ? (
+            <View key={i} className="flex-row">
+              <Button {...a} fit={false} />
+            </View>
+          ) : (
+            <Button key={i} {...a} />
+          ),
+        )}
       </View>
       {hint ? (
         <Text

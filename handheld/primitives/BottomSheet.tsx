@@ -2,7 +2,6 @@ import { colors } from "@/lib/theme";
 import { X } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
 import { Animated, Modal, Pressable, ScrollView, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { metrics, tint } from "../lib/tokens";
 import { type } from "../lib/type";
 import { IconButton } from "./IconButton";
@@ -31,7 +30,6 @@ export function BottomSheet({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
-  const insets = useSafeAreaInsets();
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -78,7 +76,8 @@ export function BottomSheet({
             backgroundColor: colors.panel,
             borderTopLeftRadius: metrics.sheetRadius,
             borderTopRightRadius: metrics.sheetRadius,
-            paddingBottom: insets.bottom,
+            // System bars are hidden (HandheldFrame); no inset to clear.
+            paddingBottom: 8,
             transform: [{ translateY }],
           }}
         >

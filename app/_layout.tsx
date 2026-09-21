@@ -1054,16 +1054,18 @@ export default Sentry.wrap(function RootLayout() {
                               <SessionKickListenerProvider>
                                 <RemoteActionsProvider>
                                   <CFDProvider>
-                                    {/* Immersive on the register; a handheld
-                                        keeps the system status bar and the
-                                        gesture pill, as the Dexa Go artifact
-                                        draws it. */}
+                                    {/* Immersive on every station. The Dexa Go
+                                        artifact draws the status bar and the
+                                        gesture pill, but a handheld with a
+                                        3-button nav bar lost 48dp to it, so
+                                        the handheld hides both like the
+                                        register (2026-09-21). */}
                                     <StatusBar
                                       style={"dark"}
                                       translucent
-                                      hidden={Platform.OS === "android" && !isHandheld}
+                                      hidden={Platform.OS === "android"}
                                     />
-                                    {Platform.OS === "android" && !isHandheld && (
+                                    {Platform.OS === "android" && (
                                       <SystemBars
                                         hidden={{
                                           navigationBar: true,

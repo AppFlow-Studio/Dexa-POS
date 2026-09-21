@@ -19,7 +19,7 @@ prod apply, merge: Temur.
 | Local data policy | `lib/db/policy.ts` `stationKind` | Falls through to `"pos"` on purpose (data policy is a follow-on ticket). |
 | Register runtime | `contexts/RegisterRuntime.tsx` | Moved verbatim out of `app/(main)/_layout.tsx`. See below. |
 | Routes | `app/(main)/handheld/{_layout,index,table/[id],order/[id],menu/[orderId],seat/[tableId],order/new}.tsx` | Nested native Stack with `POS_SCREEN_OPTIONS` (animation none, see lib/screenConfig.ts). Every route file `React.lazy`-loads its screen. |
-| Frame | `handheld/HandheldFrame.tsx` | Pins `--ui-scale` to 1, portrait, safe areas, themed status bar. Wraps the Stack. |
+| Frame | `handheld/HandheldFrame.tsx` | Pins `--ui-scale` to 1; edge to edge, no safe-area padding (bars hidden, product devices have no cutout). Wraps the Stack. |
 | Tab root | `handheld/HandheldRoot.tsx` | One active tab + bottom tab bar (Checks badge = open checks marked ready). |
 | Screens | `handheld/screens/{tables,checks,me}/` | Screen 1 (Tables), S1 (Checks), Me (with Sync now, Switch user, Dark mode). |
 | Pages | `handheld/pages/{TablePage,OrderPage,CheckPage,MenuPage,SeatPage,NewOrderPage}.tsx` | Screen 5 / S3 (check with Send, more sheet, PIN overlay), 3 / 4 / S4 (menu, options, custom item), 2 (seat), S2 (new order). Pushed by tapping a row. |
@@ -71,7 +71,7 @@ Every gate reads `isHandheldStationType(selectedStation?.station_type)`.
 | Payment + refund journal check on launch | Skip. Nothing to recover until handheld takes payments; the payment ticket must lift this. | `app/_layout.tsx` boot task |
 | Five-minute staff refresh | Interval removed; the `pos.employees-refresh` resume task (foreground) keeps the same 5-minute staleness window. | `contexts/PosSyncProvider.tsx` |
 | Landscape lock | Handheld locks PORTRAIT_UP from the root layout's orientation effect — the root never remounts on a theme toggle, whereas a lock owned inside the handheld tree flipped the device every time `<ThemeProvider key=…>` remounted. Native lock removal is Temur's Wave 0. | `app/_layout.tsx` |
-| Immersive system bars | Register hides status + navigation bars; handheld keeps both (the artifact shows the status bar and gesture pill). | `app/_layout.tsx` |
+| Immersive system bars | Hidden on the handheld too, like the register (changed 2026-09-21: the artifact draws the status bar and gesture pill, but a phone with a 3-button nav bar lost 48dp to it). `HandheldFrame` no longer mounts a `StatusBar` — a second one would re-show the bar. | `app/_layout.tsx` |
 | Realtime, card-reader detection, heartbeat, outbox, printer list | Kept, untouched. | — |
 
 Not on the ticket's list and therefore untouched: `isPOSMode` in the root

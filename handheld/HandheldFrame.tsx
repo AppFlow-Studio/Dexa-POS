@@ -1,10 +1,7 @@
 import { colors } from "@/lib/theme";
-import { useColorScheme } from "@/lib/useColorScheme";
-import { StatusBar } from "expo-status-bar";
 import { vars } from "nativewind";
 import React from "react";
 import { View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 /**
  * The tablet's `--ui-scale` is computed from dp width against a 1333dp
@@ -17,22 +14,19 @@ const HANDHELD_UI_VARS = vars({ "--ui-scale": 1 });
 
 /**
  * Wraps every handheld page (the tab root and the pushed table / order
- * pages): dp-true scale, safe areas, a status bar that follows the theme.
+ * pages) at dp-true scale, edge to edge like the register. The root layout
+ * hides both system bars; a SafeAreaView here kept padding for them after
+ * they were gone (Android reports the bar insets it measured), which left a
+ * dead band top and bottom on every page. The product devices (Landi P30 /
+ * P32, Valor VP550) have no display cutout, so nothing needs insetting. A
+ * StatusBar here would re-show the bar (RN stacks the last mounted props).
  * Portrait is locked by app/_layout.tsx, which never remounts on a theme
  * toggle. Mounted once by app/(main)/handheld/_layout.tsx around its Stack.
  */
 export default function HandheldFrame({ children }: { children: React.ReactNode }) {
-  const { isDarkColorScheme } = useColorScheme();
   return (
-    <View style={[{ flex: 1 }, HANDHELD_UI_VARS]}>
-      <SafeAreaView
-        edges={["top", "right", "bottom", "left"]}
-        className="flex-1"
-        style={{ backgroundColor: colors.screen }}
-      >
-        <StatusBar style={isDarkColorScheme ? "light" : "dark"} translucent />
-        {children}
-      </SafeAreaView>
+    <View style={[{ flex: 1, backgroundColor: colors.screen }, HANDHELD_UI_VARS]}>
+      {children}
     </View>
   );
 }
