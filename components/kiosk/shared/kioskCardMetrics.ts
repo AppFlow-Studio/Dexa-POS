@@ -19,6 +19,8 @@
  * the surrounding chrome kept growing, and a 4K panel would show 42px item
  * names beside 63px cart rows.
  */
+import { kioskTypeSize } from "@/components/kiosk/shared/kioskDesign";
+
 export interface KioskCardMetrics {
   /** Measured width of a single card, in px. */
   cardWidth: number;
@@ -48,12 +50,9 @@ export interface KioskCardMetrics {
   /** Below this width the description is dropped rather than truncated to mush. */
   showDescription: boolean;
   priceSize: number;
-  /** Edge of the quick-add "+" button. Never below the 48dp touch floor. */
-  addButtonSize: number;
-  addIconSize: number;
   badgeIconSize: number;
   badgeTextSize: number;
-  /** Fixed height for the price/add row, so the card total is exact. */
+  /** Fixed height for the price row, so the card total is exact. */
   priceRowHeight: number;
   /**
    * Exact rendered height of the whole card.
@@ -87,23 +86,6 @@ export const KIOSK_ROW_LAYOUT_RATIO = 1.4;
  */
 const MIN_IMAGE_SHARE = 0.42;
 
-/**
- * Edge of the quick-add button on every card shape.
- *
- * Proportional to the card, with the clamps set wide enough that they almost
- * never bind. A touch-target floor was tried here and was wrong: it made the
- * button a *constant* size, so the tighter the grid the larger the button
- * looked against its card, and at three or four columns it dominated the tile
- * it was meant to sit quietly inside.
- *
- * The touch target is not given up — `KioskAddButton` pads its pressable out
- * to the 44dp minimum with `hitSlop`, which grows the area a finger has to
- * find without growing the circle the customer sees.
- */
-export function kioskAddButtonSize(basis: number): number {
-  return px(clamp(basis * 0.15, 32, 68));
-}
-
 export function shouldUseRowLayout(
   cardWidth: number,
   maxCardHeight?: number,
@@ -127,11 +109,9 @@ export interface KioskRowMetrics {
   descLines: number;
   showDescription: boolean;
   priceSize: number;
-  addButtonSize: number;
-  addIconSize: number;
   badgeIconSize: number;
   badgeTextSize: number;
-  /** Fixed height for the price/add row, so the card total is exact. */
+  /** Fixed height for the price row, so the card total is exact. */
   priceRowHeight: number;
   /**
    * Exact rendered height of the whole row card — the taller of its image and
@@ -156,17 +136,16 @@ export function kioskRowMetrics(
   const pad = px(clamp(imageSize * 0.12, 8, 24));
   const textWidth = Math.max(80, w - imageSize - pad * 3);
 
-  const nameSize = px(clamp(textWidth * 0.085, 16, 56));
-  const descSize = px(clamp(textWidth * 0.06, 13, 30));
+  const nameSize = kioskTypeSize(textWidth * 0.085, 16, 52);
+  const descSize = kioskTypeSize(textWidth * 0.06, 13, 28);
 
   const gap = px(clamp(textWidth * 0.02, 4, 14));
-  const nameLineHeight = px(nameSize * 1.25);
-  const descLineHeight = px(descSize * 1.35);
+  const nameLineHeight = px(nameSize * 1.2);
+  const descLineHeight = px(descSize * 1.4);
   const descLines = 2;
   const showDescription = textWidth >= 200;
-  const priceSize = px(clamp(textWidth * 0.09, 17, 60));
-  const addButtonSize = kioskAddButtonSize(textWidth);
-  const priceRowHeight = px(Math.max(priceSize * 1.3, addButtonSize));
+  const priceSize = nameSize;
+  const priceRowHeight = px(priceSize * 1.3);
 
   // The copy column, worst case: a two-line name, the description if it shows,
   // and the price row. The column's own `gap` sits between each pair, and the
@@ -191,8 +170,6 @@ export function kioskRowMetrics(
     descLines,
     showDescription,
     priceSize,
-    addButtonSize,
-    addIconSize: px(addButtonSize * 0.5),
     badgeIconSize: px(clamp(imageSize * 0.14, 12, 32)),
     badgeTextSize: px(clamp(imageSize * 0.145, 12, 32)),
     priceRowHeight,
@@ -229,8 +206,6 @@ export interface KioskFeatureRowMetrics {
   showDescription: boolean;
   priceSize: number;
   priceRowHeight: number;
-  addButtonSize: number;
-  addIconSize: number;
   badgeIconSize: number;
   badgeTextSize: number;
   /** Reserved right-hand space so copy never runs onto the crisp photo. */
@@ -293,13 +268,12 @@ export function kioskFeatureRowMetrics(
   const textInset = px(imageWidth * (1 - fadeSolidStop));
   const textWidth = Math.max(120, w - padH * 2 - textInset);
 
-  const nameSize = px(clamp(textWidth * 0.072, 16, 46));
-  const nameLineHeight = px(nameSize * 1.22);
-  const descSize = px(clamp(textWidth * 0.046, 13, 28));
-  const descLineHeight = px(descSize * 1.35);
-  const priceSize = px(clamp(textWidth * 0.07, 15, 44));
-  const addButtonSize = kioskAddButtonSize(textWidth);
-  const priceRowHeight = px(Math.max(priceSize * 1.3, addButtonSize));
+  const nameSize = kioskTypeSize(textWidth * 0.072, 16, 46);
+  const nameLineHeight = px(nameSize * 1.2);
+  const descSize = kioskTypeSize(textWidth * 0.046, 13, 28);
+  const descLineHeight = px(descSize * 1.4);
+  const priceSize = nameSize;
+  const priceRowHeight = px(priceSize * 1.3);
 
   // Solve the copy shape against the height actually available. One gap sits
   // between every pair of visible blocks.
@@ -332,8 +306,6 @@ export function kioskFeatureRowMetrics(
     showDescription: shape.descLines > 0 && textWidth >= 190,
     priceSize,
     priceRowHeight,
-    addButtonSize,
-    addIconSize: px(addButtonSize * 0.5),
     badgeIconSize: px(clamp(height * 0.11, 12, 32)),
     badgeTextSize: px(clamp(height * 0.115, 12, 32)),
     textInset,
@@ -352,20 +324,24 @@ export function kioskCardMetrics(
   // short cell doesn't get billboard type just because it is wide.
   const b = Math.min(w, hCap * 0.8);
 
-  const nameSize = px(clamp(b * 0.086, 15, 64));
-  const nameLineHeight = px(nameSize * 1.25);
+  // Snapped onto the shared scale rather than taken straight off the width, so
+  // a 218dp card and a 295dp card either share a size or differ by a real step
+  // — never by a pixel and a half.
+  const nameSize = kioskTypeSize(b * 0.086, 16, 64);
+  const nameLineHeight = px(nameSize * 1.2);
 
-  const descSize = px(clamp(b * 0.064, 13, 34));
-  const descLineHeight = px(descSize * 1.35);
+  const descSize = kioskTypeSize(b * 0.064, 13, 32);
+  const descLineHeight = px(descSize * 1.4);
 
-  const padV = px(clamp(b * 0.045, 9, 22));
+  const padV = px(clamp(b * 0.05, 10, 24));
   const gap = px(clamp(b * 0.022, 4, 12));
-  const priceSize = px(clamp(b * 0.094, 16, 68));
-  const addButtonSize = kioskAddButtonSize(b);
-  const priceRowHeight = px(Math.max(priceSize * 1.3, addButtonSize));
+  // The name leads the card; the price matches it rather than shouting over
+  // it, and the weight and position do the rest.
+  const priceSize = nameSize;
+  const priceRowHeight = px(priceSize * 1.3);
 
   // The copy column: top padding, the text blocks with a gap between each
-  // pair, the price/add row, and the slightly heavier bottom padding the card
+  // pair, the price row, and the slightly heavier bottom padding the card
   // uses to seat the price optically. Every block is a fixed height, so this
   // is exact for any shape.
   const copyHeightFor = (nameLines: number, descLines: number) =>
@@ -445,8 +421,6 @@ export function kioskCardMetrics(
     descBlockHeight,
     showDescription,
     priceSize,
-    addButtonSize,
-    addIconSize: px(addButtonSize * 0.5),
     badgeIconSize: px(clamp(b * 0.06, 12, 36)),
     badgeTextSize: px(clamp(b * 0.062, 12, 36)),
     priceRowHeight,

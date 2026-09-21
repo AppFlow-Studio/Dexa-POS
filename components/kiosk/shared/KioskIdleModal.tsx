@@ -1,10 +1,16 @@
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import {
+  kioskFont,
+  kioskMotion,
+  kioskRadius,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { useEffect } from "react";
 import { Keyboard, Text } from "react-native";
-import Animated, { FadeIn, FadeOut, ZoomIn } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 /**
  * "Are you still there?" overlay shown after a stretch of inactivity, before
@@ -30,6 +36,7 @@ export function KioskIdleModal({
   hasActiveCart?: boolean;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
 
   // The software keyboard can cover this, and it is the one thing on screen a
   // customer has seconds to read before their order is dropped. Searching with
@@ -46,10 +53,11 @@ export function KioskIdleModal({
       style={{ backgroundColor: "rgba(0,0,0,0.55)", zIndex: 100 }}
     >
       <Animated.View
-        entering={ZoomIn.duration(260).springify().damping(18)}
-        className="items-center rounded-3xl"
+        entering={FadeIn.duration(kioskMotion.base)}
+        className="items-center"
         style={{
-          backgroundColor: config.backgroundColor,
+          borderRadius: kioskPx(kioskRadius.xl, s),
+          backgroundColor: t.page,
           paddingHorizontal: kioskPx(44, s),
           paddingVertical: kioskPx(40, s),
           gap: kioskPx(18, s),
@@ -59,8 +67,8 @@ export function KioskIdleModal({
         <Text
           style={{
             fontSize: kioskPx(34, s),
-            fontWeight: "800",
-            color: config.textColor,
+            ...kioskFont(t, "bold"),
+            color: t.text,
             textAlign: "center",
           }}
         >
@@ -70,7 +78,7 @@ export function KioskIdleModal({
           style={{
             fontSize: kioskPx(19, s),
             lineHeight: kioskPx(27, s),
-            color: `${config.textColor}99`,
+            color: t.textMuted,
             textAlign: "center",
           }}
         >
@@ -85,15 +93,15 @@ export function KioskIdleModal({
             marginTop: kioskPx(8, s),
             paddingHorizontal: kioskPx(40, s),
             paddingVertical: kioskPx(20, s),
-            borderRadius: kioskPx(18, s),
-            backgroundColor: config.primaryColor,
+            borderRadius: kioskPx(kioskRadius.md, s),
+            backgroundColor: t.primary,
           }}
         >
           <Text
             style={{
-              color: "#FFFFFF",
+              color: t.onPrimary,
               fontSize: kioskPx(21, s),
-              fontWeight: "700",
+              ...kioskFont(t, "bold"),
             }}
           >
             Yes, I&apos;m still here

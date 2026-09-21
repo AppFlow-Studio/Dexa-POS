@@ -1,4 +1,12 @@
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import {
+  KIOSK_HAIRLINE,
+  kioskFont,
+  kioskMotion,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
@@ -45,6 +53,7 @@ export function KioskOrderTypeScreen({
   ];
 
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const { width, height } = useWindowDimensions();
   const shortEdge = Math.min(width, height);
   // Two tiles plus a gap plus the screen's own padding have to fit across the
@@ -56,14 +65,15 @@ export function KioskOrderTypeScreen({
   return (
     <View
       className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: config.backgroundColor }}
+      style={{ backgroundColor: t.page }}
     >
       <Animated.Text
-        entering={FadeInDown.duration(360).springify().damping(20)}
+        entering={FadeInDown.duration(kioskMotion.slow)}
         style={{
-          fontSize: kioskPx(42, s),
-          lineHeight: kioskPx(52, s),
-          fontWeight: "800",
+          fontSize: kioskPx(41, s),
+          lineHeight: kioskPx(50, s),
+          letterSpacing: kioskTracking(41),
+          ...kioskFont(t, "bold"),
           textAlign: "center",
           color: config.headerTextColor,
           marginBottom: kioskPx(10, s),
@@ -74,8 +84,9 @@ export function KioskOrderTypeScreen({
       <Animated.Text
         entering={FadeInDown.delay(80).duration(360)}
         style={{
-          fontSize: kioskPx(21, s),
-          color: `${config.textColor}99`,
+          fontSize: kioskPx(20, s),
+          color: t.textMuted,
+          ...kioskFont(t, "regular"),
           marginBottom: kioskPx(52, s),
         }}
       >
@@ -86,10 +97,9 @@ export function KioskOrderTypeScreen({
         {options.map(({ type, label, hint, Icon }, index) => (
           <Animated.View
             key={type}
-            entering={FadeInUp.delay(150 + index * 90)
-              .duration(420)
-              .springify()
-              .damping(17)}
+            entering={FadeInUp.delay(120 + index * 70).duration(
+              kioskMotion.slow,
+            )}
           >
             <KioskPressable
               onPress={() => onSelect(type)}
@@ -97,30 +107,32 @@ export function KioskOrderTypeScreen({
               style={{
                 width: tileSize,
                 height: tileSize,
-                borderRadius: kioskPx(28, s),
+                borderRadius: kioskPx(kioskRadius.xl, s),
                 alignItems: "center",
                 justifyContent: "center",
                 gap: kioskPx(20, s),
-                backgroundColor: `${config.primaryColor}12`,
-                borderWidth: 2,
-                borderColor: `${config.primaryColor}40`,
+                backgroundColor: t.surface,
+                borderWidth: KIOSK_HAIRLINE,
+                borderColor: t.outlineStrong,
               }}
             >
-              <Icon color={config.primaryColor} size={tileSize * 0.3} />
+              <Icon color={t.primary} size={tileSize * 0.3} />
               <View style={{ alignItems: "center", gap: kioskPx(6, s) }}>
                 <Text
                   style={{
-                    fontSize: kioskPx(30, s),
-                    fontWeight: "700",
-                    color: config.textColor,
+                    fontSize: kioskPx(28, s),
+                    letterSpacing: kioskTracking(28),
+                    color: t.text,
+                    ...kioskFont(t, "bold"),
                   }}
                 >
                   {label}
                 </Text>
                 <Text
                   style={{
-                    fontSize: kioskPx(18, s),
-                    color: `${config.textColor}88`,
+                    fontSize: kioskPx(16, s),
+                    color: t.textMuted,
+                    ...kioskFont(t, "regular"),
                   }}
                 >
                   {hint}

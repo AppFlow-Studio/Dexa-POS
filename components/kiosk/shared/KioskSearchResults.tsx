@@ -4,6 +4,12 @@ import {
   searchKioskMenu,
   type KioskSearchEntry,
 } from "@/components/kiosk/shared/kioskMenuSearch";
+import {
+  kioskFont,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import {
   KIOSK_RESULT_ROW_HEIGHT,
@@ -54,6 +60,7 @@ export function KioskSearchResults({
   onClear: () => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const deferredQuery = useDeferredValue(query);
   const entries = useKioskSearchEntries();
   const results = useMemo(
@@ -65,7 +72,6 @@ export function KioskSearchResults({
     () => kioskCardSurface(config.backgroundColor),
     [config.backgroundColor],
   );
-  const muted = `${config.textColor}99`;
 
   // FlashList positions its cells but does not size them
   // (`forceNonDeterministicRendering`), so a row with no width shrinks to its
@@ -144,11 +150,11 @@ export function KioskSearchResults({
               paddingHorizontal: kioskPx(16, s),
               paddingTop: kioskPx(12, s),
               paddingBottom: kioskPx(8, s),
-              fontSize: kioskPx(15, s),
-              fontWeight: "600",
-              letterSpacing: 0.6,
+              fontSize: kioskPx(13, s),
+              letterSpacing: 1.2,
               textTransform: "uppercase",
-              color: muted,
+              color: t.textMuted,
+              ...kioskFont(t, "bold"),
             }}
           >
             {resultCaption}
@@ -177,13 +183,18 @@ export function KioskSearchResults({
                 gap: kioskPx(10, s),
               }}
             >
-              <Search size={kioskPx(46, s)} color={`${config.textColor}33`} />
+              <Search
+                size={kioskPx(44, s)}
+                color={t.textFaint}
+                strokeWidth={1.5}
+              />
               <Text
                 style={{
                   fontSize: kioskPx(22, s),
-                  fontWeight: "700",
-                  color: config.textColor,
+                  letterSpacing: kioskTracking(22),
+                  color: t.text,
                   textAlign: "center",
+                  ...kioskFont(t, "bold"),
                 }}
               >
                 {noMatches
@@ -192,9 +203,10 @@ export function KioskSearchResults({
               </Text>
               <Text
                 style={{
-                  fontSize: kioskPx(17, s),
-                  color: muted,
+                  fontSize: kioskPx(16, s),
+                  color: t.textMuted,
                   textAlign: "center",
+                  ...kioskFont(t, "regular"),
                 }}
               >
                 {noMatches
@@ -213,15 +225,15 @@ export function KioskSearchResults({
                     paddingHorizontal: kioskPx(30, s),
                     alignItems: "center",
                     justifyContent: "center",
-                    borderRadius: 999,
-                    backgroundColor: config.primaryColor,
+                    borderRadius: kioskPx(kioskRadius.md, s),
+                    backgroundColor: t.primary,
                   }}
                 >
                   <Text
                     style={{
                       fontSize: kioskPx(18, s),
-                      fontWeight: "700",
-                      color: "#FFFFFF",
+                      color: t.onPrimary,
+                      ...kioskFont(t, "bold"),
                     }}
                   >
                     {kioskStrings.searchClear}

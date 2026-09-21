@@ -1,8 +1,13 @@
-import { KioskAddButton } from "@/components/kiosk/shared/KioskAddButton";
 import {
   kioskFeatureRowMetrics,
   type KioskFeatureRowMetrics,
 } from "@/components/kiosk/shared/kioskCardMetrics";
+import {
+  kioskFont,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import {
@@ -42,7 +47,7 @@ import Animated, {
  *
  * Same visual language as the other kiosk cards: `kioskCardSurface` fill, no
  * cast shadow (see the shadows note in docs/features/kiosk), hairline accent
- * border, a quick-add "+", and an in-cart badge that springs on change.
+ * border, and an in-cart badge that springs on change.
  */
 interface KioskMenuItemFeatureRowProps {
   item: MenuItemType;
@@ -52,8 +57,6 @@ interface KioskMenuItemFeatureRowProps {
   /** Height budget from the grid — only caps the row on short viewports. */
   maxCardHeight?: number;
   onPress: (item: MenuItemType) => void;
-  /** The "+" tap. Omit on surfaces that only navigate (the card body still does). */
-  onAdd?: (item: MenuItemType) => void;
 }
 
 const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
@@ -62,7 +65,6 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
   cardWidth,
   maxCardHeight,
   onPress,
-  onAdd,
 }) => {
   const m = useMemo(
     () => kioskFeatureRowMetrics(cardWidth, maxCardHeight),
@@ -82,6 +84,7 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
     [item],
   );
 
+  const t = useKioskTheme(config);
   const accent = config.accentColor;
   // The photo fades into the *card*, not the page — so the fade starts on the
   // card's own surface colour and ends on that same colour at zero alpha.
@@ -100,9 +103,7 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
         height: m.height,
         borderRadius: m.radius,
         overflow: "hidden",
-        borderWidth: 1,
         backgroundColor: surface,
-        borderColor: `${accent}33`,
         opacity: isDisabled ? 0.45 : 1,
       }}
     >
@@ -192,7 +193,8 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
             style={{
               fontSize: m.descSize,
               lineHeight: m.descLineHeight,
-              color: `${config.textColor}99`,
+              color: t.textMuted,
+              ...kioskFont(t, "regular"),
             }}
             numberOfLines={m.descLines}
           >
@@ -213,8 +215,10 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
           <Text
             style={{
               fontSize: m.priceSize,
-              fontWeight: "800",
+              letterSpacing: kioskTracking(m.priceSize),
               color: config.textColor,
+              fontVariant: ["tabular-nums"],
+              ...kioskFont(t, "bold"),
             }}
           >
             ${item.price?.toFixed(2)}
@@ -230,20 +234,6 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
             >
               {kioskStrings.soldOut}
             </Text>
-          ) : null}
-
-          {/* The "+" sits at the copy column's right edge, clear of the photo. */}
-          {onAdd ? (
-            <View style={{ marginLeft: "auto" }}>
-              <KioskAddButton
-                config={config}
-                item={item}
-                size={m.addButtonSize}
-                iconSize={m.addIconSize}
-                disabled={isDisabled}
-                onPress={onAdd}
-              />
-            </View>
           ) : null}
         </View>
       </View>
@@ -285,7 +275,7 @@ function InCartBadge({
           right: m.padH * 0.6,
           paddingHorizontal: m.padH * 0.5,
           paddingVertical: m.padV * 0.28,
-          borderRadius: 999,
+          borderRadius: kioskRadius.xs,
           flexDirection: "row",
           alignItems: "center",
           gap: m.gap * 0.8,
@@ -318,7 +308,6 @@ export default React.memo(KioskMenuItemFeatureRow, (prev, next) => {
     prev.item.image === next.item.image &&
     prev.cardWidth === next.cardWidth &&
     prev.maxCardHeight === next.maxCardHeight &&
-    prev.onAdd === next.onAdd &&
     prev.config.accentColor === next.config.accentColor &&
     prev.config.backgroundColor === next.config.backgroundColor &&
     prev.config.textColor === next.config.textColor &&

@@ -7,6 +7,7 @@ import {
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import KioskMenuItemFeatureRow from "@/components/kiosk/shared/KioskMenuItemFeatureRow";
 import KioskMenuItemRow from "@/components/kiosk/shared/KioskMenuItemRow";
+import { KIOSK_GRID_INSET } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
@@ -76,7 +77,6 @@ export function KioskItemGrid({
   numColumns,
   resetKey,
   onSelectItem,
-  onAddItem,
 }: {
   config: KioskConfig;
   items: MenuItemType[];
@@ -84,14 +84,12 @@ export function KioskItemGrid({
   /** Changes when the active category changes — replays the entrance and scrolls to top. */
   resetKey?: string | null;
   onSelectItem: (item: MenuItemType) => void;
-  /** Quick-add "+" on each card. Omitted, the cards render without one. */
-  onAddItem?: (item: MenuItemType) => void;
 }) {
   const s = useKioskUiScale();
   const [grid, setGrid] = useState({ width: 0, height: 0 });
   const listRef = useRef<FlashList<MenuItemType>>(null);
 
-  const padding = kioskPx(16, s);
+  const padding = kioskPx(KIOSK_GRID_INSET, s);
   const gap = kioskPx(14, s);
 
   // Nothing renders until the grid has measured itself. The window used to
@@ -195,7 +193,6 @@ export function KioskItemGrid({
             cardWidth={cardWidth}
             maxCardHeight={maxCardHeight}
             onPress={onSelectItem}
-            onAdd={onAddItem}
           />
         ) : useRowLayout ? (
           <KioskMenuItemRow
@@ -204,7 +201,6 @@ export function KioskItemGrid({
             cardWidth={cardWidth}
             maxCardHeight={maxCardHeight}
             onPress={onSelectItem}
-            onAdd={onAddItem}
           />
         ) : (
           <KioskMenuItem
@@ -213,7 +209,6 @@ export function KioskItemGrid({
             cardWidth={cardWidth}
             maxCardHeight={maxCardHeight}
             onPress={onSelectItem}
-            onAdd={onAddItem}
           />
         )}
       </View>
@@ -229,7 +224,6 @@ export function KioskItemGrid({
       cardWidth,
       maxCardHeight,
       onSelectItem,
-      onAddItem,
     ],
   );
 

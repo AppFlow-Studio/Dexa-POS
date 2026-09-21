@@ -9,7 +9,6 @@ import { kioskBannerHeight, kioskRailWidth } from "@/components/kiosk/shared/kio
 import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskSearchResults } from "@/components/kiosk/shared/KioskSearchResults";
-import { useKioskItemAdd } from "@/components/kiosk/shared/useKioskItemAdd";
 import type { KioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import {
@@ -95,7 +94,6 @@ export function KioskMenuViewB({
   }, [sections, activeKey]);
 
   const items = useOrderableItems(activeCategory?.items);
-  const handleAdd = useKioskItemAdd(onSelectItem);
 
   // Picking a category is also a way out of a search: the results layer covers
   // the grid, so leaving it up after a switch would show the customer the same
@@ -163,7 +161,6 @@ export function KioskMenuViewB({
               numColumns={numColumns}
               resetKey={resolvedKey}
               onSelectItem={onSelectItem}
-              onAddItem={handleAdd}
             />
           </View>
         </View>

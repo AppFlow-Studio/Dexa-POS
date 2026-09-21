@@ -1,3 +1,9 @@
+import {
+  kioskFont,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskMoney } from "@/components/kiosk/shared/kioskMoney";
 import type { KioskSearchEntry } from "@/components/kiosk/shared/kioskMenuSearch";
@@ -43,6 +49,7 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
   onPress: (item: MenuItemType) => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const { item, categoryName } = entry;
   const qtyInCart = useKioskItemQuantity(item.id);
 
@@ -69,21 +76,19 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
         height: kioskPx(KIOSK_RESULT_THUMB + KIOSK_RESULT_PAD_V * 2, s),
         marginBottom: kioskPx(KIOSK_RESULT_GAP, s),
         paddingHorizontal: kioskPx(KIOSK_RESULT_PAD_V, s),
-        borderRadius: kioskPx(18, s),
+        borderRadius: kioskPx(kioskRadius.md, s),
         backgroundColor: surface,
-        borderWidth: 1,
-        borderColor: `${config.accentColor}26`,
       }}
     >
       <View
         style={{
           width: thumb,
           height: thumb,
-          borderRadius: kioskPx(14, s),
+          borderRadius: kioskPx(kioskRadius.sm, s),
           overflow: "hidden",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: `${config.accentColor}10`,
+          backgroundColor: t.sunken,
         }}
       >
         {imageSource ? (
@@ -94,7 +99,7 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
           />
         ) : (
           <PlaceholderIcon
-            color={`${config.textColor}55`}
+            color={t.textFaint}
             size={kioskPx(32, s)}
           />
         )}
@@ -104,9 +109,10 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
         <Text
           numberOfLines={1}
           style={{
-            fontSize: kioskPx(21, s),
-            fontWeight: "700",
-            color: config.textColor,
+            fontSize: kioskPx(20, s),
+            letterSpacing: kioskTracking(20),
+            color: t.text,
+            ...kioskFont(t, "bold"),
           }}
         >
           {item.name}
@@ -114,8 +120,9 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
         <Text
           numberOfLines={1}
           style={{
-            fontSize: kioskPx(15, s),
-            color: `${config.textColor}99`,
+            fontSize: kioskPx(14, s),
+            color: t.textMuted,
+            ...kioskFont(t, "regular"),
           }}
         >
           {categoryName}
@@ -130,8 +137,8 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
             gap: kioskPx(5, s),
             paddingHorizontal: kioskPx(10, s),
             paddingVertical: kioskPx(5, s),
-            borderRadius: 999,
-            backgroundColor: config.accentColor,
+            borderRadius: kioskPx(kioskRadius.xs, s),
+            backgroundColor: t.primary,
           }}
         >
           <ShoppingCart
@@ -153,9 +160,10 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
 
       <Text
         style={{
-          fontSize: kioskPx(19, s),
-          fontWeight: "800",
-          color: config.textColor,
+          fontSize: kioskPx(18, s),
+          color: t.text,
+          fontVariant: ["tabular-nums"],
+          ...kioskFont(t, "bold"),
         }}
       >
         {kioskMoney(item.price ?? 0)}

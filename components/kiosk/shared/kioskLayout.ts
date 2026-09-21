@@ -80,3 +80,15 @@ export function kioskCartPlacement(isVertical: boolean): KioskCartPlacement {
  */
 export const KIOSK_HEADER_CONTROL_HEIGHT = 52;
 export const KIOSK_HEADER_HEIGHT = 72;
+
+/**
+ * The item grid's outer inset.
+ *
+ * Exported because a control strip sitting directly above the grid has to know
+ * it: the grid opens with this much clear space, so a strip that also pads its
+ * own underside puts twice the gap below the control as above it, and the
+ * selected tab reads as hanging off the divider line rather than sitting in a
+ * row. The strip subtracts this from its bottom padding — see
+ * KioskCategoryPillBar.
+ */
+export const KIOSK_GRID_INSET = 16;

@@ -1,3 +1,11 @@
+import {
+  kioskFont,
+  kioskMotion,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
+import { KIOSK_GRID_INSET } from "@/components/kiosk/shared/kioskLayout";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
@@ -19,41 +27,54 @@ export interface CategoryPill {
 }
 
 const FADE_WIDTH = 40;
-const PILL_PADDING_V = 12;
-const PILL_BORDER_WIDTH = 1;
-const PILL_FONT_SIZE = 18;
-const PILL_LINE_HEIGHT = PILL_FONT_SIZE * 1.2;
+const TAB_PADDING_V = 14;
+const TAB_PADDING_H = 18;
+const TAB_FONT_SIZE = 18;
+const TAB_LINE_HEIGHT = 22;
+/** Gap between one tab and the next. */
+const TAB_GAP = 8;
+/**
+ * Clear space the strip holds around its tabs.
+ *
+ * Applied to the top in full, and to the bottom only for whatever the grid
+ * below does not already provide (`KIOSK_GRID_INSET`). Split that way the two
+ * *visible* gaps match — which is the thing being asked for — instead of the
+ * strip's own padding being symmetric on paper and the tab sitting hard
+ * against the header's divider with twice the space beneath it.
+ */
+const STRIP_PADDING_V = 16;
 /** Long merchant category names truncate rather than push the strip wide. */
-const PILL_MAX_WIDTH = 240;
-// Matches the pill's own full box height (2x vertical padding + text line
-// height + 2x border) so the nudge button is centered against the same
-// height the pill row actually renders at — the row's height is set by its
-// tallest pill, borders included.
-const BUTTON_SIZE =
-  PILL_PADDING_V * 2 + PILL_LINE_HEIGHT + PILL_BORDER_WIDTH * 2;
+const TAB_MAX_WIDTH = 260;
+// The row's own full box height, so the chevron is centred against the height
+// the tabs actually render at.
+const BUTTON_SIZE = TAB_PADDING_V * 2 + TAB_LINE_HEIGHT;
 /** A nudge moves most of a viewport, so repeated taps walk the strip. */
 const NUDGE_FRACTION = 0.8;
 /** Scroll-position tolerance, in px. */
 const EPSILON = 2;
 
 /**
- * Horizontal scrollable category selector — one pill per unique category
- * name. Unlike KioskCategoryRail (which groups by menu, so same-named
- * categories in different menus each get their own visible section), this
- * bar has no per-menu grouping — callers are expected to have already
- * deduped/merged same-named categories before building `pills`, otherwise a
- * category shared by two menus would render as two identical, unexplained
- * pills. Used by templates that lay their menu out as a single scrollable
- * list rather than a sidebar + grid split.
+ * Horizontal category selector - one tab per unique category name.
  *
- * Overflow affordance: a fade at the edge with a chevron sitting on it, shown
- * only when there is actually something that way. Visibility is derived from
- * the scroll offset, the content width and the viewport — never from how many
- * pills there are, because label widths vary and a count cannot tell you
- * whether six categories fit or five do.
+ * The selected category is filled, not underlined. A rule under the active
+ * label is quieter and it was too quiet: at a kiosk the customer is standing
+ * back from the panel, glancing at the strip between decisions, and a two
+ * pixel mark under one word in a row of words is not something you catch at
+ * that distance. A filled block is. What the redesign keeps is the shape - a
+ * squared-off tab at the same corner radius as the header's controls, not a
+ * stadium-rounded chip.
  *
- * The chevron itself is unchanged from the build that shipped — a raised
- * circle in the page colour, sitting just inside the edge on top of the fade.
+ * Unlike KioskCategoryRail (which groups by menu, so same-named categories in
+ * different menus each get their own visible section), this bar has no
+ * per-menu grouping - callers are expected to have already deduped same-named
+ * categories before building `pills`, otherwise a category shared by two menus
+ * would render as two identical, unexplained tabs.
+ *
+ * Overflow affordance: a fade at the edge with a chevron on it, shown only
+ * when there is something that way. Visibility is derived from the scroll
+ * offset, the content width and the viewport - never from how many categories
+ * there are, because label widths vary and a count cannot tell you whether six
+ * fit or five do.
  */
 export function KioskCategoryPillBar({
   config,
@@ -70,12 +91,13 @@ export function KioskCategoryPillBar({
   dimmed?: boolean;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const scrollRef = useRef<ScrollView>(null);
   const scrollXRef = useRef(0);
   const viewportWidthRef = useRef(0);
   const contentWidthRef = useRef(0);
-  /** Measured box of each pill, for scrolling a partly-hidden one into view. */
-  const pillBoxRef = useRef<Record<string, { x: number; width: number }>>({});
+  /** Measured box of each tab, for scrolling a partly-hidden one into view. */
+  const tabBoxRef = useRef<Record<string, { x: number; width: number }>>({});
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -96,8 +118,8 @@ export function KioskCategoryPillBar({
       );
       const clamped = Math.min(maxOffset, Math.max(0, x));
       scrollRef.current?.scrollTo({ x: clamped, animated: true });
-      // `onScroll` lands the real offset; this keeps the chevrons honest at the
-      // ends of the strip even if the animation is interrupted.
+      // `onScroll` lands the real offset; this keeps the chevrons honest at
+      // the ends even if the animation is interrupted.
       scrollXRef.current = clamped;
       updateScrollAffordance(clamped);
     },
@@ -112,12 +134,12 @@ export function KioskCategoryPillBar({
     [scrollTo],
   );
 
-  // Selecting a pill that is only half on screen (or off it entirely — the
-  // grid can change the selection without the strip being touched) brings it
-  // fully into view, so the active pill is always readable.
+  // Selecting a tab that is only half on screen (or off it entirely - the grid
+  // can change the selection without the strip being touched) brings it fully
+  // into view, so the active tab is always readable.
   useEffect(() => {
     if (!resolvedKey) return;
-    const box = pillBoxRef.current[resolvedKey];
+    const box = tabBoxRef.current[resolvedKey];
     const viewport = viewportWidthRef.current;
     if (!box || viewport <= 0) return;
 
@@ -130,21 +152,19 @@ export function KioskCategoryPillBar({
     }
   }, [resolvedKey, scrollTo]);
 
+  // While search is open the strip is not what the customer is looking at -
+  // the results are - but it stays live, because tapping a category is the
+  // fastest way back out of a search.
+  const dim = useSharedValue(0);
+  useEffect(() => {
+    dim.value = withTiming(dimmed ? 1 : 0, { duration: kioskMotion.base });
+  }, [dimmed, dim]);
+  const dimStyle = useAnimatedStyle(() => ({ opacity: 1 - dim.value * 0.58 }));
+
   const fadeWidth = kioskPx(FADE_WIDTH, s);
   const buttonSize = kioskPx(BUTTON_SIZE, s);
   const chevronSize = buttonSize * 0.5;
   const chevronInset = kioskPx(4, s);
-
-  // While search is open the strip is not what the customer is looking at —
-  // the results are — but it stays live, because tapping a category is the
-  // fastest way back out of a search. Dimmed rather than hidden: a strip that
-  // vanished would take the way out with it, and one left at full strength
-  // reads as though it still drives what is on screen.
-  const dim = useSharedValue(0);
-  useEffect(() => {
-    dim.value = withTiming(dimmed ? 1 : 0, { duration: 180 });
-  }, [dimmed, dim]);
-  const dimStyle = useAnimatedStyle(() => ({ opacity: 1 - dim.value * 0.58 }));
 
   return (
     <Animated.View style={[{ position: "relative" }, dimStyle]}>
@@ -155,9 +175,13 @@ export function KioskCategoryPillBar({
         style={{ flexGrow: 0, flexShrink: 0 }}
         contentContainerStyle={{
           flexDirection: "row",
-          alignItems: "center",
+          alignItems: "stretch",
           paddingHorizontal: kioskPx(16, s),
-          paddingVertical: kioskPx(10, s),
+          paddingTop: kioskPx(STRIP_PADDING_V, s),
+          paddingBottom: kioskPx(
+            Math.max(0, STRIP_PADDING_V - KIOSK_GRID_INSET),
+            s,
+          ),
         }}
         onScroll={(event) => {
           const x = event.nativeEvent.contentOffset.x;
@@ -180,37 +204,31 @@ export function KioskCategoryPillBar({
             <KioskPressable
               key={key}
               onPress={() => onSelect(key)}
-              pressedScale={0.94}
+              pressedScale={0.97}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
               onLayout={(event) => {
                 const { x, width } = event.nativeEvent.layout;
-                pillBoxRef.current[key] = { x, width };
+                tabBoxRef.current[key] = { x, width };
               }}
               style={{
-                marginRight: kioskPx(10, s),
-                maxWidth: kioskPx(PILL_MAX_WIDTH, s),
-                paddingHorizontal: kioskPx(24, s),
-                paddingVertical: kioskPx(PILL_PADDING_V, s),
-                borderRadius: 999,
-                backgroundColor: selected
-                  ? config.primaryColor
-                  : `${config.primaryColor}0F`,
-                borderWidth: PILL_BORDER_WIDTH,
-                borderColor: selected
-                  ? config.primaryColor
-                  : `${config.textColor}14`,
+                maxWidth: kioskPx(TAB_MAX_WIDTH, s),
+                marginRight: kioskPx(TAB_GAP, s),
+                paddingHorizontal: kioskPx(TAB_PADDING_H, s),
+                paddingVertical: kioskPx(TAB_PADDING_V, s),
+                justifyContent: "center",
+                borderRadius: kioskPx(kioskRadius.md, s),
+                backgroundColor: selected ? t.primary : "transparent",
               }}
             >
-              {/* Active state is fill + text contrast only — no icon, because
-                  a merchant category has no icon to draw from. */}
               <Text
                 numberOfLines={1}
                 style={{
-                  fontSize: kioskPx(PILL_FONT_SIZE, s),
-                  lineHeight: kioskPx(PILL_LINE_HEIGHT, s),
-                  fontWeight: selected ? "700" : "500",
-                  color: selected ? "#FFFFFF" : config.textColor,
+                  fontSize: kioskPx(TAB_FONT_SIZE, s),
+                  lineHeight: kioskPx(TAB_LINE_HEIGHT, s),
+                  letterSpacing: kioskTracking(TAB_FONT_SIZE),
+                  color: selected ? t.onPrimary : t.textMuted,
+                  ...kioskFont(t, selected ? "bold" : "regular"),
                 }}
               >
                 {name}
@@ -228,6 +246,7 @@ export function KioskCategoryPillBar({
           buttonSize={buttonSize}
           chevronSize={chevronSize}
           inset={chevronInset}
+          top={kioskPx(STRIP_PADDING_V, s)}
           onPress={() => nudge(-1)}
         />
       ) : null}
@@ -240,6 +259,7 @@ export function KioskCategoryPillBar({
           buttonSize={buttonSize}
           chevronSize={chevronSize}
           inset={chevronInset}
+          top={kioskPx(STRIP_PADDING_V, s)}
           onPress={() => nudge(1)}
         />
       ) : null}
@@ -248,8 +268,11 @@ export function KioskCategoryPillBar({
 }
 
 /**
- * The fade plus its chevron, as one unit — they describe the same thing (there
+ * The fade plus its chevron, as one unit - they describe the same thing (there
  * is more strip this way) and must appear and disappear together.
+ *
+ * The chevron itself is unchanged from the build that shipped: a raised circle
+ * in the page colour, inset just inside the edge, sitting on the fade.
  */
 function EdgeAffordance({
   config,
@@ -258,6 +281,7 @@ function EdgeAffordance({
   buttonSize,
   chevronSize,
   inset,
+  top,
   onPress,
 }: {
   config: KioskConfig;
@@ -267,6 +291,15 @@ function EdgeAffordance({
   chevronSize: number;
   /** Gap between the chevron and the strip's edge. */
   inset: number;
+  /**
+   * Top edge of the tab band.
+   *
+   * The chevron is exactly one tab tall, so aligning its top with the tabs'
+   * top centres it on them. Centring on the strip instead would put it half a
+   * padding too high, because the strip pads its top and leaves its bottom to
+   * the grid below (see STRIP_PADDING_V).
+   */
+  top: number;
   onPress: () => void;
 }) {
   const Chevron = side === "left" ? ChevronLeft : ChevronRight;
@@ -289,8 +322,8 @@ function EdgeAffordance({
         style={{
           position: "absolute",
           ...edge,
-          top: 0,
-          bottom: 0,
+          top,
+          height: buttonSize,
           width: fadeWidth,
           zIndex: 4,
         }}
@@ -308,8 +341,7 @@ function EdgeAffordance({
         style={{
           position: "absolute",
           ...buttonEdge,
-          top: "50%",
-          marginTop: -buttonSize / 2,
+          top,
           width: buttonSize,
           height: buttonSize,
           borderRadius: buttonSize / 2,

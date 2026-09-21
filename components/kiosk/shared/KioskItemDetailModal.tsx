@@ -1,3 +1,7 @@
+import {
+  kioskRadius,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
 import type { MenuItemType } from "@/lib/types";
@@ -37,6 +41,7 @@ export function KioskItemDetailModal({
   onAdded: () => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const width = Math.min(windowWidth * WIDTH_FRACTION, kioskPx(MAX_WIDTH, s));
@@ -54,7 +59,7 @@ export function KioskItemDetailModal({
         bottom: 0,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.5)",
+        backgroundColor: t.scrim,
         zIndex: 40,
       }}
     >
@@ -70,11 +75,9 @@ export function KioskItemDetailModal({
         style={{
           width,
           height,
-          borderRadius: kioskPx(28, s),
+          borderRadius: kioskPx(kioskRadius.xl, s),
           overflow: "hidden",
-          backgroundColor: config.backgroundColor,
-          borderWidth: 1,
-          borderColor: `${config.textColor}14`,
+          backgroundColor: t.page,
         }}
       >
         <View style={{ flex: 1 }}>

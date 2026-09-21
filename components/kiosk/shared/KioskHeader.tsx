@@ -1,6 +1,14 @@
 import { KioskHeaderCartPill } from "@/components/kiosk/shared/KioskHeaderCartPill";
 import { KioskHeaderSearchField } from "@/components/kiosk/shared/KioskHeaderSearchField";
 import {
+  KIOSK_HAIRLINE,
+  kioskFont,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
+import {
+  KIOSK_GRID_INSET,
   KIOSK_HEADER_CONTROL_HEIGHT,
   KIOSK_HEADER_HEIGHT,
 } from "@/components/kiosk/shared/kioskLayout";
@@ -16,30 +24,31 @@ import { Text, View } from "react-native";
 /**
  * Shared kiosk header.
  *
- *   left  — the merchant logo, hard against the leading edge
- *   right — search, then Start Over, then the View Cart pill
+ *   left  - Start Over, then the merchant logo beside it
+ *   right - search, then the cart
  *
- * The right-hand cluster is ordered by how often it is used and how costly a
- * mis-tap is: the cart is the destination and sits outermost where the thumb
- * lands, Start Over is next to it but is a plain outline rather than a filled
- * button, and search is furthest from both.
+ * Start Over leads because it is the way out, and a way out belongs where a
+ * reader's eye starts rather than tucked against the control they are trying
+ * to reach. On the right the cart sits outermost, where the thumb lands, with
+ * search inboard of it. Every control shares a height and a corner radius, so
+ * they read as one set rather than as four separate widgets.
  *
- * It is as short as its controls allow, and it still occupies a row of its
- * own — the grid must never scroll underneath it — but every dp it gives up
- * goes to the tiles.
+ * It is as short as its controls allow, and it still occupies a row of its own
+ * - the grid must never scroll underneath it - but every dp it gives up goes
+ * to the tiles.
  *
  * The header carries search because the menu screen cannot afford a row for
  * it. A full-width search bar pushed the category rail and the grid down by
  * its whole height on every template, for a field that is empty almost all of
- * the time. Here it costs nothing until it is opened, and then it takes over
- * the logo's slot — see KioskHeaderSearchField.
+ * the time. Here it costs nothing until opened, and then it takes over the
+ * logo's slot - see KioskHeaderSearchField.
  *
  * It sits on the page background rather than the theme primary, which is what
- * lets the cart pill carry the primary as its *state*: outlined while the cart
- * is empty, filled once there is something in it.
+ * lets the cart carry the primary as its *state*: outlined while empty, filled
+ * once there is something in it.
  *
- * There is deliberately no Dine In / Takeaway control: order type is asked once
- * on the order-type screen before the menu and never re-asked.
+ * There is deliberately no Dine In / Takeaway control: order type is asked
+ * once on the order-type screen before the menu and never re-asked.
  */
 export function KioskHeader({
   config,
@@ -65,7 +74,10 @@ export function KioskHeader({
   };
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const searching = !!search?.expanded;
+  const control = kioskPx(KIOSK_HEADER_CONTROL_HEIGHT, s);
+  const radius = kioskPx(kioskRadius.md, s);
 
   return (
     <View
@@ -74,13 +86,47 @@ export function KioskHeader({
         flexDirection: "row",
         alignItems: "center",
         gap: kioskPx(12, s),
-        paddingHorizontal: kioskPx(18, s),
-        backgroundColor: config.backgroundColor,
-        borderBottomWidth: 1,
-        borderBottomColor: `${config.textColor}12`,
+        // Same inset the category strip and the item grid use, so the
+        // header's first control, the first category and the first tile all
+        // start on one line down the left edge.
+        paddingHorizontal: kioskPx(KIOSK_GRID_INSET, s),
+        backgroundColor: t.page,
+        borderBottomWidth: KIOSK_HAIRLINE,
+        borderBottomColor: t.outline,
       }}
     >
-      {/* Leading slot — the logo, or the search field once it is open. */}
+      <KioskPressable
+        onPress={onStartOver}
+        pressedScale={0.97}
+        accessibilityRole="button"
+        accessibilityLabel={kioskStrings.startOver}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: kioskPx(8, s),
+          height: control,
+          paddingLeft: kioskPx(16, s),
+          paddingRight: kioskPx(20, s),
+          borderRadius: radius,
+          borderWidth: KIOSK_HAIRLINE,
+          borderColor: t.outlineStrong,
+        }}
+      >
+        <RotateCcw size={kioskPx(20, s)} color={t.text} strokeWidth={1.75} />
+        <Text
+          style={{
+            fontSize: kioskPx(16, s),
+            letterSpacing: kioskTracking(16),
+            color: t.text,
+            ...kioskFont(t, "regular"),
+          }}
+        >
+          {kioskStrings.startOver}
+        </Text>
+      </KioskPressable>
+
+      {/* The logo, or the search field once it is open. */}
       <View style={{ flex: 1, justifyContent: "center" }}>
         {searching && search ? (
           <KioskHeaderSearchField
@@ -92,8 +138,6 @@ export function KioskHeader({
         ) : config.logoUrl ? (
           <Image
             source={{ uri: config.logoUrl }}
-            // Height-bounded with a width ceiling; `contain` keeps the
-            // merchant's aspect ratio inside that box whatever they uploaded.
             style={{ height: kioskPx(44, s), width: kioskPx(180, s) }}
             contentFit="contain"
             contentPosition="left center"
@@ -103,9 +147,10 @@ export function KioskHeader({
           <Text
             numberOfLines={1}
             style={{
-              color: config.textColor,
+              color: t.text,
               fontSize: kioskPx(22, s),
-              fontWeight: "700",
+              letterSpacing: kioskTracking(22),
+              ...kioskFont(t, "bold"),
             }}
           >
             {config.profileName}
@@ -113,55 +158,25 @@ export function KioskHeader({
         )}
       </View>
 
-      {/* Trailing cluster — search, Start Over, cart. */}
       {search && !searching ? (
         <KioskPressable
           onPress={search.onExpand}
-          pressedScale={0.9}
+          pressedScale={0.96}
           accessibilityRole="search"
           accessibilityLabel={kioskStrings.searchOpen}
           style={{
-            width: kioskPx(KIOSK_HEADER_CONTROL_HEIGHT, s),
-            height: kioskPx(KIOSK_HEADER_CONTROL_HEIGHT, s),
-            borderRadius: kioskPx(KIOSK_HEADER_CONTROL_HEIGHT, s) / 2,
+            width: control,
+            height: control,
+            borderRadius: radius,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: `${config.primaryColor}14`,
-            borderWidth: 1,
-            borderColor: `${config.primaryColor}26`,
+            borderWidth: KIOSK_HAIRLINE,
+            borderColor: t.outlineStrong,
           }}
         >
-          <Search size={kioskPx(24, s)} color={config.primaryColor} />
+          <Search size={kioskPx(22, s)} color={t.text} strokeWidth={1.75} />
         </KioskPressable>
       ) : null}
-
-      <KioskPressable
-        onPress={onStartOver}
-        pressedScale={0.93}
-        accessibilityRole="button"
-        accessibilityLabel={kioskStrings.startOver}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: kioskPx(8, s),
-          height: kioskPx(KIOSK_HEADER_CONTROL_HEIGHT, s),
-          paddingHorizontal: kioskPx(18, s),
-          borderRadius: 999,
-          borderWidth: 1.5,
-          borderColor: `${config.textColor}26`,
-        }}
-      >
-        <RotateCcw size={kioskPx(20, s)} color={config.textColor} />
-        <Text
-          style={{
-            fontSize: kioskPx(17, s),
-            fontWeight: "600",
-            color: config.textColor,
-          }}
-        >
-          {kioskStrings.startOver}
-        </Text>
-      </KioskPressable>
 
       {cart ? (
         <KioskHeaderCartPill

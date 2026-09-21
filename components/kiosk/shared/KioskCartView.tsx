@@ -1,4 +1,10 @@
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import {
+  kioskFont,
+  kioskRadius,
+  useKioskTheme,
+  type KioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
@@ -68,6 +74,7 @@ export function KioskCartView({
   onCheckout: () => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const lines = useKioskCartStore((s) => s.lines);
   const subtotal = useKioskCartStore((s) => s.subtotal());
   const incQuantity = useKioskCartStore((s) => s.incQuantity);
@@ -84,8 +91,8 @@ export function KioskCartView({
   const estTax = subtotal * (taxRatePct / 100);
   const estTotal = subtotal + estTax;
 
-  const muted = `${config.textColor}99`;
-  const faint = `${config.textColor}12`;
+  const muted = t.textMuted;
+  const faint = t.outline;
   const itemCount = lines.reduce((n, l) => n + l.quantity, 0);
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -124,13 +131,13 @@ export function KioskCartView({
           backgroundColor: faint,
         }}
       >
-        <ChevronLeft size={kioskPx(30, s)} color={config.textColor} />
+        <ChevronLeft size={kioskPx(30, s)} color={t.text} />
       </KioskPressable>
       <Text
         style={{
           fontSize: kioskPx(30, s),
-          fontWeight: "800",
-          color: config.textColor,
+          ...kioskFont(t, "bold"),
+          color: t.text,
         }}
       >
         Your Order
@@ -140,7 +147,7 @@ export function KioskCartView({
           layout={LinearTransition.duration(180)}
           style={{
             fontSize: kioskPx(18, s),
-            fontWeight: "600",
+            ...kioskFont(t, "regular"),
             color: muted,
           }}
         >
@@ -188,27 +195,30 @@ export function KioskCartView({
   const summaryRows = (
     <>
       <SummaryRow
+        theme={t}
         label="Subtotal"
         value={subtotal}
         muted={muted}
-        color={config.textColor}
+        color={t.text}
       />
       {taxRatePct > 0 && (
         <SummaryRow
+        theme={t}
           label={`Tax (${taxRatePct}%)`}
           value={estTax}
           muted={muted}
-          color={config.textColor}
+          color={t.text}
         />
       )}
       {/* Stronger than `faint` so it still reads inside the landscape summary
           card, whose fill is `faint`. */}
-      <View style={{ height: 1, backgroundColor: `${config.textColor}22` }} />
+      <View style={{ height: 1, backgroundColor: t.outlineStrong }} />
       <SummaryRow
+        theme={t}
         label="Total"
         value={estTotal}
         muted={muted}
-        color={config.textColor}
+        color={t.text}
         emphasize
       />
     </>
@@ -224,8 +234,8 @@ export function KioskCartView({
         alignItems: "center",
         justifyContent: "center",
         marginTop: kioskPx(4, s),
-        backgroundColor: config.primaryColor,
-        shadowColor: config.primaryColor,
+        backgroundColor: t.primary,
+        shadowColor: t.primary,
         shadowOpacity: 0.35,
         shadowRadius: 14,
         shadowOffset: { width: 0, height: 6 },
@@ -235,9 +245,9 @@ export function KioskCartView({
       <Animated.Text
         layout={LinearTransition.duration(180)}
         style={{
-          color: "#FFFFFF",
+          color: t.onPrimary,
           fontSize: kioskPx(22, s),
-          fontWeight: "800",
+          ...kioskFont(t, "bold"),
         }}
       >
         Checkout · ${estTotal.toFixed(2)}
@@ -249,7 +259,7 @@ export function KioskCartView({
   // zeroes next to a dead Checkout button reads as broken, not as a layout.
   if (lines.length === 0) {
     return (
-      <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+      <View className="flex-1" style={{ backgroundColor: t.page }}>
         {header}
         <EmptyCart config={config} onBack={onBack} muted={muted} />
       </View>
@@ -261,7 +271,7 @@ export function KioskCartView({
     return (
       <View
         className="flex-1"
-        style={{ backgroundColor: config.backgroundColor }}
+        style={{ backgroundColor: t.page }}
       >
         <View style={{ flex: 1, flexDirection: "row" }}>
           <View style={{ flex: LIST_PANE_FLEX }}>
@@ -280,15 +290,15 @@ export function KioskCartView({
               paddingVertical: kioskPx(24, s),
               borderLeftWidth: 1,
               borderLeftColor: faint,
-              backgroundColor: `${config.primaryColor}06`,
+              backgroundColor: `${t.primary}06`,
             }}
           >
             <View style={{ gap: kioskPx(16, s) }}>
               <Text
                 style={{
                   fontSize: kioskPx(24, s),
-                  fontWeight: "800",
-                  color: config.textColor,
+                  ...kioskFont(t, "bold"),
+                  color: t.text,
                   textAlign: "center",
                 }}
               >
@@ -314,7 +324,7 @@ export function KioskCartView({
 
   // ─── Portrait: single column, totals pinned at the foot ──────────
   return (
-    <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+    <View className="flex-1" style={{ backgroundColor: t.page }}>
       {header}
       {list}
 
@@ -325,12 +335,7 @@ export function KioskCartView({
           paddingBottom: kioskPx(22, s),
           borderTopWidth: 1,
           borderTopColor: faint,
-          backgroundColor: config.backgroundColor,
-          shadowColor: "#000",
-          shadowOpacity: 0.08,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: -4 },
-          elevation: 12,
+          backgroundColor: t.page,
           gap: kioskPx(14, s),
         }}
       >
@@ -364,6 +369,7 @@ function CartLineRow({
   onRemove: () => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const imageSource = resolveMenuItemImageSource(line.image);
   // Build a minimal item-like object for the fallback icon heuristic.
   const PlaceholderIcon = getMenuItemPlaceholderIcon(
@@ -384,9 +390,7 @@ function CartLineRow({
   return (
     <Animated.View
       entering={FadeInDown.delay(Math.min(index, 8) * 35)
-        .duration(280)
-        .springify()
-        .damping(18)}
+        .duration(280)}
       exiting={FadeOutRight.duration(200)}
       layout={LinearTransition.duration(220)}
       style={{
@@ -397,12 +401,7 @@ function CartLineRow({
         borderRadius: kioskPx(22, s),
         borderWidth: 1,
         borderColor: faint,
-        backgroundColor: config.backgroundColor,
-        shadowColor: "#000",
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 1,
+        backgroundColor: t.page,
       }}
     >
       {/* Thumb */}
@@ -412,7 +411,7 @@ function CartLineRow({
           height: thumb,
           borderRadius: kioskPx(18, s),
           overflow: "hidden",
-          backgroundColor: `${config.primaryColor}10`,
+          backgroundColor: `${t.primary}10`,
           alignItems: "center",
           justifyContent: "center",
         }}
@@ -425,7 +424,7 @@ function CartLineRow({
           />
         ) : (
           <PlaceholderIcon
-            color={`${config.textColor}40`}
+            color={t.textFaint}
             size={thumb * 0.42}
           />
         )}
@@ -443,9 +442,9 @@ function CartLineRow({
             <Text
               style={{
                 fontSize: kioskPx(21, s),
-                fontWeight: "700",
+                ...kioskFont(t, "bold"),
                 lineHeight: kioskPx(27, s),
-                color: config.textColor,
+                color: t.text,
               }}
               numberOfLines={2}
             >
@@ -466,17 +465,27 @@ function CartLineRow({
               </Text>
             ) : null}
 
-            {line.quantity > 1 && (
-              <Text
-                style={{
-                  fontSize: kioskPx(15, s),
-                  color: muted,
-                  marginTop: kioskPx(4, s),
-                }}
-              >
-                ${unit.toFixed(2)} each
-              </Text>
-            )}
+            {/* Always in the layout, shown only past one. Mounting it on
+                demand made the row grow a line the moment "+" was pressed —
+                the customer's own tap visibly pushed everything under it
+                down. The space is reserved from the start; only its
+                visibility changes. */}
+            <Text
+              style={{
+                fontSize: kioskPx(15, s),
+                lineHeight: kioskPx(20, s),
+                color: muted,
+                marginTop: kioskPx(4, s),
+                opacity: line.quantity > 1 ? 1 : 0,
+                ...kioskFont(t, "regular"),
+              }}
+              accessibilityElementsHidden={line.quantity <= 1}
+              importantForAccessibility={
+                line.quantity > 1 ? "auto" : "no-hide-descendants"
+              }
+            >
+              ${unit.toFixed(2)} each
+            </Text>
           </View>
 
           {/* Qty */}
@@ -487,14 +496,14 @@ function CartLineRow({
               alignItems: "center",
               gap: kioskPx(8, s),
               paddingHorizontal: kioskPx(6, s),
-              borderRadius: 999,
+              borderRadius: kioskPx(kioskRadius.md, s),
               borderWidth: 1.5,
               borderColor: faint,
             }}
           >
             <QtyButton
               scale={s}
-              color={config.textColor}
+              color={t.text}
               Icon={Minus}
               onPress={onDec}
             />
@@ -502,8 +511,8 @@ function CartLineRow({
               layout={LinearTransition.duration(160)}
               style={{
                 fontSize: kioskPx(20, s),
-                fontWeight: "800",
-                color: config.textColor,
+                ...kioskFont(t, "bold"),
+                color: t.text,
                 minWidth: kioskPx(26, s),
                 textAlign: "center",
               }}
@@ -512,7 +521,7 @@ function CartLineRow({
             </Animated.Text>
             <QtyButton
               scale={s}
-              color={config.textColor}
+              color={t.text}
               Icon={Plus}
               onPress={onInc}
             />
@@ -531,8 +540,8 @@ function CartLineRow({
             layout={LinearTransition.duration(180)}
             style={{
               fontSize: kioskPx(21, s),
-              fontWeight: "800",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
             }}
           >
             ${total.toFixed(2)}
@@ -548,15 +557,15 @@ function CartLineRow({
               gap: kioskPx(8, s),
               paddingHorizontal: kioskPx(12, s),
               height: kioskPx(46, s),
-              borderRadius: 999,
-              backgroundColor: config.backgroundColor,
+              borderRadius: kioskPx(kioskRadius.md, s),
+              backgroundColor: t.page,
             }}
           >
             <Trash2 size={kioskPx(21, s)} color="#EF4444" />
             <Text
               style={{
                 fontSize: kioskPx(16, s),
-                fontWeight: "700",
+                ...kioskFont(t, "bold"),
                 color: "#EF4444",
               }}
             >
@@ -608,6 +617,7 @@ function EmptyCart({
   muted: string;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   return (
     <Animated.View
       entering={FadeIn.duration(240)}
@@ -615,12 +625,12 @@ function EmptyCart({
       className="flex-1 items-center justify-center px-10"
       style={{ gap: kioskPx(20, s) }}
     >
-      <ShoppingCart size={kioskPx(84, s)} color={`${config.textColor}30`} />
+      <ShoppingCart size={kioskPx(84, s)} color={`${t.text}30`} />
       <Text
         style={{
           fontSize: kioskPx(26, s),
-          fontWeight: "700",
-          color: config.textColor,
+          ...kioskFont(t, "bold"),
+          color: t.text,
         }}
       >
         Your cart is empty
@@ -638,14 +648,14 @@ function EmptyCart({
           paddingHorizontal: kioskPx(32, s),
           paddingVertical: kioskPx(18, s),
           borderRadius: kioskPx(18, s),
-          backgroundColor: config.primaryColor,
+          backgroundColor: t.primary,
         }}
       >
         <Text
           style={{
-            color: "#FFFFFF",
+            color: t.onPrimary,
             fontSize: kioskPx(19, s),
-            fontWeight: "700",
+            ...kioskFont(t, "bold"),
           }}
         >
           Browse Menu
@@ -661,12 +671,15 @@ function SummaryRow({
   muted,
   color,
   emphasize,
+  theme: t,
 }: {
   label: string;
   value: number;
   muted: string;
   color: string;
   emphasize?: boolean;
+  /** Passed in rather than derived: this row has no `config` of its own. */
+  theme: KioskTheme;
 }) {
   const s = useKioskUiScale();
   return (
@@ -681,7 +694,7 @@ function SummaryRow({
         style={{
           fontSize: kioskPx(emphasize ? 22 : 17, s),
           color: emphasize ? color : muted,
-          fontWeight: emphasize ? "800" : "500",
+          ...kioskFont(t, emphasize ? "bold" : "regular"),
         }}
       >
         {label}
@@ -690,7 +703,7 @@ function SummaryRow({
         layout={LinearTransition.duration(180)}
         style={{
           fontSize: kioskPx(emphasize ? 26 : 17, s),
-          fontWeight: emphasize ? "800" : "600",
+          ...kioskFont(t, emphasize ? "bold" : "regular"),
           color,
         }}
       >

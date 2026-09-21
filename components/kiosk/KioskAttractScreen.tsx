@@ -1,4 +1,7 @@
 import { KioskSecretAccessCorner } from "@/components/kiosk/shared/KioskSecretAccessCorner";
+import {
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import { kioskIdleImages, kioskIdleVideo, type KioskConfig } from "@/types/kiosk";
 import { Image } from "expo-image";
@@ -32,12 +35,13 @@ export function KioskAttractScreen({
   /** Opens the manager-PIN-gated kiosk settings (via the secret corner). */
   onLogoLongPress?: () => void;
 }) {
+  const t = useKioskTheme(config);
   const idleImages = kioskIdleImages(config);
   const idleVideo = kioskIdleVideo(config);
   const hasCarousel = idleImages.length > 0 || !!idleVideo;
 
   return (
-    <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+    <View className="flex-1" style={{ backgroundColor: t.page }}>
       {/* Tap-anywhere-to-start underlay. */}
       <Pressable
         onPress={onStart}
@@ -75,8 +79,8 @@ export function KioskAttractScreen({
 
           <Pressable
             onPress={onStart}
-            className="mt-10 px-10 py-4 rounded-full"
-            style={{ backgroundColor: config.primaryColor }}
+            className="mt-10 px-10 py-4 rounded-2xl"
+            style={{ backgroundColor: t.primary }}
           >
             <Text className="text-white text-xl font-semibold">
               Tap anywhere to start
