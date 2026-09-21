@@ -1,27 +1,33 @@
 import { colors } from "@/lib/theme";
+import { X } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
 import { Animated, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { metrics, tint } from "../lib/tokens";
+import { type } from "../lib/type";
+import { IconButton } from "./IconButton";
 
 /** Slide-in duration. Well under the 150 ms open budget. */
 const OPEN_MS = 120;
 
 /**
- * Bottom-anchored sheet on a plain RN Modal: no gesture handler, no reanimated
- * worklets, so it is cheap to mount on a 2GB device. Opens with a 120 ms
- * native-driver slide; closes instantly. `footer` is for a StickyActionBar,
- * which then sits in the thumb zone above the safe-area inset.
+ * The artifact's `.sheet`: panel colour, 28dp top radius, a grab handle, a
+ * 24/600 title with a 15dp description and a 48dp close button, then the
+ * body. On a plain RN Modal — no gesture handler or reanimated worklets, so
+ * it is cheap on a 2GB device. Opens with a 120 ms native-driver slide.
  */
 export function BottomSheet({
   visible,
   onClose,
   title,
+  subtitle,
   children,
   footer,
 }: {
   visible: boolean;
   onClose: () => void;
   title?: string;
+  subtitle?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
@@ -57,7 +63,7 @@ export function BottomSheet({
       <View className="flex-1 justify-end">
         <Animated.View
           className="absolute inset-0"
-          style={{ backgroundColor: "rgba(0,0,0,0.5)", opacity: progress }}
+          style={{ backgroundColor: tint.scrim, opacity: progress }}
         >
           <Pressable
             className="flex-1"
@@ -67,29 +73,40 @@ export function BottomSheet({
           />
         </Animated.View>
         <Animated.View
-          className="rounded-t-2xl"
           style={{
-            maxHeight: "85%",
+            maxHeight: "88%",
             backgroundColor: colors.panel,
+            borderTopLeftRadius: metrics.sheetRadius,
+            borderTopRightRadius: metrics.sheetRadius,
             paddingBottom: insets.bottom,
             transform: [{ translateY }],
           }}
         >
-          <View className="items-center pb-1 pt-2">
+          <View className="items-center pb-1 pt-3.5">
             <View
-              className="h-1 w-10 rounded-full"
-              style={{ backgroundColor: colors.border }}
+              className="h-1 w-9 rounded-full"
+              style={{ backgroundColor: colors.muted, opacity: 0.7 }}
             />
           </View>
           {title ? (
-            <View className="min-h-12 justify-center px-4 pb-2">
-              <Text
-                className="text-lg font-bold"
-                style={{ color: colors.heading }}
-                numberOfLines={1}
-              >
-                {title}
-              </Text>
+            <View className="flex-row items-start gap-2 pb-4 pl-5 pr-2 pt-2.5">
+              <View className="min-w-0 flex-1 pt-1">
+                <Text style={[type.sheetTitle, { color: colors.heading }]} numberOfLines={2}>
+                  {title}
+                </Text>
+                {subtitle ? (
+                  <Text
+                    className="mt-1"
+                    style={[type.sheetDesc, { color: colors.label }]}
+                    numberOfLines={1}
+                  >
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </View>
+              <IconButton label="Close" onPress={onClose}>
+                <X size={24} color={colors.heading} />
+              </IconButton>
             </View>
           ) : null}
           <ScrollView className="shrink" bounces={false}>

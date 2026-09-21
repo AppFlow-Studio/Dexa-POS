@@ -1,47 +1,51 @@
+import { colors } from "@/lib/theme";
 import React, { useCallback } from "react";
-import { formatElapsed, minutesSince } from "../../lib/format";
-import { tableStatusColor, tableStatusLabel } from "../../lib/tableStatus";
+import { useOrderByDbId } from "../../hooks/useOrderByDbId";
+import { formatCurrency, formatElapsed } from "../../lib/format";
+import { tableStatusLabel, tableTint } from "../../lib/tableStatus";
 import { ListRow } from "../../primitives";
-import { useTableLive } from "./useTableLive";
-
-function guestsLabel(count: number | undefined): string {
-  if (!count) return "";
-  return count === 1 ? "1 guest" : `${count} guests`;
-}
+import type { TableRowData } from "./useTableRows";
 
 /**
- * One Tables row. Props are primitives plus a stable callback, so the
- * FlashList can recycle it; the live session comes from its own selector.
+ * One Tables row: the table number in a status-tinted tile, "Status · time"
+ * (time in warning colour when overtime, "seats N" when free) and the linked
+ * check's total. Props are primitives plus a stable callback; only the total
+ * is a live subscription, scoped to this table's own order.
  */
 export const TableRow = React.memo(function TableRow({
   id,
-  name,
-  now,
+  title,
+  tileLabel,
+  status,
+  capacity,
+  minutes,
+  overtime,
+  orderDbId,
+  divider,
   onPress,
-}: {
-  id: string;
-  name: string;
-  now: number;
-  onPress: (tableId: string) => void;
-}) {
-  const { session, serverName } = useTableLive(id);
-  const status = session?.status ?? "available";
-  const elapsed = formatElapsed(minutesSince(session?.seated_at, now));
-  const subtitle = [tableStatusLabel(status), guestsLabel(session?.party_size)]
-    .filter(Boolean)
-    .join(" · ");
-
+}: TableRowData & { divider: boolean; onPress: (tableId: string) => void }) {
+  const total = useOrderByDbId(orderDbId)?.total_amount;
   const handlePress = useCallback(() => onPress(id), [onPress, id]);
+
+  const free = minutes === null;
+  const detail = free
+    ? capacity
+      ? `${tableStatusLabel(status)} · seats ${capacity}`
+      : tableStatusLabel(status)
+    : `${tableStatusLabel(status)} · `;
+  const accent = free
+    ? undefined
+    : { text: formatElapsed(minutes), color: overtime ? colors.warning : colors.label };
 
   return (
     <ListRow
-      title={name}
-      subtitle={subtitle}
-      value={elapsed || undefined}
-      meta={serverName ?? undefined}
-      dotColor={tableStatusColor(status)}
+      tile={{ label: tileLabel, ...tableTint(status, overtime) }}
+      title={title}
+      detail={detail}
+      detailAccent={accent}
+      value={total !== undefined ? formatCurrency(total) : undefined}
+      divider={divider}
       onPress={handlePress}
-      chevron
     />
   );
 });

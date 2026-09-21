@@ -1,10 +1,15 @@
 import { colors } from "@/lib/theme";
 import React from "react";
 import { Text, View } from "react-native";
+import { OfflineBanner } from "../components/OfflineBanner";
+import { metrics } from "../lib/tokens";
+import { type } from "../lib/type";
 
 /**
- * Page frame: a title row (with an optional right slot) over a flex body.
- * Flex + dp utilities only; nothing here has a fixed width.
+ * Root header from the artifact (`.top`): 80dp, a 30/700 title with a 14dp
+ * subtitle under it, and a right slot for the avatar / icon buttons. The
+ * offline card sits directly under it, where the artifact draws it. Flex
+ * only; the height is a minimum so font scale 1.3 still fits two lines.
  */
 export function Screen({
   title,
@@ -19,27 +24,27 @@ export function Screen({
 }) {
   return (
     <View className="flex-1" style={{ backgroundColor: colors.screen }}>
-      <View className="min-h-14 flex-row items-end justify-between px-4 pb-2 pt-3">
+      <View
+        className="flex-row items-center pl-4 pr-3"
+        style={{ minHeight: metrics.header }}
+      >
         <View className="min-w-0 flex-1">
-          <Text
-            className="text-2xl font-bold"
-            style={{ color: colors.heading }}
-            numberOfLines={1}
-          >
+          <Text style={[type.title, { color: colors.heading }]} numberOfLines={1}>
             {title}
           </Text>
           {subtitle ? (
             <Text
-              className="text-sm"
-              style={{ color: colors.muted }}
+              className="mt-0.5"
+              style={[type.detail, { color: colors.label }]}
               numberOfLines={1}
             >
               {subtitle}
             </Text>
           ) : null}
         </View>
-        {right ? <View className="ml-3">{right}</View> : null}
+        {right ? <View className="flex-row items-center gap-1">{right}</View> : null}
       </View>
+      <OfflineBanner />
       <View className="flex-1">{children}</View>
     </View>
   );

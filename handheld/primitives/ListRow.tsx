@@ -1,44 +1,67 @@
 import { colors } from "@/lib/theme";
-import { ChevronRight } from "lucide-react-native";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { metrics, tint, type Tint } from "../lib/tokens";
+import { type } from "../lib/type";
+
+export interface RowTile extends Tint {
+  /** Short text in the tile (a table number). Ignored when `icon` is set. */
+  label?: string;
+  /** A 24dp icon in the tile (order type). */
+  icon?: React.ReactNode;
+}
 
 export interface ListRowProps {
+  tile?: RowTile;
   title: string;
-  subtitle?: string;
-  /** Right-aligned primary value (a total, a count, a status word). */
+  /** Detail line, e.g. "Served · ". `detailAccent` is appended in colour. */
+  detail?: string;
+  detailAccent?: { text: string; color: string };
+  /** Right-aligned value (a total). Ignored when `right` is set. */
   value?: string;
-  /** Right-aligned secondary line under `value`. */
-  meta?: string;
-  /** Status dot colour (a theme colour string). */
-  dotColor?: string;
-  /** Small pill after the title. */
-  badge?: string;
-  /** Solid pill background; omit for a neutral pill. */
-  badgeColor?: string;
+  right?: React.ReactNode;
+  selected?: boolean;
+  /** Draw the inset top divider (every row but the first in a group). */
+  divider?: boolean;
   onPress?: () => void;
-  chevron?: boolean;
   testID?: string;
 }
 
-const TABULAR = { fontVariant: ["tabular-nums" as const] };
+function Tile({ label, icon, bg, fg }: RowTile) {
+  return (
+    <View
+      className="items-center justify-center"
+      style={{
+        width: metrics.tile,
+        height: metrics.tile,
+        borderRadius: metrics.tileRadius,
+        backgroundColor: bg,
+      }}
+    >
+      {icon ?? (
+        <Text style={[type.tile, { color: fg }]} numberOfLines={1}>
+          {label}
+        </Text>
+      )}
+    </View>
+  );
+}
 
 /**
- * One list row, at least 64dp tall so it clears the 48dp touch target with
- * room for a two-line left column at font scale 1.3. Memoised: parents pass
- * primitives and a stable `onPress`, so an unrelated store change never
- * re-renders it.
+ * The artifact's `.row`: 76dp, a 48dp tile, title + detail, value on the
+ * right, inset divider. Memoised — parents pass primitives and a stable
+ * `onPress`, so an unrelated store change never re-renders a row.
  */
 export const ListRow = React.memo(function ListRow({
+  tile,
   title,
-  subtitle,
+  detail,
+  detailAccent,
   value,
-  meta,
-  dotColor,
-  badge,
-  badgeColor,
+  right,
+  selected = false,
+  divider = false,
   onPress,
-  chevron = false,
   testID,
 }: ListRowProps) {
   const interactive = !!onPress;
@@ -47,80 +70,56 @@ export const ListRow = React.memo(function ListRow({
       testID={testID}
       onPress={onPress}
       disabled={!interactive}
-      android_ripple={interactive ? { color: colors.tealMuted } : undefined}
+      android_ripple={interactive ? { color: tint.accentSoft } : undefined}
       accessibilityRole={interactive ? "button" : undefined}
-      className="min-h-16 flex-row items-center px-4 py-2"
+      className="flex-row items-center"
       style={{
-        backgroundColor: colors.screen,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: colors.border,
+        minHeight: metrics.row,
+        paddingHorizontal: metrics.px,
+        paddingVertical: 8,
+        gap: metrics.gap,
+        backgroundColor: selected ? tint.selectedRow : "transparent",
       }}
     >
-      {dotColor ? (
+      {divider && !selected ? (
         <View
-          className="mr-3 h-3 w-3 rounded-full"
-          style={{ backgroundColor: dotColor }}
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: tile ? metrics.dividerInset : metrics.px,
+            right: metrics.px,
+            height: 1,
+            backgroundColor: tint.divider,
+          }}
         />
       ) : null}
+      {tile ? <Tile {...tile} /> : null}
       <View className="min-w-0 flex-1">
-        <View className="flex-row items-center">
+        <Text style={[type.row, { color: colors.heading }]} numberOfLines={1}>
+          {title}
+        </Text>
+        {detail || detailAccent ? (
           <Text
-            className="shrink text-base font-semibold"
-            style={{ color: colors.heading }}
+            className="mt-0.5"
+            style={[type.detail, { color: colors.label }]}
             numberOfLines={1}
           >
-            {title}
-          </Text>
-          {badge ? (
-            <View
-              className="ml-2 rounded-full px-2 py-0.5"
-              style={{ backgroundColor: badgeColor ?? colors.inset }}
-            >
-              <Text
-                className="text-xs font-semibold"
-                style={{ color: badgeColor ? colors.onSolid : colors.label }}
-                numberOfLines={1}
-              >
-                {badge}
+            {detail}
+            {detailAccent ? (
+              <Text style={[type.label, { color: detailAccent.color }]}>
+                {detailAccent.text}
               </Text>
-            </View>
-          ) : null}
-        </View>
-        {subtitle ? (
-          <Text
-            className="mt-0.5 text-sm"
-            style={{ color: colors.muted }}
-            numberOfLines={1}
-          >
-            {subtitle}
+            ) : null}
           </Text>
         ) : null}
       </View>
-      {value || meta ? (
-        <View className="ml-3 items-end">
-          {value ? (
-            <Text
-              className="text-base font-semibold"
-              style={[{ color: colors.heading }, TABULAR]}
-              numberOfLines={1}
-            >
-              {value}
-            </Text>
-          ) : null}
-          {meta ? (
-            <Text
-              className="mt-0.5 text-xs"
-              style={[{ color: colors.muted }, TABULAR]}
-              numberOfLines={1}
-            >
-              {meta}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
-      {chevron && interactive ? (
-        <ChevronRight size={18} color={colors.muted} style={{ marginLeft: 8 }} />
-      ) : null}
+      {right ??
+        (value ? (
+          <Text style={[type.value, { color: colors.heading }]} numberOfLines={1}>
+            {value}
+          </Text>
+        ) : null)}
     </Pressable>
   );
 });

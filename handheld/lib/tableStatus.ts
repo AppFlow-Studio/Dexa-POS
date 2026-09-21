@@ -1,8 +1,8 @@
-import { colors } from "@/lib/theme";
 import type { TableStatus } from "@/types/db-floor-plan-types";
+import { neutralTint, TABLE_TINT, type Tint } from "./tokens";
 
 /** Statuses that count a table as occupied in the header summary. */
-export const ACTIVE_TABLE_STATUSES: ReadonlySet<TableStatus> = new Set<TableStatus>([
+export const IN_USE_STATUSES: ReadonlySet<TableStatus> = new Set<TableStatus>([
   "seating",
   "seated",
   "ordering",
@@ -11,6 +11,7 @@ export const ACTIVE_TABLE_STATUSES: ReadonlySet<TableStatus> = new Set<TableStat
   "check_presented",
   "paying",
   "paid",
+  "closing",
 ]);
 
 /** Same ordering TablesPanel uses for its "status" sort; unknowns sink. */
@@ -56,37 +57,40 @@ export function tableStatusLabel(status: TableStatus): string {
   return STATUS_LABEL[status] ?? status;
 }
 
-/** Theme colour for the status dot; resolved lazily because `colors` is theme-aware. */
-export function tableStatusColor(status: TableStatus): string {
+/** The artifact's six table tints, keyed by status; overtime wins. */
+export function tableTint(status: TableStatus, overtime: boolean): Tint {
+  if (overtime) return TABLE_TINT.over;
   switch (status) {
     case "available":
-      return colors.tableAvailable;
-    case "seating":
-      return colors.tableSeating;
-    case "seated":
-      return colors.tableSeated;
-    case "ordering":
-      return colors.tableOrdering;
-    case "ordered":
-      return colors.tableOrdered;
-    case "served":
-      return colors.tableServed;
-    case "check_presented":
-      return colors.tableCheckPresented;
-    case "paying":
-      return colors.tablePaying;
-    case "paid":
-      return colors.tablePaid;
-    case "closing":
-      return colors.tableClosing;
-    case "cleaning":
-      return colors.tableCleaning;
-    case "blocked":
-    case "not_in_service":
-      return colors.tableNotInService;
+      return TABLE_TINT.available;
     case "reserved":
-      return colors.tableInUse;
+    case "seating":
+    case "seated":
+      return TABLE_TINT.seated;
+    case "ordering":
+    case "ordered":
+    case "served":
+      return TABLE_TINT.ordered;
+    case "check_presented":
+    case "paying":
+      return TABLE_TINT.check;
+    case "paid":
+    case "closing":
+      return TABLE_TINT.paid;
     default:
-      return colors.muted;
+      return neutralTint();
   }
+}
+
+/**
+ * "Needs you": the artifact pins these above the section. Check presented,
+ * anything the backend flagged, and overtime (past the location's default
+ * sitting time, the same rule useTableCardData applies on the register).
+ */
+export function tableNeedsYou(
+  status: TableStatus,
+  flagged: boolean,
+  overtime: boolean,
+): boolean {
+  return flagged || overtime || status === "check_presented";
 }

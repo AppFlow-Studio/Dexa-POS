@@ -1,67 +1,40 @@
 import { colors } from "@/lib/theme";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { type } from "../lib/type";
+import { Button, type ButtonProps } from "./Button";
 
-export interface StickyAction {
-  label: string;
-  onPress: () => void;
-  variant?: "primary" | "secondary" | "danger";
-  disabled?: boolean;
-  testID?: string;
-}
-
-function backgroundFor(variant: StickyAction["variant"], disabled: boolean) {
-  if (disabled) return colors.inset;
-  if (variant === "danger") return colors.danger;
-  if (variant === "secondary") return colors.card;
-  return colors.teal;
-}
-
-function foregroundFor(variant: StickyAction["variant"], disabled: boolean) {
-  if (disabled) return colors.muted;
-  return variant === "secondary" ? colors.heading : colors.onSolid;
-}
+export type StickyAction = ButtonProps;
 
 /**
- * Bottom-pinned action row. Buttons split the width evenly and are at least
- * 48dp tall, so the primary action always sits in the thumb zone. The bottom
- * safe-area inset is the container's job (HandheldRoot's SafeAreaView already
- * applies it; BottomSheet pads its own panel).
+ * The artifact's `.bb`: buttons in a row (or stacked with `column`), 10dp
+ * apart, 16dp side padding, with an optional centred hint under them. Sits
+ * in the thumb zone; the bottom safe-area inset is the container's job.
  */
-export function StickyActionBar({ actions }: { actions: StickyAction[] }) {
+export function StickyActionBar({
+  actions,
+  column = false,
+  hint,
+}: {
+  actions: StickyAction[];
+  column?: boolean;
+  hint?: string;
+}) {
   return (
-    <View
-      className="flex-row gap-3 px-4 py-3"
-      style={{
-        backgroundColor: colors.panel,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: colors.border,
-      }}
-    >
-      {actions.map((a) => {
-        const disabled = !!a.disabled;
-        return (
-          <Pressable
-            key={a.label}
-            testID={a.testID}
-            onPress={a.onPress}
-            disabled={disabled}
-            accessibilityRole="button"
-            accessibilityState={{ disabled }}
-            android_ripple={{ color: colors.tealMuted }}
-            className="min-h-12 flex-1 items-center justify-center rounded-xl px-4"
-            style={{ backgroundColor: backgroundFor(a.variant, disabled) }}
-          >
-            <Text
-              className="text-base font-semibold"
-              style={{ color: foregroundFor(a.variant, disabled) }}
-              numberOfLines={1}
-            >
-              {a.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+    <View className="px-4 pb-3 pt-3">
+      <View className={column ? "gap-1.5" : "flex-row gap-2.5"}>
+        {actions.map((a) => (
+          <Button key={a.label} {...a} fit={column ? false : a.fit} />
+        ))}
+      </View>
+      {hint ? (
+        <Text
+          className="mt-1.5 text-center"
+          style={[type.hint, { color: colors.muted }]}
+        >
+          {hint}
+        </Text>
+      ) : null}
     </View>
   );
 }

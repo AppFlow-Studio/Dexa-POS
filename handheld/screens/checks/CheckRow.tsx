@@ -1,43 +1,65 @@
 import { colors } from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { ShoppingBag, Truck, Utensils, type LucideIcon } from "lucide-react-native";
 import React, { useCallback } from "react";
-import { formatCurrency, formatElapsed, minutesSince } from "../../lib/format";
-import { checkNumber, checkPlace, itemCountLabel } from "../../lib/openChecks";
+import {
+  checkTitle,
+  kitchenState,
+  orderKind,
+  orderKindLabel,
+  orderKindTint,
+  type KitchenTone,
+  type OrderKind,
+} from "../../lib/checks";
+import { formatCurrency } from "../../lib/format";
 import { ListRow } from "../../primitives";
 
+const KIND_ICON: Record<OrderKind, LucideIcon> = {
+  takeout: ShoppingBag,
+  dine_in: Utensils,
+  delivery: Truck,
+};
+
+function toneColor(tone: KitchenTone): string {
+  if (tone === "ok") return colors.success;
+  if (tone === "warn") return colors.warning;
+  return colors.label;
+}
+
 /**
- * One Checks row. Subscribes to its own profile only, so a broadcast that
- * touches a different order never re-renders it.
+ * One Checks row: order-type icon in a tinted tile, "#1045 · Ben K.",
+ * "Takeout · Not sent" with the kitchen state coloured, and the total.
+ * Subscribes to its own profile only.
  */
 export const CheckRow = React.memo(function CheckRow({
   orderId,
   now,
+  divider,
   onPress,
 }: {
   orderId: string;
   now: number;
+  divider: boolean;
   onPress: (orderId: string) => void;
 }) {
   const order = useOrderStore((s) => s.ordersById[orderId]);
   const handlePress = useCallback(() => onPress(orderId), [onPress, orderId]);
   if (!order) return null;
 
-  const partial = order.paid_status === "Partial";
-  const subtitle = [order.server_name, itemCountLabel(order)]
-    .filter(Boolean)
-    .join(" · ");
-  const age = formatElapsed(minutesSince(order.opened_at, now));
+  const kind = orderKind(order);
+  const Icon = KIND_ICON[kind];
+  const { fg, bg } = orderKindTint(kind);
+  const kitchen = kitchenState(order, now);
 
   return (
     <ListRow
-      title={checkNumber(order)}
-      badge={checkPlace(order) || undefined}
-      subtitle={subtitle}
+      tile={{ bg, fg, icon: <Icon size={24} color={fg} /> }}
+      title={checkTitle(order)}
+      detail={`${orderKindLabel(kind)} · `}
+      detailAccent={{ text: kitchen.label, color: toneColor(kitchen.tone) }}
       value={formatCurrency(order.total_amount ?? 0)}
-      meta={partial ? `Partial · ${age}` : age}
-      dotColor={partial ? colors.paymentPartial : undefined}
+      divider={divider}
       onPress={handlePress}
-      chevron
     />
   );
 });

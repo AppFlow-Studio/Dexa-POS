@@ -1047,12 +1047,16 @@ export default Sentry.wrap(function RootLayout() {
                               <SessionKickListenerProvider>
                                 <RemoteActionsProvider>
                                   <CFDProvider>
+                                    {/* Immersive on the register; a handheld
+                                        keeps the system status bar and the
+                                        gesture pill, as the Dexa Go artifact
+                                        draws it. */}
                                     <StatusBar
                                       style={"dark"}
                                       translucent
-                                      hidden={Platform.OS === "android"}
+                                      hidden={Platform.OS === "android" && !isHandheld}
                                     />
-                                    {Platform.OS === "android" && (
+                                    {Platform.OS === "android" && !isHandheld && (
                                       <SystemBars
                                         hidden={{
                                           navigationBar: true,

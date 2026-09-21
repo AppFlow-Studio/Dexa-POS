@@ -1,54 +1,65 @@
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { FlashList, type ListRenderItem } from "@shopify/flash-list";
 import React, { useCallback, useState } from "react";
+import { Avatar } from "../../components/Avatar";
 import { EmptyState } from "../../components/EmptyState";
 import { useMinuteTick } from "../../hooks/useMinuteTick";
+import { metrics } from "../../lib/tokens";
 import { Screen, SegmentedTabs, type SegmentedOption } from "../../primitives";
-import { CheckDetailSheet } from "./CheckDetailSheet";
 import { CheckRow } from "./CheckRow";
-import { useOpenChecks, type ChecksScope } from "./useOpenChecks";
-
-/** Row height hint for FlashList's first layout pass (dp). */
-const ESTIMATED_ROW_HEIGHT = 64;
+import { CheckSheet } from "./CheckSheet";
+import { useChecks, type ChecksScope } from "./useChecks";
 
 const keyExtractor = (orderId: string) => orderId;
 
-/** Artifact screen S1 — open checks, Mine / All. Read-only in this wave. */
+/** Artifact screen S1 — every open order. Read-only in this wave. */
 export function ChecksScreen() {
-  const [scope, setScope] = useState<ChecksScope>("mine");
-  const { mine, all } = useOpenChecks();
+  const [scope, setScope] = useState<ChecksScope>("open");
+  const { open, closed } = useChecks();
   const now = useMinuteTick();
+  const myName = useEmployeeStore((s) => s.loggedInEmployee?.displayName ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const closeSheet = useCallback(() => setSelectedId(null), []);
 
-  const options: readonly SegmentedOption<ChecksScope>[] = [
-    { value: "mine", label: "Mine", count: mine.length },
-    { value: "all", label: "All", count: all.length },
-  ];
-  const rows = scope === "mine" ? mine : all;
-
+  const rows = scope === "open" ? open : closed;
   const renderItem = useCallback<ListRenderItem<string>>(
-    ({ item }) => <CheckRow orderId={item} now={now} onPress={setSelectedId} />,
+    ({ item, index }) => (
+      <CheckRow orderId={item} now={now} divider={index > 0} onPress={setSelectedId} />
+    ),
     [now],
   );
 
+  const options: readonly SegmentedOption<ChecksScope>[] = [
+    { value: "open", label: "Open", count: open.length },
+    { value: "closed", label: "Closed", count: closed.length },
+  ];
+
   return (
-    <Screen title="Checks">
+    <Screen
+      title="Checks"
+      subtitle={`${open.length} open`}
+      right={myName ? <Avatar name={myName} /> : undefined}
+    >
       <SegmentedTabs value={scope} options={options} onChange={setScope} />
       {rows.length === 0 ? (
         <EmptyState
-          title={scope === "mine" ? "No open checks of yours" : "No open checks"}
-          hint={scope === "mine" ? "Switch to All to see the whole floor." : undefined}
+          title={scope === "open" ? "No open checks" : "No closed checks yet"}
+          hint={
+            scope === "open"
+              ? "Orders started on any station show up here."
+              : "Checks closed on this shift show up here."
+          }
         />
       ) : (
         <FlashList
           data={rows}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
-          estimatedItemSize={ESTIMATED_ROW_HEIGHT}
+          estimatedItemSize={metrics.row}
           extraData={now}
         />
       )}
-      <CheckDetailSheet orderId={selectedId} onClose={closeSheet} />
+      <CheckSheet orderId={selectedId} onClose={closeSheet} />
     </Screen>
   );
 }

@@ -65,6 +65,7 @@ Every gate reads `isHandheldStationType(selectedStation?.station_type)`.
 | Payment + refund journal check on launch | Skip. Nothing to recover until handheld takes payments; the payment ticket must lift this. | `app/_layout.tsx` boot task |
 | Five-minute staff refresh | Interval removed; the `pos.employees-refresh` resume task (foreground) keeps the same 5-minute staleness window. | `contexts/PosSyncProvider.tsx` |
 | Landscape lock | Skipped for handheld; `handheld/hooks/useHandheldOrientation.ts` locks PORTRAIT_UP. Native lock removal is Temur's Wave 0. | `app/_layout.tsx` |
+| Immersive system bars | Register hides status + navigation bars; handheld keeps both (the artifact shows the status bar and gesture pill). | `app/_layout.tsx` |
 | Realtime, card-reader detection, heartbeat, outbox, printer list | Kept, untouched. | — |
 
 Not on the ticket's list and therefore untouched: `isPOSMode` in the root
@@ -86,6 +87,46 @@ missed.
 - Offline banner: `useNetworkStatus().rawIsOnline` (not `isOnline`, so slow
   mode stays silent).
 - Totals: `utils/currency.formatCurrency` on the `NUMERIC(12,2)` dollar values.
+
+## Design mapping (artifact → code)
+
+The artifact (`claude.ai/artifact/8fc1165b-…`, "Dexa Go Handheld") is drawn
+dark at 360 × 720 dp with the app's own dark palette; `lib/theme-colors.js`
+already carries every solid token it uses, so the module builds on
+`colors.*` and adds only the translucent tints (`handheld/lib/tokens.ts`)
+and the type ramp (`handheld/lib/type.ts`).
+
+| Artifact | Code |
+| --- | --- |
+| `.top` header (80dp, 30/700 title, 14 subtitle, avatar) | `primitives/Screen.tsx`, `components/Avatar.tsx` |
+| `.segs` pill segments — **Mine / All** on Tables, **Open / Closed** on Checks | `primitives/SegmentedTabs.tsx` |
+| `.sub` "Needs you" / "Your section" | `components/SectionLabel.tsx`, grouping in `screens/tables/useTableRows.ts` |
+| `.row` 76dp + `.tb` 48dp tile + `.st-*` / `.ot-*` tints, inset divider | `primitives/ListRow.tsx`, tints in `lib/tokens.ts`, mapping in `lib/tableStatus.ts` / `lib/checks.ts` |
+| `.navb` 84dp bar, `.pi` 64×32 indicator, `.bd` badge | `components/TabBar.tsx`; badge = open checks the kitchen marked ready |
+| `.bb` / `.btn` (primary, tonal, soft, off, text, fit) 56dp pills | `primitives/Button.tsx`, `primitives/StickyActionBar.tsx` |
+| `.sheet` 28dp radius, grab handle, 24/600 title, close `.ib` | `primitives/BottomSheet.tsx`, `primitives/IconButton.tsx` |
+| `.card` / `.card-h` / `.ln` / `.sum` / `.chipx` / `.okd` / `.tag` | `components/check/*` |
+| `.bn` offline card under the header | `components/OfflineBanner.tsx` (rendered by `Screen`) |
+| `.kp` keypad (52dp keys, `.big` 64dp for the PIN pad) | `primitives/Keypad.tsx` |
+
+Rules taken from the artifact's copy and the register's own logic:
+
+- Overtime = minutes seated > `useSettingsStore.defaultSittingTimeMinutes`
+  (the rule `useTableCardData` applies on the register); overtime tiles use
+  `.st-over` and the elapsed time turns warning-coloured.
+- "Needs you" = overtime, `check_presented`, or `session.needs_attention`;
+  sorted longest-waiting first. The rest follow the register's status sort.
+- "Mine" on Tables = sessions whose `server_staff_id` is the signed-in
+  employee's `profileId`. "All" needs `view_scope = 'location'`.
+- Checks title = `display_number · customer_name | table name | "Counter"`;
+  detail = order type · kitchen state (`Not sent` warn, `Preparing 4m`,
+  `Ready` ok, `Served`).
+- Closed = `check_status === "Closed"` still held in the shared store; there
+  is no history fetch on the handheld (no new queries).
+- Header subtitle uses real data ("Main floor · 6 of 24 seated") because the
+  app has no daypart concept for the artifact's "Dinner · Main floor".
+- Tapping a row opens screen 5 / S3 as a **read-only** sheet (course cards,
+  line items, totals) with no footer actions until Wave 2.
 
 ## UI scale
 

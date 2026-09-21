@@ -4,10 +4,10 @@ import { vars } from "nativewind";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { OfflineBanner } from "./components/OfflineBanner";
 import { TabBar } from "./components/TabBar";
 import { useHandheldOrientation } from "./hooks/useHandheldOrientation";
 import { ChecksScreen } from "./screens/checks/ChecksScreen";
+import { useChecks } from "./screens/checks/useChecks";
 import { MeScreen } from "./screens/me/MeScreen";
 import { TablesScreen } from "./screens/tables/TablesScreen";
 import type { HandheldTab } from "./types";
@@ -32,14 +32,22 @@ function ActiveTab({ tab }: { tab: HandheldTab }) {
   }
 }
 
+/** The Checks tab badge: open checks the kitchen has marked ready. */
+function useTabBadges(): Partial<Record<HandheldTab, number>> {
+  const { needsYou } = useChecks();
+  return needsYou > 0 ? { checks: needsYou } : {};
+}
+
 /**
- * Dexa Go shell: offline banner, one active tab, bottom tab bar. Mounted by
+ * Dexa Go shell: one active tab over the bottom tab bar (each tab's Screen
+ * carries the header and the offline card, as the artifact draws them). Mounted by
  * app/(main)/handheld.tsx inside RegisterRuntime, so realtime, table sessions
  * and the payment sheet are already running above it. Inactive tabs unmount —
  * on a 2GB device that beats keeping three lists warm.
  */
 export default function HandheldRoot() {
   const [tab, setTab] = useState<HandheldTab>("tables");
+  const badges = useTabBadges();
   useHandheldOrientation();
 
   return (
@@ -50,11 +58,10 @@ export default function HandheldRoot() {
         style={{ backgroundColor: colors.screen }}
       >
         <StatusBar style="light" translucent />
-        <OfflineBanner />
         <View className="flex-1">
           <ActiveTab tab={tab} />
         </View>
-        <TabBar active={tab} onChange={setTab} />
+        <TabBar active={tab} badges={badges} onChange={setTab} />
       </SafeAreaView>
     </View>
   );

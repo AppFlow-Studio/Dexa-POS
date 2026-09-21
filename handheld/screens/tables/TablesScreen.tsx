@@ -1,57 +1,95 @@
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { FlashList, type ListRenderItem } from "@shopify/flash-list";
 import React, { useCallback, useMemo, useState } from "react";
+import { Avatar } from "../../components/Avatar";
 import { EmptyState } from "../../components/EmptyState";
+import { SectionLabel } from "../../components/SectionLabel";
 import { useMinuteTick } from "../../hooks/useMinuteTick";
-import { Screen } from "../../primitives";
-import { TableDetailSheet } from "./TableDetailSheet";
+import { metrics } from "../../lib/tokens";
+import { Screen, SegmentedTabs, type SegmentedOption } from "../../primitives";
 import { TableRow } from "./TableRow";
-import { useTableRows, type TableRowData } from "./useTableRows";
+import { TableSheet } from "./TableSheet";
+import { useTableRows, type TableRowData, type TablesScope } from "./useTableRows";
 
-/** Collapsed row height hint for FlashList's first layout pass (dp). */
-const ESTIMATED_ROW_HEIGHT = 64;
+type Item =
+  | { kind: "label"; key: string; text: string }
+  | { kind: "row"; key: string; row: TableRowData; divider: boolean };
 
-const keyExtractor = (row: TableRowData) => row.id;
+function toItems(label: string, rows: TableRowData[]): Item[] {
+  if (rows.length === 0) return [];
+  return [
+    { kind: "label", key: `label:${label}`, text: label },
+    ...rows.map<Item>((row, i) => ({ kind: "row", key: row.id, row, divider: i > 0 })),
+  ];
+}
 
-/** Artifact screen 1 — the Tables list. Read-only in this wave. */
+const keyExtractor = (item: Item) => item.key;
+const getItemType = (item: Item) => item.kind;
+
+/** Artifact screen 1 — Tables. Read-only in this wave. */
 export function TablesScreen() {
-  const { rows, occupied } = useTableRows();
+  const [scope, setScope] = useState<TablesScope>("mine");
   const now = useMinuteTick();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const rows = useTableRows(scope, now);
+  const myName = useEmployeeStore((s) => s.loggedInEmployee?.displayName ?? "");
+  const [selected, setSelected] = useState<TableRowData | null>(null);
+  const closeSheet = useCallback(() => setSelected(null), []);
 
-  const selectedName = useMemo(
-    () => rows.find((r) => r.id === selectedId)?.name ?? "",
-    [rows, selectedId],
+  const items = useMemo(
+    () => [
+      ...toItems("Needs you", rows.needsYou),
+      ...toItems(scope === "mine" ? "Your section" : "All tables", rows.section),
+    ],
+    [rows.needsYou, rows.section, scope],
   );
-  const closeSheet = useCallback(() => setSelectedId(null), []);
 
-  const renderItem = useCallback<ListRenderItem<TableRowData>>(
-    ({ item }) => (
-      <TableRow id={item.id} name={item.name} now={now} onPress={setSelectedId} />
-    ),
-    [now],
+  const byId = useMemo(
+    () => new Map([...rows.needsYou, ...rows.section].map((r) => [r.id, r] as const)),
+    [rows.needsYou, rows.section],
   );
+  const openTable = useCallback((id: string) => setSelected(byId.get(id) ?? null), [byId]);
+
+  const renderItem = useCallback<ListRenderItem<Item>>(
+    ({ item }) =>
+      item.kind === "label" ? (
+        <SectionLabel text={item.text} />
+      ) : (
+        <TableRow {...item.row} divider={item.divider} onPress={openTable} />
+      ),
+    [openTable],
+  );
+
+  const options: readonly SegmentedOption<TablesScope>[] = [
+    { value: "mine", label: "Mine", count: rows.mineCount },
+    { value: "all", label: "All", count: rows.allCount },
+  ];
 
   return (
-    <Screen title="Tables" subtitle={`${occupied} of ${rows.length} occupied`}>
-      {rows.length === 0 ? (
+    <Screen
+      title="Tables"
+      subtitle={`${rows.floorName} · ${rows.occupied} of ${rows.allCount} seated`}
+      right={myName ? <Avatar name={myName} /> : undefined}
+    >
+      <SegmentedTabs value={scope} options={options} onChange={setScope} />
+      {items.length === 0 ? (
         <EmptyState
-          title="No tables yet"
-          hint="Tables appear once the floor plan has loaded."
+          title={scope === "mine" ? "No tables in your section" : "No tables yet"}
+          hint={
+            scope === "mine"
+              ? "Seat a table to make it yours, or switch to All."
+              : "Tables appear once the floor plan has loaded."
+          }
         />
       ) : (
         <FlashList
-          data={rows}
+          data={items}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
-          estimatedItemSize={ESTIMATED_ROW_HEIGHT}
-          extraData={now}
+          getItemType={getItemType}
+          estimatedItemSize={metrics.row}
         />
       )}
-      <TableDetailSheet
-        tableId={selectedId}
-        name={selectedName}
-        onClose={closeSheet}
-      />
+      <TableSheet row={selected} onClose={closeSheet} />
     </Screen>
   );
 }
