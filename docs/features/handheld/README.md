@@ -67,7 +67,7 @@ Every gate reads `isHandheldStationType(selectedStation?.station_type)`.
 | --- | --- | --- |
 | Floor-plan geometry | Keep the single `getFloorSnapshot` + `setActiveFloorPlan(default)`: that call is what populates `useFloorPlanStore.tables`, which the Tables list reads, and the ticket forbids a new query. Skip `prefetchFloorPlans` (every other plan), `_stripOrphanedSessions` (depends on that prefetch) and waitlist/reservations. | `contexts/PosSyncProvider.tsx` `syncFloorPlans` |
 | Star printer discovery | Skip LAN discovery; keep the health check (feeds the printer list). | `contexts/PosSyncProvider.tsx` |
-| CFD / second screen | No CFD server; handheld gets the same no-op context as CFD client mode. | `contexts/CFDProvider.tsx` |
+| CFD / second screen | No CFD server; handheld gets the same no-op context as CFD client mode — via `CFDServerProvider enabled={false}`, never by swapping the provider element: a swap at the moment a handheld station is chosen remounted the root Stack and dropped the navigation to pin-login. | `contexts/CFDProvider.tsx` |
 | Payment + refund journal check on launch | Skip. Nothing to recover until handheld takes payments; the payment ticket must lift this. | `app/_layout.tsx` boot task |
 | Five-minute staff refresh | Interval removed; the `pos.employees-refresh` resume task (foreground) keeps the same 5-minute staleness window. | `contexts/PosSyncProvider.tsx` |
 | Landscape lock | Handheld locks PORTRAIT_UP from the root layout's orientation effect — the root never remounts on a theme toggle, whereas a lock owned inside the handheld tree flipped the device every time `<ThemeProvider key=…>` remounted. Native lock removal is Temur's Wave 0. | `app/_layout.tsx` |

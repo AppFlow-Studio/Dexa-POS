@@ -205,21 +205,24 @@ export function CFDProvider ({ children }: { children: React.ReactNode }) {
   const isCFDMode = useStoreSettingsStore(s => s.isCFDMode)
   const isHandheld = useIsHandheld()
 
-  // In CFD client mode, this device is a display client — don't start server.
-  // A handheld has no second screen either (handheld boot diet), so it gets
-  // the same no-op context instead of a CFD server it can never pair.
-  if (isCFDMode || isHandheld) {
-    return (
-      <CFDOrderProcessingActivityContext.Provider value={noopCFDValue.markOrderProcessingActivity}>
-        <CFDContext.Provider value={noopCFDValue}>{children}</CFDContext.Provider>
-      </CFDOrderProcessingActivityContext.Provider>
-    )
-  }
-
-  return <CFDServerProvider>{children}</CFDServerProvider>
+  // In CFD client mode this device is a display client — no server. A
+  // handheld has no second screen either (handheld boot diet). Both get the
+  // no-op context, but through the SAME element: swapping this provider for
+  // a bare context at runtime (e.g. the moment a handheld station is chosen
+  // on station-select) remounted everything below it, including the root
+  // Stack, and the navigation to pin-login queued in that same tick had no
+  // navigator left to handle it.
+  return <CFDServerProvider enabled={!isCFDMode && !isHandheld}>{children}</CFDServerProvider>
 }
 
-function CFDServerProvider ({ children }: { children: React.ReactNode }) {
+function CFDServerProvider ({
+  enabled,
+  children
+}: {
+  /** False = provide the no-op context and never start the server / second screen. */
+  enabled: boolean
+  children: React.ReactNode
+}) {
   const controllerRef = useRef<CFDController | null>(null)
   const pathname = usePathname()
   // Table orders are opened via an always-on overlay (TableOrderOverlay),
@@ -750,6 +753,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Check prerequisites
     if (
+      !enabled ||
       !selectedStation?.id ||
       !selectedStore?.id ||
       !selectedStore?.name ||
@@ -1065,6 +1069,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       }
     }
   }, [
+    enabled,
     selectedStation?.id,
     selectedStore?.id,
     selectedStore?.name,
@@ -1548,6 +1553,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
   // Check for built-in CFD once on mount (async with cache-first, native-fallback)
   useEffect(() => {
+    if (!enabled) return
     let mounted = true
     ;(async () => {
       // Try cache first (fast path for subsequent boots)
@@ -1569,7 +1575,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [enabled])
 
   // Show/dismiss secondary display Presentation (lifecycle only — data flows via Zustand)
   useEffect(() => {
@@ -3695,8 +3701,10 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <CFDOrderProcessingActivityContext.Provider value={markOrderProcessingActivity}>
-      <CFDContext.Provider value={value}>{children}</CFDContext.Provider>
+    <CFDOrderProcessingActivityContext.Provider
+      value={enabled ? markOrderProcessingActivity : noopCFDValue.markOrderProcessingActivity}
+    >
+      <CFDContext.Provider value={enabled ? value : noopCFDValue}>{children}</CFDContext.Provider>
     </CFDOrderProcessingActivityContext.Provider>
   )
 }
