@@ -1,4 +1,3 @@
-import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import Header from "@/components/Header";
 import MenuSearchSheet from "@/components/menu/MenuSearchSheet";
 import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
@@ -9,10 +8,10 @@ import MyProfilePanel from "@/components/profile/MyProfilePanel";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { PanelSheetHostContext } from "@/components/ui/PanelSheet";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
+import { RegisterRuntime } from "@/contexts/RegisterRuntime";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
 import { useKdsOnlineOrdersBootstrap } from "@/hooks/pos/useKdsOnlineOrdersBootstrap";
-import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { useTableSessionInit } from "@/hooks/useTableSessionInit";
 import { nudgeDeltaSync } from "@/lib/db/deltaNudge";
@@ -20,6 +19,7 @@ import { applyOrdersFromRealtimeIfNew } from "@/lib/db/realtimeApply";
 import { setHeaderHeight } from "@/lib/headerHeight";
 import { hintNativeGc } from "@/lib/nativeMemory";
 import { isOnlineOrderSource } from "@/lib/orderSource";
+import { isHandheldStationType } from "@/lib/stationType";
 import {
     KEY_FANOUT_KDS_MS,
     KEY_FANOUT_ORDER_STORE_MS,
@@ -32,7 +32,6 @@ import {
 } from "@/lib/telemetry/registry";
 import { colors, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
-import { hydrateDrawerSession } from "@/services/cashDrawerService";
 import KDSSoundService from "@/services/kds/kdsSoundService";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
@@ -43,7 +42,6 @@ import {
 } from "@/stores/useModifierSidebarStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import {
-    getOrderStoreSupabaseClient,
     shouldSuppressOwnEchoBroadcast,
     useOrderStore,
 } from "@/stores/useOrderStore";
@@ -78,12 +76,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
  */
 const NOOP = () => {};
 
-/** Side-effect component: keeps POS orders in sync when realtime drops */
-function OrderSyncRecoveryBridge({ locationId }: { locationId: string }) {
-  useOrderSyncRecovery(locationId);
-  return null;
-}
-
 export default function MainLayout() {
   const { colorScheme } = useColorScheme();
   const pathname = usePathname();
@@ -100,6 +92,9 @@ export default function MainLayout() {
   const isModifierScreenOpen = useModifierSidebarStore(selectModifierOpen);
   const isKDS = selectedStation?.station_type === "kds";
   const isKiosk = selectedStation?.station_type === "self_service";
+  // Handheld keeps the register runtime (realtime, table sessions, payment
+  // sheets) and swaps only the screens — see contexts/RegisterRuntime.tsx.
+  const isHandheld = isHandheldStationType(selectedStation?.station_type);
   const isKioskRoute = pathname === "/kiosk" || pathname.endsWith("/kiosk");
   const isFullScreenStation = isKDS || isKiosk || isKioskRoute;
   const disableKeyboardAvoiding =
@@ -213,23 +208,6 @@ export default function MainLayout() {
     locationId: selectedStore?.id,
     enabled: isKDS,
   });
-
-  useEffect(() => {
-    if (isFullScreenStation || !selectedStation || !selectedStore) return;
-    const supabase = getOrderStoreSupabaseClient();
-    if (!supabase) return;
-    hydrateDrawerSession(supabase, selectedStation.id, selectedStore.id)
-      .then((hasSession) => {
-        const store =
-          require("@/stores/useCashDrawerStore").useCashDrawerStore.getState();
-        if (!hasSession && store.drawerId) {
-          store.setShouldPromptOpen(true);
-        }
-      })
-      .catch((err) => {
-        console.warn("[MainLayout] Cash drawer hydration failed:", err);
-      });
-  }, [isFullScreenStation, selectedStation?.id, selectedStore?.id]);
 
   const handleOrderChangeKDS = useCallback((payload: OrderPayload) => {
     const broadcastPayload = payload as unknown as OrderBroadcastPayload;
@@ -419,15 +397,31 @@ export default function MainLayout() {
     );
   }
 
+  // Handheld: same runtime as the register, none of the tablet chrome. The
+  // route file (handheld.tsx) lazy-loads HandheldRoot so the tablet cold
+  // start never evaluates the handheld bundle.
+  if (isHandheld) {
+    return (
+      <RegisterRuntime
+        locationId={selectedStore.id}
+        callbacks={{
+          onOrderChange: handleOrderChange,
+          onPaymentChange: handlePaymentChange,
+        }}
+      >
+        <Slot />
+      </RegisterRuntime>
+    );
+  }
+
   return (
-    <LocationRealtimeProvider
-      locationId={selectedStore?.id}
+    <RegisterRuntime
+      locationId={selectedStore.id}
       callbacks={{
         onOrderChange: handleOrderChange,
         onPaymentChange: handlePaymentChange,
       }}
     >
-      <OrderSyncRecoveryBridge locationId={selectedStore.id} />
       <KeyboardAvoidingView
         key={colorScheme}
         behavior={
@@ -484,7 +478,6 @@ export default function MainLayout() {
             }
             onClose={NOOP}
           />
-          <PaymentBottomSheet />
           <View
             style={{
               position: "absolute",
@@ -547,6 +540,6 @@ export default function MainLayout() {
           </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>
-    </LocationRealtimeProvider>
+    </RegisterRuntime>
   );
 }

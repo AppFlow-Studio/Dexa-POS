@@ -16,6 +16,10 @@ describe("stationKind", () => {
     expect(stationKind("terminal")).toBe("pos");
   });
 
+  it("keeps the register data policy for handheld (its routing differs, its storage does not)", () => {
+    expect(stationKind("handheld")).toBe("pos");
+  });
+
   it("defaults to pos for null/undefined, matching resolvePostLoginRoute", () => {
     expect(stationKind(null)).toBe("pos");
     expect(stationKind(undefined)).toBe("pos");

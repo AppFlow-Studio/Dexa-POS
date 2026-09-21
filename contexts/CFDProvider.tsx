@@ -50,6 +50,7 @@ import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useSeatingStore } from '@/stores/useSeatingStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useIsHandheld } from '@/lib/stationType'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTipAdjustStore } from '@/stores/useTipAdjustStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -202,9 +203,12 @@ const noopCFDValue: CFDContextType = {
 
 export function CFDProvider ({ children }: { children: React.ReactNode }) {
   const isCFDMode = useStoreSettingsStore(s => s.isCFDMode)
+  const isHandheld = useIsHandheld()
 
-  // In CFD client mode, this device is a display client — don't start server
-  if (isCFDMode) {
+  // In CFD client mode, this device is a display client — don't start server.
+  // A handheld has no second screen either (handheld boot diet), so it gets
+  // the same no-op context instead of a CFD server it can never pair.
+  if (isCFDMode || isHandheld) {
     return (
       <CFDOrderProcessingActivityContext.Provider value={noopCFDValue.markOrderProcessingActivity}>
         <CFDContext.Provider value={noopCFDValue}>{children}</CFDContext.Provider>

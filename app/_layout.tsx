@@ -45,6 +45,7 @@ import {
   startAppLifecycleCoordinator,
   stopAppLifecycleCoordinator,
 } from "@/lib/lifecycle/appLifecycleCoordinator";
+import { useIsHandheld } from "@/lib/stationType";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
 import { UiScaleProvider } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -593,6 +594,10 @@ export default Sentry.wrap(function RootLayout() {
   const isKiosk = useStoreSettingsStore(
     (s) => s.selectedStation?.station_type === "self_service",
   );
+  // Handheld is a register for everything in this file except the two gates
+  // marked below (orientation, payment-journal launch check). Zero UI change
+  // for register stations — see docs/features/handheld/README.md.
+  const isHandheld = useIsHandheld();
   const isCFDMode = useStoreSettingsStore((s) => s.isCFDMode);
   const hasSelectedStation = useStoreSettingsStore((s) => !!s.selectedStation);
   const isPOSMode = hasSelectedStation && !isKDS && !isKiosk && !isCFDMode;
@@ -615,13 +620,17 @@ export default Sentry.wrap(function RootLayout() {
       // kiosk-specific hook manage the kiosk lock so it can use the profile.
       return;
     }
+    if (isHandheld) {
+      // Handheld is portrait; handheld/hooks/useHandheldOrientation owns it.
+      return;
+    }
     // Not a kiosk — lock to landscape (app.json default). lockAsync(DEFAULT)
     // doesn't actually prevent rotation on Android when system auto-rotate is
     // on; we must be explicit.
     ScreenOrientation.lockAsync(
       ScreenOrientation.OrientationLock.LANDSCAPE,
     ).catch(() => {});
-  }, [isKiosk]);
+  }, [isKiosk, isHandheld]);
 
   // Store the navigation container ref for cross-group navigation + Sentry tracing
   const navigationRef = useNavigationContainerRef();
@@ -694,6 +703,12 @@ export default Sentry.wrap(function RootLayout() {
         useOrderStore.getState().cleanupDraftDuplicates();
         // Start print queue processing
         PrinterService.startProcessing();
+
+        // Handheld boot diet: no payment or refund journal check on launch.
+        // Handheld takes no payments in this wave, so there is nothing to
+        // recover; the handheld payment ticket must lift this gate when it
+        // adds the payment sheet flow.
+        if (isHandheld) return;
 
         // Wave Cat-B: surface payments that crashed mid-flow (terminal_approved
         // entries from a prior app session). Hydrate the recovery store and

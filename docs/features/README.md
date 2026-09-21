@@ -6,6 +6,7 @@ runbooks, ticket progress, and feature-specific QA.
 | Feature | Scope |
 | --- | --- |
 | [`billing/`](billing/README.md) | Subscription access and billing-state enforcement |
+| [`handheld/`](handheld/README.md) | Dexa Go handheld station: migration, routing, boot diet, QA |
 | [`identity-access/`](identity-access/README.md) | Staff identity, PIN attribution, and provisioning |
 | [`kds/`](kds/README.md) | Kitchen display tickets, routing, ordering, and lifecycle |
 | [`kiosk/`](kiosk/README.md) | POS kiosk mode and kiosk-origin behavior |

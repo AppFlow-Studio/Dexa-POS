@@ -28,6 +28,7 @@ import {
   registerSuspendTask,
 } from "@/lib/lifecycle/appLifecycleCoordinator";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
+import { isHandheldStationType } from "@/lib/stationType";
 import {
   getBucketKeyCount,
   getStorageSizeStats,
@@ -140,6 +141,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     (state) => state.selectedStation,
   );
   const isKDS = selectedStation?.station_type === "kds";
+  // Handheld boot diet (docs/features/handheld/README.md): a handheld is a
+  // register for every gate below except the three marked `isHandheld`.
+  const isHandheld = isHandheldStationType(selectedStation?.station_type);
   // The station kind the menu mirror writes as. Memoized so it is a stable
   // effect dependency rather than a new string on every render.
   const menuStationKind = React.useMemo(
@@ -425,17 +429,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isKDS]);
 
-  // Star printer health check + background discovery lifecycle
+  // Star printer health check + background discovery lifecycle. Handheld keeps
+  // the health check (it feeds the printer list) but skips LAN discovery.
   useEffect(() => {
     if (selectedStore?.id && !isKDS) {
       startStarPrinterHealthCheck(selectedStore.id);
-      startStarPrinterDiscoveryService();
+      if (!isHandheld) startStarPrinterDiscoveryService();
     }
     return () => {
       stopStarPrinterHealthCheck();
       stopStarPrinterDiscoveryService();
     };
-  }, [selectedStore?.id, isKDS]);
+  }, [selectedStore?.id, isKDS, isHandheld]);
 
   // Sync employees from location_members
   const syncEmployees = useCallback(
@@ -469,10 +474,15 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // transitions, since a device that never backgrounds/foregrounds (the common
   // case for a tablet POS left open through a shift) would otherwise never
   // re-consult the 5-minute window at all.
+  //
+  // Handheld skips the interval: a handheld is pocketed and re-foregrounded
+  // many times a shift, so the `pos.employees-refresh` resume task below is
+  // enough, and one fewer timer is one fewer wake-up on a 2GB device.
   useEffect(() => {
+    if (isHandheld) return;
     const interval = setInterval(refreshEmployeesIfStale, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [refreshEmployeesIfStale]);
+  }, [refreshEmployeesIfStale, isHandheld]);
 
   // Sync floor plans from backend
   const syncFloorPlans = useCallback(
@@ -519,6 +529,15 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Load status if we have a floor plan
         if (defaultPlan?.id) {
           await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
+        }
+
+        // Handheld boot diet: the default plan above is what its Tables list
+        // reads. Every other plan's geometry, the orphan-session strip that
+        // depends on that prefetch, and waitlist/reservations are register
+        // work — none of it has a handheld screen yet.
+        if (isHandheld) return;
+
+        if (defaultPlan?.id) {
           // Await prefetch so all floorplans are cached before we strip
           // orphaned sessions below.
           await useFloorPlanStore
@@ -544,7 +563,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         console.error("Floor plan sync failed:", error);
       }
     },
-    [supabase],
+    [supabase, isHandheld],
   );
 
   // Sync tax rates from tax_rates table

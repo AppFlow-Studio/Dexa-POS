@@ -82,7 +82,8 @@ export interface Station {
     | "self_service"
     | "kiosk"
     | "mobile"
-    | "kds";
+    | "kds"
+    | "handheld";
   station_number: number;
   is_active: boolean;
   is_available: boolean;

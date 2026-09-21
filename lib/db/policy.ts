@@ -28,6 +28,8 @@ export type StationKind = "pos" | "kds" | "kiosk";
 export function stationKind(stationType?: string | null): StationKind {
   if (stationType === "kds") return "kds";
   if (stationType === "self_service") return "kiosk";
+  // "handheld" deliberately falls through: it keeps the register's local data
+  // policy until the handheld local-data ticket says otherwise.
   return "pos";
 }
 

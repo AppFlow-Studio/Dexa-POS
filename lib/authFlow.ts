@@ -6,9 +6,10 @@ export function getPinPromptLabel(pinLength: number): string {
 
 export function resolvePostLoginRoute(
   stationType?: string | null,
-): "home" | "kds" | "kiosk" {
+): "home" | "kds" | "kiosk" | "handheld" {
   if (stationType === "kds") return "kds";
   if (stationType === "self_service") return "kiosk";
+  if (stationType === "handheld") return "handheld";
   return "home";
 }
 

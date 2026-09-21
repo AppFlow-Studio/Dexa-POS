@@ -1,0 +1,159 @@
+# Handheld (Dexa Go)
+
+Portrait, thumb-reach POS for handheld payment terminals (Landi P30, Valor
+VP550). `station_type = 'handheld'` is its own switch, like KDS and Kiosk,
+with one difference: the handheld keeps the register's runtime and swaps only
+the screens.
+
+Design source: the "Dexa Go Handheld" artifact (Abubeckr signs off on visuals).
+Owner: Ali Jaffal. Migration review: Ali Dika. Device pass, native config,
+prod apply, merge: Temur.
+
+## Where things live
+
+| Piece | File | Notes |
+| --- | --- | --- |
+| Migration | `utils/supabase/migrations/20260921120000_handheld_station_type.sql` | Byte-identical copy in `DexaPOS-Website/supabase/migrations/`. CHECK + trigger branch in one file, never split. |
+| Station predicate | `lib/stationType.ts` | `isHandheldStationType`, `useIsHandheld`. Outside `handheld/` so register-side gates never import the lazy bundle. |
+| Post-login route | `lib/authFlow.ts` `resolvePostLoginRoute` | `'handheld'` -> `app/(main)/handheld.tsx`. |
+| Local data policy | `lib/db/policy.ts` `stationKind` | Falls through to `"pos"` on purpose (data policy is a follow-on ticket). |
+| Register runtime | `contexts/RegisterRuntime.tsx` | Moved verbatim out of `app/(main)/_layout.tsx`. See below. |
+| Route | `app/(main)/handheld.tsx` | `React.lazy(() => import("@/handheld/HandheldRoot"))` + Suspense. |
+| Shell | `handheld/HandheldRoot.tsx` | Offline banner, one active tab, bottom tab bar. Pins `--ui-scale` to 1. |
+| Screens | `handheld/screens/{tables,checks,me}/` | Screen 1 (Tables), S1 (Checks), Me. |
+| Primitives | `handheld/primitives/` | Screen, ListRow, BottomSheet, StickyActionBar, Keypad, SegmentedTabs. |
+| Error sink | `lib/logError.ts` | `logger.error` + Sentry capture. |
+
+## RegisterRuntime: what moved and what did not
+
+`app/(main)/_layout.tsx` is an Expo Router layout, so the ticket's
+`<RegisterRuntime>` skeleton maps onto it like this.
+
+Moved into `RegisterRuntime` (verbatim):
+
+- `LocationRealtimeProvider` with the register callbacks
+- `OrderSyncRecoveryBridge`
+- cash-drawer session hydration on boot
+- `PaymentBottomSheet` (a native `Modal`; tree position is free)
+
+Left in `MainLayout`, with the reason:
+
+- `handleOrderChange` / `handlePaymentChange` and the `KDSSoundService` they
+  play through: the kiosk branch uses the same callbacks, so they are passed
+  in as props instead of duplicated.
+- `useTableSessionInit({ skip: isKDS })`: already runs for every non-KDS
+  station in `MainLayout`, which the handheld route passes through.
+- `PaymentDetailBottomSheet`: an absolute-positioned z-index sibling of the
+  register chrome (100, below the online-order tab at 150 and MenuSearchSheet
+  at 200). Moving it changes layering, so it stays. The handheld payment
+  ticket mounts its own copy inside `HandheldRoot` when it adds payment.
+- the offline outbox: `PosSyncProvider`, at the root, shared by everything.
+
+The register render tree is unchanged apart from `<LocationRealtimeProvider>`
++ `<OrderSyncRecoveryBridge>` + `<PaymentBottomSheet>` now being emitted by
+`RegisterRuntime`. Confirm with the Landi screenshot diff.
+
+## Boot diet
+
+Every gate reads `isHandheldStationType(selectedStation?.station_type)`.
+
+| Item | Decision | Where |
+| --- | --- | --- |
+| Floor-plan geometry | Keep the single `getFloorSnapshot` + `setActiveFloorPlan(default)`: that call is what populates `useFloorPlanStore.tables`, which the Tables list reads, and the ticket forbids a new query. Skip `prefetchFloorPlans` (every other plan), `_stripOrphanedSessions` (depends on that prefetch) and waitlist/reservations. | `contexts/PosSyncProvider.tsx` `syncFloorPlans` |
+| Star printer discovery | Skip LAN discovery; keep the health check (feeds the printer list). | `contexts/PosSyncProvider.tsx` |
+| CFD / second screen | No CFD server; handheld gets the same no-op context as CFD client mode. | `contexts/CFDProvider.tsx` |
+| Payment + refund journal check on launch | Skip. Nothing to recover until handheld takes payments; the payment ticket must lift this. | `app/_layout.tsx` boot task |
+| Five-minute staff refresh | Interval removed; the `pos.employees-refresh` resume task (foreground) keeps the same 5-minute staleness window. | `contexts/PosSyncProvider.tsx` |
+| Landscape lock | Skipped for handheld; `handheld/hooks/useHandheldOrientation.ts` locks PORTRAIT_UP. Native lock removal is Temur's Wave 0. | `app/_layout.tsx` |
+| Realtime, card-reader detection, heartbeat, outbox, printer list | Kept, untouched. | — |
+
+Not on the ticket's list and therefore untouched: `isPOSMode` in the root
+layout still mounts `SearchBottomSheet`, `CustomerSheet` and the modal hosts
+for handheld. Candidate for the next boot-diet pass if the 3 s target is
+missed.
+
+## Data sources (no new Supabase queries)
+
+- Tables: `useFloorPlanStore.tables` (active plan) + `useTableSessionStore.sessions`,
+  same as `components/panels/TablesPanel.tsx`. Seatable objects only, merged
+  sessions collapsed, sorted status then name. Rows subscribe to their own
+  session via `useTableLive`.
+- Checks: `useOrderStore.ordersById`, filtered by `isOpenCheck`
+  (`handheld/lib/openChecks.ts`). "Mine" = `created_by_staff_profile_id`
+  equals the signed-in employee's `profileId`; "All" needs
+  `view_scope = 'location'`, which the trigger sets. Rows subscribe to their
+  own profile.
+- Offline banner: `useNetworkStatus().rawIsOnline` (not `isOnline`, so slow
+  mode stays silent).
+- Totals: `utils/currency.formatCurrency` on the `NUMERIC(12,2)` dollar values.
+
+## UI scale
+
+`UiScaleProvider` computes `--ui-scale` from dp width against a 1333 dp
+baseline and floors at 0.6. On a 360 dp handheld that shrinks `text-base` to
+9.6 px and `min-h-12` to 29 dp. `HandheldRoot` wraps its subtree in
+`vars({ "--ui-scale": 1 })` so every utility class is dp-exact. RN font
+scaling still applies to `Text`, which is why rows use `min-h-*`, never `h-*`.
+
+## Migration verification (staging `dfwqakoyittmrwbqvxgw`)
+
+Run after `db push`; paste all four outputs in the PR.
+
+```sql
+-- Use a real merchant/location from staging for :merchant and :location.
+
+-- 1. Handheld capabilities come from the trigger.
+INSERT INTO public.stations (merchant_id, location_id, station_name, station_type, station_number)
+VALUES (:merchant, :location, 'VERIFY handheld', 'handheld', 9001)
+RETURNING station_type, can_create_orders, can_process_payments, can_void_orders,
+          can_apply_discounts, can_update_kitchen_status, view_scope;
+-- expect: true, true, false, true, false, 'location'
+
+-- 2. An order from that station is order_source = 'pos'.
+--    Create an order through create_order_v* with p_station_id = the id above, then:
+SELECT order_source FROM public.orders
+WHERE station_id = :handheld_station_id ORDER BY created_at DESC LIMIT 1;
+-- expect: 'pos'
+
+-- 3. Existing types unchanged.
+INSERT INTO public.stations (merchant_id, location_id, station_name, station_type, station_number)
+VALUES (:merchant, :location, 'VERIFY register', 'register', 9002),
+       (:merchant, :location, 'VERIFY checkout', 'checkout', 9003),
+       (:merchant, :location, 'VERIFY kds', 'kds', 9004),
+       (:merchant, :location, 'VERIFY kiosk', 'self_service', 9005)
+RETURNING station_type, can_create_orders, can_process_payments, can_void_orders,
+          can_apply_discounts, can_update_kitchen_status, view_scope;
+-- expect: register      t t f t f location
+--         checkout      t t t t f location
+--         kds           f f f f t location
+--         self_service  t t f f f own
+
+-- 4. Bogus type fails readably (the BEFORE trigger fires before the CHECK).
+INSERT INTO public.stations (merchant_id, location_id, station_name, station_type, station_number)
+VALUES (:merchant, :location, 'VERIFY bogus', 'bogus', 9006);
+-- expect: ERROR: Unknown station_type: bogus
+
+-- Cleanup
+DELETE FROM public.stations WHERE station_name LIKE 'VERIFY %';
+```
+
+## QA matrix
+
+| Axis | Values |
+| --- | --- |
+| Width | 320, 360, 393, 430 dp (reference 360 x 720) |
+| Height | 640 to 900 dp |
+| Font scale | 1.0, 1.3 |
+| Network | online, offline (banner shows, lists still render from stores) |
+| Floor | 5 tables, 100 tables (55 fps JS on the 2GB / 4-core emulator) |
+| Regression | register on the Landi profile (screenshot diff), KDS, CFD, Kiosk |
+
+Measure and paste in the PR: tablet cold start before/after, handheld boot to
+interactive Tables on the 2GB profile (target <= 3 s), tap-to-visual (< 100 ms),
+sheet open (< 150 ms; `BottomSheet` animates in 120 ms).
+
+## Out of scope here (follow-on tickets)
+
+Adding items and sending, seating, payment, tip, cash and drawer, built-in
+printer, low-battery transfer, local data policy, shared or floating handheld
+stations, a floor-plan switcher on the Tables tab, portrait auth screens.
