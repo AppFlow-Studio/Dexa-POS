@@ -18,11 +18,15 @@ prod apply, merge: Temur.
 | Post-login route | `lib/authFlow.ts` `resolvePostLoginRoute` | `'handheld'` -> `app/(main)/handheld/index.tsx`. |
 | Local data policy | `lib/db/policy.ts` `stationKind` | Falls through to `"pos"` on purpose (data policy is a follow-on ticket). |
 | Register runtime | `contexts/RegisterRuntime.tsx` | Moved verbatim out of `app/(main)/_layout.tsx`. See below. |
-| Routes | `app/(main)/handheld/{_layout,index,table/[id],order/[id]}.tsx` | Nested native Stack with `POS_SCREEN_OPTIONS` (animation none, see lib/screenConfig.ts). Every route file `React.lazy`-loads its screen. |
+| Routes | `app/(main)/handheld/{_layout,index,table/[id],order/[id],menu/[orderId],seat/[tableId],order/new}.tsx` | Nested native Stack with `POS_SCREEN_OPTIONS` (animation none, see lib/screenConfig.ts). Every route file `React.lazy`-loads its screen. |
 | Frame | `handheld/HandheldFrame.tsx` | Pins `--ui-scale` to 1, portrait, safe areas, themed status bar. Wraps the Stack. |
 | Tab root | `handheld/HandheldRoot.tsx` | One active tab + bottom tab bar (Checks badge = open checks marked ready). |
 | Screens | `handheld/screens/{tables,checks,me}/` | Screen 1 (Tables), S1 (Checks), Me (with Sync now, Switch user, Dark mode). |
-| Pages | `handheld/pages/{TablePage,OrderPage,CheckPage}.tsx` | Screen 5 / S3 read-only: `.bar` header, course cards, totals. Pushed by tapping a row. |
+| Pages | `handheld/pages/{TablePage,OrderPage,CheckPage,MenuPage,SeatPage,NewOrderPage}.tsx` | Screen 5 / S3 (check with Send, more sheet, PIN overlay), 3 / 4 / S4 (menu, options, custom item), 2 (seat), S2 (new order). Pushed by tapping a row. |
+| Check actions | `handheld/components/check/{CheckFooter,MoreSheet,ManagerPinScreen,DiscountSheet,NoteSheet,TakeOverCard,useCheckActions}.tsx` | Send / more / manager PIN / discount / note / station take-over. |
+| Menu | `handheld/screens/menu/` | `useMenuRows` (menu tree → chips → rows), `MenuRow`, `OptionsSheet` + `useOptionsDraft`, `CustomItemSheet`, `CartButton`. |
+| Seat / new order | `handheld/screens/seat/`, `handheld/screens/neworder/` | `useSeatTable` (the register's seat flow), `useStartOrder`. |
+| Write rules | `handheld/lib/{cartItem,sendCourse,discounts,managerPin}.ts` | The register's CartItem shape, send path, discount pre-checks and manager-role rule, as pure functions. Plan and checklist: `wave2-3-plan.md`. |
 | Primitives | `handheld/primitives/` | Screen, PageHeader, ListRow, Button, StickyActionBar, IconButton, BottomSheet, Keypad, SegmentedTabs, Switch. |
 | Error sink | `lib/logError.ts` | `logger.error` + Sentry capture. |
 
@@ -209,3 +213,95 @@ sheet open (< 150 ms; `BottomSheet` animates in 120 ms).
 Adding items and sending, seating, payment, tip, cash and drawer, built-in
 printer, low-battery transfer, local data policy, shared or floating handheld
 stations, a floor-plan switcher on the Tables tab, portrait auth screens.
+
+## Wave 2 + 3 — how writes reach the store
+
+No new RPC and no new query. Every write is a register store action, so the
+register's gates (closed check, station ownership, per-order PIN,
+undeliverable items) and the outbox apply unchanged.
+
+| Handheld | Register call | Notes |
+| --- | --- | --- |
+| Add item / custom item | `addItemToActiveOrder` | `lib/cartItem.ts` builds the CartItem ModifierScreen / OpenItemAdder build. `CheckPage` and `MenuPage` make the check the active order while mounted. |
+| Options | `computeAddModeSelections`, `resolveContextPricedItem` (now exported from `useModifierSidebarStore`) | Prices come from the menu-tree copy of the item, as the register's cards pass. |
+| Send | table check: `batchUpdateItemKitchenStatus` → `markCourseSent` → `dispatchAction SEND_TO_KITCHEN` (`lib/sendCourse.ts`, mirrors TableOrderView); other: `sendNewItemsToKitchenForOrder` | "Queued" chip = sent locally, items still `sync_status` pending. |
+| Void / discount | manager PIN first (`lib/managerPin.ts`, same roles as ManagerPinModal) → `dispatchAction VOID_ORDER` / `voidOrder`; `applyDiscountToCheck` with DiscountBottomSheet's pre-checks | Handheld station has `can_void_orders = false`; the PIN is the approval. |
+| Take over | `claimOrderById` | A check another station opened is read-only until claimed (`isOrderReadOnly`), same as the tablet's banner. |
+| Seat | `startNewOrder` → `registerPendingOrderCreation` → `seatGuests({ createOrder: true, serverId: me })` | Signed-in employee is the server ("you'll be the server"). With per-order PIN on, that employee is also the attributed creator — no second PIN on a personal device. |
+| New takeout / delivery | `startOrResumeOrder` → `updateActiveOrderDetails` → `ensureActiveOrderCreated` | Dine in on S2 lands on the Tables tab (`lib/tabStore.ts`). |
+
+Not built (not drawn in the artifact): editing or removing a line item, seat
+picker per item, custom discount amounts, the register's tax-exempt toggle.
+
+NativeWind trap, second time round: a utility class that no already-built
+file uses (`grow-0`, `min-w-8`, `pt-10`…) is silently missing until Metro is
+restarted with `--clear`, and the screen looks "broken" rather than erroring.
+The write-phase files therefore put any spacing / sizing value that is new to
+the build in `style`, and keep `className` for utilities the tablet already
+compiles. Check with: every class in a new file must appear in some other
+`.tsx` under `components/`, `app/` or `handheld/`.
+
+## Handoff to Wave 4 (payment)
+
+- No "Pay" button is rendered; `CheckFooter` has the Send action only.
+- Mount `PaymentDetailBottomSheet` inside the handheld tree and lift the
+  payment-journal gate in `app/_layout.tsx` (see Boot diet).
+- `useCardPaymentDisabled` does not exist in the codebase; the offline
+  "Card payments need a connection" state needs its own rule.
+
+## Handoff to Wave 2 (write phase) — historical
+
+State at the end of the Wave 1 session (2026-09-21):
+
+- Wave 1 is read-only and page-based: Tables / Checks / Me tabs, tapping a
+  row pushes `handheld/pages/TablePage` or `OrderPage` on the nested Stack.
+- `tailwind.config.js` now lists `./handheld/**`; restart Metro with
+  `--clear` after pulling, or handheld-only classes stay uncompiled.
+- Portrait is locked from `app/_layout.tsx`; nothing in `handheld/` touches
+  orientation.
+- Not done: staging `db push` + the four verification queries above; the
+  station-quota unblock (HQ Device Inventory, or an HQ-admin insert); Landi
+  screenshot diff; perf numbers; Abubeckr's visual pass.
+
+### Re-apply first (reviewed and confirmed, then reverted with a layout fix)
+
+A 26-agent review confirmed these; they were rolled back together with a
+StyleSheet rewrite that broke the layout on device. Each is small and
+independent — apply them one at a time and check the device between them.
+
+1. **Overtime reads a dead field.** `useTableRows.ts` and
+   `useTableSummary.ts` use `useSettingsStore.defaultSittingTimeMinutes`;
+   the register uses `useLocationConfigStore((s) => s.config.dining.defaultSittingTimeMinutes)`
+   (`components/tables/cards/useTableCardData.ts`). Correctness, not polish.
+2. Delivery rows: title should be the platform (`#1044 · DoorDash`) via
+   `resolveOrderPlatformLogo({ deliveryPlatform, orderSource }).label` in
+   `lib/checks.ts` `checkTitle`.
+3. `LineItem`: render `<Tag label="TO GO" />` when `item.is_to_go`.
+4. `CheckBody`: sent-course header "Sent 6:52 · 5 items" from
+   `order.sent_to_kitchen_at` (12-hour clock, no am/pm).
+5. `ListRow` detail accent: 500 weight only for warn/ok/overtime; plain
+   states ("Preparing 4m") are 400 like the artifact.
+6. `Card` header value: `type.price` (400), not `type.value` (500).
+7. `useTableRows` `byStatus`: no `localeCompare({numeric:true})` in the
+   comparator (a collator per call); precompute a numeric `sortKey`.
+8. `HandheldRoot` badge: select a number from `useOrderStore`, not
+   `useChecks()` (whole-map subscription re-renders the shell per broadcast).
+9. `StickyActionBar`: positional keys, so "Sync now" → "Syncing…" does not
+   remount the button.
+10. `MeScreen`: import `syncNow` from `@/services/offlineSyncService`
+    instead of subscribing through `useNetworkStatus`.
+
+### Wave 2 pointers
+
+- Screens 3–5 and S3–S6 in the artifact: add items (`MenuSection`), options
+  sheet (`ModifierScreen` → `primitives/BottomSheet`), send
+  (`SendToKitchenButton`), more-actions sheet (`MoreOptionsBottomSheet`),
+  manager PIN (`ManagerPinModal` → `primitives/Keypad size="big"`).
+- The "more" button goes in `PageHeader`'s `right` slot; Pay / Send go in a
+  `StickyActionBar` footer on `CheckPage`.
+- Writes go through the existing offline item write path and outbox
+  (`PosSyncProvider`), never a new RPC from the handheld.
+- When payment arrives: mount `PaymentDetailBottomSheet` inside the handheld
+  tree and lift the payment-journal gate in `app/_layout.tsx`.
+- Keep the file shape: `useXRows` hook + memoised row + page + primitives;
+  no component over ~120 lines.

@@ -48,15 +48,19 @@ export function TablesScreen() {
     (id: string) => router.push({ pathname: "/handheld/table/[id]", params: { id } }),
     [router],
   );
+  const seatTable = useCallback(
+    (tableId: string) => router.push({ pathname: "/handheld/seat/[tableId]", params: { tableId } }),
+    [router],
+  );
 
   const renderItem = useCallback<ListRenderItem<Item>>(
     ({ item }) =>
       item.kind === "label" ? (
         <SectionLabel text={item.text} />
       ) : (
-        <TableRow {...item.row} divider={item.divider} dark={dark} onPress={openTable} />
+        <TableRow {...item.row} divider={item.divider} dark={dark} onPress={openTable} onSeat={seatTable} />
       ),
-    [openTable, dark],
+    [openTable, seatTable, dark],
   );
 
   const options: readonly SegmentedOption<TablesScope>[] = [

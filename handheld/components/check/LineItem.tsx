@@ -7,7 +7,7 @@ import { tint } from "../../lib/tokens";
 import { type } from "../../lib/type";
 
 /** `.tag`: the small "TO GO" / "CUSTOM" label after an item name. */
-function Tag({ label, accent = false }: { label: string; accent?: boolean }) {
+export function Tag({ label, accent = false }: { label: string; accent?: boolean }) {
   return (
     <View
       className="ml-2 justify-center rounded-md px-1.5"
@@ -50,6 +50,7 @@ export function LineItem({ item }: { item: CartItem }) {
           <Text className="shrink" style={[type.line, { color: colors.heading }]} numberOfLines={2}>
             {item.name}
           </Text>
+          {item.is_to_go ? <Tag label="TO GO" /> : null}
           {item.is_open_item ? <Tag label="CUSTOM" accent /> : null}
         </View>
         {detail ? (

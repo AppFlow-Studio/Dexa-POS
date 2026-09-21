@@ -23,8 +23,9 @@ export function StickyActionBar({
   return (
     <View className="px-4 pb-3 pt-3">
       <View className={column ? "gap-1.5" : "flex-row gap-2.5"}>
-        {actions.map((a) => (
-          <Button key={a.label} {...a} fit={column ? false : a.fit} />
+        {actions.map((a, i) => (
+          // Positional: a label that changes ("Sync now" → "Syncing…") must not remount the button.
+          <Button key={i} {...a} fit={column ? false : a.fit} />
         ))}
       </View>
       {hint ? (

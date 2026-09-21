@@ -37,6 +37,9 @@ export default function HandheldLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="table/[id]" />
           <Stack.Screen name="order/[id]" />
+          <Stack.Screen name="menu/[orderId]" />
+          <Stack.Screen name="seat/[tableId]" />
+          <Stack.Screen name="order/new" />
         </Stack>
       </HandheldFrame>
     </Suspense>

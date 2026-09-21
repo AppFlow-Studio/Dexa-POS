@@ -3,6 +3,7 @@ import { logError } from "@/lib/logError";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { syncNow } from "@/services/offlineSyncService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import * as Application from "expo-application";
@@ -74,10 +75,11 @@ function AppearanceRow() {
 
 /** Me tab: identity, device rows, appearance, Sync now and Switch user. */
 export function MeScreen() {
-  const { syncNow } = useNetworkStatus();
   const signOut = useEmployeeStore((s) => s.signOut);
   const [syncing, setSyncing] = useState(false);
 
+  // The service directly: the network hook would subscribe this whole tab to
+  // connectivity churn just to reach the same function.
   const handleSync = useCallback(async () => {
     setSyncing(true);
     try {
@@ -87,7 +89,7 @@ export function MeScreen() {
     } finally {
       setSyncing(false);
     }
-  }, [syncNow]);
+  }, []);
 
   const handleSwitchUser = useCallback(() => {
     signOut();

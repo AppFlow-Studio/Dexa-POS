@@ -20,6 +20,15 @@ export function formatElapsed(minutes: number | null): string {
   return m ? `${h}h ${String(m).padStart(2, "0")}m` : `${h}h`;
 }
 
+/** "6:52" — 12-hour clock without am/pm, as the artifact's "Sent 6:52". */
+export function formatClock(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const h = d.getHours() % 12 || 12;
+  return `${h}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 /** Two-letter initials for an avatar chip. */
 export function initials(name: string | null | undefined): string {
   if (!name) return "?";

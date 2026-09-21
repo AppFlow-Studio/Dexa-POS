@@ -17,6 +17,13 @@ export interface TableSummary {
   serverStaffId: string | null;
   /** Backend order id of the linked check, for the live total. */
   orderDbId: string | null;
+  /** Trailing number in the name (Infinity when none), so sorts skip a collator. */
+  sortKey: number;
+}
+
+function tableSortKey(name: string): number {
+  const trailing = name.match(/(\d+)\s*$/);
+  return trailing?.[1] ? Number(trailing[1]) : Number.POSITIVE_INFINITY;
 }
 
 /**
@@ -48,5 +55,6 @@ export function summarizeTable(
     overtime: sittingLimit > 0 && minutes !== null && minutes > sittingLimit,
     serverStaffId: session?.server_staff_id ?? null,
     orderDbId: session?.order_id ?? null,
+    sortKey: tableSortKey(table.name),
   };
 }

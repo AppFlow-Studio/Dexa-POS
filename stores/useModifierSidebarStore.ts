@@ -237,7 +237,7 @@ function buildEditModeSelections (
  * Optional (non-required) groups are unaffected by the setting and always keep
  * their configured `isDefault` options.
  */
-function computeAddModeSelections (
+export function computeAddModeSelections (
   modifiers: ModifierCategory[]
 ): ModifierSelection {
   const settings = useSettingsStore.getState()
@@ -300,7 +300,7 @@ function computeAddModeSelections (
  * to the first menu-tree entry for the id. Returns null when the item isn't in
  * the tree (e.g. location-exclusive items), leaving the caller's value intact.
  */
-function resolveContextPricedItem (
+export function resolveContextPricedItem (
   item: MenuItemType,
   categoryId?: string,
   menuId?: string

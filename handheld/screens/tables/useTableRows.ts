@@ -27,7 +27,11 @@ function byUrgency(a: TableRowData, b: TableRowData): number {
 
 function byStatus(a: TableRowData, b: TableRowData): number {
   const rank = tableStatusRank(a.status) - tableStatusRank(b.status);
-  return rank !== 0 ? rank : a.title.localeCompare(b.title, undefined, { numeric: true });
+  if (rank !== 0) return rank;
+  // Numeric names first by number; unnumbered names ("Patio A") fall back to
+  // a plain string compare — no collator per comparison on a 100-table floor.
+  if (a.sortKey !== b.sortKey) return a.sortKey < b.sortKey ? -1 : 1;
+  return a.title < b.title ? -1 : a.title > b.title ? 1 : 0;
 }
 
 /**

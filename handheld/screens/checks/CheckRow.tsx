@@ -58,7 +58,11 @@ export const CheckRow = React.memo(function CheckRow({
       tile={{ bg, fg, icon: <Icon size={24} color={fg} /> }}
       title={checkTitle(order)}
       detail={`${orderKindLabel(kind)} · `}
-      detailAccent={{ text: kitchen.label, color: toneColor(kitchen.tone) }}
+      detailAccent={{
+        text: kitchen.label,
+        color: toneColor(kitchen.tone),
+        bold: kitchen.tone !== "plain",
+      }}
       value={formatCurrency(order.total_amount ?? 0)}
       divider={divider}
       onPress={handlePress}

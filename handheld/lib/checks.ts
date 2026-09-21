@@ -1,6 +1,8 @@
+import { resolveOrderPlatformLogo } from "@/lib/orderPlatformResolver";
 import { colors } from "@/lib/theme";
 import type { OrderProfile } from "@/lib/types";
 import { formatElapsed, minutesSince } from "./format";
+import { tableTitle } from "./tableName";
 import { lightTint, ORDER_TINT_DARK, type Tint } from "./tokens";
 
 export type OrderKind = "takeout" | "dine_in" | "delivery";
@@ -65,13 +67,29 @@ export function checkNumber(order: OrderProfile): string {
   return order.display_number ?? order.order_number ?? "New";
 }
 
-/** "#1045 · Ben K." / "#1043 · Counter" / "#1050 · Table 12" */
+/** "#1045 · Ben K." / "#1043 · Counter" / "#1044 · DoorDash" / "#1050 · Table 12" */
 export function checkTitle(order: OrderProfile): string {
+  const kind = orderKind(order);
+  const platform =
+    kind === "delivery"
+      ? resolveOrderPlatformLogo({
+          deliveryPlatform: order.delivery_platform,
+          orderSource: order.order_source,
+        }).label
+      : null;
   const who =
+    platform ||
     order.customer_name?.trim() ||
     order.service_location_name?.trim() ||
-    (orderKind(order) === "dine_in" ? "Counter" : "Walk-in");
+    (kind === "dine_in" ? "Counter" : "Walk-in");
   return `${checkNumber(order)} · ${who}`;
+}
+
+/** Page title for a check: "Table 12" when it belongs to a table, else "Order #1045". */
+export function checkPageTitle(order: OrderProfile): string {
+  const table = order.service_location_name?.trim();
+  if (orderKind(order) === "dine_in" && table) return tableTitle(table, []);
+  return `Order ${checkNumber(order)}`;
 }
 
 export type KitchenTone = "plain" | "warn" | "ok";

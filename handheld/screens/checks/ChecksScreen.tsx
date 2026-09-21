@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import { EmptyState } from "../../components/EmptyState";
+import { Fab } from "../../components/Fab";
 import { useMinuteTick } from "../../hooks/useMinuteTick";
 import { metrics } from "../../lib/tokens";
 import { Screen, SegmentedTabs, type SegmentedOption } from "../../primitives";
@@ -13,7 +14,7 @@ import { useChecks, type ChecksScope } from "./useChecks";
 
 const keyExtractor = (orderId: string) => orderId;
 
-/** Artifact screen S1 — every open order. Tapping a row pushes its page. */
+/** Artifact screen S1 — every open order. Tapping a row pushes its page; the FAB starts one (S2). */
 export function ChecksScreen() {
   const router = useRouter();
   const { isDarkColorScheme: dark } = useColorScheme();
@@ -26,6 +27,7 @@ export function ChecksScreen() {
     (id: string) => router.push({ pathname: "/handheld/order/[id]", params: { id } }),
     [router],
   );
+  const newOrder = useCallback(() => router.push("/handheld/order/new"), [router]);
 
   const rows = scope === "open" ? open : closed;
   const renderItem = useCallback<ListRenderItem<string>>(
@@ -63,8 +65,10 @@ export function ChecksScreen() {
           keyExtractor={keyExtractor}
           estimatedItemSize={metrics.row}
           extraData={renderItem}
+          contentContainerStyle={{ paddingBottom: 88 }}
         />
       )}
+      <Fab label="New order" onPress={newOrder} />
     </Screen>
   );
 }

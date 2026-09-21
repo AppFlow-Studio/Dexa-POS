@@ -1,6 +1,6 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useMemo } from "react";
 import { summarizeTable, type TableSummary } from "../lib/tableSummary";
@@ -16,7 +16,10 @@ export function useTableSummary(
 ): { summary: TableSummary | null; serverName: string | null } {
   const tables = useFloorPlanStore((s) => s.tables);
   const session = useTableSessionStore((s) => s.sessions[tableId] ?? null);
-  const sittingLimit = useSettingsStore((s) => s.defaultSittingTimeMinutes);
+  // Same source as useTableRows / the register's useTableCardData.
+  const sittingLimit = useLocationConfigStore(
+    (s) => s.config.dining.defaultSittingTimeMinutes,
+  );
 
   const summary = useMemo(() => {
     const table = tables.find((t) => t.id === tableId);

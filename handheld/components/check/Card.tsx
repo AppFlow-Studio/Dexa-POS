@@ -70,7 +70,7 @@ export function CardHeader({
       </View>
       {trailing ??
         (value ? (
-          <Text style={[type.value, { color: colors.label }]}>{value}</Text>
+          <Text style={[type.price, { color: colors.label }]}>{value}</Text>
         ) : null)}
     </View>
   );

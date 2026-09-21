@@ -14,9 +14,13 @@ export interface RowTile extends Tint {
 export interface ListRowProps {
   tile?: RowTile;
   title: string;
-  /** Detail line, e.g. "Served · ". `detailAccent` is appended in colour. */
+  /**
+   * Detail line, e.g. "Served · ". `detailAccent` is appended in colour;
+   * `bold` gives it the artifact's 500 weight (warn / ok / overtime only —
+   * plain states like "Preparing 4m" stay 400).
+   */
   detail?: string;
-  detailAccent?: { text: string; color: string };
+  detailAccent?: { text: string; color: string; bold?: boolean };
   /** Right-aligned value (a total). Ignored when `right` is set. */
   value?: string;
   right?: React.ReactNode;
@@ -107,7 +111,9 @@ export const ListRow = React.memo(function ListRow({
           >
             {detail}
             {detailAccent ? (
-              <Text style={[type.label, { color: detailAccent.color }]}>
+              <Text
+                style={[detailAccent.bold ? type.label : type.detail, { color: detailAccent.color }]}
+              >
                 {detailAccent.text}
               </Text>
             ) : null}
