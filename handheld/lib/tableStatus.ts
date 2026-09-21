@@ -1,5 +1,6 @@
+import { colors } from "@/lib/theme";
 import type { TableStatus } from "@/types/db-floor-plan-types";
-import { neutralTint, TABLE_TINT, type Tint } from "./tokens";
+import { lightTint, neutralTint, TABLE_TINT_DARK, type Tint } from "./tokens";
 
 /** Statuses that count a table as occupied in the header summary. */
 export const IN_USE_STATUSES: ReadonlySet<TableStatus> = new Set<TableStatus>([
@@ -57,29 +58,55 @@ export function tableStatusLabel(status: TableStatus): string {
   return STATUS_LABEL[status] ?? status;
 }
 
-/** The artifact's six table tints, keyed by status; overtime wins. */
-export function tableTint(status: TableStatus, overtime: boolean): Tint {
-  if (overtime) return TABLE_TINT.over;
+type TintKey = keyof typeof TABLE_TINT_DARK | "neutral";
+
+function tintKey(status: TableStatus, overtime: boolean): TintKey {
+  if (overtime) return "over";
   switch (status) {
     case "available":
-      return TABLE_TINT.available;
+      return "available";
     case "reserved":
     case "seating":
     case "seated":
-      return TABLE_TINT.seated;
+      return "seated";
     case "ordering":
     case "ordered":
     case "served":
-      return TABLE_TINT.ordered;
+      return "ordered";
     case "check_presented":
     case "paying":
-      return TABLE_TINT.check;
+      return "check";
     case "paid":
     case "closing":
-      return TABLE_TINT.paid;
+      return "paid";
     default:
-      return neutralTint();
+      return "neutral";
   }
+}
+
+/** Light mode derives each tile from the palette's solid table colour. */
+function lightTableTint(key: Exclude<TintKey, "neutral">): Tint {
+  switch (key) {
+    case "available":
+      return lightTint(colors.tableAvailable);
+    case "seated":
+      return lightTint(colors.tableSeated);
+    case "ordered":
+      return lightTint(colors.tableOrdered);
+    case "check":
+      return lightTint(colors.tableCheckPresented);
+    case "paid":
+      return lightTint(colors.tablePaid);
+    case "over":
+      return lightTint(colors.tableOvertime);
+  }
+}
+
+/** The artifact's six table tints, keyed by status; overtime wins. */
+export function tableTint(status: TableStatus, overtime: boolean, dark: boolean): Tint {
+  const key = tintKey(status, overtime);
+  if (key === "neutral") return neutralTint();
+  return dark ? TABLE_TINT_DARK[key] : lightTableTint(key);
 }
 
 /**

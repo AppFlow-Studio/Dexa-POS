@@ -1,6 +1,7 @@
+import { colors } from "@/lib/theme";
 import type { OrderProfile } from "@/lib/types";
 import { formatElapsed, minutesSince } from "./format";
-import { ORDER_TINT, type Tint } from "./tokens";
+import { lightTint, ORDER_TINT_DARK, type Tint } from "./tokens";
 
 export type OrderKind = "takeout" | "dine_in" | "delivery";
 
@@ -27,8 +28,17 @@ export function orderKindLabel(kind: OrderKind): string {
   return KIND_LABEL[kind];
 }
 
-export function orderKindTint(kind: OrderKind): Tint {
-  return ORDER_TINT[kind];
+/** Artifact tints in dark mode; the palette's solid order-type colour in light. */
+export function orderKindTint(kind: OrderKind, dark: boolean): Tint {
+  if (dark) return ORDER_TINT_DARK[kind];
+  switch (kind) {
+    case "takeout":
+      return lightTint(colors.orderTypeToGo);
+    case "delivery":
+      return lightTint(colors.orderTypeDelivery);
+    case "dine_in":
+      return lightTint(colors.orderTypeDineIn);
+  }
 }
 
 const CLOSED_STATUSES: ReadonlySet<OrderProfile["order_status"]> = new Set<

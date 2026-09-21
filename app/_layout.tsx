@@ -621,7 +621,14 @@ export default Sentry.wrap(function RootLayout() {
       return;
     }
     if (isHandheld) {
-      // Handheld is portrait; handheld/hooks/useHandheldOrientation owns it.
+      // Handheld is portrait. Owned here, not inside the handheld tree: a
+      // theme toggle remounts everything under <ThemeProvider key=...>, and
+      // an unmount cleanup that restored landscape made the device flip.
+      // Until the Wave 0 build drops the native landscape lock (Temur), a
+      // production device may ignore this.
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      ).catch(() => {});
       return;
     }
     // Not a kiosk — lock to landscape (app.json default). lockAsync(DEFAULT)

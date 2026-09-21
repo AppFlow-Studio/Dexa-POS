@@ -1,5 +1,7 @@
+import { useColorScheme } from "@/lib/useColorScheme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { FlashList, type ListRenderItem } from "@shopify/flash-list";
+import { useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import { EmptyState } from "../../components/EmptyState";
@@ -8,7 +10,6 @@ import { useMinuteTick } from "../../hooks/useMinuteTick";
 import { metrics } from "../../lib/tokens";
 import { Screen, SegmentedTabs, type SegmentedOption } from "../../primitives";
 import { TableRow } from "./TableRow";
-import { TableSheet } from "./TableSheet";
 import { useTableRows, type TableRowData, type TablesScope } from "./useTableRows";
 
 type Item =
@@ -26,14 +27,14 @@ function toItems(label: string, rows: TableRowData[]): Item[] {
 const keyExtractor = (item: Item) => item.key;
 const getItemType = (item: Item) => item.kind;
 
-/** Artifact screen 1 — Tables. Read-only in this wave. */
+/** Artifact screen 1 — Tables. Tapping a row pushes its page. */
 export function TablesScreen() {
+  const router = useRouter();
+  const { isDarkColorScheme: dark } = useColorScheme();
   const [scope, setScope] = useState<TablesScope>("mine");
   const now = useMinuteTick();
   const rows = useTableRows(scope, now);
   const myName = useEmployeeStore((s) => s.loggedInEmployee?.displayName ?? "");
-  const [selected, setSelected] = useState<TableRowData | null>(null);
-  const closeSheet = useCallback(() => setSelected(null), []);
 
   const items = useMemo(
     () => [
@@ -43,20 +44,19 @@ export function TablesScreen() {
     [rows.needsYou, rows.section, scope],
   );
 
-  const byId = useMemo(
-    () => new Map([...rows.needsYou, ...rows.section].map((r) => [r.id, r] as const)),
-    [rows.needsYou, rows.section],
+  const openTable = useCallback(
+    (id: string) => router.push({ pathname: "/handheld/table/[id]", params: { id } }),
+    [router],
   );
-  const openTable = useCallback((id: string) => setSelected(byId.get(id) ?? null), [byId]);
 
   const renderItem = useCallback<ListRenderItem<Item>>(
     ({ item }) =>
       item.kind === "label" ? (
         <SectionLabel text={item.text} />
       ) : (
-        <TableRow {...item.row} divider={item.divider} onPress={openTable} />
+        <TableRow {...item.row} divider={item.divider} dark={dark} onPress={openTable} />
       ),
-    [openTable],
+    [openTable, dark],
   );
 
   const options: readonly SegmentedOption<TablesScope>[] = [
@@ -87,9 +87,9 @@ export function TablesScreen() {
           keyExtractor={keyExtractor}
           getItemType={getItemType}
           estimatedItemSize={metrics.row}
+          extraData={dark}
         />
       )}
-      <TableSheet row={selected} onClose={closeSheet} />
     </Screen>
   );
 }

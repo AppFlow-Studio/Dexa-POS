@@ -62,7 +62,13 @@ export function Button({
       }}
     >
       {icon}
-      <Text style={[type.button, { color: fg }]} numberOfLines={1}>
+      <Text
+        className="shrink"
+        style={[type.button, { color: fg }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
+      >
         {label}
       </Text>
     </Pressable>

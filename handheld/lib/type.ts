@@ -11,6 +11,9 @@ export const type = StyleSheet.create({
   title: { fontSize: 30, fontWeight: "700", lineHeight: 33, letterSpacing: -0.6 },
   /** Root header subtitle and row detail lines — 14/400. */
   detail: { fontSize: 14, lineHeight: 19 },
+  /** Pushed page header (`.bar-t`) — 20/500 with a 13dp line under it. */
+  pageTitle: { fontSize: 20, fontWeight: "500", lineHeight: 24 },
+  pageSubtitle: { fontSize: 13, lineHeight: 17 },
   /** Section labels ("Needs you"), segment labels, chips — 14–15/500. */
   label: { fontSize: 14, fontWeight: "500", lineHeight: 19 },
   segment: { fontSize: 15, fontWeight: "500", lineHeight: 20 },

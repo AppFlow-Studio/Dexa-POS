@@ -2,6 +2,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { logError } from "@/lib/logError";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
+import { useColorScheme } from "@/lib/useColorScheme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import * as Application from "expo-application";
@@ -10,7 +11,15 @@ import { ScrollView, Text, View } from "react-native";
 import { Avatar } from "../../components/Avatar";
 import { Card, CardHeader } from "../../components/check/Card";
 import { type } from "../../lib/type";
-import { ListRow, Screen, StickyActionBar } from "../../primitives";
+import { ListRow, Screen, StickyActionBar, SwitchRow } from "../../primitives";
+
+function GroupLabel({ text }: { text: string }) {
+  return (
+    <View className="px-4 pb-2 pt-3">
+      <Text style={[type.label, { color: colors.label }]}>{text}</Text>
+    </View>
+  );
+}
 
 /** Who is signed in, as a card with the avatar the header uses elsewhere. */
 function IdentityCard() {
@@ -48,7 +57,22 @@ function StationRows() {
   );
 }
 
-/** Me tab: identity, station rows, Sync now and Switch user. */
+/**
+ * Dark / light, the same NativeWind switch the register's Settings › General
+ * uses, so both surfaces agree and the choice persists the same way.
+ */
+function AppearanceRow() {
+  const { isDarkColorScheme, setColorScheme } = useColorScheme();
+  return (
+    <SwitchRow
+      label="Dark mode"
+      value={isDarkColorScheme}
+      onChange={(dark) => setColorScheme(dark ? "dark" : "light")}
+    />
+  );
+}
+
+/** Me tab: identity, device rows, appearance, Sync now and Switch user. */
 export function MeScreen() {
   const { syncNow } = useNetworkStatus();
   const signOut = useEmployeeStore((s) => s.signOut);
@@ -74,10 +98,10 @@ export function MeScreen() {
     <Screen title="Me">
       <ScrollView className="flex-1">
         <IdentityCard />
-        <View className="px-4 pb-2 pt-3">
-          <Text style={[type.label, { color: colors.label }]}>This device</Text>
-        </View>
+        <GroupLabel text="This device" />
         <StationRows />
+        <GroupLabel text="Appearance" />
+        <AppearanceRow />
       </ScrollView>
       <StickyActionBar
         actions={[
@@ -85,7 +109,6 @@ export function MeScreen() {
             label: syncing ? "Syncing…" : "Sync now",
             onPress: () => void handleSync(),
             variant: "tonal",
-            fit: true,
             disabled: syncing,
           },
           { label: "Switch user", onPress: handleSwitchUser },

@@ -56,7 +56,14 @@ const borderRadius = {
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: 'class',
-  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+  // handheld/ is the Dexa Go module (docs/features/handheld/README.md). A
+  // class that exists only there is not compiled unless the folder is listed,
+  // and NativeWind then silently renders the element unstyled.
+  content: [
+    './app/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
+    './handheld/**/*.{ts,tsx}',
+  ],
   presets: [require('nativewind/preset')],
   theme: {
     // Scale-driven overrides (replace defaults so all spacing/font/radius

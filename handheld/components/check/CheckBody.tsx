@@ -39,7 +39,11 @@ function countLabel(items: CartItem[]): string {
   return n === 1 ? "1 item" : `${n} items`;
 }
 
-/** Screen 5 / S3 as a read-only body: course cards then the totals. */
+/**
+ * Screen 5 / S3 as a read-only body: course cards then the totals. The
+ * artifact folds sent courses to one line; on a page whose whole point is
+ * seeing the check, the items stay listed under the "Sent" header instead.
+ */
 export function CheckBody({ orderId }: { orderId: string }) {
   const order = useOrderStore((s) => s.ordersById[orderId]);
   if (!order) return null;
@@ -51,22 +55,22 @@ export function CheckBody({ orderId }: { orderId: string }) {
     <>
       {list.map((course) => {
         const title = dineIn && !singleCourse ? `Course ${course.number}` : "Items";
-        return course.sent ? (
+        return (
           <Card key={course.number}>
-            <CardHeader
-              leading={<SentDisc />}
-              title={title}
-              detail={`Sent · ${countLabel(course.items)}`}
-              value={formatCurrency(course.total)}
-            />
-          </Card>
-        ) : (
-          <Card key={course.number}>
-            <CardHeader
-              title={title}
-              detail={`${countLabel(course.items)} · ${formatCurrency(course.total)}`}
-              trailing={<WarnChip label="Not sent" />}
-            />
+            {course.sent ? (
+              <CardHeader
+                leading={<SentDisc />}
+                title={title}
+                detail={`Sent · ${countLabel(course.items)}`}
+                value={formatCurrency(course.total)}
+              />
+            ) : (
+              <CardHeader
+                title={title}
+                detail={`${countLabel(course.items)} · ${formatCurrency(course.total)}`}
+                trailing={<WarnChip label="Not sent" />}
+              />
+            )}
             {course.items.map((item) => (
               <LineItem key={item.id} item={item} />
             ))}

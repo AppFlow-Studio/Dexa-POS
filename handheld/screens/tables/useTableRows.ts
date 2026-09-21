@@ -1,33 +1,14 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
-import type { FloorPlanObject, TableStatus } from "@/types/db-floor-plan-types";
+import type { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { useMemo } from "react";
-import { minutesSince } from "../../lib/format";
-import { tableTileLabel, tableTitle } from "../../lib/tableName";
-import {
-  IN_USE_STATUSES,
-  tableNeedsYou,
-  tableStatusRank,
-} from "../../lib/tableStatus";
+import { tableNeedsYou, tableStatusRank } from "../../lib/tableStatus";
+import { summarizeTable, type TableSummary } from "../../lib/tableSummary";
 
 export type TablesScope = "mine" | "all";
-
-export interface TableRowData {
-  id: string;
-  title: string;
-  tileLabel: string;
-  status: TableStatus;
-  capacity: number | null;
-  guests: number | null;
-  /** Minutes since seated, null when the table is free. */
-  minutes: number | null;
-  overtime: boolean;
-  serverStaffId: string | null;
-  /** Backend order id of the linked check, for the row's live total. */
-  orderDbId: string | null;
-}
+export type TableRowData = TableSummary;
 
 export interface TableRows {
   needsYou: TableRowData[];
@@ -62,7 +43,11 @@ export function useTableRows(scope: TablesScope, now: number): TableRows {
   );
   const sessions = useTableSessionStore((s) => s.sessions);
   const myProfileId = useEmployeeStore((s) => s.loggedInEmployee?.profileId ?? null);
-  const sittingLimit = useSettingsStore((s) => s.defaultSittingTimeMinutes);
+  // The location's sitting time — the same field useTableCardData reads on
+  // the register (useSettingsStore has a same-named field nothing writes).
+  const sittingLimit = useLocationConfigStore(
+    (s) => s.config.dining.defaultSittingTimeMinutes,
+  );
 
   return useMemo(() => {
     const nameById = new Map(tables.map((t) => [t.id, t.name] as const));
@@ -73,33 +58,13 @@ export function useTableRows(scope: TablesScope, now: number): TableRows {
     for (const table of tables) {
       if (!SEATABLE.has(table.category)) continue;
       const session = sessions[table.id] ?? table.session ?? null;
-      const merged = session?.merged_tables ?? [];
-      if (session && merged.length > 0) {
+      if (session && session.merged_tables?.length) {
         if (seenSessions.has(session.id)) continue;
         seenSessions.add(session.id);
       }
-      const status: TableStatus = session?.status ?? "available";
-      const inUse = IN_USE_STATUSES.has(status);
-      if (inUse) occupied++;
-      const minutes = inUse ? minutesSince(session?.seated_at, now) : null;
-      const overtime = sittingLimit > 0 && minutes !== null && minutes > sittingLimit;
-      const mergedNames = merged
-        .filter((id) => id !== table.id)
-        .map((id) => nameById.get(id))
-        .filter((n): n is string => !!n);
-
-      all.push({
-        id: table.id,
-        title: tableTitle(table.name, mergedNames),
-        tileLabel: tableTileLabel(table.name),
-        status,
-        capacity: table.capacity ?? null,
-        guests: session?.party_size ?? null,
-        minutes,
-        overtime,
-        serverStaffId: session?.server_staff_id ?? null,
-        orderDbId: session?.order_id ?? null,
-      });
+      const row = summarizeTable(table, session, nameById, now, sittingLimit);
+      if (row.minutes !== null) occupied++;
+      all.push(row);
     }
 
     const mine = myProfileId ? all.filter((r) => r.serverStaffId === myProfileId) : [];

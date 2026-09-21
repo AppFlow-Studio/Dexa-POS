@@ -22,8 +22,9 @@ export const TableRow = React.memo(function TableRow({
   overtime,
   orderDbId,
   divider,
+  dark,
   onPress,
-}: TableRowData & { divider: boolean; onPress: (tableId: string) => void }) {
+}: TableRowData & { divider: boolean; dark: boolean; onPress: (tableId: string) => void }) {
   const total = useOrderByDbId(orderDbId)?.total_amount;
   const handlePress = useCallback(() => onPress(id), [onPress, id]);
 
@@ -39,7 +40,7 @@ export const TableRow = React.memo(function TableRow({
 
   return (
     <ListRow
-      tile={{ label: tileLabel, ...tableTint(status, overtime) }}
+      tile={{ label: tileLabel, ...tableTint(status, overtime, dark) }}
       title={title}
       detail={detail}
       detailAccent={accent}

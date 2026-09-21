@@ -38,24 +38,36 @@ function Tab({
   badge?: number;
   onPress: () => void;
 }) {
+  // No android_ripple here: a ripple is clipped to the Pressable's rectangle,
+  // so on a flex-1 tab it flashed as a square. Material 3 puts the state
+  // layer on the pill instead, so the pill tints while pressed.
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
-      android_ripple={{ color: tint.accentSoft, borderless: true }}
       className="flex-1 items-center gap-1"
     >
-      <View
-        className="h-8 w-16 items-center justify-center rounded-full"
-        style={{ backgroundColor: active ? tint.accentSoft : "transparent" }}
-      >
-        <Icon size={24} color={active ? colors.teal : colors.label} />
-        {badge ? <Badge count={badge} /> : null}
-      </View>
-      <Text style={[type.nav, { color: active ? colors.heading : colors.label }]}>
-        {label}
-      </Text>
+      {({ pressed }) => (
+        <>
+          <View
+            className="items-center justify-center"
+            style={{
+              width: 64,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: active || pressed ? tint.accentSoft : "transparent",
+              opacity: pressed && !active ? 0.6 : 1,
+            }}
+          >
+            <Icon size={24} color={active ? colors.teal : colors.label} />
+            {badge ? <Badge count={badge} /> : null}
+          </View>
+          <Text style={[type.nav, { color: active ? colors.heading : colors.label }]}>
+            {label}
+          </Text>
+        </>
+      )}
     </Pressable>
   );
 }

@@ -1,5 +1,7 @@
+import { useColorScheme } from "@/lib/useColorScheme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { FlashList, type ListRenderItem } from "@shopify/flash-list";
+import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import { EmptyState } from "../../components/EmptyState";
@@ -7,26 +9,30 @@ import { useMinuteTick } from "../../hooks/useMinuteTick";
 import { metrics } from "../../lib/tokens";
 import { Screen, SegmentedTabs, type SegmentedOption } from "../../primitives";
 import { CheckRow } from "./CheckRow";
-import { CheckSheet } from "./CheckSheet";
 import { useChecks, type ChecksScope } from "./useChecks";
 
 const keyExtractor = (orderId: string) => orderId;
 
-/** Artifact screen S1 — every open order. Read-only in this wave. */
+/** Artifact screen S1 — every open order. Tapping a row pushes its page. */
 export function ChecksScreen() {
+  const router = useRouter();
+  const { isDarkColorScheme: dark } = useColorScheme();
   const [scope, setScope] = useState<ChecksScope>("open");
   const { open, closed } = useChecks();
   const now = useMinuteTick();
   const myName = useEmployeeStore((s) => s.loggedInEmployee?.displayName ?? "");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const closeSheet = useCallback(() => setSelectedId(null), []);
+
+  const openOrder = useCallback(
+    (id: string) => router.push({ pathname: "/handheld/order/[id]", params: { id } }),
+    [router],
+  );
 
   const rows = scope === "open" ? open : closed;
   const renderItem = useCallback<ListRenderItem<string>>(
     ({ item, index }) => (
-      <CheckRow orderId={item} now={now} divider={index > 0} onPress={setSelectedId} />
+      <CheckRow orderId={item} now={now} divider={index > 0} dark={dark} onPress={openOrder} />
     ),
-    [now],
+    [now, dark, openOrder],
   );
 
   const options: readonly SegmentedOption<ChecksScope>[] = [
@@ -56,10 +62,9 @@ export function ChecksScreen() {
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           estimatedItemSize={metrics.row}
-          extraData={now}
+          extraData={renderItem}
         />
       )}
-      <CheckSheet orderId={selectedId} onClose={closeSheet} />
     </Screen>
   );
 }

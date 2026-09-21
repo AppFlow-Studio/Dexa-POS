@@ -15,13 +15,15 @@ prod apply, merge: Temur.
 | --- | --- | --- |
 | Migration | `utils/supabase/migrations/20260921120000_handheld_station_type.sql` | Byte-identical copy in `DexaPOS-Website/supabase/migrations/`. CHECK + trigger branch in one file, never split. |
 | Station predicate | `lib/stationType.ts` | `isHandheldStationType`, `useIsHandheld`. Outside `handheld/` so register-side gates never import the lazy bundle. |
-| Post-login route | `lib/authFlow.ts` `resolvePostLoginRoute` | `'handheld'` -> `app/(main)/handheld.tsx`. |
+| Post-login route | `lib/authFlow.ts` `resolvePostLoginRoute` | `'handheld'` -> `app/(main)/handheld/index.tsx`. |
 | Local data policy | `lib/db/policy.ts` `stationKind` | Falls through to `"pos"` on purpose (data policy is a follow-on ticket). |
 | Register runtime | `contexts/RegisterRuntime.tsx` | Moved verbatim out of `app/(main)/_layout.tsx`. See below. |
-| Route | `app/(main)/handheld.tsx` | `React.lazy(() => import("@/handheld/HandheldRoot"))` + Suspense. |
-| Shell | `handheld/HandheldRoot.tsx` | Offline banner, one active tab, bottom tab bar. Pins `--ui-scale` to 1. |
-| Screens | `handheld/screens/{tables,checks,me}/` | Screen 1 (Tables), S1 (Checks), Me. |
-| Primitives | `handheld/primitives/` | Screen, ListRow, BottomSheet, StickyActionBar, Keypad, SegmentedTabs. |
+| Routes | `app/(main)/handheld/{_layout,index,table/[id],order/[id]}.tsx` | Nested native Stack with `POS_SCREEN_OPTIONS` (animation none, see lib/screenConfig.ts). Every route file `React.lazy`-loads its screen. |
+| Frame | `handheld/HandheldFrame.tsx` | Pins `--ui-scale` to 1, portrait, safe areas, themed status bar. Wraps the Stack. |
+| Tab root | `handheld/HandheldRoot.tsx` | One active tab + bottom tab bar (Checks badge = open checks marked ready). |
+| Screens | `handheld/screens/{tables,checks,me}/` | Screen 1 (Tables), S1 (Checks), Me (with Sync now, Switch user, Dark mode). |
+| Pages | `handheld/pages/{TablePage,OrderPage,CheckPage}.tsx` | Screen 5 / S3 read-only: `.bar` header, course cards, totals. Pushed by tapping a row. |
+| Primitives | `handheld/primitives/` | Screen, PageHeader, ListRow, Button, StickyActionBar, IconButton, BottomSheet, Keypad, SegmentedTabs, Switch. |
 | Error sink | `lib/logError.ts` | `logger.error` + Sentry capture. |
 
 ## RegisterRuntime: what moved and what did not
@@ -64,7 +66,7 @@ Every gate reads `isHandheldStationType(selectedStation?.station_type)`.
 | CFD / second screen | No CFD server; handheld gets the same no-op context as CFD client mode. | `contexts/CFDProvider.tsx` |
 | Payment + refund journal check on launch | Skip. Nothing to recover until handheld takes payments; the payment ticket must lift this. | `app/_layout.tsx` boot task |
 | Five-minute staff refresh | Interval removed; the `pos.employees-refresh` resume task (foreground) keeps the same 5-minute staleness window. | `contexts/PosSyncProvider.tsx` |
-| Landscape lock | Skipped for handheld; `handheld/hooks/useHandheldOrientation.ts` locks PORTRAIT_UP. Native lock removal is Temur's Wave 0. | `app/_layout.tsx` |
+| Landscape lock | Handheld locks PORTRAIT_UP from the root layout's orientation effect — the root never remounts on a theme toggle, whereas a lock owned inside the handheld tree flipped the device every time `<ThemeProvider key=…>` remounted. Native lock removal is Temur's Wave 0. | `app/_layout.tsx` |
 | Immersive system bars | Register hides status + navigation bars; handheld keeps both (the artifact shows the status bar and gesture pill). | `app/_layout.tsx` |
 | Realtime, card-reader detection, heartbeat, outbox, printer list | Kept, untouched. | — |
 
@@ -77,13 +79,13 @@ missed.
 
 - Tables: `useFloorPlanStore.tables` (active plan) + `useTableSessionStore.sessions`,
   same as `components/panels/TablesPanel.tsx`. Seatable objects only, merged
-  sessions collapsed, sorted status then name. Rows subscribe to their own
-  session via `useTableLive`.
+  sessions collapsed (`lib/tableSummary.ts`), "Needs you" pinned then the
+  register's status order. Rows are pure; only the check total is a live
+  per-row subscription (`useOrderByDbId`).
 - Checks: `useOrderStore.ordersById`, filtered by `isOpenCheck`
-  (`handheld/lib/openChecks.ts`). "Mine" = `created_by_staff_profile_id`
-  equals the signed-in employee's `profileId`; "All" needs
-  `view_scope = 'location'`, which the trigger sets. Rows subscribe to their
-  own profile.
+  (`handheld/lib/checks.ts`), split Open / Closed. Rows subscribe to their
+  own profile. Tables' Mine / All needs `view_scope = 'location'`, which the
+  trigger sets.
 - Offline banner: `useNetworkStatus().rawIsOnline` (not `isOnline`, so slow
   mode stays silent).
 - Totals: `utils/currency.formatCurrency` on the `NUMERIC(12,2)` dollar values.
@@ -104,7 +106,9 @@ and the type ramp (`handheld/lib/type.ts`).
 | `.row` 76dp + `.tb` 48dp tile + `.st-*` / `.ot-*` tints, inset divider | `primitives/ListRow.tsx`, tints in `lib/tokens.ts`, mapping in `lib/tableStatus.ts` / `lib/checks.ts` |
 | `.navb` 84dp bar, `.pi` 64×32 indicator, `.bd` badge | `components/TabBar.tsx`; badge = open checks the kitchen marked ready |
 | `.bb` / `.btn` (primary, tonal, soft, off, text, fit) 56dp pills | `primitives/Button.tsx`, `primitives/StickyActionBar.tsx` |
-| `.sheet` 28dp radius, grab handle, 24/600 title, close `.ib` | `primitives/BottomSheet.tsx`, `primitives/IconButton.tsx` |
+| `.bar` pushed header (64dp, back, 20/500 title, 13 line) | `primitives/PageHeader.tsx`, used by `pages/CheckPage.tsx` |
+| `.sheet` 28dp radius, grab handle, 24/600 title, close `.ib` | `primitives/BottomSheet.tsx`, `primitives/IconButton.tsx` (kept for S4 / S5) |
+| `.swrow` / `.sw` switch | `primitives/Switch.tsx` (Dark mode on the Me tab) |
 | `.card` / `.card-h` / `.ln` / `.sum` / `.chipx` / `.okd` / `.tag` | `components/check/*` |
 | `.bn` offline card under the header | `components/OfflineBanner.tsx` (rendered by `Screen`) |
 | `.kp` keypad (52dp keys, `.big` 64dp for the PIN pad) | `primitives/Keypad.tsx` |
@@ -125,14 +129,21 @@ Rules taken from the artifact's copy and the register's own logic:
   is no history fetch on the handheld (no new queries).
 - Header subtitle uses real data ("Main floor · 6 of 24 seated") because the
   app has no daypart concept for the artifact's "Dinner · Main floor".
-- Tapping a row opens screen 5 / S3 as a **read-only** sheet (course cards,
-  line items, totals) with no footer actions until Wave 2.
+- Tapping a row pushes screen 5 / S3 as a **read-only page** on the handheld
+  Stack (`.bar` header with back, course cards, line items, totals) with no
+  footer actions until Wave 2. `BottomSheet` stays for S4 / S5.
+- Press feedback on the tab bar and icon buttons is a tinted state layer, not
+  an Android ripple: a ripple clips to the Pressable's rectangle and flashed
+  as a square on the flex-1 tabs.
+- Light mode has no artifact; tile tints derive from the palette's solid
+  status colours (`lightTint`), and the translucent layers in `tokens.ts` are
+  computed from the active palette so they follow the switch.
 
 ## UI scale
 
 `UiScaleProvider` computes `--ui-scale` from dp width against a 1333 dp
 baseline and floors at 0.6. On a 360 dp handheld that shrinks `text-base` to
-9.6 px and `min-h-12` to 29 dp. `HandheldRoot` wraps its subtree in
+9.6 px and `min-h-12` to 29 dp. `HandheldFrame` wraps the handheld Stack in
 `vars({ "--ui-scale": 1 })` so every utility class is dp-exact. RN font
 scaling still applies to `Text`, which is why rows use `min-h-*`, never `h-*`.
 

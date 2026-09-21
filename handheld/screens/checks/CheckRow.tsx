@@ -35,11 +35,13 @@ export const CheckRow = React.memo(function CheckRow({
   orderId,
   now,
   divider,
+  dark,
   onPress,
 }: {
   orderId: string;
   now: number;
   divider: boolean;
+  dark: boolean;
   onPress: (orderId: string) => void;
 }) {
   const order = useOrderStore((s) => s.ordersById[orderId]);
@@ -48,7 +50,7 @@ export const CheckRow = React.memo(function CheckRow({
 
   const kind = orderKind(order);
   const Icon = KIND_ICON[kind];
-  const { fg, bg } = orderKindTint(kind);
+  const { fg, bg } = orderKindTint(kind, dark);
   const kitchen = kitchenState(order, now);
 
   return (
