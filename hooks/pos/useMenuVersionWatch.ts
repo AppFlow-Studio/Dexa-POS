@@ -18,9 +18,17 @@ import { useEffect, useRef } from "react";
  * throws it away ~always. The version compare saves the store rebuild; it does
  * not save the transfer.
  *
- * So this polls `get_pos_menu_version_v1` — the same watermark with none of the
+ * So this polls `get_pos_menu_version_v2` — the same watermark with none of the
  * payload — and only invalidates `pos_sync` when the token actually moves. The
  * expensive fetch then happens exactly when there is something to fetch.
+ *
+ * WHY v2. `get_pos_menu_version_v1` is a verbatim copy of get_pos_bootstrap_v1's
+ * watermark and stays that way. Per-station menu scope (`stations.menu_scope`,
+ * `station_menus`) is folded into get_pos_bootstrap_v2's version instead, and
+ * v2 of the probe is v1's token plus that same scope hash — so a scope toggle
+ * in the dashboard moves this token and reaches the tablet through the normal
+ * check, with no manual sync. Pointing this at v1 would leave the probe blind
+ * to exactly that class of change.
  *
  * The invalidate is all this does: PosSyncProvider owns applying the payload,
  * writing the snapshots and stamping freshness. One transform, one owner.
@@ -59,7 +67,7 @@ export function useMenuVersionWatch(locationId: string | undefined | null) {
     // same as a retry, and foreground/reconnect both force one sooner.
     retry: 1,
     queryFn: async (): Promise<string | null> => {
-      const { data, error } = await supabase.rpc("get_pos_menu_version_v1", {
+      const { data, error } = await supabase.rpc("get_pos_menu_version_v2", {
         p_location_id: locationId,
       });
       if (error) throw error;

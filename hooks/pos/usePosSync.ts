@@ -8,6 +8,7 @@ import {
   MenuItemIngredientSync,
   ModifierIngredientSync,
   PosSyncData,
+  StationMenuScopeMap,
   TaxRate,
 } from "@/types/menu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +30,12 @@ interface PosBootstrapPayload {
   modifier_group_item_ingredients: ModifierIngredientSync[] | null;
   tax_rates: TaxRate[] | null;
   snoozes: { items?: any[]; modifiers?: any[] } | null;
+  /**
+   * station_id -> { scope, menu_ids }. Null/absent from a server that has not
+   * run the station-scope migration yet, which the store treats as "every
+   * station shows all" — today's behaviour.
+   */
+  station_menu_scopes?: StationMenuScopeMap | null;
 }
 
 /**
@@ -123,6 +130,10 @@ export const usePosSync = (locationId: string | null) => {
         menu_item_ingredients: data.menu_item_ingredients ?? [],
         modifier_group_item_ingredients:
           data.modifier_group_item_ingredients ?? [],
+        // Carried on PosSyncData so both offline snapshots (MMKV and the SQLite
+        // mirror) persist it — an airplane-mode cold start must scope the menu
+        // exactly as the last live sync did.
+        station_menu_scopes: data.station_menu_scopes ?? {},
       };
     },
 
