@@ -146,6 +146,13 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   defaultReceiptPrinterId: string | null;
   setDefaultReceiptPrinterId: (printerId: string | null) => void;
 
+  // KDS auto-print: when this device is a KDS station, physically print each
+  // ticket that lands on the board to the printer this station has claimed.
+  // Device-local (a printer is a per-device concern) + off by default — the
+  // kill switch for the whole KDS-print feature on this device.
+  kdsAutoPrintEnabled: boolean;
+  setKdsAutoPrintEnabled: (enabled: boolean) => void;
+
   // Order Line
   orderLineSettings: OrderLineSettings;
 
@@ -485,6 +492,11 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultReceiptPrinterId: (printerId) =>
         set({ defaultReceiptPrinterId: printerId }),
 
+      // KDS auto-print (device-local; only meaningful on a KDS station)
+      kdsAutoPrintEnabled: false,
+      setKdsAutoPrintEnabled: (enabled) =>
+        set({ kdsAutoPrintEnabled: enabled }),
+
       // Order Line
       orderLineSettings: {
         daysToShow: 0,
@@ -602,6 +614,7 @@ export const useSettingsStore = create<SettingsState>()(
         defaultSittingTimeMinutes: state.defaultSittingTimeMinutes,
         // KDS
         kdsEnabled: state.kdsEnabled,
+        kdsAutoPrintEnabled: state.kdsAutoPrintEnabled,
         // Performance diagnostics
         telemetryEnabled: state.telemetryEnabled,
         // Menu Display

@@ -20,6 +20,8 @@ import KDSSoundService, {
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { usePrinterStore } from "@/stores/usePrinterStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KdsConfig } from "@/types/locationConfig";
 import type { Station } from "@/types/station";
@@ -962,6 +964,186 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
   );
 };
 
+// ---------------------------------------------------------------------------
+// TICKET PRINTER — lets THIS KDS device claim a printer and auto-print each
+// ticket that lands on its board. Only rendered on a KDS device: the printer
+// is a per-device concern and the auto-print flag is device-local (MMKV).
+// ---------------------------------------------------------------------------
+function KdsTicketPrinterSection() {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  const selectedStation = useStoreSettingsStore((st) => st.selectedStation);
+  const selectedStore = useStoreSettingsStore((st) => st.selectedStore);
+  const printers = usePrinterStore((st) => st.printers);
+  const setStationReceiptPrinter = usePrinterStore(
+    (st) => st.setStationReceiptPrinter,
+  );
+  const autoPrintEnabled = useSettingsStore((st) => st.kdsAutoPrintEnabled);
+  const setAutoPrintEnabled = useSettingsStore(
+    (st) => st.setKdsAutoPrintEnabled,
+  );
+
+  const claimedId = selectedStation?.current_receipt_printer_id ?? null;
+
+  // Printers this KDS can drive: active printers at this location that are
+  // either location-level (network — any device can reach them) or attached to
+  // THIS device's own station.
+  const available = useMemo(
+    () =>
+      printers.filter(
+        (p) =>
+          p.isActive &&
+          p.locationId === selectedStore?.id &&
+          (p.stationId == null || p.stationId === selectedStation?.id),
+      ),
+    [printers, selectedStore?.id, selectedStation?.id],
+  );
+
+  const claimedPrinter = claimedId
+    ? printers.find((p) => p.id === claimedId) ?? null
+    : null;
+
+  const handleSelect = async (printerId: string) => {
+    if (!selectedStation?.id) return;
+    try {
+      await setStationReceiptPrinter(selectedStation.id, printerId);
+    } catch {
+      toastService.show({
+        title: "Couldn't assign printer",
+        message: "Try again.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleTestPrint = async () => {
+    if (!claimedPrinter) return;
+    try {
+      const {
+        PrinterService,
+      } = require("@/services/printing/PrinterService");
+      const ok = await PrinterService.printTestKitchenTicket(claimedPrinter);
+      toastService.show({
+        title: ok ? "Test sent" : "Test failed",
+        message: ok
+          ? `Sent a test ticket to ${claimedPrinter.printerName}.`
+          : "Could not reach the printer.",
+        type: ok ? "success" : "error",
+      });
+    } catch {
+      toastService.show({
+        title: "Test failed",
+        message: "Could not reach the printer.",
+        type: "error",
+      });
+    }
+  };
+
+  return (
+    <>
+      <SectionHeader title="Ticket Printer" />
+      <Text
+        style={{
+          fontSize: s(11),
+          color: colors.muted,
+          marginBottom: s(8),
+          paddingHorizontal: s(2),
+        }}
+      >
+        Physically print each ticket that lands on this display. Pick a printer
+        this device can reach (a network printer, or one attached to this
+        device) and turn on auto-print.
+      </Text>
+
+      <ToggleRow
+        label="Auto-print tickets"
+        subtitle="Print a kitchen ticket when an order reaches this display"
+        value={autoPrintEnabled}
+        onToggle={setAutoPrintEnabled}
+      />
+
+      {available.length === 0 ? (
+        <Text
+          style={{
+            fontSize: s(12),
+            color: colors.muted,
+            paddingVertical: s(10),
+            paddingHorizontal: s(12),
+          }}
+        >
+          No printers found for this location. Add a network printer from a POS
+          station&apos;s Printers settings, then it will appear here.
+        </Text>
+      ) : (
+        available.map((p) => {
+          const selected = p.id === claimedId;
+          return (
+            <TouchableOpacity
+              key={p.id}
+              onPress={() => handleSelect(p.id)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: s(10),
+                paddingHorizontal: s(12),
+                borderRadius: s(8),
+                borderWidth: 1,
+                borderColor: selected ? colors.teal : colors.border,
+                backgroundColor: selected ? colors.teal + "18" : colors.card,
+                marginBottom: s(4),
+              }}
+            >
+              <View style={{ flex: 1, marginRight: s(10) }}>
+                <Text style={{ fontSize: s(13), color: colors.heading }}>
+                  {p.printerName}
+                </Text>
+                <Text style={{ fontSize: s(11), color: colors.muted }}>
+                  {p.connectionType ?? "network"}
+                  {p.networkAddress ? ` · ${p.networkAddress}` : ""}
+                </Text>
+              </View>
+              {selected && (
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    fontWeight: "700",
+                    color: colors.teal,
+                  }}
+                >
+                  SELECTED
+                </Text>
+              )}
+            </TouchableOpacity>
+          );
+        })
+      )}
+
+      <TouchableOpacity
+        onPress={handleTestPrint}
+        disabled={!claimedPrinter}
+        style={{
+          alignSelf: "flex-start",
+          marginTop: s(6),
+          paddingHorizontal: s(14),
+          paddingVertical: s(8),
+          borderRadius: s(8),
+          borderWidth: 1,
+          borderColor: colors.teal,
+          opacity: claimedPrinter ? 1 : 0.4,
+        }}
+      >
+        <Text
+          style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}
+        >
+          Test Print
+        </Text>
+      </TouchableOpacity>
+    </>
+  );
+}
+
 const KdsSettingsScreen = () => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -1251,6 +1433,9 @@ const KdsSettingsScreen = () => {
             )}
           </>
         )}
+
+        {/* ── Ticket Printer (this KDS device only) ────────────────── */}
+        {isKDSDevice && <KdsTicketPrinterSection />}
 
         {/* ── Global Settings ──────────────────────────────────────── */}
         <SectionHeader title="Global Settings" />

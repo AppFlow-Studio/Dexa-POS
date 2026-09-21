@@ -52,6 +52,7 @@ import {
   ReceiptTemplateData
 } from '@/types/printer'
 import { DEFAULT_RECEIPT_TEMPLATE } from '@/types/receipt-template'
+import { KDSTicket, KDSTicketItem } from '@/types/kds'
 import { getDriver } from './DriverFactory'
 import { getReceiptPrinter, routeKitchenItems } from './PrintRouter'
 import { buildKitchenTicketDocument } from './templates/KitchenTicketDocumentTemplate'
@@ -585,6 +586,61 @@ export const PrinterService = {
       usePrintQueueStore.getState().enqueue(job)
     }
 
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print a single KDS ticket to the printer THIS station has claimed.
+   *
+   * Unlike printKitchenTickets (which re-routes items across kitchen printers
+   * by POS routing rules), this targets the claimed printer DIRECTLY: the KDS
+   * *is* the routing boundary, and the ticket already contains only the items
+   * routed to this display. Caller (useKDSStore) gates on station_type === 'kds'
+   * + the auto-print flag; here we just require a claimed, active printer.
+   */
+  async printKdsTicket (
+    ticket: KDSTicket,
+    location: SelectedLocation
+  ): Promise<boolean> {
+    const claimedId =
+      useStoreSettingsStore.getState().selectedStation
+        ?.current_receipt_printer_id ?? null
+    if (!claimedId) {
+      console.warn('[PrinterService] printKdsTicket: no printer claimed on this KDS')
+      return false
+    }
+
+    const printer = usePrinterStore.getState().getPrinterById(claimedId)
+    if (!printer || !printer.isActive) {
+      console.warn(
+        '[PrinterService] printKdsTicket: claimed printer missing/inactive'
+      )
+      return false
+    }
+
+    // Skip void/refund acknowledgement notices so a ticket of pure notices
+    // doesn't print an empty ticket.
+    const printableItems = ticket.items.filter(
+      it => !it.is_voided && !it.is_refunded
+    )
+    if (printableItems.length === 0) return false
+
+    const ticketData = buildKdsKitchenTicketData(
+      ticket,
+      printableItems,
+      printer,
+      location
+    )
+    const job = createJobForPrinter(
+      printer,
+      ticketData,
+      'kitchen_ticket',
+      'high',
+      ticket.order_id,
+      'kitchen'
+    )
+    usePrintQueueStore.getState().enqueue(job)
     this.ensureProcessing()
     return true
   },
@@ -2385,6 +2441,81 @@ function buildKitchenTicketData (
     totalItemCount,
     items: kitchenItems,
     isVoidTicket,
+    maxCharsPerLine: printer.graphicsOnly
+      ? Math.min(printer.maxCharsPerLine, 32)
+      : printer.maxCharsPerLine,
+    templateConfig: template,
+    readyByTime
+  }
+}
+
+/**
+ * Build kitchen-ticket render data from a KDS board ticket. The KDS ticket
+ * already carries everything a kitchen print needs (order header + per-item
+ * modifiers/notes/course/seat), so this maps it directly — no OrderProfile /
+ * CartItem lookups, which keeps it independent of POS-only stores that a KDS
+ * device does not populate (floor plan, seating).
+ */
+function buildKdsKitchenTicketData (
+  ticket: KDSTicket,
+  items: KDSTicketItem[],
+  printer: PrinterConfig,
+  location: SelectedLocation
+): KitchenTicketData {
+  const template = useReceiptTemplateStore
+    .getState()
+    .getKitchenTemplate(location.id)
+
+  const now = new Date()
+  const timestamp = safeTimeString(now)
+  const fullTimestamp =
+    now.toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric'
+    }) +
+    ' ' +
+    timestamp
+
+  const kitchenItems: KitchenTicketItemData[] = items.map(item => {
+    const modifiers = item.modifiers.map(m =>
+      m.is_no ? `NO ${m.modifier_name}` : m.modifier_name
+    )
+    const notes = item.special_instructions ?? undefined
+    const allergyAlert =
+      notes && /allergy/i.test(notes) ? notes : undefined
+
+    return {
+      name: item.name,
+      quantity: item.quantity,
+      modifiers,
+      notes,
+      isVoided: item.is_voided,
+      isRefunded: item.is_refunded,
+      station: item.category_name,
+      allergyAlert,
+      seatNumber: item.seat_number ?? null,
+      courseNumber: ticket.course_number
+    }
+  })
+
+  const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0)
+  const readyBy = new Date(now.getTime() + 15 * 60 * 1000)
+  const readyByTime = safeTimeString(readyBy)
+
+  return {
+    orderNumber:
+      ticket.display_number ||
+      ticket.order_number ||
+      `#${ticket.order_id.slice(-4)}`,
+    orderType: displayOrderType(ticket.order_type),
+    tableName: ticket.table_name ?? undefined,
+    serverName: ticket.server_name ?? undefined,
+    timestamp,
+    fullTimestamp,
+    totalItemCount,
+    items: kitchenItems,
+    isVoidTicket: false,
     maxCharsPerLine: printer.graphicsOnly
       ? Math.min(printer.maxCharsPerLine, 32)
       : printer.maxCharsPerLine,
