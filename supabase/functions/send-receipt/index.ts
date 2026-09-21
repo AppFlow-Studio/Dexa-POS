@@ -2,6 +2,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { Resend } from 'npm:resend@4.0.1'
+import { normalizeE164, sendSMS } from '../_shared/telnyx.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -56,14 +57,6 @@ function decodeJwtSub(authHeader: string | null): string | null {
   } catch {
     return null
   }
-}
-
-function normalizeE164(raw: string): string | null {
-  const digits = raw.replace(/\D/g, '')
-  if (digits.length === 10) return `+1${digits}`
-  if (digits.length === 11 && digits[0] === '1') return `+${digits}`
-  if (digits.length > 0) return `+${digits}`
-  return null
 }
 
 serve(async (req: Request) => {
@@ -189,73 +182,47 @@ serve(async (req: Request) => {
     }
 
     // SMS
-    const telnyxApiKey = Deno.env.get('TELNYX_API_KEY')
-    const telnyxFromNumber = Deno.env.get('TELNYX_FROM_NUMBER')
-    const telnyxProfileId = Deno.env.get('TELNYX_MESSAGING_PROFILE_ID')
-    if (!telnyxApiKey || (!telnyxFromNumber && !telnyxProfileId)) {
-      return jsonResp({
-        success: false,
-        message:
-          'SMS service not configured. Set TELNYX_API_KEY and either TELNYX_FROM_NUMBER or TELNYX_MESSAGING_PROFILE_ID.'
-      })
-    }
-
-    const e164 = normalizeE164(recipient)
-    if (!e164) {
-      await recordSend('failed', 'Invalid phone number')
-      return jsonResp({ success: false, message: 'Invalid phone number' })
-    }
-
     const text = renderReceiptText(order as any, location, {
       confirmation: confirmation === true
     })
-    const telnyxBody: Record<string, unknown> = {
-      to: e164,
-      text
-    }
-    if (telnyxFromNumber) telnyxBody.from = telnyxFromNumber
-    if (!telnyxFromNumber && telnyxProfileId)
-      telnyxBody.messaging_profile_id = telnyxProfileId
-
-    const telnyxResp = await fetch('https://api.telnyx.com/v2/messages', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${telnyxApiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json'
-      },
-      body: JSON.stringify(telnyxBody)
+    const smsResult = await sendSMS(recipient, text)
+    const { error: ledgerError } = await sb.rpc('log_outbound_message', {
+      p_merchant_id: merchantId,
+      p_to_number: normalizeE164(recipient) ?? recipient,
+      p_body: text,
+      p_telnyx_message_id: smsResult.id ?? null,
+      p_channel: 'sms',
+      p_customer_id:
+        (order as { customer_id?: string | null }).customer_id ?? null,
+      p_status: 'error' in smsResult ? 'failed' : 'sent',
+      p_error_code:
+        'error' in smsResult
+          ? (smsResult.errorCode ?? smsResult.error)
+          : null,
+      p_from_number: smsResult.fromNumber ?? null,
+      p_messaging_profile_id: smsResult.messagingProfileId ?? null
     })
-
-    let telnyxJson: any = {}
-    try {
-      telnyxJson = await telnyxResp.json()
-    } catch {
-      telnyxJson = {}
-    }
-    const data = telnyxJson?.data
-    const firstError = telnyxJson?.errors?.[0]
-    const providerStatus = data?.status as string | undefined
-    const smsOk =
-      telnyxResp.ok &&
-      !!data?.id &&
-      providerStatus !== 'sending_failed' &&
-      providerStatus !== 'delivery_failed'
-
-    if (!smsOk) {
-      const providerError =
-        firstError?.detail || firstError?.title || 'Could not send SMS'
-      await recordSend('failed', providerError)
-      return jsonResp({ success: false, message: providerError })
+    if (ledgerError) {
+      console.error('receipt SMS ledger write failed', {
+        code: ledgerError.code
+      })
     }
 
-    await recordSend('sent')
+    if ('error' in smsResult) {
+      await recordSend('failed', smsResult.error)
+      return jsonResp({ success: false, message: smsResult.error })
+    }
+
+    await recordSend(
+      'sent',
+      ledgerError ? `Ledger: ${ledgerError.message}` : undefined
+    )
     return jsonResp({ success: true, message: 'Receipt sent via SMS successfully' })
   } catch (err: any) {
     const message = err?.message || 'Failed to send receipt'
     try {
       await recordSend('failed', message)
-    } catch (_) {
+    } catch {
       // best-effort audit
     }
     return jsonResp({ success: false, message }, { status: 500 })
