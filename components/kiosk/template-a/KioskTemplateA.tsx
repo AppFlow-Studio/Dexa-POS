@@ -1,13 +1,17 @@
 import { KioskTemplateProps } from "@/components/kiosk/KioskTemplateRouter";
 import { KioskCartButton } from "@/components/kiosk/shared/KioskCartButton";
+import { KioskConfirmDialog } from "@/components/kiosk/shared/KioskConfirmDialog";
 import { KioskHeader } from "@/components/kiosk/shared/KioskHeader";
 import { KioskIdleModal } from "@/components/kiosk/shared/KioskIdleModal";
+import { KioskItemDetailModal } from "@/components/kiosk/shared/KioskItemDetailModal";
+import { kioskCartPlacement } from "@/components/kiosk/shared/kioskLayout";
+import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { KioskOrderTypeScreen } from "@/components/kiosk/shared/KioskOrderTypeScreen";
 import { KioskCartView } from "@/components/kiosk/shared/KioskCartView";
 import { KioskScreenTransition } from "@/components/kiosk/shared/KioskScreenTransition";
 import { useKioskIdleTimer } from "@/components/kiosk/shared/useKioskIdleTimer";
+import { useKioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
 import { KioskCheckoutView } from "@/components/kiosk/template-a/KioskCheckoutView";
-import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
 import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
@@ -41,9 +45,10 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   // so the idle timer must NOT treat it as an active cart (which would reset
   // under a customer reading their pickup number).
   const [paid, setPaid] = useState(false);
+  // Start Over with something in the basket asks first; empty, it just goes.
+  const [confirmingStartOver, setConfirmingStartOver] = useState(false);
   const itemCount = useKioskCartStore((s) => s.itemCount());
   const subtotal = useKioskCartStore((s) => s.subtotal());
-  const orderType = useKioskCartStore((s) => s.orderType);
   const setOrderType = useKioskCartStore((s) => s.setOrderType);
   const clearCart = useKioskCartStore((s) => s.clear);
 
@@ -56,6 +61,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   const resetToIdle = useCallback(() => {
     clearCart();
     setPaid(false);
+    setConfirmingStartOver(false);
     setScreen("orderType");
     setSelectedItem(null);
     onExit();
@@ -65,12 +71,34 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   // deferred to payOrder), so there's nothing to void here — just reset.
   const handleIdleReset = resetToIdle;
 
+  // Start Over is the customer's way out, and it is the same reset the idle
+  // timer performs — one path, so the two can never clear different things.
+  // The menu view's own state (search, selected category) goes with the
+  // unmount when the session ends.
+  const handleStartOver = useCallback(() => {
+    if (itemCount > 0) {
+      setConfirmingStartOver(true);
+      return;
+    }
+    resetToIdle();
+  }, [itemCount, resetToIdle]);
+
+  // One cart, one place: the header in landscape, the floating button in
+  // portrait. Never both, and never over a tile.
+  const cartPlacement = kioskCartPlacement(config.orientation === "vertical");
+
   const { registerActivity, showWarning, secondsLeft } = useKioskIdleTimer({
     idleTimeoutSeconds: config.idleTimeoutSeconds,
     cartResetTimeoutSeconds: config.cartResetTimeoutSeconds,
     hasActiveCart,
     onReset: handleIdleReset,
   });
+
+  // Search is owned here because two children need it: the header draws the
+  // field, the menu view draws the results over its grid. Typing is the one
+  // interaction the idle timer cannot see for itself — it counts touches, and
+  // a software keyboard produces none.
+  const search = useKioskMenuSearchState(registerActivity);
 
   // First step: choose Dine In / Takeaway. Full-screen takeover (no header).
   if (screen === "orderType") {
@@ -107,9 +135,27 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
       {screen !== "checkout" && (
         <KioskHeader
           config={config}
-          orderType={orderType}
-          onChangeOrderType={setOrderType}
-          onExit={onExit}
+          onStartOver={handleStartOver}
+          search={
+            screen === "menu"
+              ? {
+                  expanded: search.expanded,
+                  query: search.query,
+                  onExpand: search.open,
+                  onChangeQuery: search.setQuery,
+                  onClose: search.close,
+                }
+              : undefined
+          }
+          cart={
+            cartPlacement === "header"
+              ? {
+                  itemCount,
+                  subtotal,
+                  onPress: () => setScreen("cart"),
+                }
+              : undefined
+          }
         />
       )}
 
@@ -133,36 +179,31 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
         <View
           style={[
             StyleSheet.absoluteFillObject,
-            { display: screen === "menu" ? "flex" : "none" },
+            {
+              display:
+                screen === "menu" || screen === "itemDetail" ? "flex" : "none",
+            },
           ]}
         >
           <KioskScreenTransition key="menu" direction="fade">
             <KioskMenuView
               config={config}
+              search={search}
               onSelectItem={(item) => {
                 setSelectedItem(item);
                 setScreen("itemDetail");
               }}
             />
-            <KioskCartButton
-              config={config}
-              itemCount={itemCount}
-              subtotal={subtotal}
-              onPress={() => setScreen("cart")}
-            />
+            {cartPlacement === "bottomBar" ? (
+              <KioskCartButton
+                config={config}
+                itemCount={itemCount}
+                subtotal={subtotal}
+                onPress={() => setScreen("cart")}
+              />
+            ) : null}
           </KioskScreenTransition>
         </View>
-
-        {screen === "itemDetail" && selectedItem && (
-          <KioskScreenTransition key="itemDetail" direction="forward">
-            <KioskItemDetail
-              config={config}
-              item={selectedItem}
-              onBack={() => setScreen("menu")}
-              onAdded={() => setScreen("menu")}
-            />
-          </KioskScreenTransition>
-        )}
 
         {screen === "cart" && (
           <KioskScreenTransition key="cart" direction="forward">
@@ -185,6 +226,30 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
           </KioskScreenTransition>
         )}
       </View>
+
+      {/* Overlays sit outside the body, so their scrim covers the header too —
+          nothing behind a popup stays tappable. Declared last so they stack
+          above everything on both platforms. */}
+      {screen === "itemDetail" && selectedItem && (
+        <KioskItemDetailModal
+          config={config}
+          item={selectedItem}
+          onDismiss={() => setScreen("menu")}
+          onAdded={() => setScreen("menu")}
+        />
+      )}
+
+      {confirmingStartOver && (
+        <KioskConfirmDialog
+          config={config}
+          title={kioskStrings.startOverConfirmTitle}
+          body={kioskStrings.startOverConfirmBody}
+          cancelLabel={kioskStrings.startOverKeep}
+          confirmLabel={kioskStrings.startOverConfirm}
+          onCancel={() => setConfirmingStartOver(false)}
+          onConfirm={resetToIdle}
+        />
+      )}
     </View>
   );
 }

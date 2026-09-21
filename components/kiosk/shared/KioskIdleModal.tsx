@@ -2,7 +2,8 @@ import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
-import { Text } from "react-native";
+import { useEffect } from "react";
+import { Keyboard, Text } from "react-native";
 import Animated, { FadeIn, FadeOut, ZoomIn } from "react-native-reanimated";
 
 /**
@@ -29,6 +30,13 @@ export function KioskIdleModal({
   hasActiveCart?: boolean;
 }) {
   const s = useKioskUiScale();
+
+  // The software keyboard can cover this, and it is the one thing on screen a
+  // customer has seconds to read before their order is dropped. Searching with
+  // the keyboard up is exactly when the warning is most likely to fire.
+  useEffect(() => {
+    Keyboard.dismiss();
+  }, []);
 
   return (
     <Animated.View

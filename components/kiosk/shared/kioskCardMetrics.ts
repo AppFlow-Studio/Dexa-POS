@@ -30,30 +30,40 @@ export interface KioskCardMetrics {
   placeholderSize: number;
   nameSize: number;
   nameLineHeight: number;
-  /** Fixed height reserved for the name so every card in the grid aligns. */
+  /** Lines the name may wrap to — 1 only when the budget cannot seat two. */
+  nameLines: number;
+  /**
+   * Height budgeted for the name at its worst case (`nameLines` full lines).
+   *
+   * A budget, not a rendered height: the card sets no fixed height on its
+   * copy, so a one-line name in a two-line budget gives the difference back to
+   * the photo rather than leaving a blank line above the description.
+   */
   nameBlockHeight: number;
   descSize: number;
   descLineHeight: number;
   descLines: number;
+  /** Same contract as `nameBlockHeight` — a worst case, not a fixed height. */
   descBlockHeight: number;
   /** Below this width the description is dropped rather than truncated to mush. */
   showDescription: boolean;
   priceSize: number;
-  /** Whether the "Options" pill has room for its label, or shows icon-only. */
-  showOptionsLabel: boolean;
-  optionsIconSize: number;
-  optionsTextSize: number;
+  /** Edge of the quick-add "+" button. Never below the 48dp touch floor. */
+  addButtonSize: number;
+  addIconSize: number;
   badgeIconSize: number;
   badgeTextSize: number;
-  /** Fixed height for the price/Options row, so the card total is exact. */
+  /** Fixed height for the price/add row, so the card total is exact. */
   priceRowHeight: number;
   /**
    * Exact rendered height of the whole card.
    *
-   * Every block above is a fixed height, so this is a sum, not an estimate —
-   * which is what lets `KioskItemGrid` hand FlashList a real size through
-   * `overrideItemLayout` instead of a guess it would have to correct after
-   * measuring. The card must not add any block this sum doesn't account for.
+   * Every block above is budgeted at its worst case, so this is a sum, not an
+   * estimate — which is what lets `KioskItemGrid` hand FlashList a real size
+   * through `overrideItemLayout` instead of a guess it would have to correct
+   * after measuring. The card holds this height exactly: copy that comes out
+   * shorter than its budget is absorbed by the photo, which is the card's one
+   * flexible block. Nothing may be added that this sum doesn't account for.
    */
   cardHeight: number;
 }
@@ -70,6 +80,29 @@ const px = (v: number) => Math.round(v);
  * In practice this is the 2-column landscape case.
  */
 export const KIOSK_ROW_LAYOUT_RATIO = 1.4;
+
+/**
+ * The least of a card the photo is allowed to be. Below this the card drops a
+ * line of copy instead — on a menu the photograph is what is being sold.
+ */
+const MIN_IMAGE_SHARE = 0.42;
+
+/**
+ * Edge of the quick-add button on every card shape.
+ *
+ * Proportional to the card, with the clamps set wide enough that they almost
+ * never bind. A touch-target floor was tried here and was wrong: it made the
+ * button a *constant* size, so the tighter the grid the larger the button
+ * looked against its card, and at three or four columns it dominated the tile
+ * it was meant to sit quietly inside.
+ *
+ * The touch target is not given up — `KioskAddButton` pads its pressable out
+ * to the 44dp minimum with `hitSlop`, which grows the area a finger has to
+ * find without growing the circle the customer sees.
+ */
+export function kioskAddButtonSize(basis: number): number {
+  return px(clamp(basis * 0.15, 32, 68));
+}
 
 export function shouldUseRowLayout(
   cardWidth: number,
@@ -94,11 +127,11 @@ export interface KioskRowMetrics {
   descLines: number;
   showDescription: boolean;
   priceSize: number;
-  optionsIconSize: number;
-  optionsTextSize: number;
+  addButtonSize: number;
+  addIconSize: number;
   badgeIconSize: number;
   badgeTextSize: number;
-  /** Fixed height for the price/Options row, so the card total is exact. */
+  /** Fixed height for the price/add row, so the card total is exact. */
   priceRowHeight: number;
   /**
    * Exact rendered height of the whole row card — the taller of its image and
@@ -132,8 +165,8 @@ export function kioskRowMetrics(
   const descLines = 2;
   const showDescription = textWidth >= 200;
   const priceSize = px(clamp(textWidth * 0.09, 17, 60));
-  const optionsIconSize = px(clamp(textWidth * 0.045, 12, 30));
-  const priceRowHeight = px(Math.max(priceSize * 1.3, optionsIconSize));
+  const addButtonSize = kioskAddButtonSize(textWidth);
+  const priceRowHeight = px(Math.max(priceSize * 1.3, addButtonSize));
 
   // The copy column, worst case: a two-line name, the description if it shows,
   // and the price row. The column's own `gap` sits between each pair, and the
@@ -158,8 +191,8 @@ export function kioskRowMetrics(
     descLines,
     showDescription,
     priceSize,
-    optionsIconSize,
-    optionsTextSize: px(clamp(textWidth * 0.045, 11, 26)),
+    addButtonSize,
+    addIconSize: px(addButtonSize * 0.5),
     badgeIconSize: px(clamp(imageSize * 0.14, 12, 32)),
     badgeTextSize: px(clamp(imageSize * 0.145, 12, 32)),
     priceRowHeight,
@@ -196,8 +229,8 @@ export interface KioskFeatureRowMetrics {
   showDescription: boolean;
   priceSize: number;
   priceRowHeight: number;
-  optionsIconSize: number;
-  optionsTextSize: number;
+  addButtonSize: number;
+  addIconSize: number;
   badgeIconSize: number;
   badgeTextSize: number;
   /** Reserved right-hand space so copy never runs onto the crisp photo. */
@@ -265,7 +298,8 @@ export function kioskFeatureRowMetrics(
   const descSize = px(clamp(textWidth * 0.046, 13, 28));
   const descLineHeight = px(descSize * 1.35);
   const priceSize = px(clamp(textWidth * 0.07, 15, 44));
-  const priceRowHeight = px(priceSize * 1.3);
+  const addButtonSize = kioskAddButtonSize(textWidth);
+  const priceRowHeight = px(Math.max(priceSize * 1.3, addButtonSize));
 
   // Solve the copy shape against the height actually available. One gap sits
   // between every pair of visible blocks.
@@ -298,8 +332,8 @@ export function kioskFeatureRowMetrics(
     showDescription: shape.descLines > 0 && textWidth >= 190,
     priceSize,
     priceRowHeight,
-    optionsIconSize: px(clamp(textWidth * 0.042, 12, 30)),
-    optionsTextSize: px(clamp(textWidth * 0.042, 11, 26)),
+    addButtonSize,
+    addIconSize: px(addButtonSize * 0.5),
     badgeIconSize: px(clamp(height * 0.11, 12, 32)),
     badgeTextSize: px(clamp(height * 0.115, 12, 32)),
     textInset,
@@ -318,37 +352,77 @@ export function kioskCardMetrics(
   // short cell doesn't get billboard type just because it is wide.
   const b = Math.min(w, hCap * 0.8);
 
-  // Horizontal affordances stay keyed to real width — a 673px-wide card has
-  // room for a description regardless of how short the cell is.
-  const showDescription = w >= 190;
-  const descLines = w >= 320 ? 2 : 1;
-
-  const nameSize = px(clamp(b * 0.105, 15, 64));
+  const nameSize = px(clamp(b * 0.086, 15, 64));
   const nameLineHeight = px(nameSize * 1.25);
 
-  const descSize = px(clamp(b * 0.078, 13, 34));
+  const descSize = px(clamp(b * 0.064, 13, 34));
   const descLineHeight = px(descSize * 1.35);
 
   const padV = px(clamp(b * 0.045, 9, 22));
   const gap = px(clamp(b * 0.022, 4, 12));
-  const imageHeight = px(Math.min(w * 0.72, hCap * 0.56));
-  const nameBlockHeight = nameLineHeight * 2;
-  const descBlockHeight = showDescription ? descLineHeight * descLines : 0;
-  const priceSize = px(clamp(b * 0.115, 16, 68));
-  const optionsIconSize = px(clamp(b * 0.055, 12, 34));
-  const priceRowHeight = px(Math.max(priceSize * 1.3, optionsIconSize));
+  const priceSize = px(clamp(b * 0.094, 16, 68));
+  const addButtonSize = kioskAddButtonSize(b);
+  const priceRowHeight = px(Math.max(priceSize * 1.3, addButtonSize));
 
-  // Image, then the copy column: top padding, the two fixed text blocks with a
-  // gap between each pair, the price row, and the slightly heavier bottom
-  // padding the card uses to seat the price optically.
-  const cardHeight =
-    imageHeight +
+  // The copy column: top padding, the text blocks with a gap between each
+  // pair, the price/add row, and the slightly heavier bottom padding the card
+  // uses to seat the price optically. Every block is a fixed height, so this
+  // is exact for any shape.
+  const copyHeightFor = (nameLines: number, descLines: number) =>
     padV +
-    nameBlockHeight +
+    nameLineHeight * nameLines +
     gap +
-    (showDescription ? descBlockHeight + gap : 0) +
+    (descLines > 0 ? descLineHeight * descLines + gap : 0) +
     priceRowHeight +
     px(padV * 1.2);
+
+  // Horizontal affordances stay keyed to real width — a 673px-wide card has
+  // room for a description regardless of how short the cell is.
+  const maxDescLines = w >= 190 ? (w >= 320 ? 2 : 1) : 0;
+
+  // Solve the copy shape against the height available, best first, the way the
+  // feature row does. A card whose budget cannot seat both the copy and a
+  // photo worth looking at gives up a line of copy rather than squeezing the
+  // photo into a strip — a cramped tile with four lines of text over a sliver
+  // of image is the worst of both, and it is exactly what a tight grid used to
+  // produce. Lines come off the description before the name, and a one-line
+  // name is the last resort.
+  const shapes: { nameLines: number; descLines: number }[] = [];
+  for (let d = maxDescLines; d >= 0; d -= 1) {
+    shapes.push({ nameLines: 2, descLines: d });
+  }
+  shapes.push({ nameLines: 1, descLines: 0 });
+
+  const shape =
+    shapes.find(
+      (s) =>
+        hCap - copyHeightFor(s.nameLines, s.descLines) >= hCap * MIN_IMAGE_SHARE,
+    ) ?? shapes[shapes.length - 1];
+
+  const showDescription = shape.descLines > 0;
+  const descLines = shape.descLines;
+  const nameBlockHeight = nameLineHeight * shape.nameLines;
+  const descBlockHeight = showDescription ? descLineHeight * descLines : 0;
+  const copyHeight = copyHeightFor(shape.nameLines, shape.descLines);
+
+  // The photo takes what the copy's *budget* leaves over, rather than a fixed
+  // share of the width that the copy is then stacked on top of. At render time
+  // it takes back the rest too, wherever the copy underruns its budget. That distinction is what
+  // makes `maxCardHeight` a *whole-card* budget: the grid hands down half its
+  // own height, and two rows of cards then genuinely fit above the fold on any
+  // panel, instead of two rows plus however tall the copy happened to come out.
+  //
+  // The floor stops a cramped budget from collapsing the photo to nothing, and
+  // is itself held under the cap — a width-derived floor on a wide, short cell
+  // would otherwise reach straight back through the height limit it exists
+  // beneath.
+  const imageCap = Math.min(w * 0.82, hCap * 0.56);
+  const imageFloor = Math.min(imageCap, w * 0.38);
+  const imageHeight = px(
+    Math.max(imageFloor, Math.min(imageCap, hCap - copyHeight)),
+  );
+
+  const cardHeight = imageHeight + copyHeight;
 
   return {
     cardWidth: w,
@@ -360,8 +434,10 @@ export function kioskCardMetrics(
     placeholderSize: px(clamp(Math.min(w, hCap) * 0.3, 32, 200)),
     nameSize,
     nameLineHeight,
-    // Always reserve two lines so one- and two-line names sit on the same
-    // baseline grid across rows.
+    nameLines: shape.nameLines,
+    // A fixed reservation, so one- and two-line names sit on the same baseline
+    // grid across a row. The card must apply `nameLines` as `numberOfLines`,
+    // or a long name would overrun the block this sum accounts for.
     nameBlockHeight,
     descSize,
     descLineHeight,
@@ -369,9 +445,8 @@ export function kioskCardMetrics(
     descBlockHeight,
     showDescription,
     priceSize,
-    showOptionsLabel: w >= 240,
-    optionsIconSize,
-    optionsTextSize: px(clamp(b * 0.055, 11, 30)),
+    addButtonSize,
+    addIconSize: px(addButtonSize * 0.5),
     badgeIconSize: px(clamp(b * 0.06, 12, 36)),
     badgeTextSize: px(clamp(b * 0.062, 12, 36)),
     priceRowHeight,

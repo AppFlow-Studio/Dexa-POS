@@ -1,8 +1,10 @@
+import { KioskAddButton } from "@/components/kiosk/shared/KioskAddButton";
 import {
   kioskFeatureRowMetrics,
   type KioskFeatureRowMetrics,
 } from "@/components/kiosk/shared/kioskCardMetrics";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import {
   kioskCardSurface,
   kioskFadeEnd,
@@ -15,7 +17,7 @@ import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import { LinearGradient } from "expo-linear-gradient";
-import { ShoppingCart, SlidersHorizontal } from "lucide-react-native";
+import { ShoppingCart } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, {
@@ -40,7 +42,7 @@ import Animated, {
  *
  * Same visual language as the other kiosk cards: `kioskCardSurface` fill, no
  * cast shadow (see the shadows note in docs/features/kiosk), hairline accent
- * border, "Options" affordance, and an in-cart badge that springs on change.
+ * border, a quick-add "+", and an in-cart badge that springs on change.
  */
 interface KioskMenuItemFeatureRowProps {
   item: MenuItemType;
@@ -50,6 +52,8 @@ interface KioskMenuItemFeatureRowProps {
   /** Height budget from the grid — only caps the row on short viewports. */
   maxCardHeight?: number;
   onPress: (item: MenuItemType) => void;
+  /** The "+" tap. Omit on surfaces that only navigate (the card body still does). */
+  onAdd?: (item: MenuItemType) => void;
 }
 
 const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
@@ -58,13 +62,13 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
   cardWidth,
   maxCardHeight,
   onPress,
+  onAdd,
 }) => {
   const m = useMemo(
     () => kioskFeatureRowMetrics(cardWidth, maxCardHeight),
     [cardWidth, maxCardHeight],
   );
   const isDisabled = item.availability === false;
-  const hasModifiers = !!item.modifierGroupIds?.length;
   const qtyInCart = useKioskItemQuantity(item.id);
   const inCart = qtyInCart > 0;
 
@@ -219,31 +223,26 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
           {isDisabled ? (
             <Text
               style={{
-                fontSize: m.optionsTextSize,
+                fontSize: m.descSize,
                 fontWeight: "700",
                 color: `${config.textColor}88`,
               }}
             >
-              Unavailable
+              {kioskStrings.soldOut}
             </Text>
-          ) : hasModifiers ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: m.gap * 0.8,
-              }}
-            >
-              <SlidersHorizontal size={m.optionsIconSize} color={accent} />
-              <Text
-                style={{
-                  fontSize: m.optionsTextSize,
-                  fontWeight: "600",
-                  color: accent,
-                }}
-              >
-                Options
-              </Text>
+          ) : null}
+
+          {/* The "+" sits at the copy column's right edge, clear of the photo. */}
+          {onAdd ? (
+            <View style={{ marginLeft: "auto" }}>
+              <KioskAddButton
+                config={config}
+                item={item}
+                size={m.addButtonSize}
+                iconSize={m.addIconSize}
+                disabled={isDisabled}
+                onPress={onAdd}
+              />
             </View>
           ) : null}
         </View>
@@ -319,6 +318,7 @@ export default React.memo(KioskMenuItemFeatureRow, (prev, next) => {
     prev.item.image === next.item.image &&
     prev.cardWidth === next.cardWidth &&
     prev.maxCardHeight === next.maxCardHeight &&
+    prev.onAdd === next.onAdd &&
     prev.config.accentColor === next.config.accentColor &&
     prev.config.backgroundColor === next.config.backgroundColor &&
     prev.config.textColor === next.config.textColor &&

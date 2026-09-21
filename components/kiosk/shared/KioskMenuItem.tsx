@@ -1,8 +1,10 @@
+import { KioskAddButton } from "@/components/kiosk/shared/KioskAddButton";
 import {
   kioskCardMetrics,
   type KioskCardMetrics,
 } from "@/components/kiosk/shared/kioskCardMetrics";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { kioskCardSurface } from "@/components/kiosk/shared/kioskSurface";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
@@ -10,7 +12,7 @@ import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ShoppingCart, SlidersHorizontal } from "lucide-react-native";
+import { ShoppingCart } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, Text, View } from "react-native";
 import Animated, {
@@ -20,8 +22,8 @@ import Animated, {
 } from "react-native-reanimated";
 
 /**
- * Kiosk menu card — image on top, then name, description, price and (when the
- * item is customizable) an "Options" pill.
+ * Kiosk menu card — image on top, then name, description, and a bottom row of
+ * price and a quick-add "+".
  *
  * Every size on the card comes from `kioskCardMetrics(cardWidth)`, where
  * `cardWidth` is measured by the parent grid. That's what makes the card
@@ -42,6 +44,8 @@ interface KioskMenuItemProps {
   /** Height budget for one card, from the parent grid's measured height. */
   maxCardHeight?: number;
   onPress: (item: MenuItemType) => void;
+  /** The "+" tap. Omit on surfaces that only navigate (the card body still does). */
+  onAdd?: (item: MenuItemType) => void;
 }
 
 const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
@@ -50,13 +54,13 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
   cardWidth,
   maxCardHeight,
   onPress,
+  onAdd,
 }) => {
   const m = useMemo(
     () => kioskCardMetrics(cardWidth, maxCardHeight),
     [cardWidth, maxCardHeight],
   );
   const isDisabled = item.availability === false;
-  const hasModifiers = !!item.modifierGroupIds?.length;
   const qtyInCart = useKioskItemQuantity(item.id);
   const inCart = qtyInCart > 0;
 
@@ -91,7 +95,12 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
         opacity: isDisabled ? 0.45 : 1,
       }}
     >
-      <View style={{ height: m.imageHeight, width: "100%" }}>
+      {/* The photo is the flexible block, the copy is not. Whatever the copy
+          does not use — a one-line name where two were budgeted for, a missing
+          description — the photo takes back, instead of the card holding an
+          empty line above the description. `m.imageHeight` is the floor this
+          can never go below, and it is what `cardHeight` was summed from. */}
+      <View style={{ flex: 1, width: "100%" }}>
         {resolvedImageSource ? (
           <Image
             source={resolvedImageSource}
@@ -137,7 +146,7 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
                 letterSpacing: 0.5,
               }}
             >
-              Unavailable
+              {kioskStrings.soldOut}
             </Text>
           </View>
         )}
@@ -145,7 +154,6 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
 
       <View
         style={{
-          flex: 1,
           paddingHorizontal: m.padH,
           paddingTop: m.padV,
           // Rounded, because `cardHeight` sums this exact value.
@@ -157,11 +165,10 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
           style={{
             fontSize: m.nameSize,
             lineHeight: m.nameLineHeight,
-            height: m.nameBlockHeight,
             fontWeight: "700",
             color: config.textColor,
           }}
-          numberOfLines={2}
+          numberOfLines={m.nameLines}
         >
           {item.name}
         </Text>
@@ -171,7 +178,6 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
             style={{
               fontSize: m.descSize,
               lineHeight: m.descLineHeight,
-              height: m.descBlockHeight,
               color: `${config.textColor}99`,
             }}
             numberOfLines={m.descLines}
@@ -180,8 +186,10 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
           </Text>
         )}
 
-        {/* Fixed height — `cardHeight` is a sum of the card's blocks, and an
-            intrinsically-sized price row would make that sum a guess. */}
+        {/* Still a fixed height: it holds the add button, whose size is a
+            touch-target rule rather than something the content decides. It is
+            the last block in an intrinsic column, so it sits on the card's
+            bottom padding without being pushed there. */}
         <View
           style={{
             flexDirection: "row",
@@ -189,7 +197,6 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
             justifyContent: "space-between",
             gap: m.gap,
             height: m.priceRowHeight,
-            marginTop: "auto",
           }}
         >
           <Text
@@ -202,28 +209,16 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
             ${item.price?.toFixed(2)}
           </Text>
 
-          {hasModifiers && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: m.gap * 0.6,
-              }}
-            >
-              <SlidersHorizontal size={m.optionsIconSize} color={accent} />
-              {m.showOptionsLabel && (
-                <Text
-                  style={{
-                    fontSize: m.optionsTextSize,
-                    fontWeight: "600",
-                    color: accent,
-                  }}
-                >
-                  Options
-                </Text>
-              )}
-            </View>
-          )}
+          {onAdd ? (
+            <KioskAddButton
+              config={config}
+              item={item}
+              size={m.addButtonSize}
+              iconSize={m.addIconSize}
+              disabled={isDisabled}
+              onPress={onAdd}
+            />
+          ) : null}
         </View>
       </View>
     </KioskPressable>
@@ -302,6 +297,7 @@ export default React.memo(KioskMenuItem, (prev, next) => {
     prev.item.image === next.item.image &&
     prev.cardWidth === next.cardWidth &&
     prev.maxCardHeight === next.maxCardHeight &&
+    prev.onAdd === next.onAdd &&
     prev.config.accentColor === next.config.accentColor &&
     prev.config.backgroundColor === next.config.backgroundColor &&
     prev.config.textColor === next.config.textColor &&

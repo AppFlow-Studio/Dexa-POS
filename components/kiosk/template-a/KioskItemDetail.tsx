@@ -36,17 +36,27 @@ import Animated, {
  * hero into a full-screen image the customer has to scroll past.
  *
  * Landscape: side-by-side — photo + details left, modifiers right.
+ *
+ * Every proportion is taken from the panel it is given, not from the window,
+ * so the same component renders correctly full-screen and inside the centred
+ * popup the menu grid's "+" opens (see KioskItemDetailModal). `panelWidth` /
+ * `panelHeight` are that box; omitted, they fall back to the window.
  */
 export function KioskItemDetail({
   config,
   item,
   onBack,
   onAdded,
+  panelWidth,
+  panelHeight,
 }: {
   config: KioskConfig;
   item: MenuItemType;
   onBack: () => void;
   onAdded: () => void;
+  /** Box this renders into. Defaults to the window (full-screen presentation). */
+  panelWidth?: number;
+  panelHeight?: number;
 }) {
   const s = useKioskUiScale();
   const {
@@ -71,7 +81,9 @@ export function KioskItemDetail({
     [item],
   );
 
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const screenWidth = panelWidth ?? windowWidth;
+  const screenHeight = panelHeight ?? windowHeight;
   const isHorizontal = screenWidth > screenHeight;
 
   const muted = `${config.textColor}99`;

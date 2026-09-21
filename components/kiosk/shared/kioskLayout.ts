@@ -50,3 +50,33 @@ export function kioskBannerHeight(screenHeight: number): number {
 export function kioskDetailHeroHeight(screenHeight: number): number {
   return Math.round(screenHeight / 3);
 }
+
+/**
+ * Where the "View Cart" control lives on the menu screen.
+ *
+ * One property, one placement, never both: a floating bottom-right button on a
+ * short landscape panel sits on top of the last tile row and hides the item's
+ * name and price, which is the single worst overlap on the screen. Landscape
+ * therefore moves the cart into the header, where it has a slot of its own.
+ * Portrait keeps the floating button — there the grid is tall, the button
+ * clears it, and the header has no width to spare beside the logo.
+ */
+export type KioskCartPlacement = "header" | "bottomBar";
+
+export function kioskCartPlacement(isVertical: boolean): KioskCartPlacement {
+  return isVertical ? "bottomBar" : "header";
+}
+
+/**
+ * The kiosk header's own height, and the height every control inside it
+ * shares — search, Start Over and the cart pill are one matched set, so the
+ * number lives in one place rather than being repeated per control.
+ *
+ * Kept as tight as the controls allow. The header still occupies its own row
+ * (it is not an overlay — the menu must never scroll underneath it), but every
+ * dp it does not need is a dp the item grid does, and on a short landscape
+ * panel that is the difference between the second tile row clearing the fold
+ * and being clipped at its description.
+ */
+export const KIOSK_HEADER_CONTROL_HEIGHT = 52;
+export const KIOSK_HEADER_HEIGHT = 72;
