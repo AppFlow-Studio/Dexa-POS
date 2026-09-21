@@ -26,15 +26,37 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KdsConfig } from "@/types/locationConfig";
 import type { Station } from "@/types/station";
 import { useClerk } from "@clerk/clerk-expo";
-import { LogOut, Minus, Play, Plus } from "lucide-react-native";
+import Constants from "expo-constants";
+import * as Updates from "expo-updates";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  LogOut,
+  Minus,
+  Play,
+  Plus,
+  Search,
+} from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Modal,
+  Platform,
   ScrollView,
   Text,
   TouchableOpacity,
   View
 } from "react-native";
+import AppUpdateModal from "@/components/AppUpdateModal";
+import { DiscoveredPrinterList } from "@/components/settings/DiscoveredPrinterList";
+import { ManualIpPanel } from "@/components/settings/ManualIpPanel";
+import { usePrinterDiscovery } from "@/hooks/usePrinterDiscovery";
+import {
+  checkForNativeUpdate,
+  type VersionManifest,
+} from "@/services/appUpdater";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -983,6 +1005,7 @@ function KdsTicketPrinterSection() {
   const setAutoPrintEnabled = useSettingsStore(
     (st) => st.setKdsAutoPrintEnabled,
   );
+  const [showAddPrinter, setShowAddPrinter] = useState(false);
 
   const claimedId = selectedStation?.current_receipt_printer_id ?? null;
 
@@ -1120,26 +1143,444 @@ function KdsTicketPrinterSection() {
         })
       )}
 
-      <TouchableOpacity
-        onPress={handleTestPrint}
-        disabled={!claimedPrinter}
+      <View style={{ flexDirection: "row", gap: s(8), marginTop: s(8) }}>
+        <TouchableOpacity
+          onPress={() => setShowAddPrinter(true)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: s(6),
+            paddingHorizontal: s(14),
+            paddingVertical: s(8),
+            borderRadius: s(8),
+            backgroundColor: colors.teal,
+          }}
+        >
+          <Search size={s(14)} color="#FFFFFF" />
+          <Text
+            style={{ fontSize: s(12), fontWeight: "700", color: "#FFFFFF" }}
+          >
+            Add / Detect Printer
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleTestPrint}
+          disabled={!claimedPrinter}
+          style={{
+            paddingHorizontal: s(14),
+            paddingVertical: s(8),
+            borderRadius: s(8),
+            borderWidth: 1,
+            borderColor: colors.teal,
+            opacity: claimedPrinter ? 1 : 0.4,
+          }}
+        >
+          <Text
+            style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}
+          >
+            Test Print
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {showAddPrinter && (
+        <KdsAddPrinterModal onClose={() => setShowAddPrinter(false)} />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ADD / DETECT PRINTER — scans the LAN for Star printers or takes a manual IP,
+// provisions the chosen one as a location-level printer; it then shows up in
+// the picker above to assign to this display. Reuses the same discovery engine
+// + UI (usePrinterDiscovery / DiscoveredPrinterList / ManualIpPanel) as the
+// main Printers settings screen. Note: the one-shot scan works on a KDS even
+// though the *background* Star discovery service is disabled there.
+// ---------------------------------------------------------------------------
+function KdsAddPrinterModal({ onClose }: { onClose: () => void }) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  const {
+    scanState,
+    storedPrinters,
+    discoveredPrinters,
+    scan,
+    provisionStar,
+    addByManualIp,
+    clearManualIpError,
+  } = usePrinterDiscovery();
+
+  const [manualIp, setManualIp] = useState("");
+  const [showManualIp, setShowManualIp] = useState(false);
+
+  const handleManualConnect = async () => {
+    await addByManualIp(manualIp, "kitchen");
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View
         style={{
-          alignSelf: "flex-start",
-          marginTop: s(6),
-          paddingHorizontal: s(14),
-          paddingVertical: s(8),
-          borderRadius: s(8),
-          borderWidth: 1,
-          borderColor: colors.teal,
-          opacity: claimedPrinter ? 1 : 0.4,
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.5)",
+          justifyContent: "center",
+          padding: s(20),
         }}
       >
-        <Text
-          style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}
+        <View
+          style={{
+            backgroundColor: colors.screen,
+            borderRadius: s(16),
+            padding: s(16),
+            maxHeight: "88%",
+          }}
         >
-          Test Print
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: s(6),
+            }}
+          >
+            <Text
+              style={{
+                fontSize: s(16),
+                fontWeight: "700",
+                color: colors.heading,
+              }}
+            >
+              Add a Printer
+            </Text>
+            <TouchableOpacity onPress={onClose} hitSlop={8}>
+              <Text style={{ fontSize: s(13), color: colors.muted }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+          <Text
+            style={{ fontSize: s(11), color: colors.muted, marginBottom: s(12) }}
+          >
+            Scan the network for Star printers or enter a printer&apos;s IP.
+            Added printers appear in the picker to assign to this display.
+          </Text>
+
+          <ScrollView style={{ maxHeight: s(460) }}>
+            <View
+              style={{ flexDirection: "row", gap: s(8), marginBottom: s(8) }}
+            >
+              <TouchableOpacity
+                onPress={() => {
+                  if (!scanState.isScanning) scan();
+                }}
+                disabled={scanState.isScanning}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: s(6),
+                  paddingVertical: s(11),
+                  borderRadius: s(10),
+                  backgroundColor: colors.teal,
+                  opacity: scanState.isScanning ? 0.7 : 1,
+                }}
+              >
+                {scanState.isScanning ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Search size={s(15)} color="#FFFFFF" />
+                )}
+                <Text
+                  style={{
+                    fontSize: s(12),
+                    fontWeight: "700",
+                    color: "#FFFFFF",
+                  }}
+                >
+                  {scanState.isScanning
+                    ? `Scanning… ${scanState.scanSecondsRemaining ?? 0}s`
+                    : "Scan Network"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowManualIp((v) => !v)}
+                style={{
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(11),
+                  borderRadius: s(10),
+                  borderWidth: 1,
+                  borderColor: showManualIp ? colors.teal : colors.border,
+                  backgroundColor: showManualIp
+                    ? colors.teal + "18"
+                    : colors.card,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(12),
+                    fontWeight: "600",
+                    color: showManualIp ? colors.teal : colors.label,
+                  }}
+                >
+                  {showManualIp ? "Hide IP" : "Enter IP"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {showManualIp && (
+              <ManualIpPanel
+                forRole="kitchen"
+                manualIp={manualIp}
+                onChangeIp={(ip) => {
+                  setManualIp(ip);
+                  if (scanState.manualIpError) clearManualIpError();
+                }}
+                manualIpError={scanState.manualIpError}
+                onClearError={clearManualIpError}
+                isProbing={scanState.isProbing}
+                isScanningStar={scanState.isScanning}
+                onConnect={handleManualConnect}
+                onScanNetwork={scan}
+                onCancel={() => {
+                  setShowManualIp(false);
+                  setManualIp("");
+                  clearManualIpError();
+                }}
+              />
+            )}
+
+            <DiscoveredPrinterList
+              discoveredPrinters={discoveredPrinters}
+              storedPrinters={storedPrinters}
+              isScanning={scanState.isScanning}
+              scanSecondsRemaining={scanState.scanSecondsRemaining}
+              scanError={scanState.scanError}
+              provisioningIp={scanState.provisioningStarIp}
+              testResults={{}}
+              testingIp={null}
+              onRefresh={scan}
+              onProvision={(p, role) => provisionStar(p, role)}
+              onTest={() => {}}
+            />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ABOUT & UPDATES — on-device "Check for Updates" for the KDS. Mirrors the POS
+// settings / kiosk updater: prefers a native APK update (Android, via the CDN
+// version manifest) and falls back to an Expo OTA update (fetch + silent
+// reload). The app also auto-checks on every launch (app.json checkOnLaunch:
+// ALWAYS) — this is the manual "now" path.
+// ---------------------------------------------------------------------------
+function KdsUpdateSection() {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  const [status, setStatus] = useState<
+    "idle" | "checking" | "downloading" | "ready" | "up-to-date" | "error"
+  >("idle");
+  const [nativeManifest, setNativeManifest] = useState<VersionManifest | null>(
+    null,
+  );
+
+  const version = Constants.expoConfig?.version ?? "—";
+  const runtime =
+    typeof Updates.runtimeVersion === "string" ? Updates.runtimeVersion : "—";
+
+  const applyOtaUpdate = async () => {
+    setStatus("downloading");
+    try {
+      await Updates.fetchUpdateAsync();
+      setStatus("ready");
+      setTimeout(() => {
+        Updates.reloadAsync();
+      }, 1500);
+    } catch {
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 3000);
+    }
+  };
+
+  const handleCheck = async () => {
+    if (status === "checking" || status === "downloading" || status === "ready")
+      return;
+
+    setStatus("checking");
+    try {
+      // 1. Native APK update (Android only) — opens AppUpdateModal.
+      if (Platform.OS === "android") {
+        const manifest = await checkForNativeUpdate();
+        if (manifest) {
+          setStatus("idle");
+          setNativeManifest(manifest);
+          return;
+        }
+      }
+
+      // 2. Expo OTA update (skipped in dev — updates are disabled there).
+      if (!__DEV__) {
+        const result = await Updates.checkForUpdateAsync();
+        if (result.isAvailable) {
+          setStatus("idle");
+          Alert.alert(
+            "Update Available",
+            "A new update is ready to download. The app will restart after installing.",
+            [
+              { text: "Later", style: "cancel" },
+              { text: "Update Now", onPress: () => applyOtaUpdate() },
+            ],
+          );
+          return;
+        }
+      }
+
+      // 3. Nothing newer.
+      setStatus("up-to-date");
+      setTimeout(() => setStatus("idle"), 3000);
+    } catch {
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 3000);
+    }
+  };
+
+  const busy =
+    status === "checking" || status === "downloading" || status === "ready";
+  const buttonLabel =
+    status === "checking"
+      ? "Checking…"
+      : status === "downloading"
+        ? "Downloading…"
+        : status === "ready"
+          ? "Restarting…"
+          : "Check for Updates";
+
+  return (
+    <>
+      <SectionHeader title="About & Updates" />
+      <View
+        style={{
+          backgroundColor: colors.card,
+          borderRadius: s(12),
+          borderWidth: 1,
+          borderColor: colors.border,
+          padding: s(14),
+          marginBottom: s(4),
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: s(2),
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(14),
+              fontWeight: "700",
+              color: colors.heading,
+            }}
+          >
+            Dexa POS
+          </Text>
+          {status === "up-to-date" ? (
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: s(5) }}
+            >
+              <CheckCircle2 size={s(13)} color={colors.success} />
+              <Text
+                style={{
+                  fontSize: s(11),
+                  fontWeight: "700",
+                  color: colors.success,
+                }}
+              >
+                Up to date
+              </Text>
+            </View>
+          ) : status === "error" ? (
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: s(5) }}
+            >
+              <AlertCircle size={s(13)} color={colors.danger} />
+              <Text
+                style={{
+                  fontSize: s(11),
+                  fontWeight: "700",
+                  color: colors.danger,
+                }}
+              >
+                Check failed
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <Text
+          style={{ fontSize: s(11), color: colors.muted, marginBottom: s(12) }}
+        >
+          Version {version} · Runtime {runtime}
         </Text>
-      </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleCheck}
+          disabled={busy}
+          activeOpacity={0.9}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingVertical: s(11),
+            borderRadius: s(10),
+            backgroundColor: colors.teal,
+            opacity: busy ? 0.7 : 1,
+          }}
+        >
+          {busy ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Download size={s(16)} color="#FFFFFF" />
+          )}
+          <Text
+            style={{
+              fontSize: s(13),
+              fontWeight: "700",
+              color: "#FFFFFF",
+              marginLeft: s(8),
+            }}
+          >
+            {buttonLabel}
+          </Text>
+        </TouchableOpacity>
+
+        {__DEV__ ? (
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.muted,
+              textAlign: "center",
+              marginTop: s(8),
+            }}
+          >
+            Updates are disabled in development builds.
+          </Text>
+        ) : null}
+      </View>
+
+      {nativeManifest && Platform.OS === "android" ? (
+        <AppUpdateModal
+          visible={!!nativeManifest}
+          manifest={nativeManifest}
+          onSkip={() => setNativeManifest(null)}
+          onInstallComplete={() => setNativeManifest(null)}
+        />
+      ) : null}
     </>
   );
 }
@@ -1718,6 +2159,9 @@ const KdsSettingsScreen = () => {
           suffix="m"
           onChange={(v) => updateConfig("kds", { redThresholdMinutes: v })}
         />
+
+        {/* ── About & Updates ──────────────────────────────────────── */}
+        <KdsUpdateSection />
 
         {/* ── Log Out (requires manager PIN) ── */}
         {isKDSDevice && (
