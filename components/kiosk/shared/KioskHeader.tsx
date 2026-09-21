@@ -18,18 +18,20 @@ import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { Image } from "expo-image";
-import { RotateCcw, Search } from "lucide-react-native";
+import { Search, X } from "lucide-react-native";
 import { Text, View } from "react-native";
 
 /**
  * Shared kiosk header.
  *
- *   left  - Start Over, then the merchant logo beside it
+ *   left  - Start Over (an X), then the merchant logo beside it
  *   right - search, then the cart
  *
  * Start Over leads because it is the way out, and a way out belongs where a
  * reader's eye starts rather than tucked against the control they are trying
- * to reach. On the right the cart sits outermost, where the thumb lands, with
+ * to reach. It is a bare X: the universal glyph for "leave this", and the same
+ * square as the search control opposite, so the two bookend the header as a
+ * pair. On the right the cart sits outermost, where the thumb lands, with
  * search inboard of it. Every control shares a height and a corner radius, so
  * they read as one set rather than as four separate widgets.
  *
@@ -100,30 +102,20 @@ export function KioskHeader({
         pressedScale={0.97}
         accessibilityRole="button"
         accessibilityLabel={kioskStrings.startOver}
+        // A square the same size as the search control on the other side, so
+        // the header's two icon buttons bookend it as a matched pair. The
+        // label lives on in `accessibilityLabel`.
         style={{
-          flexDirection: "row",
+          width: control,
+          height: control,
           alignItems: "center",
           justifyContent: "center",
-          gap: kioskPx(8, s),
-          height: control,
-          paddingLeft: kioskPx(16, s),
-          paddingRight: kioskPx(20, s),
           borderRadius: radius,
           borderWidth: KIOSK_HAIRLINE,
           borderColor: t.outlineStrong,
         }}
       >
-        <RotateCcw size={kioskPx(20, s)} color={t.text} strokeWidth={1.75} />
-        <Text
-          style={{
-            fontSize: kioskPx(16, s),
-            letterSpacing: kioskTracking(16),
-            color: t.text,
-            ...kioskFont(t, "regular"),
-          }}
-        >
-          {kioskStrings.startOver}
-        </Text>
+        <X size={kioskPx(22, s)} color={t.text} strokeWidth={1.75} />
       </KioskPressable>
 
       {/* The logo, or the search field once it is open. */}
