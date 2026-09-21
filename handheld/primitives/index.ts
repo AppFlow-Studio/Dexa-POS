@@ -6,7 +6,7 @@ export { IconButton } from "./IconButton";
 export { Keypad, type KeypadKey } from "./Keypad";
 export { ListRow, type ListRowProps, type RowTile } from "./ListRow";
 export { PageHeader } from "./PageHeader";
-export { Screen } from "./Screen";
+export { Screen, type HeaderPicker } from "./Screen";
 export { SegmentedTabs, type SegmentedOption } from "./SegmentedTabs";
 export { StickyActionBar, type StickyAction } from "./StickyActionBar";
 export { Switch, SwitchRow } from "./Switch";

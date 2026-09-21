@@ -1,9 +1,18 @@
-import type { MenuItemType, ModifierCategory } from "@/lib/types";
+import type { CartItem, MenuItemType, ModifierCategory } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import type { ModifierSelection } from "@/stores/useModifierSelectionStore";
 import { computeAddModeSelections } from "@/stores/useModifierSidebarStore";
 import { useCallback, useMemo, useState } from "react";
-import { unitPriceWithOptions, unsatisfiedRequired, type ItemDraft } from "../../lib/cartItem";
+import { selectionsOf, unitPriceWithOptions, unsatisfiedRequired, type ItemDraft } from "../../lib/cartItem";
+
+export interface OptionsTarget {
+  item: MenuItemType;
+  categoryId: string | null;
+  menuId: string | null;
+  /** Set when editing a line already on the check: seeds the draft and fixes the base price. */
+  existing?: CartItem;
+  seatNumber?: number | null;
+}
 
 export interface OptionsDraft extends ItemDraft {
   total: number;
@@ -11,6 +20,7 @@ export interface OptionsDraft extends ItemDraft {
   errors: string[];
   setQuantity: (n: number) => void;
   setToGo: (toGo: boolean) => void;
+  setNotes: (notes: string) => void;
   toggle: (group: ModifierCategory, optionId: string) => void;
   /** Null when a required group is empty (and `errors` is set). */
   commit: () => ItemDraft | null;
@@ -19,17 +29,21 @@ export interface OptionsDraft extends ItemDraft {
 /**
  * Screen 4's state for one menu item: quantity, to-go, and a selection map in
  * the register's shape, seeded by the same auto-select rules the register
- * applies. Single groups replace, multiple groups toggle up to `maxSelections`.
+ * applies — or, when editing, by what the line already has (ModifierScreen's
+ * `openToEdit`). Single groups replace, multiple groups toggle up to `maxSelections`.
  */
-export function useOptionsDraft(target: { item: MenuItemType; categoryId: string | null; menuId: string | null }): OptionsDraft {
-  const { item, categoryId, menuId } = target;
+export function useOptionsDraft(target: OptionsTarget): OptionsDraft {
+  const { item, categoryId, menuId, existing, seatNumber } = target;
   const groups = useMemo(
     () => (item.modifierGroupIds ? useMenuStore.getState().getModifierGroupsByIds(item.modifierGroupIds) : []),
     [item.modifierGroupIds],
   );
-  const [selections, setSelections] = useState<ModifierSelection>(() => computeAddModeSelections(groups));
-  const [quantity, setQuantity] = useState(1);
-  const [isToGo, setToGo] = useState(false);
+  const [selections, setSelections] = useState<ModifierSelection>(() =>
+    existing ? selectionsOf(existing, groups) : computeAddModeSelections(groups),
+  );
+  const [quantity, setQuantity] = useState(existing?.quantity ?? 1);
+  const [isToGo, setToGo] = useState(existing?.is_to_go ?? false);
+  const [notes, setNotes] = useState(existing?.customizations.notes ?? "");
   const [errors, setErrors] = useState<string[]>([]);
 
   const toggle = useCallback((group: ModifierCategory, optionId: string) => {
@@ -53,8 +67,9 @@ export function useOptionsDraft(target: { item: MenuItemType; categoryId: string
     });
   }, []);
 
-  const draft: ItemDraft = { item, categoryId, menuId, quantity, isToGo, groups, selections };
-  const total = unitPriceWithOptions(item.price, groups, selections) * quantity;
+  const draft: ItemDraft = { item, categoryId, menuId, quantity, isToGo, groups, selections, notes, seatNumber };
+  const base = existing ? (existing.baseCardPrice ?? existing.unitPrice ?? existing.price) : item.price;
+  const total = unitPriceWithOptions(base, groups, selections) * quantity;
 
   const commit = useCallback((): ItemDraft | null => {
     const missing = unsatisfiedRequired(groups, selections);
@@ -62,8 +77,8 @@ export function useOptionsDraft(target: { item: MenuItemType; categoryId: string
       setErrors(missing);
       return null;
     }
-    return { item, categoryId, menuId, quantity, isToGo, groups, selections };
-  }, [item, categoryId, menuId, quantity, isToGo, groups, selections]);
+    return { item, categoryId, menuId, quantity, isToGo, groups, selections, notes, seatNumber };
+  }, [item, categoryId, menuId, quantity, isToGo, groups, selections, notes, seatNumber]);
 
   return {
     ...draft,
@@ -71,6 +86,7 @@ export function useOptionsDraft(target: { item: MenuItemType; categoryId: string
     errors,
     setQuantity: (n) => setQuantity(Math.max(1, Math.min(99, n))),
     setToGo,
+    setNotes,
     toggle,
     commit,
   };

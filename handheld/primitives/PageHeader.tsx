@@ -22,11 +22,12 @@ export function PageHeader({
 }: {
   title: string;
   subtitle?: string;
-  /** A dropdown pill before the subtitle: the plan picker on Choose a table. */
-  picker?: HeaderPicker;
+  /** Dropdown pills before the subtitle: the plan picker on Choose a table, course and seat on the menu. */
+  picker?: HeaderPicker | HeaderPicker[];
   onBack: () => void;
   right?: React.ReactNode;
 }) {
+  const pickers = picker ? (Array.isArray(picker) ? picker : [picker]) : [];
   return (
     <View className="flex-row items-center px-1" style={{ minHeight: metrics.bar }}>
       <IconButton label="Back" onPress={onBack}>
@@ -39,9 +40,11 @@ export function PageHeader({
         >
           {title}
         </Text>
-        {subtitle || picker ? (
+        {subtitle || pickers.length ? (
           <View className="mt-0.5 flex-row items-center gap-2">
-            {picker ? <DropdownPill {...picker} /> : null}
+            {pickers.map((p) => (
+              <DropdownPill key={p.accessibilityLabel} {...p} />
+            ))}
             {subtitle ? (
               <Text className="shrink" style={[type.pageSubtitle, { color: colors.label }]} numberOfLines={1}>
                 {subtitle}

@@ -233,8 +233,19 @@ undeliverable items) and the outbox apply unchanged.
 | New takeout / delivery | `startOrResumeOrder` → `updateActiveOrderDetails` → `ensureActiveOrderCreated` | Dine in on S2 lands on the Tables tab (`lib/tabStore.ts`). With per-order PIN on, `NewOrderPage` collects the staff PIN before `start` and that staff is attributed to the order (what `ensureOrderCreated`'s PIN gate checks). |
 | Require PIN per order | `useStoreSettingsStore.updateField("requirePinPerOrder")` | Me tab › Ordering, behind `ManagerPinScreen`. Same device-local field as the register's Settings › Order Line toggle; it is not synced between devices. |
 
-Not built (not drawn in the artifact): editing or removing a line item, seat
-picker per item, custom discount amounts, the register's tax-exempt toggle.
+Wave 3.5 (built 2026-09-21, not drawn in the artifact; file list and verify
+boxes in `wave2-3-plan.md`) adds the register's item-level corrections on
+the same store calls:
+
+| Handheld | Register call | Notes |
+| --- | --- | --- |
+| Seat / course before adding | `useTableSeating` + `useTableCoursing` (`screens/menu/useSeatCourse.ts`), `setActiveSeat`, `setCurrentCourse` | Pills in `MenuPage`'s header; `useAddItem` mirrors ModifierScreen's `setItemSeat(…, skipBackendSync)` after the add. |
+| Tap a line | `components/check/ItemSheets.tsx` under `useItemActions` | Unsent: `setItemQuantity`, `removeItemFromActiveOrder(id)`, `updateItemInActiveOrder` for options / note / seat / course (+ `setItemSeat` / `setItemCourse` with the db id for the backend). Sent: note, seat move, or void with a `VoidItemDialog` reason then manager PIN → `removeItemFromActiveOrder(id, reason)` + `printVoidTicket` when the location prints them. |
+| Custom discount | `lib/discounts.ts applyCustomDiscount` → `applyDiscountToCheck` | `DiscountBottomSheet.handleApplyCustomDiscount`'s checks, verbatim. |
+
+Still not built: the register's tax-exempt toggle is a toast with no store
+write (`MoreOptionsBottomSheet.tsx` ~L424), so there is nothing to reuse
+until the order gets a field; split / merge is Wave 4.
 
 NativeWind trap, second time round: a utility class that no already-built
 file uses (`grow-0`, `min-w-8`, `pt-10`…) is silently missing until Metro is
@@ -246,6 +257,9 @@ compiles. Check with: every class in a new file must appear in some other
 
 ## Handoff to Wave 4 (payment)
 
+- Wave 3.5 is built: items carry `seatNumber` from the menu page's seat pill,
+  which is what screen 6's "Split check · by seat" reads. Split / merge
+  itself is Wave 4.
 - No "Pay" button is rendered; `CheckFooter` has the Send action only.
 - Mount `PaymentDetailBottomSheet` inside the handheld tree and lift the
   payment-journal gate in `app/_layout.tsx` (see Boot diet).

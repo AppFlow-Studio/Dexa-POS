@@ -1,6 +1,4 @@
-import { useTableCoursing } from "@/hooks/useTableCoursing";
 import { colors } from "@/lib/theme";
-import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
 import { MoreVertical } from "lucide-react-native";
@@ -9,29 +7,29 @@ import { ScrollView, Text, View } from "react-native";
 import { CheckBody } from "../components/check/CheckBody";
 import { CheckFooter } from "../components/check/CheckFooter";
 import { DiscountSheet } from "../components/check/DiscountSheet";
+import { ItemSheets } from "../components/check/ItemSheets";
 import { ManagerPinScreen } from "../components/check/ManagerPinScreen";
 import { MoreSheet } from "../components/check/MoreSheet";
 import { NoteSheet } from "../components/check/NoteSheet";
 import { TakeOverCard, useIsReadOnly } from "../components/check/TakeOverCard";
 import { useCheckActions } from "../components/check/useCheckActions";
+import { useItemActions } from "../components/check/useItemActions";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { isTableCheck } from "../lib/sendCourse";
 import { type } from "../lib/type";
 import { IconButton, PageHeader } from "../primitives";
+import { useSeatCourse } from "../screens/menu/useSeatCourse";
 
 /**
  * Makes the check the station's active order while the page is up (every
- * write in the store targets the active order) and keeps the coursing store
- * initialised for table checks, as TableOrderView does on the register.
+ * write in the store targets the active order) and keeps the seating and
+ * coursing stores initialised for table checks, as TableOrderView does.
  */
 function useActiveCheck(orderId: string) {
-  const order = useOrderStore((s) => s.ordersById[orderId]);
-  const coursing = useLocationConfigStore((s) => s.config.dining.enableCoursing);
-  useTableCoursing(order, coursing && !!order && isTableCheck(order));
   useEffect(() => {
     const store = useOrderStore.getState();
     if (store.ordersById[orderId] && store.activeOrderId !== orderId) store.setActiveOrder(orderId);
   }, [orderId]);
+  return useSeatCourse(orderId);
 }
 
 /**
@@ -41,9 +39,10 @@ function useActiveCheck(orderId: string) {
  */
 function OpenCheck({ title, subtitle, orderId }: { title: string; subtitle?: string; orderId: string }) {
   const router = useRouter();
-  useActiveCheck(orderId);
+  const sc = useActiveCheck(orderId);
   const readOnly = useIsReadOnly(orderId);
   const actions = useCheckActions(orderId, useCallback(() => router.back(), [router]));
+  const items = useItemActions(orderId);
   const addItems = useCallback(
     () => router.push({ pathname: "/handheld/menu/[orderId]", params: { orderId } }),
     [router, orderId],
@@ -66,7 +65,7 @@ function OpenCheck({ title, subtitle, orderId }: { title: string; subtitle?: str
       <OfflineBanner />
       {readOnly ? <TakeOverCard orderId={orderId} /> : null}
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }}>
-        <CheckBody orderId={orderId} onAddItems={readOnly ? undefined : addItems} />
+        <CheckBody orderId={orderId} onAddItems={readOnly ? undefined : addItems} onPressItem={readOnly ? undefined : items.open} />
       </ScrollView>
       {readOnly ? null : <CheckFooter orderId={orderId} />}
       <MoreSheet
@@ -85,6 +84,7 @@ function OpenCheck({ title, subtitle, orderId }: { title: string; subtitle?: str
       {actions.approval ? (
         <ManagerPinScreen action={actions.approvalLabel} onApproved={actions.approved} onCancel={actions.cancelApproval} />
       ) : null}
+      <ItemSheets orderId={orderId} actions={items} sc={sc} />
     </>
   );
 }

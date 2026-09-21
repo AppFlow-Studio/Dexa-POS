@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import type { CartItem } from "@/lib/types";
 import React from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { formatCurrency } from "../../lib/format";
 import { tint } from "../../lib/tokens";
 import { type } from "../../lib/type";
@@ -33,11 +33,20 @@ function itemDetail(item: CartItem): string {
   return parts.join(" · ");
 }
 
-/** The artifact's `.ln`: qty, name (+tag), detail, price; inset top rule. */
-export function LineItem({ item }: { item: CartItem }) {
+/**
+ * The artifact's `.ln`: qty, name (+tag), detail, price; inset top rule.
+ * With `onPress` the row opens the item sheet (Wave 3.5); without it (a
+ * check another station owns) it is plain.
+ */
+export function LineItem({ item, onPress }: { item: CartItem; onPress?: (item: CartItem) => void }) {
   const detail = itemDetail(item);
   return (
-    <View className="flex-row items-start gap-3 px-4 py-2.5">
+    <Pressable
+      onPress={onPress ? () => onPress(item) : undefined}
+      disabled={!onPress}
+      accessibilityRole={onPress ? "button" : undefined}
+      className="flex-row items-start gap-3 px-4 py-2.5"
+    >
       <View
         pointerEvents="none"
         style={{ position: "absolute", top: 0, left: 16, right: 16, height: 1, backgroundColor: tint.divider }}
@@ -62,6 +71,6 @@ export function LineItem({ item }: { item: CartItem }) {
       <Text style={[type.price, { color: colors.heading }]}>
         {formatCurrency(item.price * item.quantity)}
       </Text>
-    </View>
+    </Pressable>
   );
 }

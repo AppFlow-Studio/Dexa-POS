@@ -62,3 +62,37 @@ export function applyDiscount(order: OrderProfile, discount: DiscountRecord): st
   });
   return null;
 }
+
+export type CustomDiscountType = "percentage" | "fixed";
+
+/** DiscountBottomSheet's `customDiscount` object: percentages stored as a fraction. */
+export function buildCustomDiscount(kind: CustomDiscountType, value: number) {
+  return {
+    id: `custom_${Date.now()}`,
+    label: kind === "percentage" ? `Custom ${value}% Off` : `Custom $${value.toFixed(2)} Off`,
+    value: kind === "percentage" ? value / 100 : value,
+    type: kind,
+  };
+}
+
+/**
+ * The register's `handleApplyCustomDiscount`, checks in its order: a
+ * positive number, at most 100 %, not below zero on the check. Returns the
+ * message that blocked it, or null once handed to the store.
+ */
+export function applyCustomDiscount(order: OrderProfile, kind: CustomDiscountType, value: number): string | null {
+  if (!Number.isFinite(value) || value <= 0) return "Please enter a valid discount amount.";
+  if (kind === "percentage" && value > 100) return "Percentage discount cannot exceed 100%.";
+  const subtotal = checkSubtotal(order);
+  if (subtotal <= 0) return "Discount cannot be applied to an empty check.";
+  const discount = buildCustomDiscount(kind, value);
+  const amount = kind === "percentage" ? subtotal * discount.value : discount.value;
+  if (amount <= 0) return "Please enter a valid discount amount.";
+  if (kind === "percentage" && amount - subtotal > 0.001) {
+    return "Discount is too high. It cannot reduce the total below $0.00.";
+  }
+  useOrderStore.getState().applyDiscountToCheck(order.id, discount as never, (message) => {
+    toastService.show({ title: "Discount not applied", message, type: "error" });
+  });
+  return null;
+}

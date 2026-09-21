@@ -1,5 +1,6 @@
 import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
+import { isKitchenItemUnsent } from "@/lib/kitchenStatusUtils";
 import type { MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useMenuVisibilityStore } from "@/stores/useMenuVisibilityStore";
@@ -25,7 +26,7 @@ export interface MenuRowData {
 export interface MenuRows {
   chips: MenuChip[];
   rows: MenuRowData[];
-  /** Live quantity of each menu item on the check, for the `.qa.in` count. */
+  /** Unsent quantity of each menu item on the check, for the `.qa.in` count; sent lines are the kitchen's now. */
   inOrder: Record<string, number>;
 }
 
@@ -97,7 +98,7 @@ export function useMenuRows(orderId: string, chipKey: string | null, query: stri
   const inOrder = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const item of items ?? []) {
-      if (item.is_voided || item.isDraft) continue;
+      if (item.is_voided || item.isDraft || !isKitchenItemUnsent(item)) continue;
       counts[item.menuItemId] = (counts[item.menuItemId] ?? 0) + item.quantity;
     }
     return counts;

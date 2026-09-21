@@ -67,9 +67,19 @@ function AddItemsRow({ onPress, divider = true }: { onPress: () => void; divider
  * Screen 5 / S3 body: course cards then the totals. The artifact folds sent
  * courses to one line; on a page whose whole point is seeing the check, the
  * items stay listed under the "Sent" header instead. `onAddItems` puts the
- * "Add items" row on the open course (or its own card when all are sent).
+ * "Add items" row on the open course (or its own card when all are sent);
+ * `onPressItem` makes every line tappable.
  */
-export function CheckBody({ orderId, onAddItems }: { orderId: string; onAddItems?: () => void }) {
+export function CheckBody({
+  orderId,
+  onAddItems,
+  onPressItem,
+}: {
+  orderId: string;
+  onAddItems?: () => void;
+  /** Opens the item sheet for a line; absent on a read-only check. */
+  onPressItem?: (item: CartItem) => void;
+}) {
   const order = useOrderStore((s) => s.ordersById[orderId]);
   if (!order) return null;
   const list = courses(order);
@@ -102,7 +112,7 @@ export function CheckBody({ orderId, onAddItems }: { orderId: string; onAddItems
               />
             )}
             {course.items.map((item) => (
-              <LineItem key={item.id} item={item} />
+              <LineItem key={item.id} item={item} onPress={onPressItem} />
             ))}
             {onAddItems && course === open ? <AddItemsRow onPress={onAddItems} /> : null}
           </Card>

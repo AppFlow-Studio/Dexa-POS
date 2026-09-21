@@ -12,9 +12,25 @@ export interface ItemDraft {
   isToGo: boolean;
   groups: ModifierCategory[];
   selections: ModifierSelection;
+  /** ModifierScreen's special instructions, kept in `customizations.notes`. */
+  notes: string;
+  /** The seat chosen on the menu page; null = shared, undefined = not a table check. */
+  seatNumber?: number | null;
 }
 
 type Modifiers = NonNullable<CartItem["customizations"]["modifiers"]>;
+
+/** The selection map ModifierScreen's edit mode starts from: what the line already has. */
+export function selectionsOf(item: CartItem, groups: ModifierCategory[]): ModifierSelection {
+  const result: ModifierSelection = {};
+  for (const group of groups) result[group.id] = {};
+  for (const group of item.customizations.modifiers ?? []) {
+    const picks: ModifierSelection[string] = {};
+    for (const option of group.options) picks[option.id] = option.isNo ? "no" : true;
+    result[group.categoryId] = picks;
+  }
+  return result;
+}
 
 /** Selected options per group, in the register's `customizations.modifiers` shape. */
 export function selectedModifiers(groups: ModifierCategory[], selections: ModifierSelection): Modifiers {
@@ -56,7 +72,7 @@ export function unitPriceWithOptions(basePrice: number, groups: ModifierCategory
  */
 export function buildMenuCartItem(draft: ItemDraft): CartItem {
   const { item, quantity, groups, selections } = draft;
-  const customizations = { modifiers: selectedModifiers(groups, selections), notes: "" };
+  const customizations = { modifiers: selectedModifiers(groups, selections), notes: draft.notes.trim() };
   const cashPrice =
     item.cashPrice ?? useMenuStore.getState().getMenuItemById(item.id)?.cashPrice ?? item.price;
   const categoryName = draft.categoryId
@@ -86,11 +102,36 @@ export function buildMenuCartItem(draft: ItemDraft): CartItem {
     paidQuantity: 0,
     isDraft: false,
     is_to_go: draft.isToGo,
+    seatNumber: draft.seatNumber,
     addedFromCategoryId: draft.categoryId,
     addedFromMenuId: draft.menuId,
     category_name: categoryName,
     baseCardPrice: item.price,
     baseCashPrice: item.cashPrice ?? item.price,
+  };
+}
+
+/**
+ * The line after "Save" on an existing item: what ModifierScreen's edit
+ * commit writes (quantity, to-go, options, re-priced from the line's own
+ * base price). Same id, so `updateItemInActiveOrder` replaces in place and
+ * the store's recalculation owns the totals.
+ */
+export function withOptions(existing: CartItem, draft: ItemDraft): CartItem {
+  const base = existing.baseCardPrice ?? existing.unitPrice ?? existing.price;
+  const price = unitPriceWithOptions(base, draft.groups, draft.selections);
+  return {
+    ...existing,
+    quantity: draft.quantity,
+    price,
+    subtotal: price * draft.quantity,
+    customizations: {
+      ...existing.customizations,
+      modifiers: selectedModifiers(draft.groups, draft.selections),
+      notes: draft.notes.trim(),
+    },
+    is_to_go: draft.isToGo,
+    isDraft: false,
   };
 }
 
@@ -106,6 +147,7 @@ export function buildOpenCartItem(input: {
   taxable: boolean;
   isToGo: boolean;
   dualPricingPct: number | null;
+  seatNumber?: number | null;
 }): CartItem {
   const { name, price, dualPricingPct } = input;
   const cardPrice = dualPricingPct ? round2(price * (1 + dualPricingPct / 100)) : price;
@@ -128,6 +170,7 @@ export function buildOpenCartItem(input: {
     open_item_name: name,
     open_item_price: cardPrice,
     is_to_go: input.isToGo,
+    seatNumber: input.seatNumber,
     category_name: "Open Items",
     is_tax_exempt: !input.taxable,
     paidQuantity: 0,

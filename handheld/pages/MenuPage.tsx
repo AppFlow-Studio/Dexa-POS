@@ -1,44 +1,30 @@
-import { isKitchenItemUnsent } from "@/lib/kitchenStatusUtils";
 import { colors } from "@/lib/theme";
-import type { CartItem, OrderProfile } from "@/lib/types";
-import { useCoursingStore } from "@/stores/useCoursingStore";
-import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
-import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { FlatList, View } from "react-native";
 import { EmptyState } from "../components/EmptyState";
 import { SearchField } from "../components/SearchField";
 import { useMinuteTick } from "../hooks/useMinuteTick";
-import { checkPageTitle, orderKind } from "../lib/checks";
-import { Button, ChipRow, PageHeader } from "../primitives";
+import { Button, ChipRow, PageHeader, type HeaderPicker } from "../primitives";
 import { CartButton } from "../screens/menu/CartButton";
+import { CoursePickerSheet } from "../screens/menu/CoursePickerSheet";
 import { CustomItemSheet } from "../screens/menu/CustomItemSheet";
 import { MenuRow } from "../screens/menu/MenuRow";
 import { OptionsSheet } from "../screens/menu/OptionsSheet";
+import { SeatPickerSheet } from "../screens/menu/SeatPickerSheet";
 import { useAddItem } from "../screens/menu/useAddItem";
 import { useMenuRows, type MenuRowData } from "../screens/menu/useMenuRows";
+import { useMenuTotals } from "../screens/menu/useMenuTotals";
+import { useSeatCourse, type SeatCourse } from "../screens/menu/useSeatCourse";
 
-/** Items not yet sent, summed by `pick` — the footer's count and running total. */
-function sumUnsent(order: OrderProfile | undefined, pick: (item: CartItem) => number): number {
-  let sum = 0;
-  for (const i of order?.items ?? []) {
-    if (i.is_voided || i.isDraft || !isKitchenItemUnsent(i)) continue;
-    sum += pick(i);
-  }
-  return sum;
-}
+type Sheet = "seat" | "course" | "custom" | null;
 
-/** "Course 2" on a coursed dine-in check, otherwise the unsent count. */
-function useSubtitle(orderId: string, unsentCount: number): string {
-  const dineIn = useOrderStore((s) => {
-    const o = s.ordersById[orderId];
-    return o ? orderKind(o) === "dine_in" : false;
-  });
-  const coursing = useLocationConfigStore((s) => s.config.dining.enableCoursing);
-  const course = useCoursingStore((s) => s.byOrderId[orderId]?.workingCourse ?? 1);
-  const items = unsentCount === 1 ? "1 item to send" : `${unsentCount} items to send`;
-  return dineIn && coursing ? `Course ${course} · ${items}` : items;
+/** The header's "Course 2" / "Seat 2" pills, only where the check has courses / seats. */
+function pickers(sc: SeatCourse, open: (sheet: Sheet) => void): HeaderPicker[] {
+  const list: HeaderPicker[] = [];
+  if (sc.course.enabled) list.push({ label: `Course ${sc.course.current}`, onPress: () => open("course"), accessibilityLabel: "Course" });
+  if (sc.seat.enabled) list.push({ label: sc.seat.active ? `Seat ${sc.seat.active}` : "Shared", onPress: () => open("seat"), accessibilityLabel: "Seat" });
+  return list;
 }
 
 /** Screen 3: search or browse, one item per row; the sheet handles options. Route: /handheld/menu/[orderId]. */
@@ -47,14 +33,11 @@ export default function MenuPage({ orderId }: { orderId: string }) {
   const now = useMinuteTick();
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState<string | null>(null);
-  const [custom, setCustom] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>(null);
   const { chips, rows, inOrder } = useMenuRows(orderId, chip, query, now);
-  const { pending, add, commit, dismiss } = useAddItem(orderId);
-
-  const title = useOrderStore((s) => (s.ordersById[orderId] ? checkPageTitle(s.ordersById[orderId]) : "Menu"));
-  const unsentCount = useOrderStore((s) => sumUnsent(s.ordersById[orderId], (i) => i.quantity));
-  const unsentTotal = useOrderStore((s) => sumUnsent(s.ordersById[orderId], (i) => i.price * i.quantity));
-  const subtitle = useSubtitle(orderId, unsentCount);
+  const sc = useSeatCourse(orderId);
+  const { pending, add, commit, addCartItem, dismiss } = useAddItem(orderId, sc.seat.enabled ? sc.seat.active : undefined);
+  const { title, subtitle, unsentCount, unsentTotal } = useMenuTotals(orderId);
 
   useEffect(() => {
     if (!chip || !chips.some((c) => c.key === chip)) setChip(chips[0]?.key ?? null);
@@ -66,7 +49,7 @@ export default function MenuPage({ orderId }: { orderId: string }) {
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.screen }}>
-      <PageHeader title={title} subtitle={subtitle} onBack={() => router.back()} />
+      <PageHeader title={title} subtitle={subtitle} picker={pickers(sc, setSheet)} onBack={() => router.back()} />
       <SearchField value={query} onChange={setQuery} placeholder="Search the menu" />
       {query.trim() ? null : <ChipRow chips={chips} active={chip} onChange={setChip} />}
       <FlatList
@@ -84,20 +67,44 @@ export default function MenuPage({ orderId }: { orderId: string }) {
         }
         ListFooterComponent={
           <View className="items-center px-4 pb-4 pt-2">
-            <Button label="Add a custom item" variant="text" fit onPress={() => setCustom(true)} />
+            <Button label="Add a custom item" variant="text" fit onPress={() => setSheet("custom")} />
           </View>
         }
         contentContainerStyle={{ flexGrow: 1 }}
       />
       <CartButton count={unsentCount} total={unsentTotal} onPress={() => router.back()} />
       {pending ? <OptionsSheet key={pending.item.id} target={pending} onAdd={commit} onClose={dismiss} /> : null}
-      {custom ? (
+      {sheet === "custom" ? (
         <CustomItemSheet
-          onClose={() => setCustom(false)}
+          seatNumber={sc.seat.enabled ? sc.seat.active : undefined}
+          onClose={() => setSheet(null)}
           onAdd={(item) => {
-            useOrderStore.getState().addItemToActiveOrder(item);
-            setCustom(false);
+            addCartItem(item);
+            setSheet(null);
           }}
+        />
+      ) : null}
+      {sheet === "seat" ? (
+        <SeatPickerSheet
+          orderId={orderId}
+          count={sc.seat.count}
+          value={sc.seat.active}
+          onPick={(seat) => {
+            sc.seat.set(seat);
+            setSheet(null);
+          }}
+          onClose={() => setSheet(null)}
+        />
+      ) : null}
+      {sheet === "course" ? (
+        <CoursePickerSheet
+          orderId={orderId}
+          value={sc.course.current}
+          onPick={(course) => {
+            sc.course.set(course);
+            setSheet(null);
+          }}
+          onClose={() => setSheet(null)}
         />
       ) : null}
     </View>

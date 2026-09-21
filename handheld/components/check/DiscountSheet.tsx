@@ -3,13 +3,16 @@ import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import type { DiscountRecord } from "@/services/discountSync";
 import { useOrderStore } from "@/stores/useOrderStore";
-import React, { useMemo } from "react";
+import { Percent } from "lucide-react-native";
+import React, { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { applyDiscount, eligibleDiscounts } from "../../lib/discounts";
 import { formatCurrency } from "../../lib/format";
 import { type } from "../../lib/type";
 import { BottomSheet, ListRow, StickyActionBar } from "../../primitives";
 import { EmptyState } from "../EmptyState";
+import { ActionRow } from "./ActionRow";
+import { CustomDiscountSheet } from "./CustomDiscountSheet";
 
 function discountLabel(d: DiscountRecord): string {
   return d.discount_type === "percentage" ? `${d.discount_value}% off` : `${formatCurrency(d.discount_value)} off`;
@@ -17,14 +20,16 @@ function discountLabel(d: DiscountRecord): string {
 
 /**
  * Preset discounts for the check, eligible ones first with the register's
- * reasons on the rest; an applied discount can be removed. Custom amounts
- * stay on the register (a keypad flow the artifact does not draw).
+ * reasons on the rest, then "Custom amount" (the register's keypad flow);
+ * an applied discount can be removed.
  */
 export function DiscountSheet({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const order = useOrderStore((s) => s.ordersById[orderId]);
   const applied = order?.checkDiscount ?? null;
+  const [custom, setCustom] = useState(false);
   const { data: discounts = [] } = useDiscounts();
   const rows = useMemo(() => (order ? eligibleDiscounts(order, discounts.filter((d) => d.is_active)) : []), [order, discounts]);
+  if (custom) return <CustomDiscountSheet orderId={orderId} onClose={onClose} />;
 
   const pick = (d: DiscountRecord) => {
     if (!order) return;
@@ -60,9 +65,9 @@ export function DiscountSheet({ orderId, onClose }: { orderId: string; onClose: 
       }
     >
       {rows.length === 0 ? (
-        <EmptyState title="No discounts set up" hint="Presets are managed on the dashboard." />
+        <EmptyState title="No preset discounts" hint="Presets are managed on the dashboard." />
       ) : (
-        <View className="pb-2">
+        <View>
           {rows.map((r, i) => (
             <ListRow
               key={r.discount.id}
@@ -80,6 +85,9 @@ export function DiscountSheet({ orderId, onClose }: { orderId: string; onClose: 
           ) : null}
         </View>
       )}
+      <View className="pb-2">
+        <ActionRow icon={Percent} label="Custom amount" divider={rows.length > 0} onPress={() => setCustom(true)} />
+      </View>
     </BottomSheet>
   );
 }

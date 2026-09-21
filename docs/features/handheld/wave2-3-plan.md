@@ -102,8 +102,76 @@ Pages / screens (`handheld/`):
 - [ ] Open the same check from two devices: items added on both appear on both, no duplicate order rows
 - [ ] Takeout order from the handheld appears in the tablet's order rail with name and phone
 
+## Wave 3.5 — correct a check
+
+Added 2026-09-21 after the Wave 2 + 3 device pass. None of these are drawn in
+the artifact; they are the register's own item-level corrections, without
+which a wrong add can only be fixed by voiding the whole check. Two of them
+(seat, course) are implied by screen 3's "Course 2 · Seat 2" header and are
+what Wave 4's "Split check · by seat" option depends on. Abubeckr draws the
+picker; until then the seat and course chips go in `MenuPage`'s header line
+and the item sheet uses `primitives/BottomSheet`.
+
+### Register paths reused
+
+| Handheld action | Register call | Where it lives |
+| --- | --- | --- |
+| Pick seat before adding | `useSeatingStore.activeSeat` / `setActiveSeat`; `lib/cartItem.ts` copies it into `seatNumber` | `components/bill/SeatAccordion.tsx` `onSelectSeat` |
+| Pick course before adding | `useCoursingStore.setCurrentCourse`; `addItemToActiveOrder` stamps `courseNumber` and calls `setItemCourse` | `stores/useOrderStore.ts` ~L9042 |
+| Move an item to another seat | `updateItemInActiveOrder({ ...item, seatNumber })` | `components/menu/ModifierScreen.tsx` ~L1473 |
+| Move an item to another course | `useCoursingStore.setItemCourse(orderId, itemId, course)` | `stores/useCoursingStore.ts` L122 |
+| Change quantity (unsent) | `setItemQuantity(itemId, qty)` | `components/bill/BillItem.tsx` ~L333 |
+| Remove (unsent) | `removeItemFromActiveOrder(itemId)` | `BillItem.tsx` ~L339 |
+| Void (sent) | manager PIN (`lib/managerPin.ts`) → `removeItemFromActiveOrder(itemId, reason)`; `PrinterService.printVoidTicket` when `config.printing.printVoidTickets` | `BillItem.tsx` `handleConfirmVoid` ~L370; the station has `can_void_orders = false`, the PIN is the approval, as for whole-check void |
+| Edit options | `OptionsSheet` in edit mode → `updateItemInActiveOrder(cartItem)` with the same id | `ModifierScreen.tsx` `openToEdit` commit ~L1473 |
+| Item note | `updateItemInActiveOrder({ ...item, customizations: { ...c, notes } })` | `ModifierScreen.tsx` notes field |
+| Custom discount | `DiscountBottomSheet.handleApplyCustomDiscount`: `{ id: custom_<ts>, name, value, type }` → `validateDiscountDoesNotGoNegative` → `applyDiscountToCheck` | `components/bill/DiscountBottomSheet.tsx` L176–220 |
+
+Not in this wave: **tax-exempt**. The register's MoreOptions toggle is a
+toast with no store write (`MoreOptionsBottomSheet.tsx` ~L424); the order
+has no field for it, only `CartItem.is_tax_exempt` (which the handheld's
+custom item already sets). Build the order field on the register first.
+**Split / merge** is Wave 4 (screen 6 draws "Split check · Evenly or by seat").
+
+### Files
+
+Built 2026-09-21. Pages / screens (`handheld/`):
+
+- [x] `pages/MenuPage.tsx` — header line becomes two chips, "Course N" and "Seat N / Shared", each opening a picker sheet; chosen values go into `useAddItem` and `CustomItemSheet`. Totals moved to `screens/menu/useMenuTotals.ts` to keep the page short.
+- [x] `screens/menu/useSeatCourse.ts` — the register's `useTableSeating` (party size from the session) + `useTableCoursing` for one check; `CheckPage` runs it too so the seating store is initialised before the item sheet asks for seats
+- [x] `screens/menu/SeatPickerSheet.tsx` — Shared + 1..seat count with item counts; writes `useSeatingStore.setActiveSeat`
+- [x] `screens/menu/CoursePickerSheet.tsx` — shown only when `config.dining.enableCoursing`; fired courses listed but not selectable, one empty course after the last; writes `useCoursingStore.setCurrentCourse`
+- [x] `lib/cartItem.ts` — `seatNumber` on `ItemDraft` and both builders; `selectionsOf` (seed an edit from the line) and `withOptions` (the edited line, re-priced from its own base price)
+- [x] `screens/menu/useAddItem.ts` — after `addItemToActiveOrder`, ModifierScreen's `setItemSeat(…, skipBackendSync)` + `setActiveSeat`
+- [x] `screens/menu/Stepper.tsx` — `Stepper` / `QuantityRow` moved out of `OptionsSheet` so the item sheet shares them
+- [x] `components/check/LineItem.tsx` — a `Pressable` when `onPress` is given (not on a read-only check); `CheckBody` threads `onPressItem`
+- [x] `components/check/ActionRow.tsx` — `ActionRow` / `ManagerPill` moved out of `MoreSheet`, with a right-aligned `value`
+- [x] `components/check/ItemSheet.tsx` — one sheet, two modes. Unsent: qty stepper, Edit options (not for open items), Note, Seat, Course, Remove. Sent: Note, Move to seat, Void (Manager pill) — the register opens a sent line view-only, the handheld keeps the note editable. Course move is unsent-only: the kitchen already has a sent line, and `setItemCourse` refuses non-open courses anyway
+- [x] `components/check/useItemActions.ts` — the calls above; owns its own reason + PIN state and renders the same `ManagerPinScreen` (no `GatedAction` change in `useCheckActions`)
+- [x] `components/check/ItemSheets.tsx` — mounts whichever item sheet is up, one Modal at a time; `CheckPage` adds this one line
+- [x] `components/check/ItemNoteSheet.tsx` — same shape as `NoteSheet`, writes `customizations.notes`
+- [x] `components/check/VoidReasonSheet.tsx` — `VoidItemDialog`'s four reasons as rows + a typed reason; then the manager PIN, then `removeItemFromActiveOrder(id, reason)` + `printVoidTicket` when the setting is on
+- [x] `screens/menu/OptionsSheet.tsx` + `useOptionsDraft.ts` — `target.existing` seeds the draft; button reads "Save · $"; `saveOptions` calls `updateItemInActiveOrder(withOptions(...))`
+- [x] `components/check/DiscountSheet.tsx` — "Custom amount" row at the bottom → `CustomDiscountSheet`
+- [x] `components/check/CustomDiscountSheet.tsx` — Percent / Amount segment, `primitives/Keypad`, the register's checks
+- [x] `lib/discounts.ts` — `buildCustomDiscount` + `applyCustomDiscount` mirroring `handleApplyCustomDiscount` and `validateDiscountDoesNotGoNegative`
+- [x] `primitives/PageHeader.tsx` — `picker` accepts a list
+
+Rules carried over: no new RPC; nothing over ~120 lines; new spacing values in
+`style`, not `className` (NativeWind trap); no Android ripple on flex-1
+Pressables.
+
+### Verify
+
+- [ ] Seat and course chosen on the handheld show on the tablet's seat / course accordion for the same check
+- [ ] Qty change and remove of an unsent item never reach the outbox as a void; the tablet shows the corrected line
+- [ ] Voiding a sent item refuses a non-manager PIN, records the reason, and prints the void ticket when the setting is on
+- [ ] Editing options re-prices the line the way the tablet does (context price, modifier deltas)
+- [ ] Custom discount over 100 % or below zero is refused with the register's messages; a valid one shows on the tablet's bill
+- [ ] Device pass on 360 dp, font scale 1.3
+
 ## Out of scope (later waves)
 
-Payment, tip, receipts, cash drawer (Wave 4); offline Pay gating, low battery
-transfer, Wi-Fi roaming (Wave 5); editing or removing a line item from the
-handheld (not drawn in the artifact); floor-plan switcher.
+Payment, tip, receipts, cash drawer, split check / merge (Wave 4); offline
+Pay gating, low battery transfer, Wi-Fi roaming (Wave 5); tax-exempt (needs
+an order field on the register first); floor-plan switcher.

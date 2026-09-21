@@ -23,7 +23,16 @@ function typeAmount(current: string, key: KeypadKey): string {
  * price, as on the register's OpenItemAdder; dual pricing lifts the card
  * price by the location's percentage inside `buildOpenCartItem`.
  */
-export function CustomItemSheet({ onAdd, onClose }: { onAdd: (item: CartItem) => void; onClose: () => void }) {
+export function CustomItemSheet({
+  seatNumber,
+  onAdd,
+  onClose,
+}: {
+  /** The menu page's chosen seat; undefined on a check without seats. */
+  seatNumber?: number | null;
+  onAdd: (item: CartItem) => void;
+  onClose: () => void;
+}) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [taxable, setTaxable] = useState(true);
@@ -52,6 +61,7 @@ export function CustomItemSheet({ onAdd, onClose }: { onAdd: (item: CartItem) =>
                     taxable,
                     isToGo: false,
                     dualPricingPct: dualPricingPct && dualPricingPct > 0 ? dualPricingPct : null,
+                    seatNumber,
                   }),
                 ),
             },
