@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { X } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
-import { Animated, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Animated, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { metrics, tint } from "../lib/tokens";
 import { type } from "../lib/type";
 import { IconButton } from "./IconButton";
@@ -58,7 +58,10 @@ export function BottomSheet({
       hardwareAccelerated
       onRequestClose={onClose}
     >
-      <View className="flex-1 justify-end">
+      {/* A Modal window is not resized for the keyboard (statusBarTranslucent
+          keeps it full-screen), so the sheet pads itself up by the keyboard
+          height — the note and custom-item inputs sat under it otherwise. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: "flex-end" }}>
         <Animated.View
           className="absolute inset-0"
           style={{ backgroundColor: tint.scrim, opacity: progress }}
@@ -108,12 +111,12 @@ export function BottomSheet({
               </IconButton>
             </View>
           ) : null}
-          <ScrollView className="shrink" bounces={false}>
+          <ScrollView className="shrink" bounces={false} keyboardShouldPersistTaps="handled">
             {children}
           </ScrollView>
           {footer}
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -98,7 +98,8 @@ export function useCheckActions(orderId: string, onVoided: () => void) {
       setSheet(null);
       const orders = useOrderStore.getState();
       if (orders.activeOrderId !== orderId) orders.setActiveOrder(orderId);
-      void orders.updateActiveOrderDetails({ notes: notes.trim() });
+      const trimmed = notes.trim();
+      void orders.updateActiveOrderDetails({ notes: trimmed || undefined });
     },
     [orderId],
   );
