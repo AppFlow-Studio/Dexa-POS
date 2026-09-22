@@ -4,12 +4,12 @@ import {
   kioskTracking,
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
+import { KioskItemThumb } from "@/components/kiosk/shared/KioskItemThumb";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskMoney } from "@/components/kiosk/shared/kioskMoney";
 import type { KioskSearchEntry } from "@/components/kiosk/shared/kioskMenuSearch";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
-import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
@@ -17,7 +17,7 @@ import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { ShoppingCart } from "lucide-react-native";
 import React, { useMemo } from "react";
-import { Image, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 /** Thumbnail edge, and the paddings that together fix the row height. */
 export const KIOSK_RESULT_THUMB = 76;
@@ -53,10 +53,6 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
   const { item, categoryName } = entry;
   const qtyInCart = useKioskItemQuantity(item.id);
 
-  const imageSource = useMemo(
-    () => resolveMenuItemImageSource(item.image),
-    [item.image],
-  );
   const PlaceholderIcon = useMemo(
     () => getMenuItemPlaceholderIcon(resolveMenuItemFallbackIconKey(item)),
     [item],
@@ -91,18 +87,18 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
           backgroundColor: t.sunken,
         }}
       >
-        {imageSource ? (
-          <Image
-            source={imageSource}
-            style={{ width: "100%", height: "100%" }}
-            resizeMode="cover"
-          />
-        ) : (
-          <PlaceholderIcon
-            color={t.textFaint}
-            size={kioskPx(32, s)}
-          />
-        )}
+        {/* Decoded to thumbnail size and released on recycle. A result list
+            swaps its whole set on every keystroke while the grid it covers
+            stays mounted underneath, so a full-resolution bitmap per row is
+            the one thing this screen cannot afford — see KioskItemThumb. */}
+        <KioskItemThumb
+          image={item.image}
+          size={thumb}
+          recyclingKey={item.id}
+          fallback={
+            <PlaceholderIcon color={t.textFaint} size={kioskPx(32, s)} />
+          }
+        />
       </View>
 
       <View style={{ flex: 1, gap: kioskPx(4, s) }}>
