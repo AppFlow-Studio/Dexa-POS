@@ -37,6 +37,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 import { useOrderStore } from "./useOrderStore";
+import { useSettingsStore } from "./useSettingsStore";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
 import { useTableSessionStore } from "./useTableSessionStore";
 
@@ -503,6 +504,71 @@ const _recalledCycleTicketIds = new Set<string>();
 const _recalledTicketAt = new Map<string, number>();
 const RECALLED_TICKET_TTL = 4 * 60 * 60 * 1000; // 4h — far past any live ticket
 
+// ─── KDS auto-print dedup ─────────────────────────────────────────────────
+// Ticket IDs already sent to the physical printer this session. Guards against
+// the same freshly-arrived ticket printing twice (the broadcast path and the
+// polling background-fetch can both flag it as new), and against ticket_id
+// churn. In-memory ONLY (unlike the recalled set): a fresh boot re-establishes
+// the board via fetchTickets, which fires NO new-ticket callback, so active
+// tickets present at boot are never reprinted after a restart — persistence
+// would add nothing. TTL-culled alongside recalls so it can't grow unbounded.
+const _printedTicketIds = new Set<string>();
+const _printedTicketAt = new Map<string, number>();
+const PRINTED_TICKET_TTL = 4 * 60 * 60 * 1000; // 4h — far past any live ticket
+
+function cullExpiredPrints(now: number): void {
+  if (_printedTicketAt.size === 0) return;
+  for (const [ticketId, at] of _printedTicketAt) {
+    if (now - at > PRINTED_TICKET_TTL) {
+      _printedTicketAt.delete(ticketId);
+      _printedTicketIds.delete(ticketId);
+    }
+  }
+}
+
+/** Forget a ticket's print so a later re-arrival (recall) prints it again. */
+function clearTicketPrinted(ticketId: string): void {
+  _printedTicketAt.delete(ticketId);
+  _printedTicketIds.delete(ticketId);
+}
+
+/**
+ * Physically print a newly-arrived KDS ticket, at most once per ticket_id.
+ * Gated to KDS stations that opted in (device-local flag) and claimed a
+ * printer — a no-op everywhere else, including POS stations that keep this
+ * store warm and must never print. Fire-and-forget; the print queue handles
+ * retries/offline.
+ */
+function maybeAutoPrintKdsTicket(ticket: KDSTicket): void {
+  if (_printedTicketIds.has(ticket.ticket_id)) return;
+
+  const settings = useStoreSettingsStore.getState();
+  const station = settings.selectedStation;
+  if (!station || station.station_type !== "kds") return;
+  if (!useSettingsStore.getState().kdsAutoPrintEnabled) return;
+  if (!station.current_receipt_printer_id) return;
+
+  const location = settings.selectedStore;
+  if (!location) return;
+
+  // Mark before dispatch (optimistic): the gates above already guarantee a
+  // claimed printer, so the enqueue will happen; a queued job that later fails
+  // to drain is retried by the print queue, not re-enqueued here.
+  _printedTicketIds.add(ticket.ticket_id);
+  _printedTicketAt.set(ticket.ticket_id, Date.now());
+
+  try {
+    const {
+      PrinterService,
+    } = require("@/services/printing/PrinterService");
+    void PrinterService.printKdsTicket(ticket, location).catch((e: unknown) =>
+      console.warn("[KDS AutoPrint] print failed:", e),
+    );
+  } catch (e) {
+    console.warn("[KDS AutoPrint] dispatch failed:", e);
+  }
+}
+
 /** Track order item IDs whose void/refund notice has been acknowledged locally.
  *  Persisted to MMKV so acknowledgements survive app restarts when there is no
  *  kdsDisplayId for server-side filtering. */
@@ -569,6 +635,8 @@ function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
 
   // Evict long-stale recalls (4h TTL) so unfinished recalls don't accumulate.
   cullExpiredRecalls(now);
+  // Same TTL sweep for the auto-print dedup set.
+  cullExpiredPrints(now);
 
   // Some bulk-done flows can regenerate ticket IDs from broadcast/refetch before
   // backend state fully settles. Keep those tickets hidden if all incoming items
@@ -2199,25 +2267,24 @@ export const useKDSStore = create<KDSState>()(
           // during a realtime gap, and reconnect-fetch after a Wi-Fi blip.
           // The sound service's 1500ms cooldown collapses rapid bursts to one chime.
           if (wasHydrated) {
-            const cb = get()._onNewOrderCallback;
-            if (cb) {
-              const prevTicketIds = new Set(
-                currentTickets.map((t) => t.ticket_id),
-              );
-              const newTickets = merged.filter(
-                (t) => !prevTicketIds.has(t.ticket_id),
-              );
-              if (newTickets.length > 0) {
-                console.log("[KDS Sound] merge-diff new tickets", {
-                  count: newTickets.length,
-                  ticketIds: newTickets.map((t) => t.ticket_id),
-                  orderIds: Array.from(
-                    new Set(newTickets.map((t) => t.db_order_id)),
-                  ),
-                });
-                for (const t of newTickets) {
-                  cb(t.order_source ?? null);
-                }
+            const prevTicketIds = new Set(
+              currentTickets.map((t) => t.ticket_id),
+            );
+            const newTickets = merged.filter(
+              (t) => !prevTicketIds.has(t.ticket_id),
+            );
+            if (newTickets.length > 0) {
+              const cb = get()._onNewOrderCallback;
+              console.log("[KDS Sound] merge-diff new tickets", {
+                count: newTickets.length,
+                ticketIds: newTickets.map((t) => t.ticket_id),
+                orderIds: Array.from(
+                  new Set(newTickets.map((t) => t.db_order_id)),
+                ),
+              });
+              for (const t of newTickets) {
+                if (cb) cb(t.order_source ?? null);
+                maybeAutoPrintKdsTicket(t);
               }
             }
           }
@@ -2967,20 +3034,19 @@ export const useKDSStore = create<KDSState>()(
         // order that already has other tickets on the board (separate prep
         // station, later course) still rings the kitchen — diff is at
         // ticket_id, not order_id. Cooldown collapses bursts to one chime.
-        const cb = get()._onNewOrderCallback;
-        if (cb) {
-          const trulyNew = stabilizedNewTickets.filter(
-            (t) => !orderTids?.has(t.ticket_id),
-          );
-          if (trulyNew.length > 0) {
-            console.log("[KDS Sound] broadcast new tickets", {
-              orderId: order.id,
-              count: trulyNew.length,
-              ticketIds: trulyNew.map((t) => t.ticket_id),
-            });
-            for (const t of trulyNew) {
-              cb(t.order_source ?? order.order_source ?? null);
-            }
+        const trulyNew = stabilizedNewTickets.filter(
+          (t) => !orderTids?.has(t.ticket_id),
+        );
+        if (trulyNew.length > 0) {
+          const cb = get()._onNewOrderCallback;
+          console.log("[KDS Sound] broadcast new tickets", {
+            orderId: order.id,
+            count: trulyNew.length,
+            ticketIds: trulyNew.map((t) => t.ticket_id),
+          });
+          for (const t of trulyNew) {
+            if (cb) cb(t.order_source ?? order.order_source ?? null);
+            maybeAutoPrintKdsTicket(t);
           }
         }
       },
@@ -3246,24 +3312,23 @@ export const useKDSStore = create<KDSState>()(
           // or this station's first sight of the order. Diff is scoped to the
           // order, so it cannot ring for unrelated tickets that a concurrent board
           // fetch happened to add.
-          const cb = get()._onNewOrderCallback;
-          if (cb) {
-            const prevTicketIds = new Set(
-              currentTickets.map((t) => t.ticket_id),
-            );
-            const newTickets = merged.filter(
-              (t) =>
-                t.db_order_id === orderId && !prevTicketIds.has(t.ticket_id),
-            );
-            if (newTickets.length > 0) {
-              console.log("[KDS Sound] order-scoped new tickets", {
-                orderId,
-                count: newTickets.length,
-                ticketIds: newTickets.map((t) => t.ticket_id),
-              });
-              for (const t of newTickets) {
-                cb(t.order_source ?? null);
-              }
+          const prevTicketIds = new Set(
+            currentTickets.map((t) => t.ticket_id),
+          );
+          const newTickets = merged.filter(
+            (t) =>
+              t.db_order_id === orderId && !prevTicketIds.has(t.ticket_id),
+          );
+          if (newTickets.length > 0) {
+            const cb = get()._onNewOrderCallback;
+            console.log("[KDS Sound] order-scoped new tickets", {
+              orderId,
+              count: newTickets.length,
+              ticketIds: newTickets.map((t) => t.ticket_id),
+            });
+            for (const t of newTickets) {
+              if (cb) cb(t.order_source ?? null);
+              maybeAutoPrintKdsTicket(t);
             }
           }
         } catch (err) {
@@ -3317,6 +3382,11 @@ export const useKDSStore = create<KDSState>()(
 
         // Optimistic: reset all items, ticket to recall status, mark as recalled
         addRecalledTicketId(ticketId);
+        // A recall means "make it again" — reprint the physical ticket (no-op
+        // unless this KDS auto-prints). Clear the print guard first so the
+        // reprint isn't deduped away.
+        clearTicketPrinted(ticketId);
+        maybeAutoPrintKdsTicket(ticket);
         const recallableSet = new Set(recallableItemIds);
         const updatedTickets = tickets.map((t) =>
           t.ticket_id === ticketId
@@ -3865,6 +3935,11 @@ export const useKDSStore = create<KDSState>()(
 
         // Move from done → active tickets with workflow-aware status
         addRecalledTicketId(ticketId);
+        // A recall means "make it again" — reprint the physical ticket (no-op
+        // unless this KDS auto-prints). Clear the print guard first so the
+        // reprint isn't deduped away.
+        clearTicketPrinted(ticketId);
+        maybeAutoPrintKdsTicket(ticket);
         const recallableSet = new Set(recallableItemIds);
         const recalledAtIso = new Date().toISOString();
         const recalledAtEpoch = Date.now();
