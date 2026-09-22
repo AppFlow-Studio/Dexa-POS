@@ -195,6 +195,10 @@ function payload(overrides: Partial<PosSyncData> = {}): PosSyncData {
       },
     ],
     modifierSnoozes: [],
+    station_menu_scopes: {
+      "station-kiosk-1": { scope: "selected", menu_ids: ["menu-lunch"] },
+      "station-register-2": { scope: "all", menu_ids: [] },
+    },
     ...overrides,
   } as PosSyncData;
 }
@@ -214,6 +218,28 @@ describe("round trip — what comes out is what went in", () => {
     await writeMenuSnapshot("pos", LOCATION, source);
 
     expect(await readMenuSnapshot(LOCATION)).toEqual(source);
+  });
+
+  /**
+   * Per-station menu scope must survive the mirror, or an airplane-mode cold
+   * start on a kiosk scoped to Sushi paints the whole menu — the one thing
+   * the scope exists to prevent. And a snapshot that never had the map must
+   * come back WITHOUT one: "no map" is the client's fail-open case for
+   * pre-scope snapshots, and writing `{}` in its place would change meaning.
+   */
+  it("carries station_menu_scopes through, and omits it when the payload had none", async () => {
+    const scoped = payload();
+    await writeMenuSnapshot("kiosk", LOCATION, scoped);
+    expect((await readMenuSnapshot(LOCATION))?.station_menu_scopes).toEqual(
+      scoped.station_menu_scopes,
+    );
+
+    // A later payload without the map replaces the row wholesale.
+    const { station_menu_scopes: _dropped, ...withoutScopes } = payload();
+    await writeMenuSnapshot("kiosk", LOCATION, withoutScopes as PosSyncData);
+    const restored = await readMenuSnapshot(LOCATION);
+    expect(restored).toEqual(withoutScopes);
+    expect(restored).not.toHaveProperty("station_menu_scopes");
   });
 
   /**

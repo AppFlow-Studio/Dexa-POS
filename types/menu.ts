@@ -256,6 +256,26 @@ export interface ActiveModifierSnoozeSync {
   snooze_reason: string | null;
 }
 
+// ============================================================================
+// 7.5. STATION MENU SCOPE (get_pos_bootstrap_v2.station_menu_scopes)
+// ============================================================================
+
+export type StationMenuScopeKind = "all" | "selected";
+
+/**
+ * Which menus one station renders. `all` is today's behaviour (every menu
+ * visible on the station's channel). `selected` restricts to `menu_ids`, and
+ * an empty list means NOTHING — never the full menu. See
+ * lib/menu/stationMenuScope.ts for the rule and its one fail-open case.
+ */
+export interface StationMenuScope {
+  scope: StationMenuScopeKind;
+  menu_ids: string[];
+}
+
+/** station_id -> scope. Every non-KDS station at the location. */
+export type StationMenuScopeMap = Record<string, StationMenuScope>;
+
 export interface PosSyncData {
   synced_at: string;
   location_id: string;
@@ -273,6 +293,14 @@ export interface PosSyncData {
   snoozes?: ActiveSnoozeSync[];
   // Active per-location modifier-option 86/snooze rows (from get_active_snoozes).
   modifierSnoozes?: ActiveModifierSnoozeSync[];
+  /**
+   * Per-station menu scopes, keyed by station id. The bootstrap stays
+   * location-keyed (one snapshot, one cache key); each device filters by its
+   * own station. Absent on snapshots written before the field existed, in
+   * which case every station resolves to `all`. Persisted with the snapshot —
+   * an offline cold start must apply the same scope a live sync would.
+   */
+  station_menu_scopes?: StationMenuScopeMap;
 }
 
 // ============================================================================

@@ -11,6 +11,11 @@ import {
     toBulkUpdateStatusKey,
     toIdempotencyKey,
 } from "@/lib/network/idempotencyKey";
+import {
+  reportBumpFailure,
+  type BumpStatus,
+  type FailedBump,
+} from "@/lib/kds/bumpFailure";
 import { isRecallExpired } from "@/lib/kdsAutomation";
 import { DEADLINES } from "@/lib/network/deadlines";
 import type { RpcResult } from "@/lib/network/rpcVersionFallback";
@@ -108,6 +113,15 @@ interface KDSState {
   // New order positioning
   newOrderPosition: "left" | "right";
 
+  // Bump tracking (ephemeral, not persisted)
+  /** Tickets with a bump RPC in flight — further taps on them are dropped. */
+  inFlightBumpTicketIds: Set<string>;
+  /** Bumps that exhausted their retry — the card shows "tap to retry". */
+  failedBumps: Map<string, FailedBump>;
+  retryFailedBump: (ticketId: string) => void;
+  _setBumpInFlight: (ticketId: string, inFlight: boolean) => void;
+  _setBumpFailure: (ticketId: string, failure: FailedBump | null) => void;
+
   // Actions
   fetchKDSDisplay: (stationId: string) => Promise<void>;
   fetchTickets: (locationId: string) => Promise<void>;
@@ -204,6 +218,10 @@ let _fetchInFlight = false;
 // ─── Cancellable retry infrastructure ───────────────────────────
 const RETRY_DELAYS = [2000, 5000, 10000];
 const MAX_RETRIES = RETRY_DELAYS.length;
+// Bumps get exactly one automatic retry (2 s), then the card shows "tap to
+// retry". Three silent retries over 17 s with 20 s deadlines each is how
+// Charcoal #S1-0020 sat in Cooking while the cook kept tapping.
+const BUMP_MAX_RETRIES = 1;
 
 interface RetryHandle {
   timeoutId: ReturnType<typeof setTimeout> | null;
@@ -334,17 +352,26 @@ function cullExpiredRecalls(now: number): void {
   if (changed) persistKdsRetryState();
 }
 
+interface RetryOptions {
+  /** Defaults to MAX_RETRIES (3). Bumps pass BUMP_MAX_RETRIES. */
+  maxRetries?: number;
+  /** Called on every failed attempt, before the retry timer is armed. */
+  onAttemptFailure?: (err: unknown, willRetry: boolean) => void;
+}
+
 function scheduleRetry(
   key: string,
   performFn: () => Promise<unknown>,
   retryCount: number,
   onSuccess?: () => void,
   onFinalFailure?: () => void,
+  opts?: RetryOptions,
 ) {
   cancelRetry(key);
   const handle: RetryHandle = { timeoutId: null, cancelled: false };
   _activeRetries.set(key, handle);
   persistKdsRetryState();
+  const maxRetries = opts?.maxRetries ?? MAX_RETRIES;
 
   performFn()
     .then(() => {
@@ -355,12 +382,14 @@ function scheduleRetry(
     })
     .catch((err) => {
       if (handle.cancelled) return;
-      if (retryCount < MAX_RETRIES) {
+      const willRetry = retryCount < maxRetries;
+      opts?.onAttemptFailure?.(err, willRetry);
+      if (willRetry) {
         const delay = RETRY_DELAYS[retryCount];
         console.warn(
           `[KDSStore] Retry ${
             retryCount + 1
-          }/${MAX_RETRIES} for ${key} in ${delay}ms`,
+          }/${maxRetries} for ${key} in ${delay}ms`,
         );
         handle.timeoutId = setTimeout(() => {
           if (handle.cancelled) return;
@@ -370,11 +399,12 @@ function scheduleRetry(
             retryCount + 1,
             onSuccess,
             onFinalFailure,
+            opts,
           );
         }, delay);
       } else {
         console.error(
-          `[KDSStore] All ${MAX_RETRIES} retries exhausted for ${key}:`,
+          `[KDSStore] All ${maxRetries} retries exhausted for ${key}:`,
           err,
         );
         _activeRetries.delete(key);
@@ -382,6 +412,27 @@ function scheduleRetry(
         onFinalFailure?.();
       }
     });
+}
+
+/**
+ * `OrderService.bulkUpdateOrderItemStatus` resolves `{ data, error }` and
+ * never rejects, so a performFn that returns it straight through is treated
+ * as a success by scheduleRetry even when the RPC 500'd. Every bump path
+ * goes through this so a failure actually fails.
+ */
+async function bumpOrThrow(
+  client: SupabaseClient,
+  itemIds: string[],
+  status: BumpStatus,
+  keyOverride: string,
+): Promise<void> {
+  const result = await OrderService.bulkUpdateOrderItemStatus(
+    client,
+    itemIds,
+    status,
+    { keyOverride },
+  );
+  if (result.error) throw result.error;
 }
 
 function cancelRetry(key: string) {
@@ -1436,6 +1487,31 @@ export const useKDSStore = create<KDSState>()(
       prioritizedTicketIds: new Set<string>(),
       newOrderPosition: "right" as const,
 
+      inFlightBumpTicketIds: new Set<string>(),
+      failedBumps: new Map<string, FailedBump>(),
+      _setBumpInFlight: (ticketId, inFlight) => {
+        const cur = get().inFlightBumpTicketIds;
+        if (cur.has(ticketId) === inFlight) return;
+        const next = new Set(cur);
+        if (inFlight) next.add(ticketId);
+        else next.delete(ticketId);
+        set({ inFlightBumpTicketIds: next });
+      },
+      _setBumpFailure: (ticketId, failure) => {
+        const cur = get().failedBumps;
+        if (!failure && !cur.has(ticketId)) return;
+        const next = new Map(cur);
+        if (failure) next.set(ticketId, failure);
+        else next.delete(ticketId);
+        set({ failedBumps: next });
+      },
+      retryFailedBump: (ticketId) => {
+        const failed = get().failedBumps.get(ticketId);
+        if (!failed) return;
+        get()._setBumpFailure(ticketId, null);
+        get().advanceTicketStatus(ticketId, failed.itemIds, failed.newStatus);
+      },
+
       _ticketsById: {},
       _ticketIdsByOrderId: {},
 
@@ -2157,6 +2233,21 @@ export const useKDSStore = create<KDSState>()(
       advanceTicketStatus: (ticketId, itemIds, newStatus) => {
         const { tickets, _ticketsById } = get();
 
+        // Per-ticket in-flight guard: while a bump RPC for this ticket is
+        // pending, further taps are dropped. Ten rapid taps = one RPC, and a
+        // slow bump can't pile 13 statements onto the same order row lock.
+        if (get().inFlightBumpTicketIds.has(ticketId)) {
+          if (__DEV__) {
+            console.log("[KDS Debug] advanceTicketStatus dropped: in flight", {
+              ticketId,
+              newStatus,
+            });
+          }
+          return;
+        }
+        // A fresh attempt supersedes any "tap to retry" state.
+        get()._setBumpFailure(ticketId, null);
+
         // O(1) lookup via map
         const ticket = _ticketsById[ticketId];
         const orderId = ticket?.db_order_id;
@@ -2364,6 +2455,7 @@ export const useKDSStore = create<KDSState>()(
         }
 
         if (client && backendItemIds.length > 0) {
+          get()._setBumpInFlight(ticketId, true);
           scheduleRetry(
             retryKey,
             async () => {
@@ -2409,6 +2501,7 @@ export const useKDSStore = create<KDSState>()(
             },
             0,
             () => {
+              get()._setBumpInFlight(ticketId, false);
               const hadPendingBeforeSuccess = _pendingActions.has(ticketId);
               if (newStatus === "served") {
                 deletePendingAction(ticketId);
@@ -2471,10 +2564,30 @@ export const useKDSStore = create<KDSState>()(
               }
             },
             () => {
+              // Final failure: drop the optimistic state (the refetch restores
+              // server truth) and pin a "tap to retry" on the ticket. Same
+              // ticket_id comes back from the refetch, so the badge lands on
+              // the right card.
+              get()._setBumpInFlight(ticketId, false);
+              get()._setBumpFailure(ticketId, {
+                itemIds: [...itemIds],
+                newStatus,
+                failedAt: Date.now(),
+              });
               deletePendingAction(ticketId);
               _queuedAdvanceActions.delete(ticketId);
               const lastLoc = get()._lastLocationId;
               if (lastLoc) get().scheduleRefetch(lastLoc);
+            },
+            {
+              maxRetries: BUMP_MAX_RETRIES,
+              onAttemptFailure: (err, willRetry) =>
+                reportBumpFailure(err, {
+                  ticketId,
+                  orderItemIds: backendItemIds,
+                  status: newStatus,
+                  willRetry,
+                }),
             },
           );
 
@@ -3602,11 +3715,11 @@ export const useKDSStore = create<KDSState>()(
           scheduleRetry(
             retryKey,
             () =>
-              OrderService.bulkUpdateOrderItemStatus(
+              bumpOrThrow(
                 client,
                 [itemId],
                 "ready",
-                { keyOverride: toBulkUpdateStatusKey([itemId], "ready") },
+                toBulkUpdateStatusKey([itemId], "ready"),
               ),
             0,
             () => {
@@ -3620,6 +3733,16 @@ export const useKDSStore = create<KDSState>()(
               deletePendingAction(ticketId);
               const lastLoc = get()._lastLocationId;
               if (lastLoc) get().scheduleRefetch(lastLoc);
+            },
+            {
+              maxRetries: BUMP_MAX_RETRIES,
+              onAttemptFailure: (err, willRetry) =>
+                reportBumpFailure(err, {
+                  ticketId,
+                  orderItemIds: [itemId],
+                  status: "ready",
+                  willRetry,
+                }),
             },
           );
         }
@@ -3962,10 +4085,14 @@ export const useKDSStore = create<KDSState>()(
         const { tickets } = get();
 
         // Phase 1: Build index of selected tickets in O(m) where m = selected count
+        // Tickets with a bump already in flight are left alone (same rule as
+        // a single tap); they keep their selection and can be re-run once the
+        // pending RPC settles.
         const selectedSet = new Set(ticketIds);
+        const inFlight = get().inFlightBumpTicketIds;
         const ticketIndex = new Map<string, KDSTicket>();
         for (const t of tickets) {
-          if (selectedSet.has(t.ticket_id)) {
+          if (selectedSet.has(t.ticket_id) && !inFlight.has(t.ticket_id)) {
             ticketIndex.set(t.ticket_id, t);
           }
         }
@@ -4077,28 +4204,60 @@ export const useKDSStore = create<KDSState>()(
           for (const status of ["preparing", "ready", "served"] as const) {
             const ids = batchedItemIds[status];
             if (ids.length === 0) continue;
+            // Tickets riding on this batch — in-flight + failure state is
+            // tracked per ticket so the cards can show it.
+            const batchTicketIds: string[] = [];
+            for (const [tid] of ticketIndex) {
+              const effectiveStatus = removeIds.has(tid)
+                ? "served"
+                : mutations.get(tid)?.newStatus;
+              if (effectiveStatus === status) batchTicketIds.push(tid);
+            }
+            for (const tid of batchTicketIds) {
+              get()._setBumpFailure(tid, null);
+              get()._setBumpInFlight(tid, true);
+            }
             const retryKey = `bulk_${status}_${Date.now()}`;
             scheduleRetry(
               retryKey,
               () =>
-                OrderService.bulkUpdateOrderItemStatus(client, ids, status, {
-                  keyOverride: toBulkUpdateStatusKey(ids, status),
-                }),
+                bumpOrThrow(
+                  client,
+                  ids,
+                  status,
+                  toBulkUpdateStatusKey(ids, status),
+                ),
               0,
               () => {
+                for (const tid of batchTicketIds) {
+                  get()._setBumpInFlight(tid, false);
+                }
                 const lastLoc = get()._lastLocationId;
                 if (lastLoc) get().scheduleRefetch(lastLoc);
               },
               () => {
-                for (const [tid] of ticketIndex) {
-                  const m = mutations.get(tid);
-                  const effectiveStatus = removeIds.has(tid)
-                    ? "served"
-                    : m?.newStatus;
-                  if (effectiveStatus === status) deletePendingAction(tid);
+                for (const tid of batchTicketIds) {
+                  get()._setBumpInFlight(tid, false);
+                  get()._setBumpFailure(tid, {
+                    itemIds:
+                      ticketIndex.get(tid)?.items.map((i) => i.id) ?? [],
+                    newStatus: status,
+                    failedAt: Date.now(),
+                  });
+                  deletePendingAction(tid);
                 }
                 const lastLoc = get()._lastLocationId;
                 if (lastLoc) get().scheduleRefetch(lastLoc);
+              },
+              {
+                maxRetries: BUMP_MAX_RETRIES,
+                onAttemptFailure: (err, willRetry) =>
+                  reportBumpFailure(err, {
+                    ticketId: batchTicketIds.join(","),
+                    orderItemIds: ids,
+                    status,
+                    willRetry,
+                  }),
               },
             );
           }
@@ -4106,10 +4265,13 @@ export const useKDSStore = create<KDSState>()(
       },
 
       bulkMarkTicketsDone: (ticketIds: string[]) => {
-        const { tickets, _ticketsById } = get();
+        const { tickets, _ticketsById, inFlightBumpTicketIds } = get();
         const ticketSet = new Set(ticketIds);
-        const matchedTickets = tickets.filter((t) =>
-          ticketSet.has(t.ticket_id),
+        // Same in-flight rule as a single tap: a ticket with a pending bump
+        // RPC is skipped, not stacked.
+        const matchedTickets = tickets.filter(
+          (t) =>
+            ticketSet.has(t.ticket_id) && !inFlightBumpTicketIds.has(t.ticket_id),
         );
         if (matchedTickets.length === 0) {
           return { done: 0, skippedNotice: 0 };
@@ -4169,32 +4331,47 @@ export const useKDSStore = create<KDSState>()(
           // Fire backend RPC per ticket (async, non-blocking)
           const client = getClient();
           if (client && actionableItemIds.length > 0) {
-            const retryKey = `advance_${ticket.ticket_id}_served`;
+            const tid = ticket.ticket_id;
+            get()._setBumpFailure(tid, null);
+            get()._setBumpInFlight(tid, true);
+            const retryKey = `advance_${tid}_served`;
             scheduleRetry(
               retryKey,
               () =>
-                OrderService.bulkUpdateOrderItemStatus(
+                bumpOrThrow(
                   client,
                   actionableItemIds,
                   "served",
-                  {
-                    keyOverride: toBulkUpdateStatusKey(
-                      actionableItemIds,
-                      "served",
-                    ),
-                  },
+                  toBulkUpdateStatusKey(actionableItemIds, "served"),
                 ),
               0,
               () => {
-                if (_pendingActions.has(ticket.ticket_id)) {
+                get()._setBumpInFlight(tid, false);
+                if (_pendingActions.has(tid)) {
                   const lastLoc = get()._lastLocationId;
                   if (lastLoc) get().scheduleRefetch(lastLoc);
                 }
               },
               () => {
-                deletePendingAction(ticket.ticket_id);
+                get()._setBumpInFlight(tid, false);
+                get()._setBumpFailure(tid, {
+                  itemIds: ticket.items.map((i) => i.id),
+                  newStatus: "served",
+                  failedAt: Date.now(),
+                });
+                deletePendingAction(tid);
                 const lastLoc = get()._lastLocationId;
                 if (lastLoc) get().scheduleRefetch(lastLoc);
+              },
+              {
+                maxRetries: BUMP_MAX_RETRIES,
+                onAttemptFailure: (err, willRetry) =>
+                  reportBumpFailure(err, {
+                    ticketId: tid,
+                    orderItemIds: actionableItemIds,
+                    status: "served",
+                    willRetry,
+                  }),
               },
             );
           }
@@ -4234,6 +4411,12 @@ export const useKDSStore = create<KDSState>()(
       // ─── Cleanup (for unmount) ──────────────────────────────────────
       _cleanup: () => {
         cancelAllRetries();
+        // Cancelled retries never reach their callbacks, so clear the bump
+        // tracking here or a ticket could stay "in flight" for good.
+        set({
+          inFlightBumpTicketIds: new Set<string>(),
+          failedBumps: new Map<string, FailedBump>(),
+        });
         _pendingActions.clear();
         _queuedAdvanceActions.clear();
         _recalledTicketIds.clear();

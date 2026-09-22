@@ -63,6 +63,7 @@ import type {
   MenuWithCategories,
   ModifierIngredientSync,
   PosSyncData,
+  StationMenuScopeMap,
 } from "@/types/menu";
 
 /** Every table the menu snapshot owns. Cleared and rewritten as one unit. */
@@ -73,6 +74,7 @@ const MENU_TABLES: TableName[] = [
   "modifier_groups",
   "menu_item_modifier_groups",
   "menu_bootstrap",
+  "menu_station_scopes",
 ];
 
 const menuEntity = (): EntityDescriptor => ENTITIES.menu;
@@ -192,6 +194,8 @@ export function mapMenuPayloadToBatch(
       // readMenuSnapshot "this location HAS been synced" as opposed to "this
       // location synced and came back empty".
       menu_bootstrap: [toBootstrapRow(data, locationId, seenAt)],
+      // Only when the payload carried the map — see toStationScopesRow.
+      menu_station_scopes: toStationScopesRows(data, locationId, seenAt),
       menu_categories: categories,
       menu_items: items,
       modifier_groups: [...modifierGroups.values()],
@@ -357,6 +361,9 @@ interface BootstrapRow {
   snoozes: string;
   modifier_snoozes: string;
 }
+interface StationScopesRow {
+  payload: string;
+}
 
 /**
  * The three tree reads, exported so the query-plan test binds to the SQL that
@@ -413,6 +420,15 @@ export async function readMenuSnapshot(
         [locationId],
       );
       if (!envelope) return null;
+
+      // Absent for a snapshot written before per-station scope existed, or
+      // by a server that has not run the migration. Left absent on the way
+      // out too: the client's ONE fail-open path is "no map", and the round
+      // trip must stay exact.
+      const scopesRow = await db.getFirstAsync<StationScopesRow>(
+        `SELECT payload FROM menu_station_scopes WHERE location_id = ?`,
+        [locationId],
+      );
 
       const menuRows = await db.getAllAsync<MenuRow>(
         MENU_SNAPSHOT_STATEMENTS.menus,
@@ -483,6 +499,14 @@ export async function readMenuSnapshot(
           envelope.modifier_snoozes,
           [],
         ),
+        ...(scopesRow
+          ? {
+              station_menu_scopes: parseJson<StationMenuScopeMap>(
+                scopesRow.payload,
+                {},
+              ),
+            }
+          : {}),
       };
     });
 
@@ -571,6 +595,7 @@ export async function logMenuMirrorState(locationId: string): Promise<void> {
         ` items=${out.menu_items} groups=${out.modifier_groups}` +
         ` links=${out.menu_item_modifier_groups}` +
         ` envelope=${out.menu_bootstrap}` +
+        ` stationScopes=${out.menu_station_scopes}` +
         ` version=${envelope?.version ?? "(none)"}` +
         ` syncedAt=${envelope?.synced_at ?? "(none)"}` +
         ` lastSuccessAt=${state?.last_success_at ?? "(never)"}` +
@@ -609,6 +634,28 @@ function toBootstrapRow(
     modifier_snoozes: JSON.stringify(data.modifierSnoozes ?? []),
     _server_seen_at: seenAt,
   };
+}
+
+/**
+ * Zero or one row: the `station_menu_scopes` map, verbatim, only when the
+ * payload carried it. Writing `{}` for an absent map would turn "no map"
+ * (the client's fail-open case for pre-scope snapshots) into "every station
+ * is all", and would break the exact round trip the mirror is built on.
+ * `replaceScope` clears the previous row either way.
+ */
+function toStationScopesRows(
+  data: PosSyncData,
+  locationId: string,
+  seenAt: string,
+): Row[] {
+  if (data.station_menu_scopes === undefined) return [];
+  return [
+    {
+      location_id: locationId,
+      payload: JSON.stringify(data.station_menu_scopes),
+      _server_seen_at: seenAt,
+    },
+  ];
 }
 
 /** `payload` is the menu MINUS categories — those live in their own table. */

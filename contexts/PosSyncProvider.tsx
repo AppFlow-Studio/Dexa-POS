@@ -56,6 +56,7 @@ import {
   setOfflineSyncSupabaseClient,
 } from "@/services/offlineSyncInit";
 import { drainPendingFinalizes } from "@/services/pendingFinalize";
+import { pruneCartForStationScope } from "@/services/stationMenuScopePrune";
 import {
   startStarPrinterDiscoveryService,
   stopStarPrinterDiscoveryService,
@@ -892,6 +893,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
       // Re-apply recipes if available (since setMenuData might reset them)
       applyRecipes(posSyncData);
+
+      // A fresh snapshot may have hidden a menu from THIS station (per-station
+      // scope, or a channel toggle). Unsent, unpaid cart lines added from such a
+      // menu are removed now, with a toast, so the cart never rings up an item
+      // staff can no longer see. Live syncs only — the cache hydrate above
+      // restores the very snapshot these lines were valid under.
+      pruneCartForStationScope();
 
       appliedMenuVersionRef.current = {
         locationId,

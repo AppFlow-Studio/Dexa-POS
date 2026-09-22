@@ -209,6 +209,7 @@ export const ENTITIES: Record<string, EntityDescriptor> = {
     watermarkColumn: "version",
     children: [
       "menu_bootstrap",
+      "menu_station_scopes",
       "menu_categories",
       "menu_items",
       "modifier_groups",

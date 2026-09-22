@@ -20,7 +20,13 @@ Implemented full SMS notification pipeline for waitlisted guests using Telnyx. G
 
 **Required Secrets:**
 - `TELNYX_API_KEY`
-- `TELNYX_FROM_NUMBER` (defaults to `+18556810275` if unset)
+- One of `TELNYX_FROM_NUMBER` or `TELNYX_MESSAGING_PROFILE_ID`
+- `TELNYX_WEBHOOK_URL`
+- `TELNYX_WEBHOOK_FAILOVER_URL`
+
+> Current contract (2026-09-18): the sender no longer uses a hardcoded fallback
+> number. It fails closed without an API key and an explicit sender/profile,
+> enables profile webhooks, and records the attempt in `message_log`.
 
 ## Files Modified
 
@@ -121,6 +127,8 @@ Implemented full SMS notification pipeline for waitlisted guests using Telnyx. G
   ```bash
   supabase secrets set TELNYX_API_KEY=...
   supabase secrets set TELNYX_FROM_NUMBER=+18556810275
+  supabase secrets set TELNYX_WEBHOOK_URL=https://<project>.supabase.co/functions/v1/telnyx-webhook
+  supabase secrets set TELNYX_WEBHOOK_FAILOVER_URL=https://<failover-host>/telnyx
   ```
 - [ ] Unset legacy Twilio secrets (one-time)
   ```bash

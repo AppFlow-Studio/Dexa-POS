@@ -8,6 +8,7 @@ import NetInfo from "@react-native-community/netinfo";
 import { Dimensions, PixelRatio, Platform } from "react-native";
 import { getJSON, setJSON } from "@/lib/storage";
 import { getDeviceId } from "@/lib/deviceId";
+import { sanitizeIpAddress } from "@/lib/network/ipAddress";
 import { computeUiScale } from "@/lib/uiScale";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { detectNativeHardware } from "@/native/HardwareDetection";
@@ -123,8 +124,10 @@ export async function detectDeviceCapabilities(): Promise<DeviceCapabilities> {
   }
 
   try {
-    const ip = await Network.getIpAddressAsync();
-    localIpAddress = ip || null;
+    // Guard against Android's "0.0.0.0" (Wi-Fi not settled) and other junk —
+    // otherwise updateStationCapabilities() would overwrite the station's real
+    // local_ip_address with an unusable value.
+    localIpAddress = sanitizeIpAddress(await Network.getIpAddressAsync());
   } catch (e) {
     console.warn("[DeviceDetection] IP address error:", e);
   }

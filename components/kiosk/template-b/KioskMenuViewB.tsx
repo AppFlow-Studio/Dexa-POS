@@ -6,11 +6,15 @@ import {
 } from "@/components/kiosk/shared/kioskItemAvailability";
 import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
 import { kioskBannerHeight, kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
+import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
 import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
-import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
+import {
+  useIsStationMenuScopeEmpty,
+  useVisibleMenus,
+} from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
@@ -46,7 +50,9 @@ export function KioskMenuViewB({
   onSelectItem: (item: MenuItemType) => void;
 }) {
   const s = useKioskUiScale();
-  const menus = useMenuStore((s) => s.menus);
+  // Kiosk channel + per-station scope are applied by the shared selector.
+  const menus = useVisibleMenus();
+  const scopedToNothing = useIsStationMenuScopeEmpty();
   const resolveGroups = useModifierGroupResolver();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
@@ -57,10 +63,7 @@ export function KioskMenuViewB({
 
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter(
-        (m) =>
-          isMenuVisibleOnChannel(m, "kiosk") && isMenuAvailableNow(m.id),
-      )
+      .filter((m) => isMenuAvailableNow(m.id))
       .map((m) => ({
         menuId: m.id,
         title: m.name,
@@ -95,6 +98,10 @@ export function KioskMenuViewB({
   const hasMedia = bannerImages.length > 0 && isVertical;
   const { height: screenHeight } = useWindowDimensions();
   const bannerHeight = kioskBannerHeight(screenHeight);
+
+  // Scoped to a selection that leaves nothing: fail closed to the empty state,
+  // never to the full menu. After every hook, so the hook order is stable.
+  if (scopedToNothing) return <KioskNoMenusState config={config} />;
 
   return (
     <View className="flex-1">

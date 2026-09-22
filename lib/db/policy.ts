@@ -46,6 +46,7 @@ const POLICY: Record<StationKind, ReadonlySet<TableName>> = {
     "order_items",
     "order_payments",
     "menu_bootstrap",
+    "menu_station_scopes",
     "menus",
     "menu_categories",
     "menu_items",
@@ -74,6 +75,7 @@ const POLICY: Record<StationKind, ReadonlySet<TableName>> = {
   // keeps history off dining-room hardware in the first place.
   kiosk: new Set<TableName>([
     "menu_bootstrap",
+    "menu_station_scopes",
     "menus",
     "menu_categories",
     "menu_items",

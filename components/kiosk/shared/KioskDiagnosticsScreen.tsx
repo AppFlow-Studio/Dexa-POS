@@ -1655,7 +1655,10 @@ export function KioskDiagnosticsScreen({
   // On-device CodePay config + auto-provision card. Shown above the terminal
   // panel in the Payment Terminal section on CodePay hardware only.
   const renderCodePayCard = () => {
-    if (!codepayBridgeAvailable) return null;
+    // Only show once a CodePay terminal is actually detected — the merchant
+    // app_id defaults to CODEPAY_DEFAULT_APP_ID, so nothing needs entering and
+    // the card self-hides on non-CodePay devices (where nothing is detected).
+    if (!codepayInternalTerminal) return null;
     return (
       <View
         className="rounded-3xl border border-gray-200 bg-white overflow-hidden mb-3"
@@ -1690,22 +1693,6 @@ export function KioskDiagnosticsScreen({
           <Text className="text-xs text-gray-500 mt-1.5">
             On-device processor · drives the CodePay Register app via Intent.
           </Text>
-
-          <Text className="text-[11px] font-bold text-gray-500 mt-4 mb-1.5">
-            MERCHANT APP ID
-          </Text>
-          <TextInput
-            value={codepayAppIdDraft}
-            onChangeText={(v) => {
-              setCodepayAppIdDraft(v);
-              setCodepayFieldTouched(true);
-            }}
-            placeholder="e.g. wz1f2e3295adc70112"
-            placeholderTextColor="#9CA3AF"
-            autoCapitalize="none"
-            autoCorrect={false}
-            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm text-gray-900"
-          />
 
           <Text className="text-[11px] font-bold text-gray-500 mt-4 mb-1.5">
             ACTIVE PROCESSOR FOR NEW SALES
