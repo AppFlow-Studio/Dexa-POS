@@ -1,4 +1,10 @@
 import { KioskCustomerInfoStep } from "@/components/kiosk/shared/KioskCustomerInfoStep";
+import {
+  kioskFont,
+  kioskRadius,
+  useKioskTheme,
+  type KioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import {
@@ -47,6 +53,7 @@ export function KioskCheckoutView({
   onDone: () => void;
 }) {
   const scale = useKioskUiScale();
+  const t = useKioskTheme(config);
   const clearCart = useKioskCartStore((state) => state.clear);
   const { status, error, totals, assistanceRef, computeTotals, payOrder, cancelCharge } =
     useKioskCheckout();
@@ -76,7 +83,7 @@ export function KioskCheckoutView({
   const [step, setStep] = useState<Step>("customer");
   const [pickupNumber, setPickupNumber] = useState<string | undefined>();
 
-  const muted = `${config.textColor}99`;
+  const muted = t.textMuted;
 
   // Compute totals LOCALLY from the current cart — instant, no backend order.
   // Recomputed on every mount, so re-entering after a cart edit always shows
@@ -170,13 +177,13 @@ export function KioskCheckoutView({
     <View
       className="flex-1 items-center justify-center px-10"
       style={{
-        backgroundColor: config.backgroundColor,
+        backgroundColor: t.page,
         gap: kioskPx(20, scale),
       }}
     >
       {status === "assistance" ? (
         <>
-          <Text style={{ fontSize: kioskPx(24, scale), fontWeight: "800", color: config.textColor }}>
+          <Text style={{ fontSize: kioskPx(24, scale), ...kioskFont(t, "bold"), color: t.text }}>
             Please see a staff member
           </Text>
           <Text style={{ fontSize: kioskPx(16, scale), color: muted, textAlign: "center" }}>
@@ -213,14 +220,14 @@ export function KioskCheckoutView({
                 paddingVertical: kioskPx(14, scale),
                 borderRadius: kioskPx(16, scale),
                 borderWidth: 1.5,
-                borderColor: `${config.textColor}30`,
+                borderColor: `${t.text}30`,
               }}
             >
               <Text
                 style={{
-                  color: config.textColor,
+                  color: t.text,
                   fontSize: kioskPx(16, scale),
-                  fontWeight: "700",
+                  ...kioskFont(t, "bold"),
                 }}
               >
                 Back to order
@@ -233,8 +240,8 @@ export function KioskCheckoutView({
           <Text
             style={{
               fontSize: kioskPx(24, scale),
-              fontWeight: "800",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
             }}
           >
             Payment didn’t go through
@@ -262,14 +269,14 @@ export function KioskCheckoutView({
                 paddingVertical: kioskPx(14, scale),
                 borderRadius: kioskPx(16, scale),
                 borderWidth: 1.5,
-                borderColor: `${config.textColor}30`,
+                borderColor: `${t.text}30`,
               }}
             >
               <Text
                 style={{
-                  color: config.textColor,
+                  color: t.text,
                   fontSize: kioskPx(16, scale),
-                  fontWeight: "700",
+                  ...kioskFont(t, "bold"),
                 }}
               >
                 Back to cart
@@ -285,12 +292,12 @@ export function KioskCheckoutView({
         />
       ) : (
         <>
-          <ActivityIndicator size="large" color={config.primaryColor} />
+          <ActivityIndicator size="large" color={t.primary} />
           <Text
             style={{
               fontSize: kioskPx(20, scale),
-              fontWeight: "700",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
             }}
           >
             Processing your order…
@@ -318,7 +325,8 @@ function TapCardScreen({
   /** When provided, a circular Back button cancels the card read on the device. */
   onCancel?: () => void;
 }) {
-  const muted = `${config.textColor}99`;
+  const t = useKioskTheme(config);
+  const muted = t.textMuted;
 
   return (
     // Full-bleed wrapper so the Back button anchors to the real screen edge.
@@ -326,19 +334,19 @@ function TapCardScreen({
     // otherwise collapse this to content width and float the button mid-screen.
     <View
       className="flex-1 self-stretch"
-      style={{ backgroundColor: config.backgroundColor }}
+      style={{ backgroundColor: t.page }}
     >
       <View
         className="flex-1 items-center justify-center px-10"
         style={{ gap: kioskPx(20, scale) }}
       >
-        <CreditCard size={kioskPx(96, scale)} color={config.primaryColor} />
+        <CreditCard size={kioskPx(96, scale)} color={t.primary} />
 
         <Text
           style={{
             fontSize: kioskPx(26, scale),
-            fontWeight: "800",
-            color: config.textColor,
+            ...kioskFont(t, "bold"),
+            color: t.text,
             textAlign: "center",
           }}
         >
@@ -359,7 +367,7 @@ function TapCardScreen({
 
         <ActivityIndicator
           size="large"
-          color={config.primaryColor}
+          color={t.primary}
           style={{ marginTop: kioskPx(8, scale) }}
         />
       </View>
@@ -383,15 +391,15 @@ function TapCardScreen({
             height: kioskPx(56, scale),
             paddingHorizontal: kioskPx(22, scale),
             borderRadius: kioskPx(28, scale),
-            backgroundColor: `${config.textColor}12`,
+            backgroundColor: t.outline,
           }}
         >
-          <ChevronLeft size={kioskPx(28, scale)} color={config.textColor} />
+          <ChevronLeft size={kioskPx(28, scale)} color={t.text} />
           <Text
             style={{
               fontSize: kioskPx(18, scale),
-              fontWeight: "700",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
             }}
           >
             Back
@@ -409,19 +417,20 @@ function TapCardScreen({
  */
 function CancellingScreen({ config }: { config: KioskConfig }) {
   const s = useKioskUiScale();
-  const muted = `${config.textColor}99`;
+  const t = useKioskTheme(config);
+  const muted = t.textMuted;
 
   return (
     <View
       className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
+      style={{ backgroundColor: t.page, gap: kioskPx(20, s) }}
     >
-      <ActivityIndicator size="large" color={config.primaryColor} />
+      <ActivityIndicator size="large" color={t.primary} />
       <Text
         style={{
           fontSize: kioskPx(20, s),
-          fontWeight: "700",
-          color: config.textColor,
+          ...kioskFont(t, "bold"),
+          color: t.text,
         }}
       >
         Cancelling…
@@ -448,7 +457,8 @@ function CancelledScreen({
   onDone: () => void;
 }) {
   const s = useKioskUiScale();
-  const muted = `${config.textColor}99`;
+  const t = useKioskTheme(config);
+  const muted = t.textMuted;
 
   useEffect(() => {
     const t = setTimeout(onDone, 1800);
@@ -458,14 +468,14 @@ function CancelledScreen({
   return (
     <View
       className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
+      style={{ backgroundColor: t.page, gap: kioskPx(20, s) }}
     >
-      <CheckCircle2 size={kioskPx(84, s)} color={config.primaryColor} />
+      <CheckCircle2 size={kioskPx(84, s)} color={t.primary} />
       <Text
         style={{
           fontSize: kioskPx(24, s),
-          fontWeight: "800",
-          color: config.textColor,
+          ...kioskFont(t, "bold"),
+          color: t.text,
         }}
       >
         Payment cancelled
@@ -482,11 +492,11 @@ function CancelledScreen({
           paddingHorizontal: kioskPx(36, s),
           paddingVertical: kioskPx(16, s),
           borderRadius: kioskPx(16, s),
-          backgroundColor: config.primaryColor,
+          backgroundColor: t.primary,
         }}
       >
         <Text
-          style={{ color: "#FFFFFF", fontSize: kioskPx(18, s), fontWeight: "700" }}
+          style={{ color: t.onPrimary, fontSize: kioskPx(18, s), ...kioskFont(t, "bold") }}
         >
           Back to cart
         </Text>
@@ -511,7 +521,8 @@ function SuccessScreen({
   onDone: () => void;
 }) {
   const s = useKioskUiScale();
-  const muted = `${config.textColor}99`;
+  const t = useKioskTheme(config);
+  const muted = t.textMuted;
 
   useEffect(() => {
     const t = setTimeout(onDone, 10_000);
@@ -521,14 +532,14 @@ function SuccessScreen({
   return (
     <View
       className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
+      style={{ backgroundColor: t.page, gap: kioskPx(20, s) }}
     >
-      <CheckCircle2 size={kioskPx(96, s)} color={config.primaryColor} />
+      <CheckCircle2 size={kioskPx(96, s)} color={t.primary} />
       <Text
         style={{
           fontSize: kioskPx(30, s),
-          fontWeight: "800",
-          color: config.textColor,
+          ...kioskFont(t, "bold"),
+          color: t.text,
         }}
       >
         Thank you!
@@ -546,8 +557,8 @@ function SuccessScreen({
           <Text
             style={{
               fontSize: kioskPx(56, s),
-              fontWeight: "900",
-              color: config.primaryColor,
+              ...kioskFont(t, "bold"),
+              color: t.primary,
             }}
           >
             {config.pickupNumberPrefix}
@@ -562,14 +573,14 @@ function SuccessScreen({
           paddingHorizontal: kioskPx(36, s),
           paddingVertical: kioskPx(16, s),
           borderRadius: kioskPx(16, s),
-          backgroundColor: config.primaryColor,
+          backgroundColor: t.primary,
         }}
       >
         <Text
           style={{
-            color: "#FFFFFF",
+            color: t.onPrimary,
             fontSize: kioskPx(18, s),
-            fontWeight: "700",
+            ...kioskFont(t, "bold"),
           }}
         >
           Done
@@ -594,13 +605,14 @@ function PreparingScreen({
   onBack: () => void;
 }) {
   const s = useKioskUiScale();
-  const muted = `${config.textColor}99`;
+  const t = useKioskTheme(config);
+  const muted = t.textMuted;
   const isError = !!error;
 
   return (
     <View
       className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
+      style={{ backgroundColor: t.page, gap: kioskPx(20, s) }}
     >
       {/* Back — hidden while loading so the customer can't bail mid-creation
           and orphan an in-flight order. Shown only in the error state, where
@@ -618,10 +630,10 @@ function PreparingScreen({
             borderRadius: kioskPx(24, s),
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: `${config.textColor}12`,
+            backgroundColor: t.outline,
           }}
         >
-          <ChevronLeft size={kioskPx(26, s)} color={config.textColor} />
+          <ChevronLeft size={kioskPx(26, s)} color={t.text} />
         </Pressable>
       )}
 
@@ -630,8 +642,8 @@ function PreparingScreen({
           <Text
             style={{
               fontSize: kioskPx(24, s),
-              fontWeight: "800",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
             }}
           >
             We couldn’t start your order
@@ -652,14 +664,14 @@ function PreparingScreen({
               paddingHorizontal: kioskPx(36, s),
               paddingVertical: kioskPx(16, s),
               borderRadius: kioskPx(16, s),
-              backgroundColor: config.primaryColor,
+              backgroundColor: t.primary,
             }}
           >
             <Text
               style={{
-                color: "#FFFFFF",
+                color: t.onPrimary,
                 fontSize: kioskPx(18, s),
-                fontWeight: "700",
+                ...kioskFont(t, "bold"),
               }}
             >
               Back to cart
@@ -668,12 +680,12 @@ function PreparingScreen({
         </>
       ) : (
         <>
-          <ActivityIndicator size="large" color={config.primaryColor} />
+          <ActivityIndicator size="large" color={t.primary} />
           <Text
             style={{
               fontSize: kioskPx(20, s),
-              fontWeight: "700",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
             }}
           >
             Getting your order ready…
@@ -701,6 +713,7 @@ function TipStep({
   onConfirm: (tipAmount: number) => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   // Landscape has roughly half the vertical budget of portrait but nearly
   // double the width, and this screen was a single centred column either way:
@@ -709,8 +722,8 @@ function TipStep({
   // spend the width instead — same structure KioskItemDetail uses.
   const isHorizontal = screenWidth > screenHeight;
   const [selected, setSelected] = useState<number | null>(null); // percent, -1 = no tip
-  const muted = `${config.textColor}99`;
-  const faint = `${config.textColor}12`;
+  const muted = t.textMuted;
+  const faint = t.outline;
   const presets =
     config.tipPresets.length > 0 ? config.tipPresets : [15, 18, 20];
 
@@ -744,7 +757,7 @@ function TipStep({
         backgroundColor: faint,
       }}
     >
-      <ChevronLeft size={kioskPx(28, s)} color={config.textColor} />
+      <ChevronLeft size={kioskPx(28, s)} color={t.text} />
     </KioskPressable>
   );
 
@@ -759,20 +772,20 @@ function TipStep({
               borderRadius: kioskPx(36, s),
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: `${config.primaryColor}14`,
+              backgroundColor: `${t.primary}14`,
             }}
           >
             <Heart
               size={kioskPx(34, s)}
-              color={config.primaryColor}
-              fill={config.primaryColor}
+              color={t.primary}
+              fill={t.primary}
             />
           </View>
           <Text
             style={{
               fontSize: kioskPx(30, s),
-              fontWeight: "800",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
             }}
           >
             Add a tip?
@@ -783,9 +796,9 @@ function TipStep({
         <Text
           style={{
             fontSize: kioskPx(44, s),
-            fontWeight: "900",
+            ...kioskFont(t, "bold"),
             color:
-              tipAmount > 0 ? config.primaryColor : `${config.textColor}40`,
+              tipAmount > 0 ? t.primary : t.textFaint,
           }}
         >
           {tipAmount > 0 ? `$${tipAmount.toFixed(2)}` : "$0.00"}
@@ -813,15 +826,15 @@ function TipStep({
                   alignItems: "center",
                   gap: kioskPx(4, s),
                   borderWidth: 2,
-                  borderColor: active ? config.primaryColor : faint,
-                  backgroundColor: active ? config.primaryColor : "transparent",
+                  borderColor: active ? t.primary : faint,
+                  backgroundColor: active ? t.primary : "transparent",
                 }}
               >
                 <Text
                   style={{
                     fontSize: kioskPx(28, s),
-                    fontWeight: "800",
-                    color: active ? "#FFFFFF" : config.textColor,
+                    ...kioskFont(t, "bold"),
+                    color: active ? t.onPrimary : t.text,
                   }}
                 >
                   {pct}%
@@ -829,7 +842,7 @@ function TipStep({
                 <Text
                   style={{
                     fontSize: kioskPx(14, s),
-                    fontWeight: "600",
+                    ...kioskFont(t, "regular"),
                     color: active ? "rgba(255,255,255,0.85)" : muted,
                   }}
                 >
@@ -846,17 +859,17 @@ function TipStep({
           style={{
             paddingHorizontal: kioskPx(28, s),
             paddingVertical: kioskPx(12, s),
-            borderRadius: 999,
+            borderRadius: kioskPx(kioskRadius.md, s),
             borderWidth: 2,
-            borderColor: noTip ? config.primaryColor : faint,
-            backgroundColor: noTip ? `${config.primaryColor}10` : "transparent",
+            borderColor: noTip ? t.primary : faint,
+            backgroundColor: noTip ? `${t.primary}10` : "transparent",
           }}
         >
           <Text
             style={{
               fontSize: kioskPx(16, s),
-              fontWeight: "700",
-              color: noTip ? config.primaryColor : muted,
+              ...kioskFont(t, "bold"),
+              color: noTip ? t.primary : muted,
             }}
           >
             No tip
@@ -876,12 +889,14 @@ function TipStep({
           }}
         >
           <SummaryRow
+            theme={t}
             label="Subtotal"
             value={subtotal}
             muted={muted}
-            color={config.textColor}
+            color={t.text}
           />
           <SummaryRow
+            theme={t}
             label={
               subtotal > 0
                 ? `Tax (${((tax / subtotal) * 100).toFixed(3).replace(/\.?0+$/, "")}%)`
@@ -889,22 +904,24 @@ function TipStep({
             }
             value={tax}
             muted={muted}
-            color={config.textColor}
+            color={t.text}
           />
           <SummaryRow
+            theme={t}
             label="Tip"
             value={tipAmount}
             muted={muted}
-            color={config.textColor}
+            color={t.text}
           />
           <View
-            style={{ height: 1, backgroundColor: `${config.textColor}15` }}
+            style={{ height: 1, backgroundColor: `${t.text}15` }}
           />
           <SummaryRow
+            theme={t}
             label="Total"
             value={grandTotal}
             muted={muted}
-            color={config.textColor}
+            color={t.text}
             emphasize
           />
         </View>
@@ -920,18 +937,18 @@ function TipStep({
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: disabled
-              ? `${config.primaryColor}40`
-              : config.primaryColor,
+              ? `${t.primary}40`
+              : t.primary,
           }}
         >
           {(loading || !totals) && (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+            <ActivityIndicator size="small" color={t.onPrimary} />
           )}
           <Text
             style={{
-              color: "#FFFFFF",
+              color: t.onPrimary,
               fontSize: kioskPx(19, s),
-              fontWeight: "800",
+              ...kioskFont(t, "bold"),
             }}
           >
             {loading || !totals
@@ -947,7 +964,7 @@ function TipStep({
     return (
       <View
         className="flex-1"
-        style={{ backgroundColor: config.backgroundColor }}
+        style={{ backgroundColor: t.page }}
       >
         {backButton}
         <View style={{ flex: 1, flexDirection: "row" }}>
@@ -973,7 +990,7 @@ function TipStep({
               gap: kioskPx(16, s),
               borderLeftWidth: 1,
               borderLeftColor: faint,
-              backgroundColor: `${config.primaryColor}06`,
+              backgroundColor: `${t.primary}06`,
             }}
           >
             {summary}
@@ -987,7 +1004,7 @@ function TipStep({
   return (
     <View
       className="flex-1"
-      style={{ backgroundColor: config.backgroundColor }}
+      style={{ backgroundColor: t.page }}
     >
       {backButton}
 
@@ -1027,12 +1044,15 @@ function SummaryRow({
   muted,
   color,
   emphasize,
+  theme: t,
 }: {
   label: string;
   value: number;
   muted: string;
   color: string;
   emphasize?: boolean;
+  /** Passed in rather than derived: this row has no `config` of its own. */
+  theme: KioskTheme;
 }) {
   const s = useKioskUiScale();
   return (
@@ -1047,7 +1067,7 @@ function SummaryRow({
         style={{
           fontSize: kioskPx(emphasize ? 18 : 15, s),
           color: emphasize ? color : muted,
-          fontWeight: emphasize ? "800" : "400",
+          ...kioskFont(t, emphasize ? "bold" : "regular"),
         }}
       >
         {label}
@@ -1055,7 +1075,7 @@ function SummaryRow({
       <Text
         style={{
           fontSize: kioskPx(emphasize ? 22 : 15, s),
-          fontWeight: emphasize ? "800" : "600",
+          ...kioskFont(t, emphasize ? "bold" : "regular"),
           color,
         }}
       >

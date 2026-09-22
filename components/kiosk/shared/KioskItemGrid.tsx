@@ -7,6 +7,7 @@ import {
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import KioskMenuItemFeatureRow from "@/components/kiosk/shared/KioskMenuItemFeatureRow";
 import KioskMenuItemRow from "@/components/kiosk/shared/KioskMenuItemRow";
+import { KIOSK_GRID_INSET } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
@@ -88,7 +89,7 @@ export function KioskItemGrid({
   const [grid, setGrid] = useState({ width: 0, height: 0 });
   const listRef = useRef<FlashList<MenuItemType>>(null);
 
-  const padding = kioskPx(16, s);
+  const padding = kioskPx(KIOSK_GRID_INSET, s);
   const gap = kioskPx(14, s);
 
   // Nothing renders until the grid has measured itself. The window used to
@@ -115,9 +116,11 @@ export function KioskItemGrid({
   );
   /** Full column width — the cell's own box, gutter padding included. */
   const cellWidth = cardWidth + cellPadH * 2;
-  // Budget just over half the visible grid per card, so roughly two rows are
-  // always in view and the customer can see the grid continues below.
-  const maxCardHeight = Math.max(160, (grid.height - padding * 2 - gap) * 0.52);
+  // A whole-card budget, not a hint: two cells — each a card plus its bottom
+  // gutter — have to fit the visible grid, so the second row lands fully above
+  // the fold instead of being clipped at its description. The card metrics
+  // treat this as a hard ceiling and give the photo whatever the copy leaves.
+  const maxCardHeight = Math.max(160, (grid.height - padding * 2) / 2 - gap);
   const useRowLayout =
     !isFeatureRow && shouldUseRowLayout(cardWidth, maxCardHeight);
 

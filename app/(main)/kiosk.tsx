@@ -17,6 +17,7 @@ import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
+import { useFonts } from "expo-font";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 
@@ -43,6 +44,16 @@ export default function KioskScreen() {
   const setIdle = useKioskProfileStore((s) => s.setIdle);
   const clearCart = useKioskCartStore((s) => s.clear);
   const queryClient = useQueryClient();
+
+  // Inter, for the customer-facing kiosk only. The POS and KDS keep the
+  // system face; this is the one surface a member of the public reads, and the
+  // stock Android face is most of what made it look like a stock Android app.
+  // Load failure is not fatal — `useKioskTheme` falls back to weights on the
+  // system face, so the kiosk renders either way (see kioskDesign).
+  useFonts({
+    "Inter-Medium": require("@/assets/fonts/Inter-Medium.ttf"),
+    "Inter-Bold": require("@/assets/fonts/Inter-Bold.ttf"),
+  });
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
