@@ -84,8 +84,10 @@ export function CustomItemSheet({
       </View>
       <View className="items-center px-5 pt-3.5" style={{ paddingBottom: 10 }}>
         <Text style={[type.detail, { color: colors.label }]}>Price</Text>
+        {/* Echo the keystrokes, not the parsed number: "13." must read as
+            "$13.", not jump to "$13.00" and then "$13.20" on the next digit. */}
         <Text style={{ fontSize: 44, fontWeight: "700", lineHeight: 52, letterSpacing: -1.3, color: colors.heading }}>
-          {formatCurrency(price)}
+          ${amount || "0"}
         </Text>
       </View>
       <Keypad onKey={(k) => setAmount((a) => typeAmount(a, k))} onBackspace={() => setAmount((a) => a.slice(0, -1))} />

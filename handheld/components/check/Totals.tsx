@@ -1,5 +1,7 @@
 import { colors } from "@/lib/theme";
 import type { OrderProfile } from "@/lib/types";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { formatTaxRate } from "@/utils/money";
 import React from "react";
 import { Text, View } from "react-native";
 import { formatCurrency } from "../../lib/format";
@@ -22,6 +24,9 @@ function Line({ label, value, total = false }: { label: string; value: string; t
  * profile's own totals so it never disagrees with the register.
  */
 export function Totals({ order }: { order: OrderProfile }) {
+  // The location's standard rate, as the register's Totals labels it. Items
+  // in another tax category (alcohol) still roll into the same amount.
+  const taxRatePct = useStoreSettingsStore((s) => s.taxRatesMap.standard ?? 0);
   const total = order.total_amount ?? 0;
   const tax = order.total_tax ?? 0;
   const discount = order.total_discount ?? 0;
@@ -35,7 +40,7 @@ export function Totals({ order }: { order: OrderProfile }) {
       {service > 0 ? (
         <Line label={order.service_charge_name ?? "Service charge"} value={formatCurrency(service)} />
       ) : null}
-      <Line label="Tax" value={formatCurrency(tax)} />
+      <Line label={taxRatePct > 0 ? `Tax (${formatTaxRate(taxRatePct)}%)` : "Tax"} value={formatCurrency(tax)} />
       <Line label="Total" value={formatCurrency(total)} total />
       {paid > 0 ? (
         <>
