@@ -1,4 +1,8 @@
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFont,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { formatUsPhone, normalizeUsPhoneDigits } from "@/lib/phone";
 import { useKioskUiScale } from "@/lib/uiScale";
@@ -47,6 +51,7 @@ export function KioskCustomerInfoStep({
   onBack: () => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const supabase = useSupabaseClient();
   const setCustomer = useKioskCartStore((st) => st.setCustomer);
   const { width: winWidth, height: winHeight } = useWindowDimensions();
@@ -58,8 +63,8 @@ export function KioskCustomerInfoStep({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const muted = `${config.textColor}99`;
-  const faint = `${config.textColor}12`;
+  const muted = t.textMuted;
+  const faint = t.outline;
 
   const pressDigit = useCallback((d: string) => {
     setError(null);
@@ -142,7 +147,7 @@ export function KioskCustomerInfoStep({
         backgroundColor: faint,
       }}
     >
-      <ChevronLeft size={kioskPx(26, s)} color={config.textColor} />
+      <ChevronLeft size={kioskPx(26, s)} color={t.text} />
     </Pressable>
   );
 
@@ -163,7 +168,7 @@ export function KioskCustomerInfoStep({
     // whatever the panel size, everything stays reachable.
     const lift = winWidth > winHeight;
     return (
-      <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+      <View className="flex-1" style={{ backgroundColor: t.page }}>
         <BackButton onPress={() => setSub("phone")} />
         <ScrollView
           style={{ flex: 1 }}
@@ -183,8 +188,8 @@ export function KioskCustomerInfoStep({
           <Text
             style={{
               fontSize: kioskPx(lift ? 26 : 32, s),
-              fontWeight: "800",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
               textAlign: "center",
             }}
           >
@@ -206,7 +211,7 @@ export function KioskCustomerInfoStep({
               width: "100%",
               maxWidth: kioskPx(460, s),
               fontSize: kioskPx(24, s),
-              color: config.textColor,
+              color: t.text,
               backgroundColor: faint,
               borderRadius: kioskPx(16, s),
               paddingHorizontal: kioskPx(20, s),
@@ -228,12 +233,12 @@ export function KioskCustomerInfoStep({
               justifyContent: "center",
               backgroundColor:
                 !nameValid || loading
-                  ? `${config.primaryColor}40`
-                  : config.primaryColor,
+                  ? `${t.primary}40`
+                  : t.primary,
             }}
           >
-            {loading && <ActivityIndicator size="small" color="#FFFFFF" />}
-            <Text style={{ color: "#FFFFFF", fontSize: kioskPx(19, s), fontWeight: "800" }}>
+            {loading && <ActivityIndicator size="small" color={t.onPrimary} />}
+            <Text style={{ color: t.onPrimary, fontSize: kioskPx(19, s), ...kioskFont(t, "bold") }}>
               Continue
             </Text>
           </Pressable>
@@ -245,7 +250,7 @@ export function KioskCustomerInfoStep({
   // ── PHONE ENTRY ──
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"];
   return (
-    <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+    <View className="flex-1" style={{ backgroundColor: t.page }}>
       <BackButton onPress={onBack} />
       <View
         className="flex-1 items-center justify-center px-8"
@@ -254,8 +259,8 @@ export function KioskCustomerInfoStep({
         <Text
           style={{
             fontSize: kioskPx(32, s),
-            fontWeight: "800",
-            color: config.textColor,
+            ...kioskFont(t, "bold"),
+            color: t.text,
             textAlign: "center",
           }}
         >
@@ -269,9 +274,9 @@ export function KioskCustomerInfoStep({
         <Text
           style={{
             fontSize: kioskPx(40, s),
-            fontWeight: "900",
+            ...kioskFont(t, "bold"),
             letterSpacing: 1,
-            color: digits ? config.textColor : `${config.textColor}40`,
+            color: digits ? t.text : t.textFaint,
             marginVertical: kioskPx(6, s),
           }}
         >
@@ -312,13 +317,13 @@ export function KioskCustomerInfoStep({
                 }}
               >
                 {isBack ? (
-                  <Delete size={kioskPx(26, s)} color={config.textColor} />
+                  <Delete size={kioskPx(26, s)} color={t.text} />
                 ) : (
                   <Text
                     style={{
                       fontSize: kioskPx(28, s),
-                      fontWeight: "700",
-                      color: config.textColor,
+                      ...kioskFont(t, "bold"),
+                      color: t.text,
                     }}
                   >
                     {k}
@@ -344,12 +349,12 @@ export function KioskCustomerInfoStep({
             marginTop: kioskPx(6, s),
             backgroundColor:
               !phoneValid || loading
-                ? `${config.primaryColor}40`
-                : config.primaryColor,
+                ? `${t.primary}40`
+                : t.primary,
           }}
         >
-          {loading && <ActivityIndicator size="small" color="#FFFFFF" />}
-          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(19, s), fontWeight: "800" }}>
+          {loading && <ActivityIndicator size="small" color={t.onPrimary} />}
+          <Text style={{ color: t.onPrimary, fontSize: kioskPx(19, s), ...kioskFont(t, "bold") }}>
             Continue
           </Text>
         </Pressable>

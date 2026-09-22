@@ -1,4 +1,8 @@
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFont,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { Text, View } from "react-native";
@@ -16,6 +20,7 @@ import { Text, View } from "react-native";
  */
 export function KioskNoMenusState({ config }: { config: KioskConfig }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
 
   return (
     <View
@@ -25,14 +30,14 @@ export function KioskNoMenusState({ config }: { config: KioskConfig }) {
         alignItems: "center",
         justifyContent: "center",
         paddingHorizontal: kioskPx(40, s),
-        backgroundColor: config.backgroundColor,
+        backgroundColor: t.page,
       }}
     >
       <Text
         style={{
-          color: config.textColor,
+          color: t.text,
           fontSize: kioskPx(28, s),
-          fontWeight: "700",
+          ...kioskFont(t, "bold"),
           textAlign: "center",
         }}
       >
@@ -40,7 +45,7 @@ export function KioskNoMenusState({ config }: { config: KioskConfig }) {
       </Text>
       <Text
         style={{
-          color: config.textColor,
+          color: t.text,
           opacity: 0.7,
           fontSize: kioskPx(18, s),
           marginTop: kioskPx(12, s),
