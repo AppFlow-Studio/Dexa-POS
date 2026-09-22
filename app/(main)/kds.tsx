@@ -1,3 +1,4 @@
+import { BumpRetryBadge } from "@/components/kds/BumpRetryBadge";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import { MasonryFlashList } from "@shopify/flash-list";
 import PinInputModal from "@/components/timeclock/PinInputModal";
@@ -741,6 +742,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       useCallback((s) => s.isRushPending(ticket.ticket_id), [ticket.ticket_id]),
     );
 
+    // Bump RPC state for this ticket: taps are dropped while one is pending,
+    // and a bump that gave up pins a "tap to retry" strip on the card.
+    const bumpInFlight = useKDSStore((s) =>
+      s.inFlightBumpTicketIds.has(ticket.ticket_id),
+    );
+    const bumpFailed = useKDSStore((s) => s.failedBumps.has(ticket.ticket_id));
+    const retryFailedBump = useKDSStore((s) => s.retryFailedBump);
+
     const ticketItems = getTicketItems(ticket);
     const unacknowledgedItems = ticketItems.filter(
       (i) => (i.is_voided || i.is_refunded) && !i.acknowledged,
@@ -802,6 +811,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           return;
         }
       }
+
+      // A bump for this ticket is still on the wire: don't even start a
+      // double-tap. The store drops the advance anyway; this keeps the first
+      // tap from arming a second one the moment the RPC settles.
+      if (bumpInFlight) return;
 
       const now = Date.now();
       const isDoubleTap = now - lastTapRef.current < KDS_DOUBLE_TAP_MS;
@@ -1121,6 +1135,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             elevation: bulkSelected ? 8 : 2,
           }}
         >
+          <BumpRetryBadge
+            failed={bumpFailed}
+            inFlight={bumpInFlight}
+            onRetry={() => retryFailedBump(ticket.ticket_id)}
+            scale={s}
+          />
+
           {/* Card Header: Order Number + Order Type + Timer + Badges (darker background) */}
           <View
             style={{
