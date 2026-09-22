@@ -27,6 +27,10 @@ import { Text, View } from "react-native";
  *   left  - Start Over (an X), then the merchant logo beside it
  *   right - search, then the cart
  *
+ * While search is open the row is the field and the cart alone: the logo gives
+ * up its slot to the field and Start Over steps out entirely, so the header
+ * never carries two X's that mean different things.
+ *
  * Start Over leads because it is the way out, and a way out belongs where a
  * reader's eye starts rather than tucked against the control they are trying
  * to reach. It is a bare X: the universal glyph for "leave this", and the same
@@ -97,26 +101,35 @@ export function KioskHeader({
         borderBottomColor: t.outline,
       }}
     >
-      <KioskPressable
-        onPress={onStartOver}
-        pressedScale={0.97}
-        accessibilityRole="button"
-        accessibilityLabel={kioskStrings.startOver}
-        // A square the same size as the search control on the other side, so
-        // the header's two icon buttons bookend it as a matched pair. The
-        // label lives on in `accessibilityLabel`.
-        style={{
-          width: control,
-          height: control,
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: radius,
-          borderWidth: KIOSK_HAIRLINE,
-          borderColor: t.outlineStrong,
-        }}
-      >
-        <X size={kioskPx(22, s)} color={t.text} strokeWidth={1.75} />
-      </KioskPressable>
+      {/* Start Over stands down while search is open. Its glyph is an X, and
+          so is the one that closes the field: two X's in one header, a thumb's
+          width apart, where one abandons the whole order and the other only
+          puts the search away. Removing it is the version with no wrong tap in
+          it — the customer closes search first, and Start Over is waiting
+          where it always was. It also hands the field the full width of the
+          row. */}
+      {!searching ? (
+        <KioskPressable
+          onPress={onStartOver}
+          pressedScale={0.97}
+          accessibilityRole="button"
+          accessibilityLabel={kioskStrings.startOver}
+          // A square the same size as the search control on the other side, so
+          // the header's two icon buttons bookend it as a matched pair. The
+          // label lives on in `accessibilityLabel`.
+          style={{
+            width: control,
+            height: control,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: radius,
+            borderWidth: KIOSK_HAIRLINE,
+            borderColor: t.outlineStrong,
+          }}
+        >
+          <X size={kioskPx(22, s)} color={t.text} strokeWidth={1.75} />
+        </KioskPressable>
+      ) : null}
 
       {/* The logo, or the search field once it is open. */}
       <View style={{ flex: 1, justifyContent: "center" }}>
