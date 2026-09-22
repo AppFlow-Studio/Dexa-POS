@@ -41,6 +41,9 @@ export default function HandheldLayout() {
           <Stack.Screen name="seat/[tableId]" />
           <Stack.Screen name="order/new" />
           <Stack.Screen name="tables/pick" />
+          <Stack.Screen name="pay/[orderId]" />
+          <Stack.Screen name="pay/tip/[orderId]" />
+          <Stack.Screen name="pay/charge/[orderId]" />
         </Stack>
       </HandheldFrame>
     </Suspense>

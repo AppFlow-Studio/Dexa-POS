@@ -89,4 +89,24 @@ export const metrics = {
   button: 56,
   textButton: 44,
   sheetRadius: 28,
+
+  // Payment, screens 6-9. Same source as the rest of this block: the
+  // artifact's own CSS, in dp.
+  /** `.op` payment-method row and its `.ti` leading tile. */
+  optionRow: 84,
+  optionRadius: 24,
+  optionTile: 52,
+  optionTileRadius: 16,
+  /** `.tp` tip preset card, and the `.tipg2` Custom / No tip pair under it. */
+  tipCard: 116,
+  tipCardRadius: 26,
+  tipAltCard: 60,
+  tipAltRadius: 22,
+  /** `.orb` on the tap-to-pay screen, and the ring `::after` draws 14dp out. */
+  orb: 112,
+  orbRing: 14,
+  /** `.okh .dot` success mark and the `.rg` receipt tiles under it. */
+  successDot: 84,
+  receiptCard: 92,
+  receiptRadius: 24,
 } as const;

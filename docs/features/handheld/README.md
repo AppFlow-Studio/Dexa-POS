@@ -260,11 +260,20 @@ compiles. Check with: every class in a new file must appear in some other
 - Wave 3.5 is built: items carry `seatNumber` from the menu page's seat pill,
   which is what screen 6's "Split check · by seat" reads. Split / merge
   itself is Wave 4.
-- No "Pay" button is rendered; `CheckFooter` has the Send action only.
+- No "Pay" button is rendered; `CheckFooter` has the Send action only
+  (the slot is reserved at `CheckFooter.tsx:32-34`).
 - Mount `PaymentDetailBottomSheet` inside the handheld tree and lift the
-  payment-journal gate in `app/_layout.tsx` (see Boot diet).
-- `useCardPaymentDisabled` does not exist in the codebase; the offline
-  "Card payments need a connection" state needs its own rule.
+  payment-journal gate in `app/_layout.tsx` (see Boot diet). Note that
+  `PaymentBottomSheet` — the sheet that *takes* payment, as opposed to the
+  detail / refund / tip-adjust viewer — is already mounted for the handheld
+  by `contexts/RegisterRuntime.tsx:72`. It renders at ui-scale 0.6 because it
+  sits above `HandheldFrame`'s `vars()` pin; see `wave4-plan.md`.
+- Corrected 2026-09-22: `useCardPaymentDisabled` **does** exist
+  (`hooks/useNetworkStatus.ts:91`), as dead code. More to the point, the
+  register does not block card payments offline at all — it queues them
+  (`useOrderStore.ts:4039-4045`). An offline rule for the handheld would make
+  it stricter than the register, so Wave 4 does not add one.
+- Plan and checklist: `wave4-plan.md`.
 
 ## Handoff to Wave 2 (write phase) — historical
 

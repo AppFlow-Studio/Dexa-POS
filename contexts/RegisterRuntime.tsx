@@ -1,6 +1,8 @@
 import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
 import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
+import { isHandheldStationType } from "@/lib/stationType";
+import { FixedUiScaleProvider } from "@/lib/uiScale";
 import { hydrateDrawerSession } from "@/services/cashDrawerService";
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -65,11 +67,33 @@ export function RegisterRuntime({
       });
   }, [selectedStation?.id, selectedStore?.id]);
 
+  // The sheet is a native Modal mounted as a SIBLING of {children}, i.e.
+  // above the handheld's own HandheldFrame. HandheldFrame pins `--ui-scale`
+  // to 1 through a NativeWind vars() React context, which therefore never
+  // reaches the sheet: on a 360x720dp handheld it computes its own scale,
+  // min(360/1333, 720/752) = 0.27, clamped to the 0.6 floor, and renders its
+  // title at 14px and its CLOSE label at 8px. Wave 4a's own payment screens
+  // are handheld-native, but this sheet still carries the crash-recovery
+  // "verifying" surface — the one screen where an operator has to read a
+  // dollar amount and decide whether a card was charged.
+  //
+  // The provider is rendered unconditionally with a nullable scale, never
+  // branched on: swapping the element shape when the station flips remounts
+  // the subtree, which is how the root Stack lost a queued navigation once
+  // before ("PUSH was not handled by any navigator").
+  //
+  // fill={false} is load-bearing: the default wraps children in a flex-1
+  // View, which here would sit in the same column as {children} and take
+  // half the screen from the app.
+  const paymentScale = isHandheldStationType(selectedStation?.station_type) ? 1 : null;
+
   return (
     <LocationRealtimeProvider locationId={locationId} callbacks={callbacks}>
       <OrderSyncRecoveryBridge locationId={locationId} />
       {children}
-      <PaymentBottomSheet />
+      <FixedUiScaleProvider scale={paymentScale} fill={false} pointerEvents="box-none">
+        <PaymentBottomSheet />
+      </FixedUiScaleProvider>
     </LocationRealtimeProvider>
   );
 }

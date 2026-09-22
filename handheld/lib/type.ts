@@ -47,4 +47,25 @@ export const type = StyleSheet.create({
   /** Centred message screens — 24/600 + 16. */
   message: { fontSize: 24, fontWeight: "600", lineHeight: 30, letterSpacing: -0.36 },
   messageDesc: { fontSize: 16, lineHeight: 24 },
+
+  // Payment, screens 6-9. The artifact sets letter-spacing in em; these are
+  // the dp equivalents at each size, the same conversion `title` uses
+  // (30px x -.02em = -0.6).
+  /** `.hero-a .n` / `.tipt .n` — 54/700 at -.035em. */
+  hero: { fontSize: 54, fontWeight: "700", lineHeight: 59, letterSpacing: -1.89, fontVariant: ["tabular-nums"] },
+  /** `.hero-a .k` 15 on screen 6; `.tipt .k` is 17 on the guest-facing tip screen. */
+  heroLabel: { fontSize: 15, lineHeight: 20 },
+  tipLabel: { fontSize: 17, lineHeight: 23 },
+  /** `.hero-a .d` / `.tipt .d` — 14 muted, under the figure. */
+  heroNote: { fontSize: 14, lineHeight: 19, fontVariant: ["tabular-nums"] },
+  /** `.op .t` — 18/600 payment-method title. */
+  optionTitle: { fontSize: 18, fontWeight: "600", lineHeight: 24 },
+  /** `.tp .p` 28/600 at -.02em, with `.tp .v` 15 under it. */
+  tipPercent: { fontSize: 28, fontWeight: "600", lineHeight: 34, letterSpacing: -0.56 },
+  tipValue: { fontSize: 15, lineHeight: 20, fontVariant: ["tabular-nums"] },
+  /** `.okh .n` — 48/700 at -.035em, with `.okh .d` 15 under it. */
+  successAmount: { fontSize: 48, fontWeight: "700", lineHeight: 53, letterSpacing: -1.68, fontVariant: ["tabular-nums"] },
+  successNote: { fontSize: 15, lineHeight: 20 },
+  /** `.lbl` — 15/500 centred section label ("Send a receipt"). */
+  lbl: { fontSize: 15, fontWeight: "500", lineHeight: 20 },
 });

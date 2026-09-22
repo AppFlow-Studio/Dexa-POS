@@ -720,11 +720,22 @@ export default Sentry.wrap(function RootLayout() {
         // Start print queue processing
         PrinterService.startProcessing();
 
-        // Handheld boot diet: no payment or refund journal check on launch.
-        // Handheld takes no payments in this wave, so there is nothing to
-        // recover; the handheld payment ticket must lift this gate when it
-        // adds the payment sheet flow.
-        if (isHandheld) return;
+        // Handheld boot diet, narrowed by Wave 4a (handheld payment). The
+        // handheld now TAKES card payments, so the payment-journal check
+        // below must run for it: a device killed mid-authorization has to
+        // come back and reconcile, or the charge is lost.
+        //
+        // The REFUND scan further down stays skipped for handheld — the
+        // handheld has no refund surface, and its own UI flag
+        // (isRefundRecoveryUIEnabled) defaults false, so running it would
+        // hydrate a store nothing renders.
+        //
+        // Known rough edge, recorded rather than hidden: openForVerification
+        // sets isOpen and PaymentBottomSheet is a full-screen Modal, so on a
+        // handheld this is an unannounced takeover during cold start, before
+        // the operator has picked a check. It is legible now (RegisterRuntime
+        // pins the sheet to scale 1 for handheld) but it is still abrupt.
+        // See docs/features/handheld/wave4-plan.md, trap 6.
 
         // Wave Cat-B: surface payments that crashed mid-flow (terminal_approved
         // entries from a prior app session). Hydrate the recovery store and
@@ -876,6 +887,10 @@ export default Sentry.wrap(function RootLayout() {
         // entries from a prior app session). Hydrate the refund recovery store.
         // UI is gated by isRefundRecoveryUIEnabled() — disabled by default until
         // the feature flag is set in production.
+        //
+        // Handheld boot diet (narrowed in Wave 4a): payments recover above,
+        // refunds do not — the handheld has no refund surface to drive them.
+        if (isHandheld) return;
         try {
           pruneOldRefundJournals();
           const incompleteRefunds = getIncompleteRefundJournals();

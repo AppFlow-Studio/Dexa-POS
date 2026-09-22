@@ -4,7 +4,9 @@ import { toastService } from "@/lib/toastService";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Send } from "lucide-react-native";
+import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
+import { payBlockedReason } from "../../lib/payments";
 import { isTableCheck, sendToKitchen, unsentItems, type SendOutcome } from "../../lib/sendCourse";
 import { StickyActionBar } from "../../primitives";
 
@@ -29,12 +31,24 @@ function report(outcome: SendOutcome, what: string) {
 }
 
 /**
- * The artifact's `.bb` on screen 5 / S3 with the Send button only (Pay is
- * Wave 4). "Send course N" names the lowest unsent course on a coursed
- * table check; every other check sends everything unsent.
+ * The artifact's `.bb` on screen 5 / S3: a tonal, label-width **Pay**
+ * (`.btn.tonal.fit`) beside the primary **Send** (`.btn`). "Send course N"
+ * names the lowest unsent course on a coursed table check; every other check
+ * sends everything unsent.
+ *
+ * Pay's disabled state is computed, not assumed. `CheckPage` gates only on
+ * ownership, so a closed or fully paid check still renders this footer —
+ * without the `payBlockedReason` check the button would open the pay route
+ * and die there instead (`docs/features/handheld/wave4-plan.md`, trap 1).
  */
 export function CheckFooter({ orderId }: { orderId: string }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
+  // A string, not an object: a selector returning a fresh object re-renders
+  // the footer on every store broadcast.
+  const payBlocked = useOrderStore((s) =>
+    payBlockedReason(s.ordersById[orderId], s.currentStationId),
+  );
   const coursing = useLocationConfigStore((s) => s.config.dining.enableCoursing);
   const course = useOrderStore((s) => {
     const order = s.ordersById[orderId];
@@ -59,10 +73,30 @@ export function CheckFooter({ orderId }: { orderId: string }) {
     }
   }, [orderId, course]);
 
+  const pay = useCallback(() => {
+    // Re-read at tap time rather than trusting the subscribed value: the
+    // check can flip to another station between render and tap, and every
+    // other handheld write helper re-asserts the same way.
+    const s = useOrderStore.getState();
+    const blocked = payBlockedReason(s.ordersById[orderId], s.currentStationId);
+    if (blocked) {
+      toastService.show({ title: "Payment blocked", message: blocked, type: "warning" });
+      return;
+    }
+    router.push({ pathname: "/handheld/pay/[orderId]", params: { orderId } });
+  }, [orderId, router]);
+
   const label = busy ? "Sending…" : course ? `Send course ${course}` : "Send to kitchen";
   return (
     <StickyActionBar
       actions={[
+        {
+          label: "Pay",
+          onPress: pay,
+          variant: "tonal",
+          fit: true,
+          disabled: payBlocked !== null,
+        },
         {
           label,
           onPress: () => void send(),
