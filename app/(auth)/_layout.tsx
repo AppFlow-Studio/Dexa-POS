@@ -54,7 +54,10 @@ export default function AuthLayout() {
   // flips the orientation lock mid-navigation, and a layout that swapped
   // component types here remounted the Slot's navigator at that moment, so
   // the PUSH to pin-login had nothing to handle it. In landscape the
-  // KeyboardAvoidingView / ScrollView below are inert containers.
+  // KeyboardAvoidingView / ScrollView below are inert containers. The
+  // FixedUiScaleProvider is part of that contract: it always declares
+  // --ui-scale, because NativeWind remounts a View that gains a vars()
+  // style after mount (lib/uiScale.ts).
   return (
     <FixedUiScaleProvider scale={compact ? computeAuthUiScale(width, height) : null}>
       <KeyboardAvoidingView

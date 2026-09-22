@@ -195,13 +195,26 @@ export function FixedUiScaleProvider({
   // Always the same element shape: a subtree that toggles between a pinned
   // and an automatic scale must not remount (expo-router's Slot navigator
   // lives below this in the auth layout).
+  //
+  // "Same shape" includes the vars(): NativeWind upgrades a View to a
+  // VariableContext.Provider the first time its style carries a vars()
+  // object, and an upgrade after mount swaps the element type and remounts
+  // the whole subtree (its own warning: "Components need to set a variable
+  // during the initial render otherwise they will remount"). Passing
+  // `null` here in landscape and a number in portrait did exactly that on
+  // the landscape→portrait flip a handheld makes right after station
+  // select, which remounted the auth Slot mid-navigation and threw
+  // "Couldn't find a navigation context". So the variable is always
+  // declared; unpinned, it re-declares the automatic value the root
+  // UiScaleProvider already resolved to, which changes nothing below.
+  const automatic = useUiScale();
   return React.createElement(
     FixedUiScaleContext.Provider,
     { value: scale },
     React.createElement(
       View,
       {
-        style: [fill ? { flex: 1 } : null, scale == null ? null : vars({ "--ui-scale": scale })],
+        style: [fill ? { flex: 1 } : null, vars({ "--ui-scale": scale ?? automatic })],
         pointerEvents,
       },
       children,
