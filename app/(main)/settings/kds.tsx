@@ -1637,12 +1637,15 @@ const KdsSettingsScreen = () => {
 
   const activeStation = kdsStations[activeStationIdx];
 
-  // Fetch display config when station tab changes
+  // Fetch display config when station tab changes. A KDS device only ever
+  // shows its own station, but until the auto-select above lands the active
+  // tab is index 0 — possibly another display — and fetching it would load
+  // that display's config into the store this device's board runs on.
   useEffect(() => {
-    if (activeStation?.id) {
-      fetchKDSDisplay(activeStation.id);
-    }
-  }, [activeStation?.id, fetchKDSDisplay]);
+    if (!activeStation?.id) return;
+    if (isKDSDevice && activeStation.id !== selectedStation?.id) return;
+    fetchKDSDisplay(activeStation.id);
+  }, [activeStation?.id, fetchKDSDisplay, isKDSDevice, selectedStation?.id]);
 
   const workflowMode = kdsConfig.workflowMode ?? "3-step";
   const tapMode = kdsConfig.ticketTapMode ?? "double-tap";

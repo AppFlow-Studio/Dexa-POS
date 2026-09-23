@@ -161,10 +161,21 @@ describe("KDSTicketBoard bump", () => {
 });
 
 describe("KDSTicketBoard windowing", () => {
+  it("first paint mounts only the on-screen cards; the buffer follows after the paint", () => {
+    // 1000px cards, 3 columns, 1000px viewport: only row 0 is on screen.
+    const { renderer } = mountBoard(makeTickets(12), { height: 1000 });
+    expect(renderer.root.findAllByType(CardBody)).toHaveLength(3);
+    flushFrames(); // frame that paints the visible cards
+    flushFrames(); // buffer mounts
+    expect(renderer.root.findAllByType(CardBody)).toHaveLength(9);
+  });
+
   it("mounts only cards near the viewport and follows the scroll", () => {
     // 1000px cards, 3 columns: rows at 0 / 1000 / 2000 / 3000. The window
     // spans one viewport above to two below, so row 3 starts unmounted.
     const { renderer, scroll } = mountBoard(makeTickets(12), { height: 1000 });
+    flushFrames();
+    flushFrames();
     expect(renderer.root.findAllByType(CardBody)).toHaveLength(9);
 
     act(() =>

@@ -27,7 +27,8 @@ import type { KDSTicket } from "@/types/kds";
  * Heights are measured once per ticket (onLayout on the slot's inner view,
  * which only fires on a size change, never on a move) and cached per width,
  * so tab switches and remounts lay out exactly on the first pass. Cards far
- * outside the viewport are not mounted.
+ * outside the viewport are not mounted, and on first paint only the on-screen
+ * cards are — the buffer around them follows a frame later.
  */
 
 interface KDSTicketBoardProps {
@@ -117,6 +118,22 @@ export default function KDSTicketBoard({
   const [windowAnchor, setWindowAnchor] = useState(0);
   const [measureVersion, setMeasureVersion] = useState(0);
   const relayoutFrame = useRef<number | null>(null);
+  // First paint mounts only the cards on screen; the off-screen buffer mounts
+  // once that frame is up, so the board appears as soon as the visible cards
+  // are ready instead of after every card in the window.
+  const [bufferReady, setBufferReady] = useState(false);
+  useEffect(() => {
+    if (bufferReady || width === 0) return;
+    // Double rAF: wait for the frame that paints the visible cards.
+    let second: number | null = null;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setBufferReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      if (second != null) cancelAnimationFrame(second);
+    };
+  }, [bufferReady, width]);
 
   useEffect(
     () => () => {
@@ -203,8 +220,10 @@ export default function KDSTicketBoard({
     [viewportHeight],
   );
 
-  const windowTop = windowAnchor - viewportHeight * WINDOW_ABOVE;
-  const windowBottom = windowAnchor + viewportHeight * (1 + WINDOW_BELOW);
+  const windowTop =
+    windowAnchor - viewportHeight * (bufferReady ? WINDOW_ABOVE : 0);
+  const windowBottom =
+    windowAnchor + viewportHeight * (1 + (bufferReady ? WINDOW_BELOW : 0));
 
   return (
     <ScrollView

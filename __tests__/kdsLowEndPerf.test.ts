@@ -196,6 +196,26 @@ describe("idle-load guards (source)", () => {
     expect(overlay.slice(0, 600)).toMatch(/position: "absolute"/);
   });
 
+  it("KDS settings opens over the board instead of swapping routes (board stays mounted)", () => {
+    const src = read("app", "(main)", "kds.tsx");
+    expect(src).not.toMatch(/router\.push\("\/kds-settings"\)/);
+    expect(src).toMatch(/setShowSettings\(true\)/);
+    expect(src).toMatch(/<KdsSettingsPanel onBack=\{handleCloseSettings\} \/>/);
+    // Closing refreshes this display's config + tickets in the background.
+    const close = src.slice(src.indexOf("const handleCloseSettings"));
+    const body = close.slice(0, close.indexOf("}, ["));
+    expect(body).toMatch(/fetchKDSDisplay\(selectedStation\.id\)/);
+    expect(body).toMatch(/backgroundFetchTickets\(selectedStore\.id\)/);
+  });
+
+  it("KDS settings on a KDS device only fetches its own display config", () => {
+    const src = read("app", "(main)", "settings", "kds.tsx");
+    const effect = src.slice(src.indexOf("// Fetch display config when station tab changes"));
+    expect(effect.slice(0, 700)).toMatch(
+      /if \(isKDSDevice && activeStation\.id !== selectedStation\?\.id\) return;/,
+    );
+  });
+
   it("the KDS board header has no perpetual animation", () => {
     const src = read("app", "(main)", "kds.tsx");
     expect(src).not.toMatch(/PulsingDot/);

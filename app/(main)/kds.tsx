@@ -1,6 +1,7 @@
 import { BumpRetryBadge } from "@/components/kds/BumpRetryBadge";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import KDSTicketBoard from "@/components/kds/KDSTicketBoard";
+import KdsSettingsPanel from "@/components/kds/KdsSettingsPanel";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
@@ -35,7 +36,6 @@ import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
-import { useRouter } from "expo-router";
 import {
     ArrowUpToLine,
     CheckCheck,
@@ -58,6 +58,7 @@ import React, {
     useState,
 } from "react";
 import {
+    BackHandler,
     Dimensions,
     GestureResponderEvent,
     Pressable,
@@ -2377,7 +2378,6 @@ const KitchenDisplayScreen = () => {
   // arrow here would re-run the board layout on every page render — the memo
   // below is what makes that hold.
   const s = useCallback((n: number) => Math.round(n * uiScale), [uiScale]);
-  const router = useRouter();
   const supabase = useSupabaseClient();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const locationId = selectedStore?.id;
@@ -2531,6 +2531,10 @@ const KitchenDisplayScreen = () => {
 
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false);
+  // KDS settings open as a panel over the board (see KdsSettingsPanel) so the
+  // board stays mounted — returning is instant and new-order sounds keep
+  // playing while settings is open.
+  const [showSettings, setShowSettings] = useState(false);
   const [pendingBulkAction, setPendingBulkAction] = useState<
     "selected" | "all" | "done-selected" | "done-all" | "settings" | null
   >(null);
@@ -3045,12 +3049,10 @@ const KitchenDisplayScreen = () => {
       // PIN is valid and employee is a manager.
       setShowPinModal(false);
 
-      // Settings navigation is gated by the same manager PIN as bulk ops.
-      // KDS devices navigate to a standalone page that bypasses the settings
-      // layout (which has the sidebar). Non-KDS devices use the normal path.
+      // Settings is gated by the same manager PIN as bulk ops.
       if (pendingBulkAction === "settings") {
         setPendingBulkAction(null);
-        router.push("/kds-settings");
+        setShowSettings(true);
         return;
       }
 
@@ -3127,7 +3129,6 @@ const KitchenDisplayScreen = () => {
       acknowledgeNoticeItem,
       locationId,
       toast,
-      router,
     ],
   );
 
@@ -3135,6 +3136,30 @@ const KitchenDisplayScreen = () => {
     setShowPinModal(false);
     setPendingBulkAction(null);
   }, []);
+
+  // Settings can change this display's config (routing, columns, workflow), so
+  // refresh it on close — the refresh the board used to get by remounting on
+  // return, minus the remount. Both fetches run in the background.
+  const handleCloseSettings = useCallback(() => {
+    setShowSettings(false);
+    if (selectedStation?.id) fetchKDSDisplay(selectedStation.id);
+    if (selectedStore?.id) backgroundFetchTickets(selectedStore.id);
+  }, [
+    selectedStation?.id,
+    selectedStore?.id,
+    fetchKDSDisplay,
+    backgroundFetchTickets,
+  ]);
+
+  // Android back closes the settings panel, as it used to pop the route.
+  useEffect(() => {
+    if (!showSettings) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      handleCloseSettings();
+      return true;
+    });
+    return () => sub.remove();
+  }, [showSettings, handleCloseSettings]);
 
   const handleToggleBulkMode = useCallback(() => {
     toggleBulkMode();
@@ -4618,6 +4643,22 @@ const KitchenDisplayScreen = () => {
         onConfirm={handlePinConfirm}
         onCancel={handlePinCancel}
       />
+
+      {/* ─── KDS Settings (over the board, which stays mounted) ─── */}
+      {showSettings && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 120,
+          }}
+        >
+          <KdsSettingsPanel onBack={handleCloseSettings} />
+        </View>
+      )}
     </View>
   );
 };

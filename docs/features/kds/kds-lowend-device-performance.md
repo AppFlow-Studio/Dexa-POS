@@ -48,6 +48,14 @@ KDS board idle with 25 pending + 28 cooking tickets and nobody touching it:
       bump moves cards instead of re-rendering/remounting them.
 - [x] Focus: quick actions overlay the card header instead of replacing it, so
       tapping a ticket no longer resizes it and shifts the cards below.
+- [x] Settings round trip: KDS settings open as a panel over the board
+      (`KdsSettingsPanel`) instead of the `/kds-settings` route, so the board
+      is never unmounted. Hardware back closes it; closing refreshes the
+      display config + tickets in the background.
+- [x] Settings race: on a KDS device, settings only fetches the device's own
+      display config (it could fetch station index 0's first).
+- [x] First paint: the board mounts only on-screen cards in the first frame;
+      the off-screen buffer mounts after that frame paints.
 - [ ] POS-only services still running on KDS: gate each one that the KDS
       doesn't need (from the boot-footprint audit).
 - [ ] Remaining verified audit findings (render, interaction, memory).
@@ -72,6 +80,17 @@ measured once per ticket via `onLayout` on the slot's inner view (fires only on
 a size change, never on a move) and cached per width across tab switches. Cards
 more than one viewport above or two below the scroll position aren't mounted.
 
+### Settings → back was a full rebuild
+
+The `(main)` group swaps routes through `<Slot />`, not a stack, so
+`router.push("/kds-settings")` unmounted the entire board and "Back" rebuilt it:
+every card, the sound service (players released and recreated), polling, the
+realtime callback. While settings was open, new-order sounds stopped. Unmount
+also ran `useKDSStore._cleanup`, which cancels in-flight bump retries and
+clears recall state and acknowledged notices. The board now stays mounted
+under the settings panel, so none of that happens; closing does the two
+refreshes the remount used to (`fetchKDSDisplay`, background ticket fetch).
+
 ### Focus header jump
 
 The single-select quick-action row replaced the header with a fixed `s(44)`
@@ -82,13 +101,14 @@ the normal header, which keeps setting the height.
 ## Verification
 
 - `npx tsc --noEmit`: 0 errors project-wide.
-- `eslint`: `kds.tsx` has the same 9 pre-existing errors as HEAD (one fewer
-  warning); no new problems in other touched files.
+- `eslint`: `kds.tsx` has exactly HEAD's pre-existing problems (9 errors, 11
+  warnings); no new problems in other touched files.
 - `android: ./gradlew :app:compileDebugKotlin`: compiles.
-- Jest: `kdsTicketBoard.test.tsx` (6) proves the layout, measured stacking,
-  windowing, height reuse across remounts, and that a front-of-board bump
-  re-renders and remounts no card; `kdsLowEndPerf.test.ts` (12) guards the
-  idle-load fixes. All 14 KDS/storage suites pass (94 tests + the new guard).
+- Jest: `kdsTicketBoard.test.tsx` (7) proves the layout, measured stacking,
+  staged first paint, windowing, height reuse across remounts, and that a
+  front-of-board bump re-renders and remounts no card; `kdsLowEndPerf.test.ts`
+  (14) guards the idle-load, header, and settings-panel fixes. All KDS suites
+  pass (86 tests).
 
 ## Files
 
@@ -99,6 +119,8 @@ the normal header, which keeps setting the height.
 - `stores/useKDSStore.ts`
 - `lib/storage.ts`
 - `services/kds/kdsSoundService.ts`
+- `components/kds/KdsSettingsPanel.tsx` (new), `app/(main)/kds-settings.tsx`
+- `app/(main)/settings/kds.tsx`
 - `__tests__/kdsTicketBoard.test.tsx` (new), `__tests__/kdsLowEndPerf.test.ts` (new)
 
 ## Open QA
@@ -112,3 +134,7 @@ the normal header, which keeps setting the height.
   "Server:" line, change column count in KDS settings.
 - Sounds: new-order sound on first order after launch (players now warm from
   the configured presets), settings previews on each preset.
+- Settings panel: open (PIN), change columns / workflow / sounds, close with
+  the Back button and with Android back — board updates without a reload; a
+  new order arriving while settings is open plays its sound; logout from
+  settings still returns to login.
