@@ -22,7 +22,12 @@ import type { RpcResult } from "@/lib/network/rpcVersionFallback";
 import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { normalizePlatform } from "@/lib/platformAliases";
-import { createLazyPersistStorage, getJSON, setJSON } from "@/lib/storage";
+import {
+  createLazyPersistStorage,
+  createStablePartialize,
+  getJSON,
+  setJSON,
+} from "@/lib/storage";
 import { OrderService } from "@/services/orderService";
 import {
     KDSDisplayConfig,
@@ -72,6 +77,17 @@ function resolveKdsTableName(rawTableNumber?: string | null): string | null {
   const tableName = table?.name?.trim();
   return tableName || null;
 }
+
+type PersistedKDSKey =
+  | "_ticketsById"
+  | "doneTickets"
+  | "doneCount"
+  | "kdsDisplayId"
+  | "routingMode"
+  | "cachedRules"
+  | "kdsDisplayConfig"
+  | "prepStations"
+  | "enrichedRules";
 
 interface KDSState {
   tickets: KDSTicket[];
@@ -4517,20 +4533,22 @@ export const useKDSStore = create<KDSState>()(
       storage: createLazyPersistStorage(),
       version: 1,
       migrate: (persistedState) => persistedState as any,
-      partialize: (state) => ({
-        // Only persist _ticketsById — ticketsByStatus/tickets/counts are derived on rehydrate.
-        // This avoids serializing 3 copies of the same ticket data on every bump.
-        _ticketsById: state._ticketsById,
-        doneTickets: state.doneTickets,
-        doneCount: state.doneCount,
-        // Persist display config so KDS knows its routing rules offline
-        kdsDisplayId: state.kdsDisplayId,
-        routingMode: state.routingMode,
-        cachedRules: state.cachedRules,
-        kdsDisplayConfig: state.kdsDisplayConfig,
-        prepStations: state.prepStations,
-        enrichedRules: state.enrichedRules,
-      }),
+      // Only persist _ticketsById — ticketsByStatus/tickets/counts are derived on rehydrate.
+      // This avoids serializing 3 copies of the same ticket data on every bump.
+      // Display config is persisted so KDS knows its routing rules offline.
+      // Stable partialize: the 1Hz incrementTimerTick (and every fetch-flag
+      // set) would otherwise re-stringify the whole ticket map each second.
+      partialize: createStablePartialize<KDSState, PersistedKDSKey>([
+        "_ticketsById",
+        "doneTickets",
+        "doneCount",
+        "kdsDisplayId",
+        "routingMode",
+        "cachedRules",
+        "kdsDisplayConfig",
+        "prepStations",
+        "enrichedRules",
+      ]),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state._hasHydrated = true;

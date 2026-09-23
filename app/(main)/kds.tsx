@@ -1,6 +1,6 @@
 import { BumpRetryBadge } from "@/components/kds/BumpRetryBadge";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
-import { MasonryFlashList } from "@shopify/flash-list";
+import KDSTicketBoard from "@/components/kds/KDSTicketBoard";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
@@ -270,38 +270,21 @@ const KDS_AUTOMATION_CHECK_MS = 30_000;
 const DONE_TICKETS_TIME_WINDOW_MS = 60 * 60 * 1000;
 
 // ─── Pulsing Dot (for connection status) ─────────────────────────
-const PulsingDot = () => {
+// Static on purpose. This dot used to pulse via an infinite Animated.loop; even
+// on the native driver, any view animating forever makes Android repaint the
+// whole window every frame — on a 50-card board that pinned the RenderThread
+// at 60 full 2000×1200 repaints/sec with nobody touching the screen. Never
+// put a perpetual animation on the KDS board.
+const ConnectedDot = () => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  const opacity = useRef(new RNAnimated.Value(0.4)).current;
-
-  useEffect(() => {
-    const animation = RNAnimated.loop(
-      RNAnimated.sequence([
-        RNAnimated.timing(opacity, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        RNAnimated.timing(opacity, {
-          toValue: 0.4,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, []);
-
   return (
-    <RNAnimated.View
+    <View
       style={{
         width: s(8),
         height: s(8),
         borderRadius: s(4),
         backgroundColor: colors.teal,
-        opacity,
         marginLeft: s(8),
       }}
     />
@@ -510,17 +493,11 @@ function getTicketItems(ticket: KDSTicket | null | undefined): KDSTicketItem[] {
 /**
  * Approximate rendered height of a ticket card, in scaled px.
  *
- * Fed to MasonryFlashList via `overrideItemLayout`. Without it, a variable-height
- * masonry list has to measure every mounted card to pack its columns — so bumping
- * one ticket out of a crowded board re-measures everything still on screen, which
- * is the bulk of the bump lag. With a per-ticket size up front, the columns re-pack
- * from numbers instead.
- *
- * This is a seed, not a contract: FlashList corrects against real measurements
- * once cells mount, so an imperfect estimate costs a little accuracy in the
- * scrollbar and nothing in correctness or layout. Errs slightly high — an
- * over-estimate leaves a small gap that closes on measure, whereas an
- * under-estimate makes content jump upward as it settles.
+ * KDSTicketBoard's first-paint position for a ticket it hasn't measured yet.
+ * Once a card mounts its real height is cached, so this only matters for a
+ * ticket's first appearance. Errs slightly high — an over-estimate leaves a
+ * small gap that closes on measure, whereas an under-estimate makes content
+ * jump upward as it settles.
  */
 function estimateTicketCardHeight(
   ticket: KDSTicket,
@@ -531,8 +508,8 @@ function estimateTicketCardHeight(
   const items = getTicketItems(ticket);
 
   // Header: fixed s(44) content block + vertical padding + border. Deliberately
-  // constant — the focused (quick-action) header is sized to match the normal
-  // one so cards don't jump when focused.
+  // constant — the focused quick-action row overlays the normal header, so
+  // focusing a card never changes its height.
   let height = scale(44) + scale(10) * 2 + 1;
 
   // Item rows the card will actually draw. Mirrors the visibleItems pipeline:
@@ -1156,14 +1133,182 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               gap: s(12),
             }}
           >
-            {tapMode === "single-select" && isFocused ? (
-              // Focused in single-select mode: header is replaced by quick actions.
-              // Height matches the original two-row layout (order number + order type)
-              // so the card doesn't jump when focusing/unfocusing.
+            <View style={{ flex: 1, gap: s(4) }}>
+              {/* Order Number */}
               <View
                 style={{
-                  flex: 1,
-                  height: s(44),
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(6),
+                }}
+              >
+                <Text
+                  style={{
+                    color: headerPrimaryTextColor,
+                    fontSize: s(16),
+                    fontWeight: "700",
+                  }}
+                  numberOfLines={1}
+                >
+                  {kdsTicketLabel(ticket)}
+                </Text>
+                {(ticket.status === "pending" ||
+                  ticket.status === "cooking") &&
+                  ticket.prioritized && (
+                    <Star
+                      size={s(16)}
+                      color={colors.warning}
+                      fill={colors.warning}
+                    />
+                  )}
+                <DeliveryPlatformBadge
+                  deliveryPlatform={ticket.delivery_platform}
+                  orderSource={ticket.order_source}
+                  size="kds"
+                  uiScale={uiScale}
+                  solidBackground={hasUrgencyColor}
+                />
+              </View>
+
+              {serverName ? (
+                <Text
+                  style={{
+                    color: headerSecondaryTextColor,
+                    fontSize: s(11),
+                    fontWeight: "600",
+                  }}
+                  numberOfLines={1}
+                >
+                  Server: {serverName}
+                </Text>
+              ) : null}
+
+              {/* Order Type */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(4),
+                }}
+              >
+                {ticket.order_type?.toLowerCase() === "delivery" ? (
+                  <View
+                    style={{
+                      width: s(6),
+                      height: s(6),
+                      borderRadius: s(3),
+                      backgroundColor: headerDotColor ?? "#EF4444",
+                    }}
+                  />
+                ) : ticket.order_type?.toLowerCase() === "takeout" ||
+                  ticket.order_type?.toLowerCase() === "to_go" ? (
+                  <View
+                    style={{
+                      width: s(6),
+                      height: s(6),
+                      borderRadius: s(3),
+                      backgroundColor: headerDotColor ?? "#3B82F6",
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: s(6),
+                      height: s(6),
+                      borderRadius: s(3),
+                      backgroundColor: headerDotColor ?? "#22C55E",
+                    }}
+                  />
+                )}
+                <Text
+                  style={{
+                    color: headerSecondaryTextColor,
+                    fontSize: s(11),
+                    fontWeight: "600",
+                  }}
+                >
+                  {orderTypeLabel}
+                </Text>
+              </View>
+            </View>
+
+            {/* Timer + Badges column (right side) */}
+            <View style={{ alignItems: "flex-end", gap: s(4) }}>
+              <KDSTicketTimer
+                startTimeEpoch={ticket.start_time_epoch}
+                textColor={headerPrimaryTextColor}
+                doneTimeEpoch={
+                  ticket.status === "ready"
+                    ? ticket.ready_time_epoch
+                    : undefined
+                }
+              />
+              {(ticket.status === "pending" ||
+                ticket.status === "cooking") &&
+                hasRush && (
+                  <View
+                    style={{
+                      backgroundColor: "#FEF08A",
+                      borderWidth: 1,
+                      borderColor: colors.warning + "50",
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(3),
+                      borderRadius: s(12),
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(4),
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#78350F",
+                        fontSize: s(10),
+                        fontWeight: "800",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      RUSHED
+                    </Text>
+                  </View>
+                )}
+              {hasRefire && (
+                <View
+                  style={{
+                    backgroundColor: "#FEF3C7",
+                    borderWidth: 1,
+                    borderColor: "#F59E0B66",
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(3),
+                    borderRadius: s(12),
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#92400E",
+                      fontSize: s(10),
+                      fontWeight: "800",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    RECALLED
+                  </Text>
+                </View>
+              )}
+            </View>
+            {tapMode === "single-select" && isFocused && (
+              // Focused in single-select mode: quick actions cover the header.
+              // An overlay, not a replacement — the normal header underneath
+              // still sets the height, so focusing never resizes the card or
+              // shifts the tickets below it.
+              <View
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: headerBackgroundColor,
+                  paddingHorizontal: s(12),
                   flexDirection: "row",
                   alignItems: "center",
                   gap: s(6),
@@ -1302,171 +1447,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   </Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <>
-                <View style={{ flex: 1, gap: s(4) }}>
-                  {/* Order Number */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: s(6),
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: headerPrimaryTextColor,
-                        fontSize: s(16),
-                        fontWeight: "700",
-                      }}
-                      numberOfLines={1}
-                    >
-                      {kdsTicketLabel(ticket)}
-                    </Text>
-                    {(ticket.status === "pending" ||
-                      ticket.status === "cooking") &&
-                      ticket.prioritized && (
-                        <Star
-                          size={s(16)}
-                          color={colors.warning}
-                          fill={colors.warning}
-                        />
-                      )}
-                    <DeliveryPlatformBadge
-                      deliveryPlatform={ticket.delivery_platform}
-                      orderSource={ticket.order_source}
-                      size="kds"
-                      uiScale={uiScale}
-                      solidBackground={hasUrgencyColor}
-                    />
-                  </View>
-
-                  {serverName ? (
-                    <Text
-                      style={{
-                        color: headerSecondaryTextColor,
-                        fontSize: s(11),
-                        fontWeight: "600",
-                      }}
-                      numberOfLines={1}
-                    >
-                      Server: {serverName}
-                    </Text>
-                  ) : null}
-
-                  {/* Order Type */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: s(4),
-                    }}
-                  >
-                    {ticket.order_type?.toLowerCase() === "delivery" ? (
-                      <View
-                        style={{
-                          width: s(6),
-                          height: s(6),
-                          borderRadius: s(3),
-                          backgroundColor: headerDotColor ?? "#EF4444",
-                        }}
-                      />
-                    ) : ticket.order_type?.toLowerCase() === "takeout" ||
-                      ticket.order_type?.toLowerCase() === "to_go" ? (
-                      <View
-                        style={{
-                          width: s(6),
-                          height: s(6),
-                          borderRadius: s(3),
-                          backgroundColor: headerDotColor ?? "#3B82F6",
-                        }}
-                      />
-                    ) : (
-                      <View
-                        style={{
-                          width: s(6),
-                          height: s(6),
-                          borderRadius: s(3),
-                          backgroundColor: headerDotColor ?? "#22C55E",
-                        }}
-                      />
-                    )}
-                    <Text
-                      style={{
-                        color: headerSecondaryTextColor,
-                        fontSize: s(11),
-                        fontWeight: "600",
-                      }}
-                    >
-                      {orderTypeLabel}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Timer + Badges column (right side) */}
-                <View style={{ alignItems: "flex-end", gap: s(4) }}>
-                  <KDSTicketTimer
-                    startTimeEpoch={ticket.start_time_epoch}
-                    textColor={headerPrimaryTextColor}
-                    doneTimeEpoch={
-                      ticket.status === "ready"
-                        ? ticket.ready_time_epoch
-                        : undefined
-                    }
-                  />
-                  {(ticket.status === "pending" ||
-                    ticket.status === "cooking") &&
-                    hasRush && (
-                      <View
-                        style={{
-                          backgroundColor: "#FEF08A",
-                          borderWidth: 1,
-                          borderColor: colors.warning + "50",
-                          paddingHorizontal: s(8),
-                          paddingVertical: s(3),
-                          borderRadius: s(12),
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: s(4),
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: "#78350F",
-                            fontSize: s(10),
-                            fontWeight: "800",
-                            letterSpacing: 0.5,
-                          }}
-                        >
-                          RUSHED
-                        </Text>
-                      </View>
-                    )}
-                  {hasRefire && (
-                    <View
-                      style={{
-                        backgroundColor: "#FEF3C7",
-                        borderWidth: 1,
-                        borderColor: "#F59E0B66",
-                        paddingHorizontal: s(8),
-                        paddingVertical: s(3),
-                        borderRadius: s(12),
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: "#92400E",
-                          fontSize: s(10),
-                          fontWeight: "800",
-                          letterSpacing: 0.5,
-                        }}
-                      >
-                        RECALLED
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </>
             )}
           </View>
 
@@ -2393,9 +2373,9 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 const KitchenDisplayScreen = () => {
   const uiScale = useUiScale();
   // Stable identity across renders (uiScale changes only on resize / scale
-  // setting change). `renderMasonryTicket` depends on `s`, so a fresh arrow
-  // here would rebuild FlashList's renderItem on every page render and
-  // re-render every mounted cell — the memo below is what makes that hold.
+  // setting change). The board's height estimator depends on `s`, so a fresh
+  // arrow here would re-run the board layout on every page render — the memo
+  // below is what makes that hold.
   const s = useCallback((n: number) => Math.round(n * uiScale), [uiScale]);
   const router = useRouter();
   const supabase = useSupabaseClient();
@@ -3442,63 +3422,22 @@ const KitchenDisplayScreen = () => {
     }
   }, [ticketsForLayout]);
 
-  // Masonry: each column packs independently, so a ticket sits directly under
-  // the one above it in its own column rather than being pushed down by the
-  // tallest card in the row. MasonryFlashList still drives every column from a
-  // single scroll surface, so they all move together.
-  const renderMasonryTicket = useCallback(
-    ({ item }: { item: KDSTicket }) => (
-      <View style={{ paddingHorizontal: s(2) }}>
-        {isDoneTab ? renderDoneTicketCard(item) : renderTicketCard(item)}
-      </View>
-    ),
-    [isDoneTab, renderDoneTicketCard, renderTicketCard, s],
-  );
+  // Left-to-right board (see KDSTicketBoard): one renderer per tab variant.
+  const renderBoardCard = isDoneTab ? renderDoneTicketCard : renderTicketCard;
 
-  const ticketKeyExtractor = useCallback(
-    (ticket: KDSTicket) => ticket.ticket_id,
-    [],
-  );
-
-  // Median estimated card height for the current board, used as FlashList's
-  // seed size. A hardcoded constant that reads low makes FlashList mount more
-  // cards than it needs and then correct; deriving it from the tickets actually
-  // on screen keeps the seed honest as ticket sizes drift through service.
-  const estimatedTicketSize = useMemo(() => {
-    if (isDoneTab || ticketsForLayout.length === 0) return s(220);
-    const sample = ticketsForLayout.slice(0, 24).map((t) =>
-      estimateTicketCardHeight(
-        t,
-        kdsHideDoneItems && workflowMode !== "2-step",
-        displaySettings.aggregateIdenticalItems,
-        s,
-      ),
-    );
-    sample.sort((a, b) => a - b);
-    return sample[Math.floor(sample.length / 2)];
-  }, [
-    isDoneTab,
-    ticketsForLayout,
-    kdsHideDoneItems,
-    workflowMode,
-    displaySettings.aggregateIdenticalItems,
-    s,
-  ]);
-
-  // Seed each card's size so masonry can re-pack its columns arithmetically
-  // instead of re-measuring every mounted card on each bump. Mirrors the card's
-  // own `shouldHideDoneItems = hideDoneItems && !onItemPress`, where onItemPress
-  // is only wired up in 2-step mode.
-  const overrideTicketLayout = useCallback(
-    (layout: { span?: number; size?: number }, ticket: KDSTicket) => {
-      if (isDoneTab) return; // done cards are compact and uniform enough
-      layout.size = estimateTicketCardHeight(
-        ticket,
-        kdsHideDoneItems && workflowMode !== "2-step",
-        displaySettings.aggregateIdenticalItems,
-        s,
-      );
-    },
+  // First-paint height for a ticket the board hasn't measured yet. Mirrors the
+  // card's own `shouldHideDoneItems = hideDoneItems && !onItemPress`, where
+  // onItemPress is only wired up in 2-step mode.
+  const estimateBoardCardHeight = useCallback(
+    (ticket: KDSTicket) =>
+      isDoneTab
+        ? s(220) // done cards are compact and uniform; measured on first paint
+        : estimateTicketCardHeight(
+            ticket,
+            kdsHideDoneItems && workflowMode !== "2-step",
+            displaySettings.aggregateIdenticalItems,
+            s,
+          ),
     [
       isDoneTab,
       kdsHideDoneItems,
@@ -3947,7 +3886,7 @@ const KitchenDisplayScreen = () => {
                   }}
                 />
               ) : (
-                <PulsingDot />
+                <ConnectedDot />
               )}
             </View>
           </View>
@@ -4261,35 +4200,23 @@ const KitchenDisplayScreen = () => {
         </View>
       ) : (
         <View style={{ flex: 1 }}>
-          <MasonryFlashList
+          <KDSTicketBoard
             key={`kds-${activeStatus}-${columnCount}`}
-            data={ticketsForLayout}
-            numColumns={columnCount}
-            renderItem={renderMasonryTicket}
-            keyExtractor={ticketKeyExtractor}
-            estimatedItemSize={estimatedTicketSize}
-            /* Per-ticket size estimate, so re-packing after a bump is arithmetic
-               rather than a re-measure of every mounted card. */
-            overrideItemLayout={overrideTicketLayout}
-            /* Ticket height varies with item count, so the estimate is only a
-               seed — render well ahead of the viewport so a fling never waits
-               on a row being recycled. */
-            drawDistance={s(900)}
-            /* No extraData for focus: each card subscribes to the focus slice
-               itself, so it repaints on its own. Threading focus through here
-               would re-render every mounted card on each selection instead. */
-            contentContainerStyle={{
-              paddingHorizontal: s(4),
-              paddingTop: s(4),
-              paddingBottom: s(20),
-            }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator
+            tickets={ticketsForLayout}
+            columns={columnCount}
+            /* No focus prop: each card subscribes to the focus slice itself,
+               so a selection repaints only the cards whose focus flipped. */
+            renderCard={renderBoardCard}
+            estimateHeight={estimateBoardCardHeight}
+            cacheNamespace={isDoneTab ? "done" : "active"}
+            horizontalPadding={s(4)}
+            cellGutter={s(2)}
+            topPadding={s(4)}
+            bottomPadding={s(20)}
             /* Tapping empty space below the grid clears the single-select focus.
                Card Pressables capture their own taps. */
-            ListFooterComponent={
-              <Pressable style={{ height: s(80) }} onPress={handleClearFocus} />
-            }
+            onPressFooter={handleClearFocus}
+            footerHeight={s(80)}
           />
         </View>
       )}

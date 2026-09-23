@@ -484,6 +484,33 @@ export function createLazyPersistStorage<S>(): PersistStorage<S> {
   };
 }
 
+/**
+ * A zustand `partialize` that returns the SAME object while every picked
+ * field is reference-equal to the last call.
+ *
+ * zustand's persist middleware runs partialize + setItem after EVERY set(),
+ * including sets that touch no persisted field (a 1Hz timer tick, fetch
+ * flags). A partialize that builds a fresh object literal defeats
+ * lazyDebouncedWrite's same-reference skip, so each of those sets re-arms a
+ * full JSON.stringify of the persisted slice. With this, only a real change
+ * to a persisted field does.
+ *
+ * INVARIANT (same as lazyDebouncedWrite's): the picked fields must be updated
+ * immutably — a field mutated in place keeps its reference and is skipped.
+ */
+export function createStablePartialize<S, K extends keyof S>(
+  keys: readonly K[],
+): (state: S) => Pick<S, K> {
+  let last: Pick<S, K> | null = null;
+  return (state: S) => {
+    if (last && keys.every((k) => last![k] === state[k])) return last;
+    const next = {} as Pick<S, K>;
+    for (const k of keys) next[k] = state[k];
+    last = next;
+    return next;
+  };
+}
+
 // ============================================================================
 // ZUSTAND STORAGE ADAPTERS (legacy — used by stores not yet migrated)
 // ============================================================================
