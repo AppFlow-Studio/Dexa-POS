@@ -34,7 +34,7 @@ export function reportBumpFailure(
   error: unknown,
   ctx: BumpFailureContext,
 ): void {
-  const message = ctx.willRetry ? "Retrying…" : "Tap the ticket to retry";
+  const message = ctx.willRetry ? "Retrying…" : "Tap Retry on the ticket";
 
   useToastStore.getState().show({
     title: "Couldn't update ticket",
