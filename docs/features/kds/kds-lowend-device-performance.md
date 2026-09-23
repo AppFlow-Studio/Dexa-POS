@@ -56,6 +56,9 @@ KDS board idle with 25 pending + 28 cooking tickets and nobody touching it:
       display config (it could fetch station index 0's first).
 - [x] First paint: the board mounts only on-screen cards in the first frame;
       the off-screen buffer mounts after that frame paints.
+- [x] Online-orders drawer on KDS: bounded to the current business day like
+      the POS drawer; online orders from an earlier business day are pruned
+      when the day rolls over; order cards show the date for non-today orders.
 - [ ] POS-only services still running on KDS: gate each one that the KDS
       doesn't need (from the boot-footprint audit).
 - [ ] Remaining verified audit findings (render, interaction, memory).
@@ -91,6 +94,24 @@ clears recall state and acknowledged notices. The board now stays mounted
 under the settings panel, so none of that happens; closing does the two
 refreshes the remount used to (`fetchKDSDisplay`, background ticket fetch).
 
+### Stale online orders only on the KDS drawer
+
+The KDS skips `useOrdersQuery`, so `useKdsOnlineOrdersBootstrap` seeds the
+order store for the drawer. It loaded every online order in an active status
+(`pending`→`ready`) with no date bound, so any order that never reached a
+terminal status — from any day — sat in the KDS drawer (75 on staging). The POS
+drawer reads the same store, but the POS loads it through `useOrdersQuery`,
+which is floored at the business-day start, so the POS never showed them.
+Cards printed only a time ("2:45 PM"), so old orders read as current.
+
+The bootstrap now uses the same floor (`resolveBusinessDayStartUtc`, exported
+from `useOrdersQuery`), and after each refresh prunes online orders opened
+before the business day that the fetch no longer returns, so a board left
+running across the rollover sheds yesterday's leftovers. `formatOrderTime`
+(`lib/onlineOrderLabel.ts`) prefixes the date for any order not placed today.
+The narrower query is also cheaper — this embed is the platform's most
+expensive statement (see the PERF note in the hook).
+
 ### Focus header jump
 
 The single-select quick-action row replaced the header with a fixed `s(44)`
@@ -108,7 +129,9 @@ the normal header, which keeps setting the height.
   staged first paint, windowing, height reuse across remounts, and that a
   front-of-board bump re-renders and remounts no card; `kdsLowEndPerf.test.ts`
   (14) guards the idle-load, header, and settings-panel fixes. All KDS suites
-  pass (86 tests).
+  pass (86 tests). `kdsOnlineOrdersBusinessDay.test.ts` (7) covers the date
+  label, the business-day query floor, and rollover pruning; all 9
+  online-order suites pass (100 tests).
 
 ## Files
 
@@ -121,7 +144,10 @@ the normal header, which keeps setting the height.
 - `services/kds/kdsSoundService.ts`
 - `components/kds/KdsSettingsPanel.tsx` (new), `app/(main)/kds-settings.tsx`
 - `app/(main)/settings/kds.tsx`
-- `__tests__/kdsTicketBoard.test.tsx` (new), `__tests__/kdsLowEndPerf.test.ts` (new)
+- `hooks/pos/useKdsOnlineOrdersBootstrap.ts`, `hooks/pos/useOrdersQuery.ts`
+- `lib/onlineOrderLabel.ts`, `components/online-orders/OnlineOrderCard.tsx`
+- `__tests__/kdsTicketBoard.test.tsx` (new), `__tests__/kdsLowEndPerf.test.ts` (new),
+  `__tests__/kdsOnlineOrdersBusinessDay.test.ts` (new)
 
 ## Open QA
 
@@ -134,6 +160,9 @@ the normal header, which keeps setting the height.
   "Server:" line, change column count in KDS settings.
 - Sounds: new-order sound on first order after launch (players now warm from
   the configured presets), settings previews on each preset.
+- Online-orders drawer on KDS: only today's (business-day) active online
+  orders; count matches the POS drawer; a board left running past the
+  business-day rollover drops yesterday's leftovers within ~2 min.
 - Settings panel: open (PIN), change columns / workflow / sounds, close with
   the Back button and with Android back — board updates without a reload; a
   new order arriving while settings is open plays its sound; logout from

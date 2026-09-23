@@ -25,7 +25,12 @@ import { queryClient } from "@/contexts/TanstackProvider";
 // don't want a 30MB+ response triggering OOM in okhttp's response materialization.
 const ACTIVE_ORDERS_HARD_LIMIT = 200;
 
-function resolveBusinessDayStartUtc(): string | null {
+/**
+ * UTC start of the location's current business day (location timezone +
+ * rollover hour), or null before the store's config is known. The floor for
+ * every "active orders" load — POS workspace and the KDS online-orders drawer.
+ */
+export function resolveBusinessDayStartUtc(): string | null {
   const config = resolveBusinessDayConfig();
   if (!config) return null;
   try {
