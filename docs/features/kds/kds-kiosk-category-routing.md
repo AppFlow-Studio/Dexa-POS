@@ -35,6 +35,18 @@ So every kiosk item missed category-based prep-station routing.
       (via `useMenuStore.getCategoryById`), the same as the POS.
 - [x] Test: `__tests__/kioskCartCategory.test.ts`.
 
+## Second cause: the local-first item path (found after the first OTA)
+
+The kiosk fix alone didn't help. Kiosk orders after OTA `d8336756` were still `Uncategorized`.
+`addItemToBackend`'s local-first branch (`LOCAL_WRITES_ITEMS`, #201) built the `addLocalItem` payload from
+`(item as any).categoryId` / `.categoryName` / `.menuId` / `.menuName`. `CartItem` has none of these fields,
+so every item on that path sent NULL. That covers every kiosk item, and **POS as well**: on prod, POS items
+with a category dropped from 100% to ~50% starting 2026-09-21 as the path rolled out.
+
+- [x] Map `addedFromCategoryId` / `category_name` / `addedFromMenuId` (+ menu name via `getMenuById`),
+      the same fields as the legacy `addItemParams`.
+- [x] Regression test in `__tests__/db/localWritesEndToEnd.test.ts`.
+
 ## Review
 
 - `tsc` and eslint are clean on the touched files. Kiosk suites pass (new test, `kioskMenuSearch`, `kioskValorCheckout`).
