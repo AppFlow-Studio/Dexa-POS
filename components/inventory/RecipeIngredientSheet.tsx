@@ -5,7 +5,7 @@ import BottomSheet, {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@/components/ui/bottomSheet";
-import { Package, Search, X } from "lucide-react-native";
+import { Package, Search, X } from "@/lib/icons";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme, colors } from "@/lib/theme";

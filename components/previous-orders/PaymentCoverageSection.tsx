@@ -5,7 +5,7 @@ import {
   ChevronRight,
   CreditCard,
   DollarSign
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useMemo, useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 

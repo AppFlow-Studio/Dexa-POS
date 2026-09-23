@@ -41,7 +41,7 @@ import {
     Users,
     UtensilsCrossed,
     X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, {
     useCallback,
     useEffect,

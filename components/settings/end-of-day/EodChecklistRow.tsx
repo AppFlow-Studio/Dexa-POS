@@ -6,7 +6,7 @@ import {
   Clock,
   Loader2,
   Minus
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React from 'react'
 import {
   StyleProp,

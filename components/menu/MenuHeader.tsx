@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
-import { Plus, RefreshCw, Search } from "lucide-react-native";
+import { Plus, RefreshCw, Search } from "@/lib/icons";
 import React, { useEffect, useRef } from "react";
 import {
   ActivityIndicator,

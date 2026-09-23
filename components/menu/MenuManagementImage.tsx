@@ -2,7 +2,6 @@ import { Image as ExpoImage } from "expo-image";
 import React, { useMemo } from "react";
 import type { StyleProp, ImageStyle } from "react-native";
 
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 
 /**
@@ -40,15 +39,8 @@ const MenuManagementImage: React.FC<MenuManagementImageProps> = ({
   const source = useMemo(() => {
     const resolved = resolveMenuItemImageSource(image);
     if (!resolved) return undefined;
-    // Local asset (require()'d number or MENU_IMAGE_MAP entry) — pass through.
+    // Local asset (require()'d number) — pass through.
     if (typeof resolved === "number") return resolved;
-    if (
-      image &&
-      typeof resolved !== "number" &&
-      MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP]
-    ) {
-      return MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP];
-    }
     // Remote/base64/file: give expo-image a decode hint so it downscales the
     // native bitmap to thumbnail size instead of full resolution.
     if (typeof resolved === "object" && "uri" in resolved && resolved.uri) {

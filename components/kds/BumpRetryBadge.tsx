@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { AlertTriangle, RefreshCw } from "lucide-react-native";
+import { AlertTriangle, RefreshCw } from "@/lib/icons";
 import React from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 

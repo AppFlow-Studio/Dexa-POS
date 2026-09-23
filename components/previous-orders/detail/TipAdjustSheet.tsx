@@ -11,7 +11,7 @@ import BottomSheet, {
 } from '@/components/ui/bottomSheet'
 import { BottomSheetMethods } from '@/components/ui/bottomSheet'
 import { useQueryClient } from '@tanstack/react-query'
-import { CreditCard, Lock } from 'lucide-react-native'
+import { CreditCard, Lock } from '@/lib/icons'
 import React, {
   forwardRef,
   useCallback,

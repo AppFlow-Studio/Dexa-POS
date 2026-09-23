@@ -1,7 +1,7 @@
 import KdsSettingsScreen from "@/app/(main)/settings/kds";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft } from "@/lib/icons";
 import { Text, TouchableOpacity, View } from "react-native";
 
 /**

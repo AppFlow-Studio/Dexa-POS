@@ -1,6 +1,6 @@
 import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
-import { AlertTriangle } from "lucide-react-native";
+import { AlertTriangle } from "@/lib/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Modal, Text, TouchableOpacity, View } from "react-native";
 

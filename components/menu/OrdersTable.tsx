@@ -14,7 +14,7 @@ import {
     Lock,
     MoreVertical,
     XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import {
     RefreshControl,

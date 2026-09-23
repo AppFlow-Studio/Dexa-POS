@@ -7,7 +7,7 @@ import {
   Flame,
   Plus,
   Send
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Modal,

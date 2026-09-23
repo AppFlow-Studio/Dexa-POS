@@ -8,7 +8,7 @@ import {
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useOrder } from '@/stores/selectors/orderSelectors'
 import { useAuth } from '@clerk/clerk-expo'
-import { CheckCircle, AlertTriangle } from 'lucide-react-native'
+import { CheckCircle, AlertTriangle } from '@/lib/icons'
 import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,

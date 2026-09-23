@@ -53,8 +53,8 @@ export function KioskItemThumb({
   const source = useMemo(() => {
     const resolved = resolveMenuItemImageSource(image);
     if (!resolved) return undefined;
-    // A bundled asset (a require()’d number, which is also what MENU_IMAGE_MAP
-    // keys resolve to) is already sized by the bundler — nothing to bound.
+    // A bundled asset (a require()’d number) is already sized by the
+    // bundler — nothing to bound.
     if (typeof resolved === "number") return resolved;
     if ("uri" in resolved && resolved.uri) {
       return { uri: resolved.uri, width: decode, height: decode };

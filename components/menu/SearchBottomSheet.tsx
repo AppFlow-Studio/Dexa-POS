@@ -13,7 +13,7 @@ import BottomSheet, {
     BottomSheetTextInput,
 } from "@/components/ui/bottomSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
-import { Search, X } from "lucide-react-native";
+import { Search, X } from "@/lib/icons";
 import React, {
     useCallback,
     useDeferredValue,

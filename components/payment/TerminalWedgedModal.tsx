@@ -16,7 +16,7 @@
 import { colors } from '@/lib/theme';
 import { getCastlesConnectionSupervisor } from '@/services/terminals/castlesConnectionSupervisor';
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore';
-import { AlertTriangle, RefreshCcw, Loader2 } from 'lucide-react-native';
+import { AlertTriangle, RefreshCcw, Loader2 } from '@/lib/icons';
 import { useEffect, useRef, useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 

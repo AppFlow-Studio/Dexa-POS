@@ -18,7 +18,7 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from "@/components/ui/bottomSheet";
 import { useRouter } from "expo-router";
-import { ArrowLeft, ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
+import { ArrowLeft, ChevronDown, Plus, Search, Trash2, User } from "@/lib/icons";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,

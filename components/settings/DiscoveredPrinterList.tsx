@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Wifi,
   XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";

@@ -17,7 +17,7 @@ import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ShoppingCart } from "lucide-react-native";
+import { ShoppingCart } from "@/lib/icons";
 import React, { useMemo } from "react";
 import { Image, Text, View } from "react-native";
 import Animated, {

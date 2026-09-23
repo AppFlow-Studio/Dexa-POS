@@ -1,7 +1,9 @@
 import { colors } from "@/lib/theme";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Calendar, ChevronDown, MapPin, User } from "lucide-react-native";
+import { Calendar, ChevronDown, MapPin, User } from "@/lib/icons";
 import React, { useState } from "react";
 import {
   Modal,
@@ -68,20 +70,17 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
   const [showFromDatePicker, setShowFromDatePicker] = useState(false);
   const [showToDatePicker, setShowToDatePicker] = useState(false);
 
-  // Mock data - replace with actual data from your store
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const storeEmployees = useEmployeeStore((s) => s.employees);
+
   const locations = [
     { id: "all", name: "All Stores" },
-    { id: "store1", name: "Downtown Store" },
-    { id: "store2", name: "Mall Location" },
-    { id: "store3", name: "Airport Store" },
+    ...(selectedStore ? [{ id: selectedStore.id, name: selectedStore.name }] : []),
   ];
 
   const employees = [
     { id: "all", name: "All Employees" },
-    { id: "emp1", name: "John Smith" },
-    { id: "emp2", name: "Sarah Johnson" },
-    { id: "emp3", name: "Mike Davis" },
-    { id: "emp4", name: "Lisa Wilson" },
+    ...storeEmployees.map((e) => ({ id: e.id, name: e.fullName })),
   ];
 
   const datePresets = [

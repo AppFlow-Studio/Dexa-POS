@@ -5,7 +5,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Clock, CloudOff, EyeOff, RefreshCw } from "lucide-react-native";
+import { Clock, CloudOff, EyeOff, RefreshCw } from "@/lib/icons";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 

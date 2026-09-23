@@ -26,7 +26,7 @@ import BottomSheet, {
 import { BottomSheetDefaultFooterProps } from "@/components/ui/bottomSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, CreditCard, DollarSign, X } from "lucide-react-native";
+import { Check, CreditCard, DollarSign, X } from "@/lib/icons";
 import React, {
     forwardRef,
     useCallback,

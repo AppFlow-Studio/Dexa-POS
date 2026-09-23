@@ -1,7 +1,7 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Info } from "lucide-react-native";
+import { Info } from "@/lib/icons";
 import { useEffect, useMemo, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { useUiScale } from "@/lib/uiScale";

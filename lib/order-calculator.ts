@@ -214,8 +214,9 @@ export function calculateItemEffectiveCashPrice (item: CartItem): number {
  * `p_unit_price`. If that ever changes, this is the line that has to change
  * with it.
  *
- * Not a live undercharge before now only because `menuItem.addOns` is
- * populated exclusively from `lib/mockData.ts` — real Supabase menus deliver
+ * Not a live undercharge before now only because `menuItem.addOns` was
+ * populated exclusively by the old mock fixtures (since removed) — real
+ * Supabase menus deliver
  * everything through `customizations.modifiers`. It was a live TRAP: the
  * moment anything populated `addOns` from real menu data, every item carrying
  * one would have silently undercharged. `addOns` is still read by receipts,

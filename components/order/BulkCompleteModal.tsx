@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
-import { CheckCircle2 } from "lucide-react-native";
+import { CheckCircle2 } from "@/lib/icons";
 import React, { useCallback } from "react";
 import {
   FlatList,

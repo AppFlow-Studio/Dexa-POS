@@ -24,7 +24,7 @@ import {
   RefreshCw,
   Settings2,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,

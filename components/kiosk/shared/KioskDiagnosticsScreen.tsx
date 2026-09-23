@@ -71,7 +71,7 @@ import {
     Wifi,
     WifiOff,
     X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {

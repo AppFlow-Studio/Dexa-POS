@@ -3,7 +3,7 @@ import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { Banknote, Columns, CreditCard } from 'lucide-react-native'
+import { Banknote, Columns, CreditCard } from '@/lib/icons'
 import { useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

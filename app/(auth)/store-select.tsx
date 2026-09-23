@@ -10,7 +10,7 @@ import {
 import { useAuth, useClerk } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { LogOut, MapPin, Store } from "lucide-react-native";
+import { LogOut, MapPin, Store } from "@/lib/icons";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,

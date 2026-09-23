@@ -37,7 +37,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { PosStaffLoginResponse } from "@/types/station";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { Lock } from "lucide-react-native";
+import { Lock } from "@/lib/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {

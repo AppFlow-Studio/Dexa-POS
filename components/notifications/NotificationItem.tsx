@@ -1,6 +1,6 @@
 import { Notification } from "@/lib/types";
 import { colors } from "@/lib/theme";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns/formatDistanceToNow";
 import { getNotificationAppearance } from "@/lib/notificationUtils";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {

@@ -4,7 +4,7 @@ import {
   selectIsOpen as selectModifierIsOpen,
   useModifierSidebarStore
 } from '@/stores/useModifierSidebarStore'
-import { Printer } from 'lucide-react-native'
+import { Printer } from '@/lib/icons'
 import React from 'react'
 import { Text, TouchableOpacity } from 'react-native'
 

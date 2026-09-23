@@ -9,7 +9,7 @@ import BottomSheet, {
   BottomSheetTextInput
 } from '@/components/ui/bottomSheet'
 import { router } from 'expo-router'
-import { Search, Settings, X } from 'lucide-react-native'
+import { Search, Settings, X } from '@/lib/icons'
 import {
   forwardRef,
   memo,

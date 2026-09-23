@@ -12,7 +12,7 @@ import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
-import { ShoppingCart } from "lucide-react-native";
+import { ShoppingCart } from "@/lib/icons";
 import { useEffect } from "react";
 import { Text, View } from "react-native";
 import Animated, {

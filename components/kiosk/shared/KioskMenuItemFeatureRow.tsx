@@ -22,7 +22,7 @@ import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import { LinearGradient } from "expo-linear-gradient";
-import { ShoppingCart } from "lucide-react-native";
+import { ShoppingCart } from "@/lib/icons";
 import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, {

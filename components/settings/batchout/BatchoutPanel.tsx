@@ -39,7 +39,7 @@ import {
   Printer,
   RefreshCw,
   XCircle
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,

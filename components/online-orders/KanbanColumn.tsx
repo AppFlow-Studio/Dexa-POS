@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { FlashList } from "@shopify/flash-list";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft } from "@/lib/icons";
 import React, { useCallback } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import OnlineOrderCard, { type OnlineColumnVariant } from "./OnlineOrderCard";

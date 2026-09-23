@@ -9,7 +9,7 @@ import {
     Clock,
     Lock,
     Utensils,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import PinDisplay from "../auth/PinDisplay";

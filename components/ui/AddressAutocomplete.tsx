@@ -7,7 +7,7 @@ import {
 } from "@/services/googlePlacesService";
 import { getIsOnline } from "@/services/offlineSyncService";
 import type { ParsedAddress } from "@/utils/addressUtils";
-import { MapPin } from "lucide-react-native";
+import { MapPin } from "@/lib/icons";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,

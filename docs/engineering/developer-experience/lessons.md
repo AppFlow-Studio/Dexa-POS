@@ -131,3 +131,9 @@
 - Product rule (user, 2026-09-23): any modal or screen that shows a Confirm / Verify / Sign In button must not proceed until that button is pressed, even once 4 digits are in. Auto-submit on the last digit is only for PIN prompts with no confirm button (today: `OrderPinGate`). Guarded in `__tests__/usePinEntry.test.tsx`.
 - All PinNumpad digit handling goes through `hooks/usePinEntry.ts`. Never write `if (pin.length < 4) setPin(prev => prev + d)` or `setPin(pin + d)`: under fast typing on a slow device, taps land before the next render, so the first grows the PIN past 4 (Sign In stays disabled until an invisible 5th digit is backspaced) and the second drops digits.
 - Don't give a NativeWind-wrapped `Pressable` a function style (`style={({ pressed }) => …}`): on the PIN keypad it was dropped entirely and the keys rendered unstyled. Use a plain style object; `android_ripple` gives native press feedback.
+
+## Mock data gets removed, not relocated
+
+- Product rule (user, 2026-09-23): mock/demo data does not belong in the app. When asked to take it off a hot path, delete it and the assets only it used — don't move it into a new module to keep it alive (I moved `MENU_IMAGE_MAP` into `lib/menuImageMap.ts` and was corrected). Replace each fake fallback with real data or an empty state (`—`, an icon placeholder), never another sample person or number.
+- Mock data hides under other names: `mockDiscounts`, `mockApplicants`, `// --- Mock Data ---` blocks, hardcoded "Downtown Location" pickers, and demo defaults in stores (`useSettingsStore` had fake delivery partners and a funding balance). Grep for the fake values (`John Smith`, `Tom Hardy`, `Downtown`), not only for `mock`.
+- Not everything named "mock" is fake data: the Castles/Valor mock transports are a QA tool for rehearsing terminal failures; receipt-template preview samples and `lib/db/measure.ts` fixtures are deliberate. Ask before removing tools.

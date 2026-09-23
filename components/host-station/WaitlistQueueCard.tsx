@@ -5,7 +5,7 @@ import {
   AlertCircle, Bell, Check, ChevronDown, ChevronRight,
   Clock, GripVertical, Lightbulb, Mail, Phone, PhoneOff,
   StickyNote, Users, X
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useMemo, useRef, useState } from 'react'
 import { Animated, PanResponder, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'

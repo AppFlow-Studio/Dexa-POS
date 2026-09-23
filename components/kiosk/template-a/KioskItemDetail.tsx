@@ -13,7 +13,7 @@ import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType, ModifierCategory } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
-import { Check, ChevronLeft, Minus, Plus } from "lucide-react-native";
+import { Check, ChevronLeft, Minus, Plus } from "@/lib/icons";
 import { useCallback, useMemo, useState } from "react";
 import {
   Image,

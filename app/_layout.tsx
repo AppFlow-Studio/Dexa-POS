@@ -254,8 +254,10 @@ SplashScreen.setOptions({ duration: 0, fade: false });
 
 // Register CFD secondary display component for Android built-in displays.
 // Must happen at module level before native side mounts the ReactRootView.
+// Registration is lazy: the display UI itself only loads when that surface
+// starts, not on every Android device's cold start.
 if (Platform.OS === "android") {
-  require("@/components/cfd-builtin/CFDBuiltinDisplay");
+  require("@/components/cfd-builtin/registerCFDBuiltinDisplay");
 }
 
 // Initialize log collector to capture console output for remote log retrieval

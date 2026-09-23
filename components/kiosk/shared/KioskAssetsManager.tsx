@@ -6,7 +6,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { Film, ImagePlus, Plus, RefreshCw, Trash2, X } from "lucide-react-native";
+import { Film, ImagePlus, Plus, RefreshCw, Trash2, X } from "@/lib/icons";
 import { Video as VideoCompressor } from "react-native-compressor";
 import { useEffect, useState } from "react";
 import {

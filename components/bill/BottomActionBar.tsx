@@ -7,7 +7,7 @@ import {
   RotateCcw,
   ShoppingCart,
   Trash2,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useRef } from "react";
 import {
   ActivityIndicator,

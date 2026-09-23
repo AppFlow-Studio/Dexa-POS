@@ -23,7 +23,7 @@ import {
   Search,
   Trash2,
   User,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,

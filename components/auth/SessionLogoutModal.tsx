@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { colors, spinnerColor } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { LogOut, Monitor } from "lucide-react-native";
+import { LogOut, Monitor } from "@/lib/icons";
 import React from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 

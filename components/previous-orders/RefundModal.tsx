@@ -3,7 +3,7 @@ import { useRefundFraudGuard, type FraudGuardCheckResult } from "@/hooks/useRefu
 import { PaymentType, PreviousOrder } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { usePreviousOrdersStore, type RefundFraudMetadata } from "@/stores/usePreviousOrdersStore";
-import { Check, X } from "lucide-react-native";
+import { Check, X } from "@/lib/icons";
 import React, { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,

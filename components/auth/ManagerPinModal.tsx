@@ -10,7 +10,7 @@ import { useMenuStore } from '@/stores/useMenuStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { Delete, Lock, X } from 'lucide-react-native'
+import { Delete, Lock, X } from '@/lib/icons'
 import React, { useEffect, useRef, useState } from 'react'
 import {
   Modal,

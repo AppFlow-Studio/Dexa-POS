@@ -38,7 +38,7 @@ import {
   Play,
   Plus,
   Search,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,

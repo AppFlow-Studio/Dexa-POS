@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { Href, useRouter } from "expo-router";
-import { AlertTriangle } from "lucide-react-native";
+import { AlertTriangle } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import {

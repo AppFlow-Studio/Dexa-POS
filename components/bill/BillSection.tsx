@@ -57,7 +57,7 @@ import {
     Users,
     WifiOff,
     X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, {
     useCallback,
     useEffect,
@@ -86,7 +86,6 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import BillSummary from "./BillSummary";
-import DiscountOverlay from "./DiscountOverlay";
 import OrderDetails from "./OrderDetails";
 import OrderSyncBanner from "./OrderSyncBanner";
 import Totals from "./Totals";
@@ -742,7 +741,6 @@ const BillSectionContent = ({
       isReadOnly,
     [activeOrderId, cartLength, displayBalanceDue, isProcessing, isReadOnly],
   );
-  const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
   const [isVoidConfirmOpen, setIsVoidConfirmOpen] = useState(false);
   const [clearCartDialogMode, setClearCartDialogMode] = useState<
     "clear" | "voidNonDraft"
@@ -773,14 +771,6 @@ const BillSectionContent = ({
   }, []);
 
   // OPTIMIZED: Wrap callbacks with useCallback to prevent recreation on each render
-  const handleOpenDiscounts = useCallback(() => {
-    setDiscountOverlayVisible(true);
-  }, []);
-
-  const handleCloseDiscounts = useCallback(() => {
-    setDiscountOverlayVisible(false);
-  }, []);
-
   const handleOpenMoreOptions = useCallback(() => {
     moreOptionsSheetRef?.current?.expand();
   }, [moreOptionsSheetRef]);
@@ -2794,10 +2784,6 @@ const BillSectionContent = ({
           </View>
         )}
       </View>
-      <DiscountOverlay
-        isVisible={isDiscountOverlayVisible}
-        onClose={handleCloseDiscounts}
-      />
       <ClaimOrderModal
         visible={isClaimModalOpen}
         sourceStationName={sourceStationName}

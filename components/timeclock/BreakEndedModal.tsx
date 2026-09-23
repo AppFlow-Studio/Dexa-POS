@@ -1,7 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { Shift } from '@/stores/useTimeclockStore' // Assuming this type is in types.ts
-import { Clock } from 'lucide-react-native'
+import { Clock } from '@/lib/icons'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { Dialog, DialogContent } from '../ui/dialog'

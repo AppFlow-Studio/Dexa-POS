@@ -16,7 +16,7 @@ import {
 } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { ArrowLeft, Delete, Printer } from "lucide-react-native";
+import { ArrowLeft, Delete, Printer } from "@/lib/icons";
 import { useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

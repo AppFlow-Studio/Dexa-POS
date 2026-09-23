@@ -48,7 +48,7 @@ import {
   getTipAdjustMatchInfo,
 } from "@/utils/terminalMatchGuard";
 import { getCurrentRoutePath } from "@/lib/currentRoute";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns/formatDistanceToNow";
 import { useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -69,7 +69,7 @@ import {
   RotateCcw,
   Send,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, {
   useCallback,
   useEffect,

@@ -1,6 +1,7 @@
 import { colors } from "@/lib/theme";
 import { ShiftRequest } from "@/lib/types";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
 import {
   AlertCircle,
   Check,
@@ -8,7 +9,7 @@ import {
   MapPin,
   User,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 import { Button } from "../ui/button";

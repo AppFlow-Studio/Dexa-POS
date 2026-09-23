@@ -46,7 +46,7 @@ import {
   FlaskConical,
   RefreshCcw,
   Usb,
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useEffect, useState } from 'react'
 import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 

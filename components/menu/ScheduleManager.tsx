@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { Schedule } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
-import { CalendarClock, Clock, Plus, Trash2 } from "lucide-react-native";
+import { CalendarClock, Clock, Plus, Trash2 } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

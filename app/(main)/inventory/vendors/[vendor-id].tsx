@@ -21,7 +21,7 @@ import {
   Plus,
   Search,
   User,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,

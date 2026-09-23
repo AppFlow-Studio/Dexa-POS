@@ -58,7 +58,7 @@ import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore"
 import { useTipAdjustStore } from "@/stores/useTipAdjustStore";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { generateRefId } from "@/types/dejavoo-spin-api";
-import { CheckCircle2, Clock, Wifi } from "lucide-react-native";
+import { CheckCircle2, Clock, Wifi } from "@/lib/icons";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,

@@ -9,7 +9,7 @@ import {
   useOnlineOrderDrawerStore,
 } from "@/stores/useOnlineOrderDrawerStore";
 import { router, usePathname } from "expo-router";
-import { LayoutGrid, X } from "lucide-react-native";
+import { LayoutGrid, X } from "@/lib/icons";
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,

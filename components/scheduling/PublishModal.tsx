@@ -11,7 +11,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useRouter } from "expo-router";
 import { colors } from "@/lib/theme";
-import { AlertCircle, Bell, Mail, Send } from "lucide-react-native";
+import { AlertCircle, Bell, Mail, Send } from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 

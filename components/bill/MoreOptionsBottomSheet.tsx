@@ -31,7 +31,7 @@ import {
     Tag,
     Trash2,
     User,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, {
     forwardRef,
     memo,

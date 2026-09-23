@@ -2,7 +2,7 @@ import { useCFDDisplayField } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { Delete } from 'lucide-react-native'
+import { Delete } from '@/lib/icons'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,

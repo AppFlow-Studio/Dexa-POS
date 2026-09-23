@@ -1,7 +1,7 @@
 import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
 import type { PaymentVerificationState } from "@/stores/usePaymentStore";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react-native";
+import { AlertTriangle, CheckCircle2, XCircle } from "@/lib/icons";
 import { useState } from "react";
 import {
     ActivityIndicator,

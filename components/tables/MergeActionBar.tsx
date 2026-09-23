@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { GitMerge, Plus, Unlink } from "lucide-react-native";
+import { GitMerge, Plus, Unlink } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

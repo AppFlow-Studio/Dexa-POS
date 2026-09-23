@@ -13,7 +13,7 @@ import {
   QuickClockMode,
 } from "@/services/quickClockInOut";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Clock, LogIn, LogOut } from "lucide-react-native";
+import { Clock, LogIn, LogOut } from "@/lib/icons";
 import { useCallback, useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {

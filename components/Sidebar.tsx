@@ -2,7 +2,7 @@ import { images } from "@/lib/image";
 import { SIDEBAR_DATA } from "@/lib/sidebar-data";
 import { usePathname } from "expo-router";
 import { colors } from "@/lib/theme";
-import { Menu, X } from "lucide-react-native";
+import { Menu, X } from "@/lib/icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Image,

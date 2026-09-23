@@ -1,7 +1,8 @@
 import { colors } from "@/lib/theme";
 import { Role, TemplateShift } from "@/lib/types";
-import { format, parseISO } from "date-fns";
-import { AlertTriangle } from "lucide-react-native";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
+import { AlertTriangle } from "@/lib/icons";
 import React, { useEffect } from "react";
 import { Text, View } from "react-native";
 import Animated, {

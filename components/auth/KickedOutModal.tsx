@@ -1,6 +1,6 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { AlertTriangle } from 'lucide-react-native'
+import { AlertTriangle } from '@/lib/icons'
 import { Modal, Text, TouchableOpacity, View } from 'react-native'
 
 interface KickedOutModalProps {

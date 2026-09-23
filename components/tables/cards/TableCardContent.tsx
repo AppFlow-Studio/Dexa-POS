@@ -1,7 +1,7 @@
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { BrushCleaning, Lock } from "lucide-react-native";
+import { BrushCleaning, Lock } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 import { GestureDetector, GestureType } from "react-native-gesture-handler";

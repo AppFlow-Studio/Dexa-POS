@@ -1,6 +1,7 @@
 // components/cfd-builtin/CFDBuiltinDisplay.tsx
 // Root component for the built-in secondary display ReactRootView.
-// Registered via AppRegistry so Kotlin's SecondaryDisplayPresentation can mount it.
+// Registered (lazily) in registerCFDBuiltinDisplay.ts so Kotlin's
+// SecondaryDisplayPresentation can mount it.
 //
 // Two render paths:
 //   - Default (legacy): mounts the React tree directly. Shares the Hermes JS
@@ -31,7 +32,7 @@ import {
 import { CFDScaleProvider, UiScaleProvider } from "@/lib/uiScale";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { AppRegistry, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -411,4 +412,4 @@ const styles = StyleSheet.create({
   },
 });
 
-AppRegistry.registerComponent("CFDSecondaryDisplay", () => CFDBuiltinDisplay);
+export default CFDBuiltinDisplay;

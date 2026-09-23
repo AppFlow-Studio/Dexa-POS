@@ -10,7 +10,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Href, Link } from "expo-router";
-import { Ban, Bell, Check, CheckCheck, X } from "lucide-react-native";
+import { Ban, Bell, Check, CheckCheck, X } from "@/lib/icons";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 

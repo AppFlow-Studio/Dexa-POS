@@ -1,6 +1,6 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { Delete, X } from 'lucide-react-native'
+import { Delete, X } from '@/lib/icons'
 import React, { useMemo } from 'react'
 import { AccessibilityActionEvent, Pressable, Text, View } from 'react-native'
 
