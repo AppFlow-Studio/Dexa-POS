@@ -1,4 +1,5 @@
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { usePendingOnlineOrderCount } from "@/stores/selectors/orderSelectors";
@@ -18,11 +19,11 @@ import {
   ShoppingCart,
   UtensilsCrossed,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useUiScale } from "@/lib/uiScale";
 import PinDisplay from "./auth/PinDisplay";
-import PinNumpad from "./auth/PinNumpad";
+import PinNumpad, { NumpadInput } from "./auth/PinNumpad";
 import ClockInOutModal from "./timeclock/ClockInOutModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
@@ -197,9 +198,21 @@ const MainMenu: React.FC = () => {
   const pendingOnlineCount = usePendingOnlineOrderCount();
   const { rawIsOnline } = useNetworkStatus();
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
-  const [currentPin, setCurrentPin] = useState("");
+  // No auto-submit: a modal that shows a Confirm button waits for it.
+  const {
+    pin: currentPin,
+    setPin: setCurrentPin,
+    onKeyPress: onPinKey,
+  } = usePinEntry({ length: 4 });
   const [targetRoute, setTargetRoute] = useState<string | null>(null);
   const [pinError, setPinError] = useState("");
+  const handlePinKey = useCallback(
+    (input: NumpadInput) => {
+      setPinError(""); // typing clears the last error
+      onPinKey(input);
+    },
+    [onPinKey],
+  );
   // PIN-driven clock in/out (same modal the Session Dock uses). Opens a modal
   // instead of navigating, so this tile carries no route.
   const [isClockInOutOpen, setClockInOutOpen] = useState(false);
@@ -261,8 +274,8 @@ const MainMenu: React.FC = () => {
     );
   };
 
-  const handlePinSubmit = () => {
-    if (currentPin.length !== 4) return;
+  const handlePinSubmit = (entered: string = currentPin) => {
+    if (entered.length !== 4) return;
 
     const allowedRoles = [
       "merchant.admin",
@@ -274,8 +287,7 @@ const MainMenu: React.FC = () => {
 
     // Debug logging
     console.log("[PIN Submit] Checking PIN:", {
-      entered: currentPin,
-      enteredLength: currentPin.length,
+      enteredLength: entered.length,
       totalEmployees: employees.length,
       authorizedEmployees: employees.filter((e) =>
         allowedRoles.includes(e.role),
@@ -286,11 +298,11 @@ const MainMenu: React.FC = () => {
     const authorizedEmployee = employees.find((emp) => {
       const trimmedPin = emp.pin?.trim() ?? "";
       const isMatch =
-        trimmedPin === currentPin && allowedRoles.includes(emp.role);
+        trimmedPin === entered && allowedRoles.includes(emp.role);
 
       if (allowedRoles.includes(emp.role)) {
         console.log(
-          `[PIN Check] ${emp.fullName} (${emp.role}): stored="${trimmedPin}" vs entered="${currentPin}" - match=${isMatch}`,
+          `[PIN Check] ${emp.fullName} (${emp.role}): match=${isMatch}`,
         );
       }
 
@@ -601,28 +613,11 @@ const MainMenu: React.FC = () => {
             </View>
 
             <View style={{ marginTop: s(8) }}>
-              <PinNumpad
-                onKeyPress={(input) => {
-                  // Clear error when user starts typing
-                  if (pinError) setPinError("");
-
-                  if (typeof input === "number") {
-                    if (currentPin.length < 4) {
-                      const newPin = currentPin + input.toString();
-                      setCurrentPin(newPin);
-                      if (newPin.length === 4) setTimeout(handlePinSubmit, 100);
-                    }
-                  } else if (input === "clear") {
-                    setCurrentPin("");
-                  } else if (input === "backspace") {
-                    setCurrentPin(currentPin.slice(0, -1));
-                  }
-                }}
-              />
+              <PinNumpad onKeyPress={handlePinKey} />
             </View>
 
             <TouchableOpacity
-              onPress={handlePinSubmit}
+              onPress={() => handlePinSubmit()}
               disabled={currentPin.length < 4}
               style={{
                 marginTop: s(14),

@@ -8,6 +8,7 @@
 import PinDisplay from '@/components/auth/PinDisplay'
 import PinNumpad from '@/components/auth/PinNumpad'
 import { useToast } from '@/contexts/ToastContext'
+import { usePinEntry } from '@/hooks/usePinEntry'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import {
   classifyKickOutcome,
@@ -72,7 +73,8 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
 
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
   const [customReason, setCustomReason] = useState('')
-  const [pin, setPin] = useState('')
+  // No auto-submit: a modal that shows a Confirm button waits for it.
+  const { pin, setPin, onKeyPress: onPinKey } = usePinEntry({ length: 4 })
   const [approvedBy, setApprovedBy] = useState<string | null>(null)
   const [approvedByName, setApprovedByName] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -93,8 +95,8 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
     (!requiresReason || (reason && reason.trim().length > 0)) &&
     (!requiresApproval || approvedBy)
 
-  const handlePinSubmit = useCallback(() => {
-    const employee = useEmployeeStore.getState().findEmployeeByPin(pin)
+  const handlePinSubmit = useCallback((entered: string) => {
+    const employee = useEmployeeStore.getState().findEmployeeByPin(entered)
     const isManager = employee && MANAGER_ROLES.includes(employee.role)
 
     if (isManager) {
@@ -118,7 +120,7 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
         type: 'error'
       })
     }
-  }, [pin, show, shakeX])
+  }, [show, shakeX, setPin])
 
   const handleConfirm = useCallback(async () => {
     if (!drawerId || !activeSession || !loggedInEmployee || !canSubmit) return
@@ -401,19 +403,9 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
                     Manager Approval Required
                   </Text>
                   <PinDisplay pinLength={pin.length} maxLength={4} />
-                  <PinNumpad
-                    onKeyPress={input => {
-                      if (typeof input === 'number') {
-                        if (pin.length < 4) setPin(pin + input.toString())
-                      } else if (input === 'clear') {
-                        setPin('')
-                      } else if (input === 'backspace') {
-                        setPin(pin.slice(0, -1))
-                      }
-                    }}
-                  />
+                  <PinNumpad onKeyPress={onPinKey} />
                   <TouchableOpacity
-                    onPress={handlePinSubmit}
+                    onPress={() => handlePinSubmit(pin)}
                     style={{
                       marginTop: 8,
                       paddingVertical: 9,

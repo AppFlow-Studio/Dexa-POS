@@ -2,6 +2,7 @@ import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useLoading } from "@/contexts/LoadingContext";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
 import { colors } from "@/lib/theme";
@@ -10,7 +11,7 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Clock, UserRound } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -36,7 +37,7 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
   const timeClock = useTimeClock();
   const { showLoading, hideLoading } = useLoading();
 
-  const [pin, setPin] = useState("");
+  const { pin, setPin, onKeyPress } = usePinEntry({ length: 4 });
   const [deviceId, setDeviceId] = useState<string>("");
   const MAX_PIN_LENGTH = 4;
   const [error, setError] = useState<string | null>(null);
@@ -54,15 +55,13 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
     }
   }, [isOpen]);
 
-  const handleKeyPress = (input: NumpadInput) => {
-    setError(null);
-    if (typeof input === "number") {
-      if (pin.length < MAX_PIN_LENGTH) setPin((prev) => prev + input);
-    } else {
-      if (input === "backspace") setPin((prev) => prev.slice(0, -1));
-      if (input === "clear") setPin("");
-    }
-  };
+  const handleKeyPress = useCallback(
+    (input: NumpadInput) => {
+      setError(null);
+      onKeyPress(input);
+    },
+    [onKeyPress],
+  );
 
   const triggerShake = () => {
     shakeX.value = withSequence(

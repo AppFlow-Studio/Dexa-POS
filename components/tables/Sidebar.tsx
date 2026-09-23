@@ -14,6 +14,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import PinDisplay from "../auth/PinDisplay";
 import PinNumpad from "../auth/PinNumpad";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import HistoryPanel from "../panels/HistoryPanel";
 import ReservationsPanel from "../panels/ReservationsPanel";
 import TablesPanel from "../panels/TablesPanel";
@@ -42,7 +43,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [tabsCollapsed, setTabsCollapsed] = useState(false);
 
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
-  const [currentPin, setCurrentPin] = useState("");
+  // No auto-submit: a modal that shows a Confirm button waits for it.
+  const {
+    pin: currentPin,
+    setPin: setCurrentPin,
+    onKeyPress: onPinKey,
+  } = usePinEntry({ length: 4 });
   const [targetTab, setTargetTab] = useState<TabMode | null>(null);
 
   // Get actual Realtime Channel status (not store status)
@@ -133,10 +139,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     setCurrentPin("");
   };
 
-  const handlePinSubmit = () => {
+  const handlePinSubmit = (entered: string = currentPin) => {
     // TODO: Implement actual PIN validation logic
     // For now, we'll accept any 4-digit PIN
-    if (currentPin.length === 4) {
+    if (entered.length === 4) {
       setPinDialogOpen(false);
       if (targetTab) {
         setActiveTab(targetTab);
@@ -342,27 +348,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               Enter your manager PIN to access this feature
             </Text>
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
-            <PinNumpad
-              onKeyPress={(input) => {
-                if (typeof input === "number") {
-                  if (currentPin.length < 4) {
-                    const newPin = currentPin + input.toString();
-                    setCurrentPin(newPin);
-                    if (newPin.length === 4) {
-                      setTimeout(() => {
-                        handlePinSubmit();
-                      }, 100);
-                    }
-                  }
-                } else if (input === "clear") {
-                  setCurrentPin("");
-                } else if (input === "backspace") {
-                  setCurrentPin(currentPin.slice(0, -1));
-                }
-              }}
-            />
+            <PinNumpad onKeyPress={onPinKey} />
             <TouchableOpacity
-              onPress={handlePinSubmit}
+              onPress={() => handlePinSubmit()}
               style={{
                 marginTop: s(16),
                 paddingVertical: s(12),

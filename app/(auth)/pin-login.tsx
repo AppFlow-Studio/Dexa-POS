@@ -1,9 +1,10 @@
 import PinDisplay from "@/components/auth/PinDisplay";
-import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
+import PinNumpad from "@/components/auth/PinNumpad";
 import CashTipDeclarationModal from "@/components/timeclock/CashTipDeclarationModal";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import {
     getDeviceInfo,
     sanitizeIpAddress,
@@ -53,7 +54,11 @@ const PinLoginScreen = () => {
   const s = (n: number) => Math.round(n * uiScale);
   const router = useRouter();
   const { forceTakeover } = useLocalSearchParams<{ forceTakeover?: string }>();
-  const [pin, setPin] = useState("");
+  // No auto-submit: this screen has four actions (Sign In, Clock In/Out,
+  // Timeclock), so the user picks one once four digits are in.
+  const { pin, setPin, onKeyPress: handlePinKey } = usePinEntry({
+    length: MAX_PIN_LENGTH,
+  });
   const [deviceId, setDeviceId] = useState<string>("");
   const [showCashDeclaration, setShowCashDeclaration] = useState(false);
   const pendingClockOutPinRef = useRef<string | null>(null);
@@ -409,23 +414,6 @@ const PinLoginScreen = () => {
         "error",
       );
       setPendingTakeoverPin(null);
-    }
-  };
-
-  const handleKeyPress = (input: NumpadInput) => {
-    if (typeof input === "number") {
-      if (pin.length < MAX_PIN_LENGTH) {
-        setPin((prevPin) => prevPin + input.toString());
-      }
-    } else {
-      switch (input) {
-        case "backspace":
-          setPin((prevPin) => prevPin.slice(0, -1));
-          break;
-        case "clear":
-          setPin("");
-          break;
-      }
     }
   };
 
@@ -956,7 +944,7 @@ const PinLoginScreen = () => {
         <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
         <View style={{ marginTop: s(10) }}>
-          <PinNumpad onKeyPress={handleKeyPress} />
+          <PinNumpad onKeyPress={handlePinKey} />
         </View>
 
         {/* Action buttons */}

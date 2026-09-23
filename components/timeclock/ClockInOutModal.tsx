@@ -2,6 +2,7 @@ import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
 import { replaceRoute } from "@/lib/rootNavigation";
@@ -13,7 +14,7 @@ import {
 } from "@/services/quickClockInOut";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Clock, LogIn, LogOut } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -44,10 +45,13 @@ const ClockInOutModal: React.FC<ClockInOutModalProps> = ({
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const { show } = useToast();
 
-  const [pin, setPin] = useState("");
   const [deviceId, setDeviceId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { pin, setPin, onKeyPress } = usePinEntry({
+    length: MAX_PIN_LENGTH,
+    disabled: submitting,
+  });
 
   const shakeX = useSharedValue(0);
 
@@ -73,17 +77,14 @@ const ClockInOutModal: React.FC<ClockInOutModalProps> = ({
     );
   };
 
-  const handleKeyPress = (input: NumpadInput) => {
-    if (submitting) return;
-    setError(null);
-    if (typeof input === "number") {
-      if (pin.length < MAX_PIN_LENGTH) setPin((prev) => prev + input);
-    } else if (input === "backspace") {
-      setPin((prev) => prev.slice(0, -1));
-    } else if (input === "clear") {
-      setPin("");
-    }
-  };
+  const handleKeyPress = useCallback(
+    (input: NumpadInput) => {
+      if (submitting) return; // mirrors the hook's `disabled` for this render
+      setError(null);
+      onKeyPress(input);
+    },
+    [submitting, onKeyPress],
+  );
 
   const handleAction = async (mode: QuickClockMode) => {
     if (submitting) return;

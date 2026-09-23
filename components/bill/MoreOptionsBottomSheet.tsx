@@ -4,6 +4,7 @@ import PanelSheet, {
 } from "@/components/ui/PanelSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { useToast } from "@/contexts/ToastContext";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { bottomSheetTheme, colors } from "@/lib/theme";
@@ -160,7 +161,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   // See `OrderNotesInput` and `commitOrderNote`.
   const orderNotesDraftRef = useRef("");
   const [showManagerPin, setShowManagerPin] = useState(false);
-  const [managerPin, setManagerPin] = useState("");
+  // No auto-submit: a modal that shows a Confirm button waits for it.
+  const {
+    pin: managerPin,
+    setPin: setManagerPin,
+    onKeyPress: onManagerPinKey,
+  } = usePinEntry({ length: 4 });
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [isVoidPromptFromClearCart, setVoidPromptFromClearCart] =
@@ -419,14 +425,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }
   };
 
-  const handleManagerPinSubmit = async () => {
+  const handleManagerPinSubmit = async (entered: string = managerPin) => {
     // Verify PIN against actual employee database
     const MANAGER_ROLES: MerchantRole[] = [
       "merchant.manager",
       "merchant.admin",
       "merchant.owner",
     ];
-    const employee = useEmployeeStore.getState().findEmployeeByPin(managerPin);
+    const employee = useEmployeeStore.getState().findEmployeeByPin(entered);
     const isManager = employee && MANAGER_ROLES.includes(employee.role);
 
     if (isManager) {
@@ -1474,20 +1480,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               Enter Manager PIN to enable tax exemption
             </Text>
             <PinDisplay pinLength={managerPin.length} maxLength={4} />
-            <PinNumpad
-              onKeyPress={(input) => {
-                if (typeof input === "number") {
-                  if (managerPin.length < 4)
-                    setManagerPin(managerPin + input.toString());
-                } else if (input === "clear") {
-                  setManagerPin("");
-                } else if (input === "backspace") {
-                  setManagerPin(managerPin.slice(0, -1));
-                }
-              }}
-            />
+            <PinNumpad onKeyPress={onManagerPinKey} />
             <TouchableOpacity
-              onPress={handleManagerPinSubmit}
+              onPress={() => handleManagerPinSubmit()}
               style={{
                 marginTop: 16,
                 paddingVertical: 10,

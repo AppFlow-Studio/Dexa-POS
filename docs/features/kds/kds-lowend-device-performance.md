@@ -59,8 +59,12 @@ KDS board idle with 25 pending + 28 cooking tickets and nobody touching it:
 - [x] Online-orders drawer on KDS: bounded to the current business day like
       the POS drawer; online orders from an earlier business day are pruned
       when the day rolls over; order cards show the date for non-today orders.
+- [x] PIN entry, app-wide: one `usePinEntry` hook for all 13 PinNumpad
+      screens (fixes the extra-digit and dropped-digit bugs under fast typing);
+      keys register on touch-down with a native ripple and don't re-render per
+      digit; no auto-submit wherever a Confirm button is shown.
 - [ ] POS-only services still running on KDS: gate each one that the KDS
-      doesn't need (from the boot-footprint audit).
+      doesn't need (the audit workflow stalled; re-run against current code).
 - [ ] Remaining verified audit findings (render, interaction, memory).
 
 ## Progress
@@ -112,6 +116,29 @@ running across the rollover sheds yesterday's leftovers. `formatOrderTime`
 The narrower query is also cheaper — this embed is the platform's most
 expensive statement (see the PERF note in the hook).
 
+### PIN entry (whole app)
+
+Every PinNumpad screen had its own digit handler, each with one of two
+stale-state bugs that only show under fast typing on a slow device (several
+taps land before the next render): `if (pin.length < 4) setPin(prev => prev + d)`
+checks a stale length but appends to the latest value, so the PIN grew past 4 —
+on login, Sign In stayed disabled until the user backspaced an invisible 5th
+digit; `setPin(pin + d)` builds from a stale value and drops digits. MainMenu
+and the tables Sidebar also auto-submitted through `setTimeout(submit, 100)`,
+which read a 3-digit `currentPin` whenever the re-render took longer than
+100ms.
+
+`hooks/usePinEntry.ts` keeps the digits in a ref that each key press reads and
+writes synchronously, and exposes a stable `onKeyPress`. `PinNumpad` registers
+keys on touch-down with a native Android ripple (instant even when JS is busy)
+and memoizes its keys so a digit re-renders only the dots. Product rule: a
+prompt that shows a Confirm/Verify button never submits on its own; only
+`OrderPinGate` (no confirm button) submits on the 4th digit.
+
+Found along the way, not changed: the tables Sidebar manager-PIN gate accepts
+any 4 digits (`TODO: Implement actual PIN validation`); `ManagerApprovalModal`
+has a no-op keypad but is imported nowhere. MainMenu no longer logs stored PINs.
+
 ### Focus header jump
 
 The single-select quick-action row replaced the header with a fixed `s(44)`
@@ -131,7 +158,11 @@ the normal header, which keeps setting the height.
   (14) guards the idle-load, header, and settings-panel fixes. All KDS suites
   pass (86 tests). `kdsOnlineOrdersBusinessDay.test.ts` (7) covers the date
   label, the business-day query floor, and rollover pruning; all 9
-  online-order suites pass (100 tests).
+  online-order suites pass (100 tests). `usePinEntry.test.tsx` (32) covers
+  rapid taps from one stale render (never >4 digits, never a dropped digit),
+  backspace/clear, disabled, stable handler, every PIN screen on the hook, and
+  no auto-submit where a Confirm button shows. Lint on all 15 PIN files
+  matches HEAD.
 
 ## Files
 
@@ -146,7 +177,15 @@ the normal header, which keeps setting the height.
 - `app/(main)/settings/kds.tsx`
 - `hooks/pos/useKdsOnlineOrdersBootstrap.ts`, `hooks/pos/useOrdersQuery.ts`
 - `lib/onlineOrderLabel.ts`, `components/online-orders/OnlineOrderCard.tsx`
-- `__tests__/kdsTicketBoard.test.tsx` (new), `__tests__/kdsLowEndPerf.test.ts` (new),
+- `hooks/usePinEntry.ts` (new), `components/auth/PinNumpad.tsx`, and the 13 PIN
+  screens (`app/(auth)/pin-login.tsx`, `app/(main)/settings/{kds,general}.tsx`,
+  `components/{MainMenu,tables/Sidebar,bill/MoreOptionsBottomSheet}.tsx`,
+  `components/auth/{DeactivateTerminalModal,OrderPinGate}.tsx`,
+  `components/timeclock/{PinInputModal,ClockInOutModal}.tsx`,
+  `components/settings/security-and-login/SwitchAccountModal.tsx`,
+  `components/cash-drawer/{NoSaleModal,PayInOutModal}.tsx`)
+- `__tests__/usePinEntry.test.tsx` (new),
+  `__tests__/kdsTicketBoard.test.tsx` (new), `__tests__/kdsLowEndPerf.test.ts` (new),
   `__tests__/kdsOnlineOrdersBusinessDay.test.ts` (new)
 
 ## Open QA
@@ -163,6 +202,10 @@ the normal header, which keeps setting the height.
 - Online-orders drawer on KDS: only today's (business-day) active online
   orders; count matches the POS drawer; a board left running past the
   business-day rollover drops yesterday's leftovers within ~2 min.
+- PIN (login, KDS manager PIN, clock in/out, cash drawer, tax exempt): type
+  fast with two thumbs — never more than 4 dots' worth, never a lost digit;
+  nothing submits until Confirm/Sign In is tapped (except the per-order PIN
+  gate, which has no confirm button); keys look unchanged and ripple on press.
 - Settings panel: open (PIN), change columns / workflow / sounds, close with
   the Back button and with Android back — board updates without a reload; a
   new order arriving while settings is open plays its sound; logout from
