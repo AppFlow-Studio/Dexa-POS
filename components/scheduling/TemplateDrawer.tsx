@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { Sparkles } from "lucide-react-native";
+import { Sparkles } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { useScheduleTemplateStore } from '@/stores/useScheduleTemplateStore'; // Import the store

@@ -337,10 +337,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     };
   }, [supabase, selectedStation?.id, selectedStore?.id, isKDS]);
 
-  // Terminal health check lifecycle
+  // Terminal health check lifecycle. A KDS never takes payments, so it never
+  // probes a terminal — even if its station row still has one attached.
   useEffect(() => {
     const terminal = selectedStation?.payment_terminal;
-    if (supabase && terminal?.id) {
+    if (supabase && terminal?.id && !isKDS) {
       startTerminalHealthCheck(supabase, terminal.id, terminal);
     }
     return () => {
@@ -355,7 +356,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           .catch(() => {});
       }
     };
-  }, [supabase, selectedStation?.payment_terminal?.id]);
+  }, [supabase, selectedStation?.payment_terminal?.id, isKDS]);
 
   // Zero-touch Castles USB auto-connect: plug in a USB pin pad (or have it
   // already attached at app/station load) and the shared singleton connects

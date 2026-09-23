@@ -1,7 +1,7 @@
 import { BatchoutPanel } from '@/components/settings/batchout/BatchoutPanel'
 import { colors } from '@/lib/theme'
 import { Stack, useRouter } from 'expo-router'
-import { ChevronLeft } from 'lucide-react-native'
+import { ChevronLeft } from '@/lib/icons'
 import { useCallback } from 'react'
 import { Pressable, ScrollView, Text, TouchableOpacity } from 'react-native'
 

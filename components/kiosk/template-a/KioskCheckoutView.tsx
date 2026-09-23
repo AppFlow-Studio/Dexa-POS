@@ -20,7 +20,7 @@ import {
   ChevronLeft,
   CreditCard,
   Heart,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,

@@ -34,7 +34,7 @@ import {
   CreditCard,
   TrendingUp,
   XCircle
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useRef, useState } from 'react'
 import {
   ActivityIndicator,

@@ -11,7 +11,7 @@ import { findOrCreateCustomerByPhone } from "@/services/loyalty/loyaltyService";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ChevronLeft, Delete } from "lucide-react-native";
+import { ChevronLeft, Delete } from "@/lib/icons";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,

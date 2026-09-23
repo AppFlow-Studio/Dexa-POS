@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { PaymentStatus } from "@/lib/types";
-import { Check, Filter } from "lucide-react-native";
+import { Check, Filter } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import {

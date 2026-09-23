@@ -23,7 +23,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { CustomerWithMeta } from "@/types/customer";
 import { formatAddress, parseAddressString } from "@/utils/addressUtils";
-import { ArrowLeft, Search, X } from "lucide-react-native";
+import { ArrowLeft, Search, X } from "@/lib/icons";
 import React, {
     useCallback,
     useEffect,

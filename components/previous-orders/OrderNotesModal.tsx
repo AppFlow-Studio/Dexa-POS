@@ -1,6 +1,6 @@
 import { colors } from '@/lib/theme'
 import { CartItem, OrderProfile } from '@/lib/types'
-import { X } from 'lucide-react-native'
+import { X } from '@/lib/icons'
 import React, { useEffect, useRef, useState } from 'react'
 import {
   Animated,

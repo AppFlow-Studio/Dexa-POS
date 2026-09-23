@@ -25,7 +25,7 @@ import {
     RefreshCw,
     Trash2,
     Upload
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useState } from "react";
 import {
     Alert,

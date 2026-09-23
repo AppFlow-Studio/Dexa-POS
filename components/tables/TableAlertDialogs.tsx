@@ -1,6 +1,6 @@
 import { AlertDialog, AlertDialogContent } from '@/components/ui/alert-dialog'
 import { colors } from '@/lib/theme'
-import { AlertTriangle, Lock } from 'lucide-react-native'
+import { AlertTriangle, Lock } from '@/lib/icons'
 import React from 'react'
 import {
   ScrollView,

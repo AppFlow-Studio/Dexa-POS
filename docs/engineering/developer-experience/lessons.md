@@ -119,3 +119,21 @@
 - Rule: before a research phase, write one or two lines saying what must be verified and why it blocks the code. When a verification lands, say what it resolved and start writing; read the rest just-in-time against the file being edited. Batch the reads: one wide sweep beats four narrow rounds, and the second batch should already be edits.
 - Corollary for this codebase: the "how does a menu change reach the device" question has one answer and it is now written down (`docs/features/menu-management/per-station-menu-scope.md`, "Change signal"). Read that before touching bootstrap or version RPCs instead of re-deriving it from `useMenuVersionWatch` and `PosSyncProvider`.
 - A new `menu_bootstrap`-adjacent field needs a **new table**, not a column: the local schema's additive-upgrade mechanism only re-runs `CREATE ... IF NOT EXISTS`, so a column would force a drop-and-rebuild of every tablet's mirror. `menu_station_scopes` is the pattern.
+
+## KDS perf investigations: read the code first; the board layout is a fixed requirement
+
+- **Do not drive the user's device mid-investigation.** A Metro reload sent to the KDS tablet for an A/B frame count dropped the app to the login screen, so the "after" number was measured on the wrong screen and was worthless, and the user had to log back in. Profiling a device someone else is using needs their go-ahead per action, and an experiment that reloads JS must first confirm the app comes back to the screen being measured. Default to reading the code; use the device only for read-only snapshots (`dumpsys meminfo`/`gfxinfo`, per-thread CPU from `/proc`), and never trigger data-mutating actions (bumps) on a shared backend without asking.
+- **Board layout is product-fixed:** tickets flow left to right across N columns (reading order runs row by row) and the whole board scrolls as one surface, never per column. Perf fixes must keep this exact layout. Don't propose per-column lists, paging, or a different ordering as the "fix".
+- **Check when a suspect was introduced before blaming it.** The lag predates `MasonryFlashList` (2026-08-27). `git log -S "<symbol>" -- <file>` dates each suspect in seconds, so a newer component can't be taken as the root cause of an older symptom.
+
+## PIN prompts: a Confirm button means wait for it
+
+- Product rule (user, 2026-09-23): any modal or screen that shows a Confirm / Verify / Sign In button must not proceed until that button is pressed, even once 4 digits are in. Auto-submit on the last digit is only for PIN prompts with no confirm button (today: `OrderPinGate`). Guarded in `__tests__/usePinEntry.test.tsx`.
+- All PinNumpad digit handling goes through `hooks/usePinEntry.ts`. Never write `if (pin.length < 4) setPin(prev => prev + d)` or `setPin(pin + d)`: under fast typing on a slow device, taps land before the next render, so the first grows the PIN past 4 (Sign In stays disabled until an invisible 5th digit is backspaced) and the second drops digits.
+- Don't give a NativeWind-wrapped `Pressable` a function style (`style={({ pressed }) => …}`): on the PIN keypad it was dropped entirely and the keys rendered unstyled. Use a plain style object; `android_ripple` gives native press feedback.
+
+## Mock data gets removed, not relocated
+
+- Product rule (user, 2026-09-23): mock/demo data does not belong in the app. When asked to take it off a hot path, delete it and the assets only it used — don't move it into a new module to keep it alive (I moved `MENU_IMAGE_MAP` into `lib/menuImageMap.ts` and was corrected). Replace each fake fallback with real data or an empty state (`—`, an icon placeholder), never another sample person or number.
+- Mock data hides under other names: `mockDiscounts`, `mockApplicants`, `// --- Mock Data ---` blocks, hardcoded "Downtown Location" pickers, and demo defaults in stores (`useSettingsStore` had fake delivery partners and a funding balance). Grep for the fake values (`John Smith`, `Tom Hardy`, `Downtown`), not only for `mock`.
+- Not everything named "mock" is fake data: the Castles/Valor mock transports are a QA tool for rehearsing terminal failures; receipt-template preview samples and `lib/db/measure.ts` fixtures are deliberate. Ask before removing tools.

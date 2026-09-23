@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
-import { Plus, XCircle, Wifi } from "lucide-react-native";
+import { Plus, XCircle, Wifi } from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 

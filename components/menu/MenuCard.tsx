@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { Menu } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { Eye, EyeOff, GripVertical, Pencil } from "lucide-react-native";
+import { Eye, EyeOff, GripVertical, Pencil } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

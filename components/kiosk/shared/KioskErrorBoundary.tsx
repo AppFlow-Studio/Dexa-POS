@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/react-native";
 import * as Updates from "expo-updates";
-import { RefreshCw } from "lucide-react-native";
+import { RefreshCw } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 

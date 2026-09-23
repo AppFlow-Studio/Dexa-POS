@@ -7,7 +7,7 @@ import {
   ShieldCheck,
   Tablet,
   Wifi,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Switch } from "~/components/ui/switch";

@@ -3,7 +3,7 @@ import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import type { CFDCartItem } from '@/types/cfd.types'
-import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
+import { Banknote, CreditCard, UtensilsCrossed } from '@/lib/icons'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FlatList,

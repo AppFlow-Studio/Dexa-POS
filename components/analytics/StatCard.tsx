@@ -1,4 +1,4 @@
-import { ArrowUp } from "lucide-react-native";
+import { ArrowUp } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 

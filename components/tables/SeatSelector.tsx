@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { Minus, Plus } from "lucide-react-native";
+import { Minus, Plus } from "@/lib/icons";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 

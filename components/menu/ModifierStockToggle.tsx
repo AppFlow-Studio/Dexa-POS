@@ -5,7 +5,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Ban, Check } from "lucide-react-native";
+import { Ban, Check } from "@/lib/icons";
 import { useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity } from "react-native";
 

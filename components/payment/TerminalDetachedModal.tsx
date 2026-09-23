@@ -23,7 +23,7 @@ import { listDevices } from '@/modules/castles-usb'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
-import { CableIcon, Loader2, RefreshCcw } from 'lucide-react-native'
+import { CableIcon, Loader2, RefreshCcw } from '@/lib/icons'
 import { useEffect, useRef, useState } from 'react'
 import { Modal, Text, TouchableOpacity, View } from 'react-native'
 

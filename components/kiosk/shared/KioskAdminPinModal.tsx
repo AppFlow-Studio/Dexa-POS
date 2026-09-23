@@ -1,6 +1,6 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import type { MerchantRole } from "@/lib/types";
-import { Delete, Lock, X } from "lucide-react-native";
+import { Delete, Lock, X } from "@/lib/icons";
 import { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 

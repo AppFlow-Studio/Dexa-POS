@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { router } from "expo-router";
-import { ArrowLeft, Copy, Globe } from "lucide-react-native";
+import { ArrowLeft, Copy, Globe } from "@/lib/icons";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 interface GlobalItemScreenProps {

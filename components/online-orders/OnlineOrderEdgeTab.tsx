@@ -10,7 +10,7 @@ import {
   selectTabPositionY,
   useOnlineOrderDrawerStore,
 } from "@/stores/useOnlineOrderDrawerStore";
-import { ShoppingBag } from "lucide-react-native";
+import { ShoppingBag } from "@/lib/icons";
 import React, { memo, useEffect, useMemo, useRef } from "react";
 import { Text, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";

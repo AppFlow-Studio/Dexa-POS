@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { TemplateShift } from "@/lib/types";
-import { Plus } from "lucide-react-native";
+import { Plus } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

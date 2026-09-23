@@ -18,7 +18,7 @@ import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { Image } from "expo-image";
-import { Search, X } from "lucide-react-native";
+import { Search, X } from "@/lib/icons";
 import { Text, View } from "react-native";
 
 /**

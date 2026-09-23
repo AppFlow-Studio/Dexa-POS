@@ -5,7 +5,7 @@ import { SelectedLocation, useStoreSettingsStore } from "@/stores/useStoreSettin
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { colors } from "@/lib/theme";
-import { Barcode, Mail, MessageSquare, Printer, QrCode, X } from "lucide-react-native";
+import { Barcode, Mail, MessageSquare, Printer, QrCode, X } from "@/lib/icons";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,

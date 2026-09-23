@@ -30,7 +30,7 @@ import { round2 } from '@/utils/money'
 import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
-import { CheckCircle2, Keyboard, Wifi } from 'lucide-react-native'
+import { CheckCircle2, Keyboard, Wifi } from '@/lib/icons'
 import { useEffect, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import {

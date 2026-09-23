@@ -6,7 +6,7 @@ import {
     Undo2,
     X,
     XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useRef } from "react";
 import {
     Animated,

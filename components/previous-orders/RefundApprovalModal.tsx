@@ -11,7 +11,7 @@
 import { colors } from "@/lib/theme";
 import type { MerchantRole } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { AlertTriangle, Delete, Lock, X } from "lucide-react-native";
+import { AlertTriangle, Delete, Lock, X } from "@/lib/icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,

@@ -1,7 +1,7 @@
 import { useUiScale } from "@/lib/uiScale";
 import { usePaymentVerification } from "@/hooks/usePaymentVerification";
 import { colors } from "@/lib/theme";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react-native";
+import { AlertTriangle, Loader2, RefreshCw } from "@/lib/icons";
 import { useMemo, useState } from "react";
 import {
     ActivityIndicator,

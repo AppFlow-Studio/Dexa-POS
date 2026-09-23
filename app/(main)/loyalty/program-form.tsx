@@ -17,7 +17,7 @@ import {
   Trash2,
   TrendingUp,
   Zap
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,

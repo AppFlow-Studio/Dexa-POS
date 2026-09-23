@@ -39,10 +39,13 @@ export function useKioskProfile() {
 
   const stationId = selectedStation?.id ?? null;
   const kioskProfileId = selectedStation?.kiosk_profile_id ?? null;
+  // A KDS never shows kiosk UI, so it shouldn't pay for the profile fetch and
+  // its 3-minute poll.
+  const isKDS = selectedStation?.station_type === "kds";
 
   const query = useQuery({
     queryKey: kioskProfileQueryKeys.forStation(stationId, kioskProfileId),
-    enabled: !!stationId && !!locationId,
+    enabled: !!stationId && !!locationId && !isKDS,
     staleTime: KIOSK_PROFILE_POLL_MS,
     refetchInterval: KIOSK_PROFILE_POLL_MS,
     queryFn: async (): Promise<KioskProfileRow | null> => {

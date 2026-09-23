@@ -2,7 +2,7 @@
 import { useCFD } from '@/hooks/useCFD'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { Monitor, MonitorOff } from 'lucide-react-native'
+import { Monitor, MonitorOff } from '@/lib/icons'
 import { Pressable, Text } from 'react-native'
 
 interface CFDStatusBadgeProps {

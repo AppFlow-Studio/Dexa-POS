@@ -7,7 +7,7 @@ import { useUiScale } from '@/lib/uiScale'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { formatAddress, serializeDeliveryAddress } from '@/utils/addressUtils'
-import { Edit3, MapPin, User } from 'lucide-react-native'
+import { Edit3, MapPin, User } from '@/lib/icons'
 import React, { useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,

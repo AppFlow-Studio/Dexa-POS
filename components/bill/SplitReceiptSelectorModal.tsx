@@ -3,7 +3,7 @@ import { OrderProfile, OrderProfilePayment } from '@/lib/types'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { SelectedLocation } from '@/stores/useStoreSettingsStore'
 import { formatCurrency } from '@/utils/currency'
-import { Printer, X } from 'lucide-react-native'
+import { Printer, X } from '@/lib/icons'
 import React, { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,

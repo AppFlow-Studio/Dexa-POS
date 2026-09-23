@@ -5,7 +5,7 @@ import { colors } from "@/lib/theme";
 import { ScheduleTemplate } from "@/lib/types";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore";
 import { useRouter } from "expo-router";
-import { Calendar, CheckCircle2, Plus, X } from "lucide-react-native";
+import { Calendar, CheckCircle2, Plus, X } from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,

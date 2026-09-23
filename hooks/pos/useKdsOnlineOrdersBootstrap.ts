@@ -1,6 +1,7 @@
+import { resolveBusinessDayStartUtc } from "@/hooks/pos/useOrdersQuery";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DEADLINES } from "@/lib/network/deadlines";
-import { ONLINE_ORDER_SOURCES } from "@/lib/orderSource";
+import { isOnlineOrderSource, ONLINE_ORDER_SOURCES } from "@/lib/orderSource";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { useOrderStore } from "@/stores/useOrderStore";
 import {
@@ -23,6 +24,30 @@ const ACTIVE_ONLINE_STATUSES = [
 ];
 
 /**
+ * Drop online orders opened before the current business day that the latest
+ * fetch no longer returns. A KDS left running across the business-day
+ * rollover would otherwise keep yesterday's never-completed orders in the
+ * drawer until the app restarted. Exported for tests.
+ */
+export function pruneEarlierBusinessDayOnlineOrders(
+  businessDayStartUtc: string,
+  fetchedOrderIds: Set<string>,
+): void {
+  const floor = Date.parse(businessDayStartUtc);
+  if (!Number.isFinite(floor)) return;
+  const { ordersById, orderIds, removeOrder } = useOrderStore.getState();
+  const stale: string[] = [];
+  for (const key of orderIds) {
+    const order = ordersById[key];
+    if (!order || !isOnlineOrderSource(order.order_source)) continue;
+    if (fetchedOrderIds.has(order.db_order_id ?? key)) continue;
+    const opened = Date.parse(order.opened_at ?? "");
+    if (Number.isFinite(opened) && opened < floor) stale.push(key);
+  }
+  for (const key of stale) removeOrder(key);
+}
+
+/**
  * KDS-only bootstrap for the online-orders edge tab/drawer.
  *
  * KDS stations skip `useOrdersQuery` (the full POS workspace hydration), so
@@ -31,6 +56,11 @@ const ACTIVE_ONLINE_STATUSES = [
  * order store via `upsertOrder` (reusing its rekey/merge/index maintenance),
  * then realtime order broadcasts (fanned into the store by
  * `handleOrderChangeKDS` in app/(main)/_layout.tsx) keep them live.
+ *
+ * Bounded to the current business day, the same floor the POS workspace load
+ * uses (`useOrdersQuery`). Without it every online order that never reached a
+ * terminal status — from any day — filled the KDS drawer, while the POS drawer
+ * (business-day bounded) showed none of them.
  */
 export function useKdsOnlineOrdersBootstrap({
   locationId,
@@ -64,18 +94,24 @@ export function useKdsOnlineOrdersBootstrap({
         // deadline-wrapped below, so a slow response degrades to a skipped
         // refresh (realtime broadcasts remain the primary feed) rather than a
         // hung KDS.
+        const businessDayStartUtc = resolveBusinessDayStartUtc();
         const { data, error } = await withDeadline(
-          async (signal) =>
-            await supabase
+          async (signal) => {
+            let q = supabase
               .from("orders")
               .select(`*, order_items(*, order_item_modifiers(*))`)
               .eq("location_id", locationId)
               .in("order_source", [...ONLINE_ORDER_SOURCES])
               .eq("order_items.is_voided", false)
-              .in("status", ACTIVE_ONLINE_STATUSES)
+              .in("status", ACTIVE_ONLINE_STATUSES);
+            if (businessDayStartUtc) {
+              q = q.gte("created_at", businessDayStartUtc);
+            }
+            return await q
               .order("created_at", { ascending: false })
               .limit(ONLINE_ORDERS_LIMIT)
-              .abortSignal(signal),
+              .abortSignal(signal);
+          },
           DEADLINES.read,
           "kds_online_orders_bootstrap",
         );
@@ -91,6 +127,12 @@ export function useKdsOnlineOrdersBootstrap({
         const store = useOrderStore.getState();
         for (const row of data as unknown[]) {
           store.upsertOrder(normalizeFetchedOrder(row as FetchedOrderData));
+        }
+        if (businessDayStartUtc) {
+          pruneEarlierBusinessDayOnlineOrders(
+            businessDayStartUtc,
+            new Set((data as { id: string }[]).map((row) => row.id)),
+          );
         }
       } catch (err) {
         if (__DEV__) {

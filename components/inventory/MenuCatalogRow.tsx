@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { MenuItemType } from "@/lib/types";
 import { Link } from "expo-router";
-import { Check, Edit, Eye, EyeOff, MoreHorizontal } from "lucide-react-native";
+import { Check, Edit, Eye, EyeOff, MoreHorizontal } from "@/lib/icons";
 import React, { useCallback, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import {

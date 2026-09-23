@@ -6,7 +6,7 @@ import {
   Gift,
   RotateCcw,
   X
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useState } from 'react'
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
 

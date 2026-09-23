@@ -7,7 +7,7 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from "@/components/ui/bottomSheet";
 import { Link } from "expo-router";
-import { AlertTriangle, Check, Search } from "lucide-react-native";
+import { AlertTriangle, Check, Search } from "@/lib/icons";
 import React, {
   forwardRef,
   useCallback,

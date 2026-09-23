@@ -15,7 +15,7 @@ import {
   CreditCard,
   DollarSign,
   X
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import { useState } from 'react'
 import {
   Alert,

@@ -5,14 +5,12 @@ import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { usePtoStore } from '@/stores/usePtoStore'
 import { useScheduleStore } from '@/stores/useScheduleStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import {
-  addDays,
-  differenceInDays,
-  format,
-  isBefore,
-  startOfDay
-} from 'date-fns'
-import { Calendar as CalendarIcon } from 'lucide-react-native'
+import { addDays } from 'date-fns/addDays'
+import { differenceInDays } from 'date-fns/differenceInDays'
+import { format } from 'date-fns/format'
+import { isBefore } from 'date-fns/isBefore'
+import { startOfDay } from 'date-fns/startOfDay'
+import { Calendar as CalendarIcon } from '@/lib/icons'
 import React, { useMemo, useRef, useState } from 'react'
 import {
   KeyboardAvoidingView,

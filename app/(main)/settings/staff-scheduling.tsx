@@ -7,7 +7,9 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { addDays, format, parseISO } from "date-fns";
+import { addDays } from "date-fns/addDays";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
 import { useRouter } from "expo-router";
 import {
   AlertTriangle,
@@ -17,7 +19,7 @@ import {
   FileText,
   Plus,
   Trash2,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useState } from "react";
 import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 

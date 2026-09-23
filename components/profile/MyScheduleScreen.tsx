@@ -5,18 +5,16 @@ import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import BottomSheet from "@/components/ui/bottomSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
-import {
-  addDays,
-  differenceInDays,
-  differenceInMinutes,
-  format,
-  isAfter,
-  isSameDay,
-  isSameWeek,
-  parseISO,
-  startOfDay,
-  startOfWeek,
-} from "date-fns";
+import { addDays } from "date-fns/addDays";
+import { differenceInDays } from "date-fns/differenceInDays";
+import { differenceInMinutes } from "date-fns/differenceInMinutes";
+import { format } from "date-fns/format";
+import { isAfter } from "date-fns/isAfter";
+import { isSameDay } from "date-fns/isSameDay";
+import { isSameWeek } from "date-fns/isSameWeek";
+import { parseISO } from "date-fns/parseISO";
+import { startOfDay } from "date-fns/startOfDay";
+import { startOfWeek } from "date-fns/startOfWeek";
 import {
   AlertTriangle,
   Briefcase,
@@ -26,7 +24,7 @@ import {
   ChevronRight,
   Clock,
   Coffee,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import React, { useMemo, useRef, useState } from "react";
 import {

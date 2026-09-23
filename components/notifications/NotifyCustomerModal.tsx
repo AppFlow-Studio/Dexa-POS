@@ -8,7 +8,7 @@ import {
   renderTemplate,
 } from "@/lib/notifyTemplates";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
-import { Bell, MessageSquare, Phone, Send, X } from "lucide-react-native";
+import { Bell, MessageSquare, Phone, Send, X } from "@/lib/icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,

@@ -11,7 +11,7 @@ import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ShoppingBag, UtensilsCrossed } from "lucide-react-native";
+import { ShoppingBag, UtensilsCrossed } from "@/lib/icons";
 import { Text, useWindowDimensions, View } from "react-native";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 

@@ -4,6 +4,7 @@ import SessionLogoutModal from "@/components/auth/SessionLogoutModal";
 import { useSessionKick } from "@/contexts/SessionKickListenerProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { useLocationStations } from "@/hooks/useLocationStations";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
 import { replaceRoute } from "@/lib/rootNavigation";
@@ -37,7 +38,7 @@ import {
   Play,
   Plus,
   Search,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -849,14 +850,15 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
 }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  const [pin, setPin] = useState("");
+  // No auto-submit: a modal that shows a Verify button waits for it.
+  const { pin, setPin, onKeyPress } = usePinEntry({ length: 4 });
   const shakeX = useSharedValue(0);
   const shakeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shakeX.value }],
   }));
 
-  const handleVerify = useCallback(() => {
-    const employee = useEmployeeStore.getState().findEmployeeByPin(pin);
+  const handleVerify = useCallback((entered: string) => {
+    const employee = useEmployeeStore.getState().findEmployeeByPin(entered);
     const isManager = employee && MANAGER_ROLES.includes(employee.role);
     if (isManager) {
       setPin("");
@@ -878,7 +880,7 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
         type: "error",
       });
     }
-  }, [pin, onSuccess, shakeX]);
+  }, [onSuccess, shakeX, setPin]);
 
   const handleCancel = () => {
     setPin("");
@@ -931,20 +933,10 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
             </Text>
             <Animated.View style={shakeStyle}>
               <PinDisplay pinLength={pin.length} maxLength={4} />
-              <PinNumpad
-                onKeyPress={(input) => {
-                  if (typeof input === "number") {
-                    if (pin.length < 4) setPin(pin + input.toString());
-                  } else if (input === "clear") {
-                    setPin("");
-                  } else if (input === "backspace") {
-                    setPin(pin.slice(0, -1));
-                  }
-                }}
-              />
+              <PinNumpad onKeyPress={onKeyPress} />
             </Animated.View>
             <TouchableOpacity
-              onPress={handleVerify}
+              onPress={() => handleVerify(pin)}
               style={{
                 paddingVertical: s(10),
                 backgroundColor: colors.teal + "20",
@@ -1637,12 +1629,15 @@ const KdsSettingsScreen = () => {
 
   const activeStation = kdsStations[activeStationIdx];
 
-  // Fetch display config when station tab changes
+  // Fetch display config when station tab changes. A KDS device only ever
+  // shows its own station, but until the auto-select above lands the active
+  // tab is index 0 — possibly another display — and fetching it would load
+  // that display's config into the store this device's board runs on.
   useEffect(() => {
-    if (activeStation?.id) {
-      fetchKDSDisplay(activeStation.id);
-    }
-  }, [activeStation?.id, fetchKDSDisplay]);
+    if (!activeStation?.id) return;
+    if (isKDSDevice && activeStation.id !== selectedStation?.id) return;
+    fetchKDSDisplay(activeStation.id);
+  }, [activeStation?.id, fetchKDSDisplay, isKDSDevice, selectedStation?.id]);
 
   const workflowMode = kdsConfig.workflowMode ?? "3-step";
   const tapMode = kdsConfig.ticketTapMode ?? "double-tap";

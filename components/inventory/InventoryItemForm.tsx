@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { InventoryItem } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
-import { Upload } from "lucide-react-native";
+import { Upload } from "@/lib/icons";
 import React, { useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported

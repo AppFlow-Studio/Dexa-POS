@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { Minus, Plus, Printer, RefreshCw, Route, Settings2 } from "lucide-react-native";
+import { Minus, Plus, Printer, RefreshCw, Route, Settings2 } from "@/lib/icons";
 
 import { DiscoveredPrinterList } from "@/components/settings/DiscoveredPrinterList";
 import { ManualIpPanel } from "@/components/settings/ManualIpPanel";
@@ -1126,8 +1126,7 @@ function OtherTab() {
 
 // Minimal inline dialog for the "Full Settings" action on a printer card.
 // Lets the user rename + change role + toggle default flags + activate state.
-// Larger schema-aware editing (paper width, modifiers, etc.) is deferred — the
-// existing EditPrinterModal.tsx is mock-data only and can't be reused.
+// Larger schema-aware editing (paper width, modifiers, etc.) is deferred.
 function EditPrinterDialog({
   printer,
   onClose,

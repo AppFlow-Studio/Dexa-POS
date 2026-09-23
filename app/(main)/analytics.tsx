@@ -1,6 +1,6 @@
 import { useUiScale } from "@/lib/uiScale";
 import { useRouter } from "expo-router";
-import { BarChart3 } from "lucide-react-native";
+import { BarChart3 } from "@/lib/icons";
 import React, { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { colors } from "@/lib/theme";

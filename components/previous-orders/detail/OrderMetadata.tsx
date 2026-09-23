@@ -11,7 +11,7 @@ import {
   User,
   Users,
   Utensils
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useMemo } from 'react'
 import { Text, View } from 'react-native'
 

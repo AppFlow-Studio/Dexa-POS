@@ -66,3 +66,29 @@ export function resolveOrderLabel(order: {
 
   return onlineOrderShortCode(order) ?? dexaLabel;
 }
+
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * "2:45 PM" for an order placed today, "Sep 21 · 2:45 PM" otherwise — a
+ * time-only label made a days-old order read as current.
+ */
+export function formatOrderTime(iso: string | null, now = new Date()): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const d = new Date(t);
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  const time = `${h}:${m.toString().padStart(2, "0")} ${ampm}`;
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  return sameDay ? time : `${MONTHS[d.getMonth()]} ${d.getDate()} · ${time}`;
+}

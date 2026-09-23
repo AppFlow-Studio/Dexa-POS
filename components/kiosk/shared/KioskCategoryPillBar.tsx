@@ -12,7 +12,7 @@ import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { LinearGradient } from "expo-linear-gradient";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text } from "react-native";
 import Animated, {

@@ -4,7 +4,7 @@ import { CartItem } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Delete, Plus, X } from "lucide-react-native";
+import { Delete, Plus, X } from "@/lib/icons";
 import { useMemo, useState } from "react";
 import {
   Keyboard,

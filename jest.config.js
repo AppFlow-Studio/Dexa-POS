@@ -23,6 +23,11 @@ module.exports = {
   // Map path aliases to actual paths (must match tsconfig.json)
   // Without this, imports like @/lib/order-calculator would fail
   moduleNameMapper: {
+    // lib/icons deep-imports single ESM lucide icon files, which Jest neither
+    // transforms nor may resolve past the package "exports"; use the matching
+    // CommonJS build of the same icon.
+    "^lucide-react-native/dist/esm/icons/(.*)\\.mjs$":
+      "<rootDir>/node_modules/lucide-react-native/dist/cjs/icons/$1.js",
     "^@/(.*)$": "<rootDir>/$1",
     "^~/(.*)$": "<rootDir>/$1",
   },

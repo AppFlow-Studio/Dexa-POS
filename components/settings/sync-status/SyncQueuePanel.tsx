@@ -16,7 +16,7 @@ import {
   processQueueNow,
   type OfflineOperation
 } from '@/services/offlineSyncService'
-import { Cloud, CloudOff, RefreshCw, RotateCcw } from 'lucide-react-native'
+import { Cloud, CloudOff, RefreshCw, RotateCcw } from '@/lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 

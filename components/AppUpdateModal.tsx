@@ -1,6 +1,6 @@
 import { colors } from '@/lib/theme'
 import { downloadAndInstallApk, type VersionManifest } from '@/services/appUpdater'
-import { ArrowDownToLine, RefreshCw } from 'lucide-react-native'
+import { ArrowDownToLine, RefreshCw } from '@/lib/icons'
 import React, { useState } from 'react'
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
 

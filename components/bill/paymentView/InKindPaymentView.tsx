@@ -9,7 +9,7 @@ import {
   useActiveOrderTotals,
 } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { AlertTriangle, ArrowLeft } from "lucide-react-native";
+import { AlertTriangle, ArrowLeft } from "@/lib/icons";
 import { useEffect, useRef, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 

@@ -10,7 +10,7 @@ import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
-import { Search, X } from "lucide-react-native";
+import { Search, X } from "@/lib/icons";
 import { TextInput } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 

@@ -8,7 +8,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import * as PopoverPrimitive from "@rn-primitives/popover";
-import { Calendar as CalendarIcon } from "lucide-react-native";
+import { Calendar as CalendarIcon } from "@/lib/icons";
 import { DateTime } from "luxon";
 import React, { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";

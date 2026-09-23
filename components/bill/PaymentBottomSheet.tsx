@@ -1,7 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { LogOut } from 'lucide-react-native'
+import { LogOut } from '@/lib/icons'
 import React, { useState } from 'react'
 import {
   Modal,

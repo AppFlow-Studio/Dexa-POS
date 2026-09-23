@@ -22,7 +22,7 @@ import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { FlashList } from "@shopify/flash-list";
-import { Search } from "lucide-react-native";
+import { Search } from "@/lib/icons";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";

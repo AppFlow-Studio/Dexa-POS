@@ -45,7 +45,7 @@ import {
     usePreviousOrdersStore,
 } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Search } from "lucide-react-native";
+import { Search } from "@/lib/icons";
 
 import { FlashList } from "@shopify/flash-list";
 import { useFocusEffect, useRouter } from "expo-router";

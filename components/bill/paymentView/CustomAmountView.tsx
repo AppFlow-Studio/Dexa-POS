@@ -13,7 +13,7 @@ import {
   Plus,
   Trash2,
   User,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,

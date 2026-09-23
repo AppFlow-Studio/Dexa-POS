@@ -1,6 +1,6 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { CreditCard, Banknote, Terminal, Smartphone } from 'lucide-react-native'
+import { CreditCard, Banknote, Terminal, Smartphone } from '@/lib/icons'
 import React from 'react'
 import {
   ScrollView,

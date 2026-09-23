@@ -15,7 +15,7 @@ import {
   X,
   AlertTriangle,
   Zap,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";

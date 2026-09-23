@@ -17,7 +17,7 @@ import {
   Shield,
   ShieldOff,
   Trash2
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useState } from 'react'
 import {
   ScrollView,

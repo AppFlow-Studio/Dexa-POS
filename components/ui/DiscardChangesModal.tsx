@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { AlertTriangle } from "lucide-react-native";
+import { AlertTriangle } from "@/lib/icons";
 import React from "react";
 import { Modal, Text, TouchableOpacity, View } from "react-native";
 

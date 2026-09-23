@@ -24,7 +24,7 @@ import {
   Plus,
   ShoppingCart,
   Trash2,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import {
   Image,
   ScrollView,
