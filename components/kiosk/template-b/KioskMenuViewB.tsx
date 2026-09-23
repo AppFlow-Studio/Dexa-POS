@@ -6,12 +6,20 @@ import {
 } from "@/components/kiosk/shared/kioskItemAvailability";
 import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
 import { kioskBannerHeight, kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
+import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
-import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
-import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
+import { KioskSearchResults } from "@/components/kiosk/shared/KioskSearchResults";
+import type { KioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
-import { isMenuVisibleOnChannel } from "@/lib/menu/menuChannelVisibility";
+import {
+  useIsStationMenuScopeEmpty,
+  useVisibleMenus,
+} from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
+import {
+  kioskItemSourceFromKey,
+  type KioskItemSource,
+} from "@/stores/useKioskCartStore";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
   resolveKioskColumns,
@@ -19,7 +27,7 @@ import {
 } from "@/stores/useKioskDeviceSettingsStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
 
 /**
@@ -34,19 +42,25 @@ import { useWindowDimensions, View } from "react-native";
  * rail + grid, so horizontal drops the banner entirely (rail + grid only,
  * like Template A).
  *
- * Search sits between the banner and the split, spanning both panes, and opens
- * KioskSearchOverlay over the whole view — same placement and behaviour as
- * Templates A and C.
+ * Nothing sits between the banner and the split: categories are in the rail
+ * and search lives in the header, so the rail and grid get the whole of what
+ * the banner leaves.
  */
 export function KioskMenuViewB({
   config,
   onSelectItem,
+  search,
 }: {
   config: KioskConfig;
-  onSelectItem: (item: MenuItemType) => void;
+  /** `source` is the menu + category the item was picked from. */
+  onSelectItem: (item: MenuItemType, source?: KioskItemSource) => void;
+  /** Owned by the template shell — the header draws the field, this draws the results. */
+  search: KioskMenuSearchState;
 }) {
   const s = useKioskUiScale();
-  const menus = useMenuStore((s) => s.menus);
+  // Kiosk channel + per-station scope are applied by the shared selector.
+  const menus = useVisibleMenus();
+  const scopedToNothing = useIsStationMenuScopeEmpty();
   const resolveGroups = useModifierGroupResolver();
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
@@ -57,10 +71,7 @@ export function KioskMenuViewB({
 
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter(
-        (m) =>
-          isMenuVisibleOnChannel(m, "kiosk") && isMenuAvailableNow(m.id),
-      )
+      .filter((m) => isMenuAvailableNow(m.id))
       .map((m) => ({
         menuId: m.id,
         title: m.name,
@@ -89,12 +100,25 @@ export function KioskMenuViewB({
 
   const items = useOrderableItems(activeCategory?.items);
 
-  const [searchOpen, setSearchOpen] = useState(false);
+  // Picking a category is also a way out of a search: the results layer covers
+  // the grid, so leaving it up after a switch would show the customer the same
+  // list and no sign that anything happened.
+  const handleSelectCategory = useCallback(
+    (key: string) => {
+      search.close();
+      setActiveKey(key);
+    },
+    [search],
+  );
 
   const bannerImages = kioskOrderBannerImages(config);
   const hasMedia = bannerImages.length > 0 && isVertical;
   const { height: screenHeight } = useWindowDimensions();
   const bannerHeight = kioskBannerHeight(screenHeight);
+
+  // Scoped to a selection that leaves nothing: fail closed to the empty state,
+  // never to the full menu. After every hook, so the hook order is stable.
+  if (scopedToNothing) return <KioskNoMenusState config={config} />;
 
   return (
     <View className="flex-1">
@@ -122,44 +146,46 @@ export function KioskMenuViewB({
         </View>
       ) : null}
 
-      {/* Search sits under the banner, spanning rail and grid — same placement
-          rule as every other template: a full-width row at the top of the menu
-          content, looking across the whole menu. */}
-      <KioskSearchBar config={config} onPress={() => setSearchOpen(true)} />
+      <View className="flex-1">
+        <View className="flex-1 flex-row">
+          {/* Left rail — categories grouped by menu */}
+          <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
+            <KioskCategoryRail
+              config={config}
+              sections={sections}
+              resolvedKey={resolvedKey}
+              onSelect={handleSelectCategory}
+            />
+          </View>
 
-      <View className="flex-1 flex-row">
-        {/* Left rail — categories grouped by menu */}
-        <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
-          <KioskCategoryRail
-            config={config}
-            sections={sections}
-            resolvedKey={resolvedKey}
-            onSelect={setActiveKey}
-          />
+          {/* Right pane — item grid */}
+          <View className="flex-1">
+            <KioskItemGrid
+              config={config}
+              items={items}
+              numColumns={numColumns}
+              resetKey={resolvedKey}
+              onSelectItem={(item) =>
+                onSelectItem(item, kioskItemSourceFromKey(resolvedKey))
+              }
+            />
+          </View>
         </View>
 
-        {/* Right pane — item grid */}
-        <View className="flex-1">
-          <KioskItemGrid
+        {/* Results cover the rail and grid without unmounting them, so closing
+            search restores the category and scroll offset untouched. */}
+        {search.expanded ? (
+          <KioskSearchResults
             config={config}
-            items={items}
-            numColumns={numColumns}
-            resetKey={resolvedKey}
-            onSelectItem={onSelectItem}
+            query={search.query}
+            onClear={search.clear}
+            onSelectItem={(item, source) => {
+              search.close();
+              onSelectItem(item, source);
+            }}
           />
-        </View>
+        ) : null}
       </View>
-
-      {searchOpen ? (
-        <KioskSearchOverlay
-          config={config}
-          onClose={() => setSearchOpen(false)}
-          onSelectItem={(item) => {
-            setSearchOpen(false);
-            onSelectItem(item);
-          }}
-        />
-      ) : null}
     </View>
   );
 }

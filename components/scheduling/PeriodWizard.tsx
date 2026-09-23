@@ -1,13 +1,15 @@
 import { colors } from "@/lib/theme";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import { differenceInDays, format, parse } from "date-fns";
+import { differenceInDays } from "date-fns/differenceInDays";
+import { format } from "date-fns/format";
+import { parse } from "date-fns/parse";
 import {
   ArrowLeft,
   ArrowRight,
   Calendar as CalendarIcon,
   Check,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported

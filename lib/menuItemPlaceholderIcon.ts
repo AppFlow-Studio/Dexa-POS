@@ -8,7 +8,7 @@ import {
   Salad,
   UtensilsCrossed,
   type LucideIcon
-} from 'lucide-react-native'
+} from '@/lib/icons'
 
 export type MenuItemPlaceholderIconKey =
   | 'utensils'

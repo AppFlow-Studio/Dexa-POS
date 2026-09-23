@@ -34,7 +34,7 @@ import {
 } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFocusEffect } from "expo-router";
-import { RefreshCw, Search, X } from "lucide-react-native";
+import { RefreshCw, Search, X } from "@/lib/icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Pressable,

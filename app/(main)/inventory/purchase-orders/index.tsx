@@ -9,7 +9,7 @@ import { PurchaseOrder } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { Link } from "expo-router";
-import { Package, Plus, Receipt, Search, Trash2, X } from "lucide-react-native";
+import { Package, Plus, Receipt, Search, Trash2, X } from "@/lib/icons";
 import React, { useMemo, useState } from "react";
 import {
   FlatList,

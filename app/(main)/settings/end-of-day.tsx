@@ -34,7 +34,7 @@ import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { useFocusEffect, useRouter } from 'expo-router'
-import { Printer, RotateCcw } from 'lucide-react-native'
+import { Printer, RotateCcw } from '@/lib/icons'
 import { useCallback, useMemo, useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 

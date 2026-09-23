@@ -1,5 +1,7 @@
 import { Notification } from "@/lib/types";
-import { format, isToday, isYesterday } from "date-fns";
+import { format } from "date-fns/format";
+import { isToday } from "date-fns/isToday";
+import { isYesterday } from "date-fns/isYesterday";
 import {
   AlertCircle as AlertCircleIcon,
   ArrowRightLeft as ArrowRightLeftIcon,
@@ -8,7 +10,7 @@ import {
   MessageSquare as MessageSquareIcon,
   MinusCircle,
   XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 
 export const getNotificationAppearance = (type: Notification["type"]) => {
   switch (type) {

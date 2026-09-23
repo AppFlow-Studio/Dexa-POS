@@ -1,7 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { SupabaseClient } from '@supabase/supabase-js'
-import { Clock, TrendingDown, TrendingUp } from 'lucide-react-native'
+import { Clock, TrendingDown, TrendingUp } from '@/lib/icons'
 import React, { useEffect, useState } from 'react'
 import { ActivityIndicator, Text, View } from 'react-native'
 

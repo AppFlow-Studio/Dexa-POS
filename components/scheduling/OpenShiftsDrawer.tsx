@@ -11,7 +11,8 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
 } from "@/components/ui/bottomSheet";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
 import { formatInTimeZone } from "date-fns-tz";
 import {
   ArrowDownCircle,
@@ -20,7 +21,7 @@ import {
   Edit2, // Added
   Plus,
   Trash2, // Added
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme } from "@/lib/theme";
@@ -43,23 +44,6 @@ interface ShiftApplicant {
   seniority: number;
   hoursDeficit: number;
 }
-
-const mockApplicants: Record<string, ShiftApplicant[]> = {
-  s3: [
-    {
-      employeeId: "4",
-      appliedAt: "2025-01-10T14:30:00",
-      seniority: 2,
-      hoursDeficit: 8,
-    },
-    {
-      employeeId: "6",
-      appliedAt: "2025-01-10T15:45:00",
-      seniority: 1,
-      hoursDeficit: 12,
-    },
-  ],
-};
 
 const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
   ({ scheduleId, scheduleType, onAssign, onCloseShift }, ref) => {
@@ -132,7 +116,8 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
     >(null);
     const [isAddShiftModalOpen, setAddShiftModalOpen] = useState(false); // State for add shift modal
 
-    const getApplicants = (shiftId: string) => mockApplicants[shiftId] || [];
+    // No shift-applicant data source exists yet, so no shift has applicants.
+    const getApplicants = (_shiftId: string): ShiftApplicant[] => [];
     const getEmployeeName = (employeeId: string) =>
       employees.find((e) => e.id === employeeId)?.fullName || "Unknown";
 

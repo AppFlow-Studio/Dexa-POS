@@ -6,7 +6,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
-import { Minus, Plus } from "lucide-react-native";
+import { Minus, Plus } from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

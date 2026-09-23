@@ -2,6 +2,7 @@ import type { MenuItemType, ModifierCategory } from "@/lib/types";
 import {
   useKioskCartStore,
   type KioskCartModifierGroup,
+  type KioskItemSource,
 } from "@/stores/useKioskCartStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useMemo, useState } from "react";
@@ -65,7 +66,38 @@ export function selectableModifierGroups(
     .filter((g) => g.options.length > 0);
 }
 
-export function useItemModifiers(item: MenuItemType): UseItemModifiers {
+/**
+ * The shape of one kiosk cart line, in one place.
+ *
+ * Both paths into the cart build their line here — the detail sheet with the
+ * modifier groups the customer picked, and the grid's quick-add with none — so
+ * a line added from a tile and the same line added through the sheet are
+ * byte-for-byte the same object. Pricing still comes from the item and the
+ * options themselves; this only assembles them.
+ */
+export function buildKioskCartLine(
+  item: MenuItemType,
+  modifiers: KioskCartModifierGroup[],
+  quantity: number,
+  source?: KioskItemSource,
+): Parameters<ReturnType<typeof useKioskCartStore.getState>["addLine"]>[0] {
+  return {
+    menuItemId: item.id,
+    name: item.name,
+    image: item.image,
+    unitPrice: item.price,
+    cashUnitPrice: item.cashPrice ?? item.price,
+    quantity,
+    modifiers,
+    categoryId: source?.categoryId ?? null,
+    menuId: source?.menuId ?? null,
+  };
+}
+
+export function useItemModifiers(
+  item: MenuItemType,
+  source?: KioskItemSource,
+): UseItemModifiers {
   const getModifierGroupsByIds = useMenuStore((s) => s.getModifierGroupsByIds);
   const addLine = useKioskCartStore((s) => s.addLine);
 
@@ -143,15 +175,7 @@ export function useItemModifiers(item: MenuItemType): UseItemModifiers {
       })
       .filter((g) => g.options.length > 0);
 
-    return {
-      menuItemId: item.id,
-      name: item.name,
-      image: item.image,
-      unitPrice: item.price,
-      cashUnitPrice: item.cashPrice ?? item.price,
-      quantity,
-      modifiers,
-    };
+    return buildKioskCartLine(item, modifiers, quantity, source);
   };
 
   const addToCart = () => {

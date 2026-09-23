@@ -1,4 +1,9 @@
 import { kioskDetailHeroHeight } from "@/components/kiosk/shared/kioskLayout";
+import {
+  kioskFont,
+  kioskRadius,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
@@ -7,8 +12,9 @@ import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType, ModifierCategory } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import type { KioskItemSource } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { Check, ChevronLeft, Minus, Plus } from "lucide-react-native";
+import { Check, ChevronLeft, Minus, Plus } from "@/lib/icons";
 import { useCallback, useMemo, useState } from "react";
 import {
   Image,
@@ -36,19 +42,33 @@ import Animated, {
  * hero into a full-screen image the customer has to scroll past.
  *
  * Landscape: side-by-side — photo + details left, modifiers right.
+ *
+ * Every proportion is taken from the panel it is given, not from the window,
+ * so the same component renders correctly full-screen and inside the centred
+ * popup the menu grid's "+" opens (see KioskItemDetailModal). `panelWidth` /
+ * `panelHeight` are that box; omitted, they fall back to the window.
  */
 export function KioskItemDetail({
   config,
   item,
+  source,
   onBack,
   onAdded,
+  panelWidth,
+  panelHeight,
 }: {
   config: KioskConfig;
   item: MenuItemType;
+  /** Menu + category the item was picked from; stamped onto the cart line. */
+  source?: KioskItemSource;
   onBack: () => void;
   onAdded: () => void;
+  /** Box this renders into. Defaults to the window (full-screen presentation). */
+  panelWidth?: number;
+  panelHeight?: number;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const {
     groups,
     selected,
@@ -59,7 +79,7 @@ export function KioskItemDetail({
     canAdd,
     total,
     addToCart,
-  } = useItemModifiers(item);
+  } = useItemModifiers(item, source);
 
   const handleAdd = () => {
     if (addToCart()) onAdded();
@@ -71,11 +91,13 @@ export function KioskItemDetail({
     [item],
   );
 
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const screenWidth = panelWidth ?? windowWidth;
+  const screenHeight = panelHeight ?? windowHeight;
   const isHorizontal = screenWidth > screenHeight;
 
-  const muted = `${config.textColor}99`;
-  const faint = `${config.textColor}14`;
+  const muted = t.textMuted;
+  const faint = t.outline;
 
   const hasModifiers = groups.length > 0;
 
@@ -132,15 +154,15 @@ export function KioskItemDetail({
         borderRadius: kioskPx(27, s),
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: config.backgroundColor,
-        shadowColor: "#000",
+        backgroundColor: t.page,
+        shadowColor: "#000000",
         shadowOpacity: 0.14,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 4 },
         elevation: 4,
       }}
     >
-      <ChevronLeft size={kioskPx(30, s)} color={config.textColor} />
+      <ChevronLeft size={kioskPx(30, s)} color={t.text} />
     </KioskPressable>
   );
 
@@ -152,14 +174,9 @@ export function KioskItemDetail({
         height: size,
         borderRadius: kioskPx(28, s),
         overflow: "hidden",
-        backgroundColor: `${config.primaryColor}12`,
+        backgroundColor: `${t.primary}12`,
         alignItems: "center",
         justifyContent: "center",
-        shadowColor: "#000",
-        shadowOpacity: 0.12,
-        shadowRadius: 18,
-        shadowOffset: { width: 0, height: 8 },
-        elevation: 6,
       }}
     >
       {imageSource ? (
@@ -170,7 +187,7 @@ export function KioskItemDetail({
         />
       ) : (
         <PlaceholderIcon
-          color={`${config.textColor}40`}
+          color={t.textFaint}
           size={kioskPx(96, s)}
         />
       )}
@@ -184,8 +201,8 @@ export function KioskItemDetail({
       numberOfLines={2}
       style={{
         fontSize: kioskPx(34, s),
-        fontWeight: "800",
-        color: config.textColor,
+        ...kioskFont(t, "bold"),
+        color: t.text,
         textAlign: "center",
         lineHeight: kioskPx(42, s),
       }}
@@ -198,8 +215,8 @@ export function KioskItemDetail({
     <Text
       style={{
         fontSize: kioskPx(28, s),
-        fontWeight: "800",
-        color: config.primaryColor,
+        ...kioskFont(t, "bold"),
+        color: t.primary,
         marginTop: kioskPx(14, s),
       }}
     >
@@ -228,7 +245,7 @@ export function KioskItemDetail({
   // which never scrolls.
   const titleBlock = (
     <Animated.View
-      entering={FadeInDown.duration(300).springify().damping(18)}
+      entering={FadeInDown.duration(300)}
       style={{ paddingTop: kioskPx(24, s), alignItems: "center" }}
     >
       {nameText}
@@ -243,14 +260,14 @@ export function KioskItemDetail({
   // away with the groups rather than being truncated to fit a fixed header.
   const portraitPinnedTitle = (
     <Animated.View
-      entering={FadeInDown.duration(300).springify().damping(18)}
+      entering={FadeInDown.duration(300)}
       style={{
         alignItems: "center",
         paddingTop: kioskPx(20, s),
         paddingBottom: kioskPx(18, s),
         paddingHorizontal: kioskPx(24, s),
         borderBottomWidth: 1,
-        borderBottomColor: `${config.textColor}0F`,
+        borderBottomColor: t.outline,
       }}
     >
       {nameText}
@@ -267,14 +284,12 @@ export function KioskItemDetail({
       <Animated.View
         key={group.id}
         entering={FadeInDown.delay(Math.min(index, 6) * 45)
-          .duration(300)
-          .springify()
-          .damping(18)}
+          .duration(300)}
         style={{
           marginTop: kioskPx(26, s),
           paddingTop: kioskPx(22, s),
           borderTopWidth: 1,
-          borderTopColor: `${config.textColor}0F`,
+          borderTopColor: t.outline,
         }}
       >
         {/* Group header — plain label + subtle requirement note */}
@@ -291,8 +306,8 @@ export function KioskItemDetail({
           <Text
             style={{
               fontSize: kioskPx(22, s),
-              fontWeight: "700",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
             }}
           >
             {group.name}
@@ -300,7 +315,7 @@ export function KioskItemDetail({
           <Text
             style={{
               fontSize: kioskPx(15, s),
-              fontWeight: unmet ? "700" : "400",
+              ...kioskFont(t, unmet ? "bold" : "regular"),
               color: unmet ? "#DC2626" : muted,
             }}
           >
@@ -338,28 +353,28 @@ export function KioskItemDetail({
                   gap: kioskPx(9, s),
                   paddingHorizontal: kioskPx(20, s),
                   paddingVertical: kioskPx(15, s),
-                  borderRadius: 999,
+                  borderRadius: kioskPx(kioskRadius.md, s),
                   borderWidth: 1.5,
                   borderColor: checked
-                    ? config.primaryColor
+                    ? t.primary
                     : unmet
                       ? "#DC262655"
-                      : `${config.textColor}22`,
+                      : t.outlineStrong,
                   backgroundColor: checked
-                    ? config.primaryColor
+                    ? t.primary
                     : "transparent",
                 }}
               >
                 {checked && (
                   <Animated.View entering={FadeIn.duration(140)}>
-                    <Check size={kioskPx(17, s)} color="#FFFFFF" strokeWidth={3} />
+                    <Check size={kioskPx(17, s)} color={t.onPrimary} strokeWidth={3} />
                   </Animated.View>
                 )}
                 <Text
                   style={{
                     fontSize: kioskPx(18, s),
-                    fontWeight: checked ? "700" : "500",
-                    color: checked ? "#FFFFFF" : config.textColor,
+                    ...kioskFont(t, checked ? "bold" : "regular"),
+                    color: checked ? t.onPrimary : t.text,
                   }}
                 >
                   {option.name}
@@ -368,7 +383,7 @@ export function KioskItemDetail({
                   <Text
                     style={{
                       fontSize: kioskPx(16, s),
-                      fontWeight: "600",
+                      ...kioskFont(t, "regular"),
                       color: checked ? "rgba(255,255,255,0.85)" : muted,
                     }}
                   >
@@ -398,12 +413,7 @@ export function KioskItemDetail({
         paddingBottom: kioskPx(22, s),
         borderTopWidth: 1,
         borderTopColor: faint,
-        backgroundColor: config.backgroundColor,
-        shadowColor: "#000",
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: -4 },
-        elevation: 12,
+        backgroundColor: t.page,
       }}
     >
       {/* Quantity stepper */}
@@ -414,22 +424,22 @@ export function KioskItemDetail({
           gap: kioskPx(18, s),
           paddingHorizontal: kioskPx(10, s),
           height: kioskPx(68, s),
-          borderRadius: 999,
+          borderRadius: kioskPx(kioskRadius.md, s),
           borderWidth: 2,
           borderColor: faint,
         }}
       >
         <StepperButton
           scale={s}
-          color={config.textColor}
+          color={t.text}
           onPress={() => setQuantity((q) => Math.max(1, q - 1))}
           Icon={Minus}
         />
         <Text
           style={{
             fontSize: kioskPx(24, s),
-            fontWeight: "800",
-            color: config.textColor,
+            ...kioskFont(t, "bold"),
+            color: t.text,
             minWidth: kioskPx(28, s),
             textAlign: "center",
           }}
@@ -438,7 +448,7 @@ export function KioskItemDetail({
         </Text>
         <StepperButton
           scale={s}
-          color={config.textColor}
+          color={t.text}
           onPress={() => setQuantity((q) => q + 1)}
           Icon={Plus}
         />
@@ -457,16 +467,16 @@ export function KioskItemDetail({
           height: kioskPx(68, s),
           borderRadius: kioskPx(20, s),
           backgroundColor: canAdd
-            ? config.primaryColor
-            : `${config.primaryColor}40`,
+            ? t.primary
+            : `${t.primary}40`,
         }}
       >
         <Animated.Text
           layout={LinearTransition.duration(180)}
           style={{
-            color: "#FFFFFF",
+            color: t.onPrimary,
             fontSize: kioskPx(21, s),
-            fontWeight: "800",
+            ...kioskFont(t, "bold"),
           }}
         >
           {canAdd
@@ -483,7 +493,7 @@ export function KioskItemDetail({
     return (
       <View
         className="flex-1"
-        style={{ backgroundColor: config.backgroundColor }}
+        style={{ backgroundColor: t.page }}
       >
         <View style={{ flex: 1, flexDirection: "row" }}>
           {/* Left panel — image + item details */}
@@ -494,7 +504,7 @@ export function KioskItemDetail({
               justifyContent: "center",
               padding: kioskPx(24, s),
               gap: kioskPx(24, s),
-              backgroundColor: `${config.primaryColor}08`,
+              backgroundColor: `${t.primary}08`,
             }}
           >
             {backButton}
@@ -542,7 +552,7 @@ export function KioskItemDetail({
   return (
     <View
       className="flex-1"
-      style={{ backgroundColor: config.backgroundColor }}
+      style={{ backgroundColor: t.page }}
     >
       {/* Hero — pinned, exactly one third of the viewport */}
       <View
@@ -552,7 +562,7 @@ export function KioskItemDetail({
           padding: heroInset,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: `${config.primaryColor}08`,
+          backgroundColor: `${t.primary}08`,
         }}
       >
         {backButton}

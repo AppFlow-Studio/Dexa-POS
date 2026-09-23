@@ -19,7 +19,7 @@ import {
   PauseCircle,
   PlayCircle,
   Utensils
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useMemo } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'

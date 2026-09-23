@@ -38,7 +38,7 @@ import {
   Smartphone,
   Truck,
   Users
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -202,12 +202,6 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
       //   label: 'Online Ordering',
       //   icon: Globe,
       //   route: '/settings/online-ordering'
-      // },
-      // {
-      //   id: 'delivery',
-      //   label: 'Delivery Management',
-      //   icon: Truck,
-      //   route: '/settings/delivery'
       // },
       {
         id: 'waitlist',

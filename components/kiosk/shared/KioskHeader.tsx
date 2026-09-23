@@ -1,77 +1,161 @@
+import { KioskHeaderCartPill } from "@/components/kiosk/shared/KioskHeaderCartPill";
+import { KioskHeaderSearchField } from "@/components/kiosk/shared/KioskHeaderSearchField";
+import {
+  KIOSK_HAIRLINE,
+  kioskFont,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
+import {
+  KIOSK_GRID_INSET,
+  KIOSK_HEADER_CONTROL_HEIGHT,
+  KIOSK_HEADER_HEIGHT,
+} from "@/components/kiosk/shared/kioskLayout";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { useKioskUiScale } from "@/lib/uiScale";
-import type { KioskOrderType } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { Image } from "expo-image";
-import { ShoppingBag, UtensilsCrossed, X } from "lucide-react-native";
+import { Search, X } from "@/lib/icons";
 import { Text, View } from "react-native";
 
 /**
  * Shared kiosk header.
  *
- *   left   — logo (or profile name), vertically centered
- *   center — segmented Dine In / Takeaway switch (toggles orderType inline)
- *   right  — a clear "Cancel" button (outlined pill with an X)
+ *   left  - Start Over (an X), then the merchant logo beside it
+ *   right - search, then the cart
  *
- * The cart lives in a floating button (see KioskCartButton), not the header.
- * Theme-driven from `config`; sits on `config.primaryColor` with white
- * foreground. Reusable by any template that wants a top bar.
+ * While search is open the row is the field and the cart alone: the logo gives
+ * up its slot to the field and Start Over steps out entirely, so the header
+ * never carries two X's that mean different things.
+ *
+ * Start Over leads because it is the way out, and a way out belongs where a
+ * reader's eye starts rather than tucked against the control they are trying
+ * to reach. It is a bare X: the universal glyph for "leave this", and the same
+ * square as the search control opposite, so the two bookend the header as a
+ * pair. On the right the cart sits outermost, where the thumb lands, with
+ * search inboard of it. Every control shares a height and a corner radius, so
+ * they read as one set rather than as four separate widgets.
+ *
+ * It is as short as its controls allow, and it still occupies a row of its own
+ * - the grid must never scroll underneath it - but every dp it gives up goes
+ * to the tiles.
+ *
+ * The header carries search because the menu screen cannot afford a row for
+ * it. A full-width search bar pushed the category rail and the grid down by
+ * its whole height on every template, for a field that is empty almost all of
+ * the time. Here it costs nothing until opened, and then it takes over the
+ * logo's slot - see KioskHeaderSearchField.
+ *
+ * It sits on the page background rather than the theme primary, which is what
+ * lets the cart carry the primary as its *state*: outlined while empty, filled
+ * once there is something in it.
+ *
+ * There is deliberately no Dine In / Takeaway control: order type is asked
+ * once on the order-type screen before the menu and never re-asked.
  */
-const SEGMENTS: {
-  type: KioskOrderType;
-  label: string;
-  Icon: typeof UtensilsCrossed;
-}[] = [
-  { type: "dine_in", label: "Dine In", Icon: UtensilsCrossed },
-  { type: "takeout", label: "Takeaway", Icon: ShoppingBag },
-];
-
 export function KioskHeader({
   config,
-  orderType,
-  onChangeOrderType,
-  onExit,
+  onStartOver,
+  cart,
+  search,
 }: {
   config: KioskConfig;
-  orderType: KioskOrderType | null;
-  onChangeOrderType: (type: KioskOrderType) => void;
-  onExit: () => void;
+  onStartOver: () => void;
+  /** Omitted when this orientation carries the cart as a floating button. */
+  cart?: {
+    itemCount: number;
+    subtotal: number;
+    onPress: () => void;
+  };
+  /** Omitted on screens where searching the menu makes no sense. */
+  search?: {
+    expanded: boolean;
+    query: string;
+    onExpand: () => void;
+    onChangeQuery: (value: string) => void;
+    onClose: () => void;
+  };
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
+  const searching = !!search?.expanded;
+  const control = kioskPx(KIOSK_HEADER_CONTROL_HEIGHT, s);
+  const radius = kioskPx(kioskRadius.md, s);
+
   return (
     <View
       style={{
-        height: kioskPx(96, s),
+        height: kioskPx(KIOSK_HEADER_HEIGHT, s),
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: "space-between",
-        paddingHorizontal: kioskPx(24, s),
-        backgroundColor: config.primaryColor,
+        gap: kioskPx(12, s),
+        // Same inset the category strip and the item grid use, so the
+        // header's first control, the first category and the first tile all
+        // start on one line down the left edge.
+        paddingHorizontal: kioskPx(KIOSK_GRID_INSET, s),
+        backgroundColor: t.page,
+        borderBottomWidth: KIOSK_HAIRLINE,
+        borderBottomColor: t.outline,
       }}
     >
-      {/* Left — logo / name, left-aligned & vertically centered */}
-      <View
-        style={{
-          flex: 1,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "flex-start",
-        }}
-      >
-        {config.logoUrl ? (
+      {/* Start Over stands down while search is open. Its glyph is an X, and
+          so is the one that closes the field: two X's in one header, a thumb's
+          width apart, where one abandons the whole order and the other only
+          puts the search away. Removing it is the version with no wrong tap in
+          it — the customer closes search first, and Start Over is waiting
+          where it always was. It also hands the field the full width of the
+          row. */}
+      {!searching ? (
+        <KioskPressable
+          onPress={onStartOver}
+          pressedScale={0.97}
+          accessibilityRole="button"
+          accessibilityLabel={kioskStrings.startOver}
+          // A square the same size as the search control on the other side, so
+          // the header's two icon buttons bookend it as a matched pair. The
+          // label lives on in `accessibilityLabel`.
+          style={{
+            width: control,
+            height: control,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: radius,
+            borderWidth: KIOSK_HAIRLINE,
+            borderColor: t.outlineStrong,
+          }}
+        >
+          <X size={kioskPx(22, s)} color={t.text} strokeWidth={1.75} />
+        </KioskPressable>
+      ) : null}
+
+      {/* The logo, or the search field once it is open. */}
+      <View style={{ flex: 1, justifyContent: "center" }}>
+        {searching && search ? (
+          <KioskHeaderSearchField
+            config={config}
+            query={search.query}
+            onChangeQuery={search.onChangeQuery}
+            onClose={search.onClose}
+          />
+        ) : config.logoUrl ? (
           <Image
             source={{ uri: config.logoUrl }}
-            style={{ height: kioskPx(54, s), width: kioskPx(156, s) }}
+            style={{ height: kioskPx(44, s), width: kioskPx(180, s) }}
             contentFit="contain"
+            contentPosition="left center"
             cachePolicy="memory-disk"
           />
         ) : (
           <Text
+            numberOfLines={1}
             style={{
-              color: "#FFFFFF",
-              fontSize: kioskPx(25, s),
-              fontWeight: "700",
+              color: t.text,
+              fontSize: kioskPx(22, s),
+              letterSpacing: kioskTracking(22),
+              ...kioskFont(t, "bold"),
             }}
           >
             {config.profileName}
@@ -79,86 +163,34 @@ export function KioskHeader({
         )}
       </View>
 
-      {/* Center — segmented order-type switch */}
-      <View
-        style={{
-          flexDirection: "row",
-          backgroundColor: "rgba(255,255,255,0.18)",
-          borderRadius: 999,
-          padding: kioskPx(4, s),
-        }}
-      >
-        {SEGMENTS.map(({ type, label, Icon }) => {
-          const active = orderType === type;
-          return (
-            <KioskPressable
-              key={type}
-              onPress={() => onChangeOrderType(type)}
-              pressedScale={0.94}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: kioskPx(9, s),
-                paddingHorizontal: kioskPx(26, s),
-                paddingVertical: kioskPx(13, s),
-                borderRadius: 999,
-                backgroundColor: active ? "#FFFFFF" : "transparent",
-              }}
-            >
-              <Icon
-                size={kioskPx(21, s)}
-                color={active ? config.primaryColor : "rgba(255,255,255,0.9)"}
-              />
-              <Text
-                style={{
-                  fontSize: kioskPx(18, s),
-                  fontWeight: active ? "700" : "500",
-                  color: active ? config.primaryColor : "rgba(255,255,255,0.9)",
-                }}
-              >
-                {label}
-              </Text>
-            </KioskPressable>
-          );
-        })}
-      </View>
-
-      {/* Right — clear Cancel button */}
-      <View
-        style={{
-          flex: 1,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "flex-end",
-        }}
-      >
+      {search && !searching ? (
         <KioskPressable
-          onPress={onExit}
-          pressedScale={0.93}
+          onPress={search.onExpand}
+          pressedScale={0.96}
+          accessibilityRole="search"
+          accessibilityLabel={kioskStrings.searchOpen}
           style={{
-            flexDirection: "row",
+            width: control,
+            height: control,
+            borderRadius: radius,
             alignItems: "center",
-            gap: kioskPx(9, s),
-            paddingHorizontal: kioskPx(22, s),
-            paddingVertical: kioskPx(13, s),
-            borderRadius: 999,
-            backgroundColor: "rgba(255,255,255,0.14)",
-            borderWidth: 1.5,
-            borderColor: "rgba(255,255,255,0.6)",
+            justifyContent: "center",
+            borderWidth: KIOSK_HAIRLINE,
+            borderColor: t.outlineStrong,
           }}
         >
-          <X size={kioskPx(21, s)} color="#FFFFFF" />
-          <Text
-            style={{
-              color: "#FFFFFF",
-              fontSize: kioskPx(18, s),
-              fontWeight: "600",
-            }}
-          >
-            Cancel
-          </Text>
+          <Search size={kioskPx(22, s)} color={t.text} strokeWidth={1.75} />
         </KioskPressable>
-      </View>
+      ) : null}
+
+      {cart ? (
+        <KioskHeaderCartPill
+          config={config}
+          itemCount={cart.itemCount}
+          subtotal={cart.subtotal}
+          onPress={cart.onPress}
+        />
+      ) : null}
     </View>
   );
 }

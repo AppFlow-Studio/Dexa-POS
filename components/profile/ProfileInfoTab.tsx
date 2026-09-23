@@ -1,8 +1,7 @@
-import { MOCK_USER_PROFILE } from "@/lib/mockData";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { Calendar, MapPin, User, Users, Globe } from "lucide-react-native";
+import { Calendar, MapPin, User, Users, Globe } from "@/lib/icons";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
 
@@ -77,17 +76,16 @@ const ProfileInfoTab = () => {
     employees.find((e) => e.id === activeEmployeeId) ||
     employees.find((e) => e.shiftStatus === "clocked_in");
 
-  const user = emp
-    ? {
-        fullName: emp.fullName,
-        dob: emp.dob || "—",
-        gender: emp.gender
-          ? emp.gender.charAt(0).toUpperCase() + emp.gender.slice(1)
-          : "—",
-        country: emp.country || "—",
-        address: emp.address || "—",
-      }
-    : MOCK_USER_PROFILE;
+  // No active employee → every field renders "—" (Field's empty fallback).
+  const user = {
+    fullName: emp?.fullName ?? "",
+    dob: emp?.dob || "—",
+    gender: emp?.gender
+      ? emp.gender.charAt(0).toUpperCase() + emp.gender.slice(1)
+      : "—",
+    country: emp?.country || "—",
+    address: emp?.address || "—",
+  };
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: s(24), paddingHorizontal: s(16), paddingTop: s(16) }}>

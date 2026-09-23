@@ -20,7 +20,7 @@ import {
   HandHeart,
   Keyboard,
   Lock
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useState } from 'react'
 import {
   ScrollView,

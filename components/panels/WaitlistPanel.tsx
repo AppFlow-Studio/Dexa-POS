@@ -16,7 +16,7 @@ import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import { useRouter } from 'expo-router'
 import { FlashList } from '@shopify/flash-list'
-import { Clock, UserPlus } from 'lucide-react-native'
+import { Clock, UserPlus } from '@/lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,

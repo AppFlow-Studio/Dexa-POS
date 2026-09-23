@@ -10,7 +10,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { formatAddress, serializeDeliveryAddress } from "@/utils/addressUtils";
 import { useRouter } from "expo-router";
-import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
+import { ChevronDown, Edit3, Plus, User } from "@/lib/icons";
 import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";

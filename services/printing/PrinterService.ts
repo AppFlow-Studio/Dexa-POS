@@ -52,6 +52,7 @@ import {
   ReceiptTemplateData
 } from '@/types/printer'
 import { DEFAULT_RECEIPT_TEMPLATE } from '@/types/receipt-template'
+import { KDSTicket, KDSTicketItem } from '@/types/kds'
 import { getDriver } from './DriverFactory'
 import { getReceiptPrinter, routeKitchenItems } from './PrintRouter'
 import { buildKitchenTicketDocument } from './templates/KitchenTicketDocumentTemplate'
@@ -136,21 +137,24 @@ function dedupeDrawerCandidates (printers: PrinterConfig[]): PrinterConfig[] {
   return [...new Map(printers.map(p => [p.id, p])).values()]
 }
 
-// Star-first candidate selection. Guiding rule: NEVER fall through to a printer
-// that would ACK a drawer pulse WITHOUT actually holding the drawer — a
-// drawer-less Star, or the built-in Landi whose dead DK port resolves success
-// regardless. That fallthrough IS the P0 "silent success": the host printer is
-// down, the kick lands on the wrong printer, and we report OK while the real
-// drawer stays shut.
+// Candidate selection. Guiding rule: NEVER auto-fall-through to a printer that
+// would ACK a drawer pulse WITHOUT actually holding the drawer — a drawer-less
+// Star, or a built-in Landi that a station has NOT declared as its host. That
+// fallthrough IS the P0 "silent success": the kick lands on the wrong printer
+// and we report OK while the real drawer stays shut.
 //
 //   1. Explicit binding (host_printer_id) → kick ONLY that printer. If it's
 //      down, fail honestly — no fallthrough.
 //   2. Sense-wired Star(s) known (externalDevice===true OR signalDetail!==null)
 //      → the drawer is positively on a Star; restrict to those (receipt-first)
-//      so a drawer-less fallback can't mask a host failure.
-//   3. Host unknown → best-effort guess across Stars only (receipt-first,
-//      unwired Stars last). The built-in Landi is EXCLUDED — its port is
-//      non-functional and it ACKs falsely.
+//      so a drawer-less fallback can't mask a host failure. This stays ahead of
+//      the Landi: a Star that positively reports a wired drawer always wins.
+//   3. Host unknown → the station's declared main/receipt printer leads. This
+//      is the ONLY path by which the built-in Landi participates — when the
+//      station has chosen it as the receipt printer (e.g. a Landi-only POS,
+//      whose receipt printer resolves to the Landi). Then other Stars
+//      (receipt-first, unwired last). A built-in Landi that is NOT the station's
+//      receipt printer stays EXCLUDED — it has no sense read and ACKs falsely.
 function rankDrawerCandidates (
   drawerPrinters: PrinterConfig[],
   locationId: string | null,
@@ -187,16 +191,24 @@ function rankDrawerCandidates (
     ])
   }
 
-  // 3) Host unknown — guess across Stars only (never the false-ACK built-in),
-  //    receipt-first, unwired Stars last. Any non-Star, non-builtin
-  //    drawer-capable printer is a final resort (rare; these mostly throw
+  // 3) Host unknown — the station's declared main/receipt printer leads. This is
+  //    the ONLY path by which the built-in Landi participates (when the station
+  //    has chosen it as its receipt printer); a built-in Landi that is NOT the
+  //    receipt printer stays excluded (it ACKs falsely and has no sense read).
+  //    Then other Stars (receipt already consumed), unwired Stars last, then any
+  //    non-Star, non-builtin drawer-capable printer (rare; these mostly throw
   //    rather than falsely ACK).
+  const receiptDrawer = receipt
+    ? drawerPrinters.find(p => p.id === receipt.id)
+    : undefined
   const stars = drawerPrinters.filter(isStar)
   return dedupeDrawerCandidates([
-    ...stars.filter(p => p.id === receipt?.id),
+    ...(receiptDrawer ? [receiptDrawer] : []),
     ...stars.filter(p => p.id !== receipt?.id && !unwiredStar(p)),
-    ...stars.filter(unwiredStar),
-    ...drawerPrinters.filter(p => !isStar(p) && !isBuiltin(p))
+    ...stars.filter(p => p.id !== receipt?.id && unwiredStar(p)),
+    ...drawerPrinters.filter(
+      p => !isStar(p) && !isBuiltin(p) && p.id !== receipt?.id
+    )
   ])
 }
 
@@ -590,6 +602,61 @@ export const PrinterService = {
   },
 
   /**
+   * Print a single KDS ticket to the printer THIS station has claimed.
+   *
+   * Unlike printKitchenTickets (which re-routes items across kitchen printers
+   * by POS routing rules), this targets the claimed printer DIRECTLY: the KDS
+   * *is* the routing boundary, and the ticket already contains only the items
+   * routed to this display. Caller (useKDSStore) gates on station_type === 'kds'
+   * + the auto-print flag; here we just require a claimed, active printer.
+   */
+  async printKdsTicket (
+    ticket: KDSTicket,
+    location: SelectedLocation
+  ): Promise<boolean> {
+    const claimedId =
+      useStoreSettingsStore.getState().selectedStation
+        ?.current_receipt_printer_id ?? null
+    if (!claimedId) {
+      console.warn('[PrinterService] printKdsTicket: no printer claimed on this KDS')
+      return false
+    }
+
+    const printer = usePrinterStore.getState().getPrinterById(claimedId)
+    if (!printer || !printer.isActive) {
+      console.warn(
+        '[PrinterService] printKdsTicket: claimed printer missing/inactive'
+      )
+      return false
+    }
+
+    // Skip void/refund acknowledgement notices so a ticket of pure notices
+    // doesn't print an empty ticket.
+    const printableItems = ticket.items.filter(
+      it => !it.is_voided && !it.is_refunded
+    )
+    if (printableItems.length === 0) return false
+
+    const ticketData = buildKdsKitchenTicketData(
+      ticket,
+      printableItems,
+      printer,
+      location
+    )
+    const job = createJobForPrinter(
+      printer,
+      ticketData,
+      'kitchen_ticket',
+      'high',
+      ticket.order_id,
+      'kitchen'
+    )
+    usePrintQueueStore.getState().enqueue(job)
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
    * Print void tickets for voided items.
    */
   async printVoidTicket (
@@ -693,9 +760,10 @@ export const PrinterService = {
    * Kick the cash drawer. Returns a structured result — `ok` is driven ONLY by
    * the driver command ACK; the sense fields are advisory (strict-confirm).
    *
-   * Selection is Star-first and sense-evidenced (see rankDrawerCandidates):
-   * explicit host binding → wired Stars (receipt-preferred) → unknown-sense
-   * Stars → Landi built-in last-resort. Each candidate is bounded by a
+   * Selection is sense-evidenced (see rankDrawerCandidates): explicit host
+   * binding → sense-wired Stars (receipt-preferred) → the station's declared
+   * main/receipt printer (this is the ONLY path by which the built-in Landi
+   * participates) → other Stars (unwired last). Each candidate is bounded by a
    * per-candidate timeout so a dead printer can't stall the kick.
    */
   async openCashDrawer (opts?: {
@@ -2385,6 +2453,81 @@ function buildKitchenTicketData (
     totalItemCount,
     items: kitchenItems,
     isVoidTicket,
+    maxCharsPerLine: printer.graphicsOnly
+      ? Math.min(printer.maxCharsPerLine, 32)
+      : printer.maxCharsPerLine,
+    templateConfig: template,
+    readyByTime
+  }
+}
+
+/**
+ * Build kitchen-ticket render data from a KDS board ticket. The KDS ticket
+ * already carries everything a kitchen print needs (order header + per-item
+ * modifiers/notes/course/seat), so this maps it directly — no OrderProfile /
+ * CartItem lookups, which keeps it independent of POS-only stores that a KDS
+ * device does not populate (floor plan, seating).
+ */
+function buildKdsKitchenTicketData (
+  ticket: KDSTicket,
+  items: KDSTicketItem[],
+  printer: PrinterConfig,
+  location: SelectedLocation
+): KitchenTicketData {
+  const template = useReceiptTemplateStore
+    .getState()
+    .getKitchenTemplate(location.id)
+
+  const now = new Date()
+  const timestamp = safeTimeString(now)
+  const fullTimestamp =
+    now.toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric'
+    }) +
+    ' ' +
+    timestamp
+
+  const kitchenItems: KitchenTicketItemData[] = items.map(item => {
+    const modifiers = item.modifiers.map(m =>
+      m.is_no ? `NO ${m.modifier_name}` : m.modifier_name
+    )
+    const notes = item.special_instructions ?? undefined
+    const allergyAlert =
+      notes && /allergy/i.test(notes) ? notes : undefined
+
+    return {
+      name: item.name,
+      quantity: item.quantity,
+      modifiers,
+      notes,
+      isVoided: item.is_voided,
+      isRefunded: item.is_refunded,
+      station: item.category_name,
+      allergyAlert,
+      seatNumber: item.seat_number ?? null,
+      courseNumber: ticket.course_number
+    }
+  })
+
+  const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0)
+  const readyBy = new Date(now.getTime() + 15 * 60 * 1000)
+  const readyByTime = safeTimeString(readyBy)
+
+  return {
+    orderNumber:
+      ticket.display_number ||
+      ticket.order_number ||
+      `#${ticket.order_id.slice(-4)}`,
+    orderType: displayOrderType(ticket.order_type),
+    tableName: ticket.table_name ?? undefined,
+    serverName: ticket.server_name ?? undefined,
+    timestamp,
+    fullTimestamp,
+    totalItemCount,
+    items: kitchenItems,
+    isVoidTicket: false,
     maxCharsPerLine: printer.graphicsOnly
       ? Math.min(printer.maxCharsPerLine, 32)
       : printer.maxCharsPerLine,

@@ -2,7 +2,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
+import { Banknote, CreditCard, UtensilsCrossed } from '@/lib/icons'
 import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Animated, {

@@ -7,7 +7,7 @@ import {
   CheckCircle2,
   Clock,
   UtensilsCrossed,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, {

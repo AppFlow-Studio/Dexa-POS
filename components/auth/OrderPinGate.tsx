@@ -1,7 +1,8 @@
 import PinDisplay from "@/components/auth/PinDisplay";
-import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
+import PinNumpad from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import { useVerifyStaffPin } from "@/hooks/useVerifyStaffPin";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
@@ -49,8 +50,13 @@ export default function OrderPinGate({
 }) {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  const [pin, setPin] = useState("");
   const [verifying, setVerifying] = useState(false);
+  // The 4th digit submits; keys are ignored while a PIN is being verified.
+  const { pin, setPin, onKeyPress } = usePinEntry({
+    length: MAX_PIN_LENGTH,
+    disabled: verifying,
+    onComplete: (entered) => void submit(entered),
+  });
   const [error, setError] = useState<string | null>(null);
   const shakeX = useSharedValue(0);
 
@@ -93,19 +99,6 @@ export default function OrderPinGate({
     } finally {
       setVerifying(false);
     }
-  };
-
-  const handleKeyPress = (input: NumpadInput) => {
-    if (verifying) return;
-    if (typeof input === "number") {
-      if (pin.length >= MAX_PIN_LENGTH) return;
-      const next = pin + input.toString();
-      setPin(next);
-      if (next.length === MAX_PIN_LENGTH) void submit(next);
-      return;
-    }
-    if (input === "backspace") setPin((p) => p.slice(0, -1));
-    else if (input === "clear") setPin("");
   };
 
   const shakeStyle = useAnimatedStyle(() => ({
@@ -159,7 +152,7 @@ export default function OrderPinGate({
           ) : null}
 
           <View style={{ marginTop: s(4) }}>
-            <PinNumpad onKeyPress={handleKeyPress} />
+            <PinNumpad onKeyPress={onKeyPress} />
           </View>
 
           {onCancel ? (

@@ -1,5 +1,5 @@
 import { Shift } from "@/lib/types";
-import { format } from "date-fns";
+import { format } from "date-fns/format";
 import React from "react";
 import { Text, View } from "react-native";
 import ShiftDetailRow from "./ShiftDetailRow";

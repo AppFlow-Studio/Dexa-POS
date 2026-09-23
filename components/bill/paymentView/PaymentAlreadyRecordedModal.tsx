@@ -2,7 +2,7 @@ import type { CheckRecentPaymentMatch } from "@/hooks/usePaymentVerification";
 import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
 import type { PaymentVerificationState } from "@/stores/usePaymentStore";
-import { CheckCircle2 } from "lucide-react-native";
+import { CheckCircle2 } from "@/lib/icons";
 import { Modal, Text, TouchableOpacity, View } from "react-native";
 
 interface PaymentAlreadyRecordedModalProps {

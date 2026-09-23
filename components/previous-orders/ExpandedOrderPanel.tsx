@@ -22,7 +22,7 @@ import {
     Printer,
     RotateCcw,
     User,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

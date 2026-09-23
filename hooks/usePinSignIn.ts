@@ -16,24 +16,22 @@ import * as Application from "expo-application";
 import * as Device from "expo-device";
 import * as Network from "expo-network";
 import { useCallback } from "react";
+import { sanitizeIpAddress } from "@/lib/network/ipAddress";
 
 // ── Shared utilities (also used by pin-login.tsx) ───────────────────────────
 
-export const sanitizeIpAddress = (
-  ip: string | null | undefined,
-): string | null => {
-  if (!ip || ip.trim() === "") return null;
-  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
-  const trimmed = ip.trim();
-  if (ipv4Regex.test(trimmed) || ipv6Regex.test(trimmed)) return trimmed;
-  return null;
-};
+// Re-exported so existing `@/hooks/usePinSignIn` importers keep working; the
+// hardened implementation lives in lib/ so services (heartbeat, device
+// detection) can share it without importing this hook module.
+export { sanitizeIpAddress };
 
 export const getDeviceInfo = async () => {
   const ip = await Network.getIpAddressAsync().catch(() => null);
   return {
-    ip_address: ip !== "" ? ip : null,
+    // Sanitize at the source: Android reports "0.0.0.0" before Wi-Fi settles.
+    // Storing that clobbers the station's real IP, so drop it to null here and
+    // every downstream login RPC COALESCEs to the last-known-good value.
+    ip_address: sanitizeIpAddress(ip),
     app_version: Application.nativeApplicationVersion,
     os_version: `${Device.osName} ${Device.osVersion}`,
     hardware_model: Device.modelName,

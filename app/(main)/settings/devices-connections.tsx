@@ -63,7 +63,7 @@ import type {
   PrinterRole
 } from '@/types/printer'
 import type { StationPaymentTerminal } from '@/types/station'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
 import {
@@ -87,7 +87,7 @@ import {
   Wifi,
   WifiOff,
   X
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -2199,12 +2199,12 @@ const DevicesConnectionsScreen = ({
           />
           {expandedSections.terminal && (
             <View style={{ paddingHorizontal: s(12), paddingVertical: s(10) }}>
-              {/* On-device CodePay (Intent to the CodePay Register app). Editable
-                  because CodePay's Intent needs a merchant app_id: enter it, tap
-                  Detect, and if the Register app resolves the terminal surfaces —
-                  no SQL/WB provisioning. Gated on the native bridge so it only
-                  shows on CodePay hardware. */}
-              {codepayBridgeAvailable && (
+              {/* On-device CodePay (Intent to the CodePay Register app). Only
+                  rendered once the CodePay Register app is actually detected —
+                  the merchant app_id defaults to CODEPAY_DEFAULT_APP_ID, so no
+                  manual entry is needed and the card self-hides on non-CodePay
+                  devices (where nothing is detected). */}
+              {codepayInternalTerminal && (
                 <View
                   style={{
                     borderWidth: 1,
@@ -2285,41 +2285,6 @@ const DevicesConnectionsScreen = ({
                     On-device processor · CodePay · drives the CodePay Register app
                     via Intent.
                   </Text>
-
-                  {/* Merchant app_id — the one credential CodePay's Intent needs.
-                      Persisted, so auto-detect reuses it on every boot. */}
-                  <Text
-                    style={{
-                      fontSize: s(11),
-                      fontWeight: '700',
-                      color: colors.label,
-                      marginTop: s(12),
-                      marginBottom: s(6)
-                    }}
-                  >
-                    MERCHANT APP ID
-                  </Text>
-                  <TextInput
-                    value={codepayAppIdDraft}
-                    onChangeText={v => {
-                      setCodepayAppIdDraft(v)
-                      setCodepayFieldTouched(true)
-                    }}
-                    placeholder='e.g. wz1f2e3295adc70112'
-                    placeholderTextColor={colors.muted}
-                    autoCapitalize='none'
-                    autoCorrect={false}
-                    style={{
-                      backgroundColor: colors.screen,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: s(8),
-                      paddingHorizontal: s(12),
-                      paddingVertical: s(10),
-                      color: colors.heading,
-                      fontSize: s(13)
-                    }}
-                  />
 
                   {/* Whether the detected CodePay is used for NEW sales (as a
                       fallback when no other terminal is configured). Reversals of

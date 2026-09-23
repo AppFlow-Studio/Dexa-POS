@@ -11,7 +11,7 @@ import {
   View,
   Animated,
 } from "react-native";
-import { AlertTriangle, RefreshCw, ArrowRight, X } from "lucide-react-native";
+import { AlertTriangle, RefreshCw, ArrowRight, X } from "@/lib/icons";
 import {
   ConflictInfo,
   ConflictResolution,

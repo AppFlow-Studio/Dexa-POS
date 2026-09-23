@@ -25,7 +25,7 @@ import {
     Utensils,
     WifiOff,
     XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
     LayoutAnimation,

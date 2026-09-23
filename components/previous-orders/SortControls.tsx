@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { ArrowDown, ArrowUp } from "lucide-react-native";
+import { ArrowDown, ArrowUp } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

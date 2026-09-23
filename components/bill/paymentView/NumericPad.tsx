@@ -1,6 +1,6 @@
 import { useUiScale } from '@/lib/uiScale'
 import { colors } from '@/lib/theme'
-import { Delete } from 'lucide-react-native'
+import { Delete } from '@/lib/icons'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

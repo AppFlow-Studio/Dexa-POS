@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
-import { Smartphone, RefreshCw, Wifi, Battery, Signal } from "lucide-react-native";
+import { Smartphone, RefreshCw, Wifi, Battery, Signal } from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import type { DeviceCapabilities } from "@/services/hardware/deviceDetection";
 

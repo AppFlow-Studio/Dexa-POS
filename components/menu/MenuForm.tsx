@@ -5,7 +5,6 @@ import BottomSheet from "@/components/ui/bottomSheet";
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { colors } from "@/lib/theme";
 import { Menu, Schedule } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -18,7 +17,7 @@ import {
     Save,
     Trash2,
     Utensils
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -53,9 +52,6 @@ const getImageSource = (image: string | undefined) => {
   if (!image) return undefined;
   if (image.includes("://")) return { uri: image };
   if (image.length > 200) return { uri: `data:image/jpeg;base64,${image}` };
-  if (MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP]) {
-    return MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP];
-  }
   return { uri: image };
 };
 

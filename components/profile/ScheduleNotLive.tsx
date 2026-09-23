@@ -1,6 +1,7 @@
 import { colors } from "@/lib/theme";
-import { addDays, format } from "date-fns";
-import { Calendar } from "lucide-react-native";
+import { addDays } from "date-fns/addDays";
+import { format } from "date-fns/format";
+import { Calendar } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

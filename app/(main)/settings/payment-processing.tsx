@@ -21,7 +21,7 @@ import {
   Wifi,
   X,
   XCircle
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useState } from 'react'
 import {
   KeyboardAvoidingView,

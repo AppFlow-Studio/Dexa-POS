@@ -1,7 +1,7 @@
 import type { OnlineOrderProvider } from "@/lib/orderPlatformResolver";
 import { resolveOrderPlatformLogo } from "@/lib/orderPlatformResolver";
 import { colors } from "@/lib/theme";
-import { Globe, ShoppingBag } from "lucide-react-native";
+import { Globe, ShoppingBag } from "@/lib/icons";
 import { Image, ImageSourcePropType, Text, View } from "react-native";
 
 const PLATFORM_LOGOS: Partial<Record<OnlineOrderProvider, ImageSourcePropType>> =

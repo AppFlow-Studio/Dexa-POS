@@ -1,6 +1,6 @@
 import { colors } from '@/lib/theme'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { ArrowRight, Check } from 'lucide-react-native'
+import { ArrowRight, Check } from '@/lib/icons'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated'
 import { iosOnly } from '@/lib/safeAnimations'

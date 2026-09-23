@@ -10,7 +10,7 @@ import {
   Plus,
   Save,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,

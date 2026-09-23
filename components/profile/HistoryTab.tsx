@@ -7,7 +7,7 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { Clock, Printer, RefreshCw } from "lucide-react-native";
+import { Clock, Printer, RefreshCw } from "@/lib/icons";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 

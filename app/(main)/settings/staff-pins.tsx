@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { MerchantRole } from "@/lib/types";
 import { useEmployeeStore, EmployeeProfile } from "@/stores/useEmployeeStore";
-import { Eye, EyeOff } from "lucide-react-native";
+import { Eye, EyeOff } from "@/lib/icons";
 import React, { useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 

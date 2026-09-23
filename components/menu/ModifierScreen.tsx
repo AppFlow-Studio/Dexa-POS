@@ -22,7 +22,7 @@ import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { FlashList } from "@shopify/flash-list";
-import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
+import { ArrowLeft, Check, Minus, Plus, X } from "@/lib/icons";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,

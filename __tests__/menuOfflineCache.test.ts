@@ -91,6 +91,22 @@ describe("menuOfflineCache", () => {
     expect(cachedItems(restored!)).toHaveLength(2);
   });
 
+  /**
+   * The MMKV snapshot MUST carry the per-station scope map: an airplane-mode
+   * cold start hydrates from here, and a snapshot without it would resolve
+   * every station to "all menus" — the kiosk scoped to Sushi would paint the
+   * whole menu.
+   */
+  it("persists station_menu_scopes with the snapshot", () => {
+    const scopes = {
+      "station-kiosk-1": { scope: "selected" as const, menu_ids: ["menu-1"] },
+      "station-register-2": { scope: "all" as const, menu_ids: [] },
+    };
+    menuOfflineCache.set(LOCATION, buildSync({ station_menu_scopes: scopes }));
+
+    expect(menuOfflineCache.get(LOCATION)!.station_menu_scopes).toEqual(scopes);
+  });
+
   it("swaps inline base64 images for their on-disk path and leaves URIs alone", () => {
     menuOfflineCache.set(LOCATION, buildSync());
 

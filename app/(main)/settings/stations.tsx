@@ -7,7 +7,7 @@ import { isSerialMismatch } from '@/services/terminals/terminalIdentity'
 import { Station, StationViewScope } from '@/types/station'
 import { useAuth } from '@clerk/clerk-expo'
 import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'
 import {
   AlertCircle,
   Check,
@@ -25,7 +25,7 @@ import {
   User,
   Wifi,
   WifiOff
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useState } from 'react'
 import {
   ActivityIndicator,

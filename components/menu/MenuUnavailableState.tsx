@@ -1,15 +1,16 @@
 import MenuGridSkeleton from "@/components/menu/MenuGridSkeleton";
+import { useIsStationMenuScopeEmpty } from "@/hooks/menu/useVisibleMenus";
 import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Clock, CloudOff, RefreshCw } from "lucide-react-native";
+import { Clock, CloudOff, EyeOff, RefreshCw } from "@/lib/icons";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 /**
- * Shown when MenuSection has no menu to display. Three very different causes
+ * Shown when MenuSection has no menu to display. Four very different causes
  * hide behind that one symptom, and conflating them is what turned a transient
  * sync failure into a support call:
  *
@@ -17,6 +18,10 @@ import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
  * - `menus.length === 0` and not syncing → the menu never loaded. Telling the
  *   operator to "check back later" is wrong and unactionable; they need to know
  *   the sync failed and be able to retry it right here;
+ * - this station is scoped to a menu selection that leaves nothing → the menu
+ *   synced fine; the dashboard assigned this station no menus (or only menus
+ *   hidden on this channel). Fails closed by design — never the full menu —
+ *   and points at the dashboard, because nothing on the device can fix it;
  * - `menus.length > 0` → the menu synced fine, nothing is scheduled right now.
  *   Genuinely a scheduling message.
  *
@@ -28,6 +33,7 @@ const MenuUnavailableState: React.FC = () => {
   const sc = (n: number) => Math.round(n * uiScale);
 
   const hasAnyMenu = useMenuStore((s) => s.menus.length > 0);
+  const scopedToNothing = useIsStationMenuScopeEmpty();
   const isSyncing = useMenuStore((s) => s.syncState.isLoading);
   const hasSyncFailed = useMenuStore((s) => s.syncState.isError);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
@@ -55,17 +61,23 @@ const MenuUnavailableState: React.FC = () => {
   // explanation steady and let the button carry the in-flight state.
   if (!hasAnyMenu && busy && !hasSyncFailed) return <MenuGridSkeleton />;
 
-  const { icon, title, body } = hasAnyMenu
+  const { icon, title, body } = scopedToNothing
     ? {
-        icon: <Clock size={sc(64)} color={colors.muted} />,
-        title: "No Menu Available",
-        body: "There are currently no menus scheduled for this time. Please check back later or select a different order type.",
+        icon: <EyeOff size={sc(64)} color={colors.muted} />,
+        title: "No menus assigned to this station",
+        body: "This station is set to show selected menus only, and none are assigned or visible on this channel. Assign menus in the Dashboard under Settings → Stations.",
       }
-    : {
-        icon: <CloudOff size={sc(64)} color={colors.muted} />,
-        title: "Menu Not Loaded",
-        body: "The menu couldn't be downloaded — usually a network problem. It will keep retrying on its own; tap below to try again now.",
-      };
+    : hasAnyMenu
+      ? {
+          icon: <Clock size={sc(64)} color={colors.muted} />,
+          title: "No Menu Available",
+          body: "There are currently no menus scheduled for this time. Please check back later or select a different order type.",
+        }
+      : {
+          icon: <CloudOff size={sc(64)} color={colors.muted} />,
+          title: "Menu Not Loaded",
+          body: "The menu couldn't be downloaded — usually a network problem. It will keep retrying on its own; tap below to try again now.",
+        };
 
   return (
     <View

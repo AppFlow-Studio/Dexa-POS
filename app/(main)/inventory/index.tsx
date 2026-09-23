@@ -27,7 +27,7 @@ import {
   Plus,
   Search,
   Trash2
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useEffect, useMemo, useState } from 'react'
 import { FlatList, Text, TextInput, TouchableOpacity, View } from 'react-native'
 

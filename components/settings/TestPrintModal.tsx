@@ -1,4 +1,4 @@
-import { ChevronDown, Printer, X } from "lucide-react-native";
+import { ChevronDown, Printer, X } from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { usePrinterStore } from "@/stores/usePrinterStore";

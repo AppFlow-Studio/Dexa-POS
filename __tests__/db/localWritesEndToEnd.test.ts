@@ -753,6 +753,28 @@ describe("the cart id actually reaches the drain", () => {
     expect(call).toContain("cartItemId: item.id");
   });
 
+  /**
+   * REGRESSION — kiosk (and ~half of POS) items landed "Uncategorized" with
+   * category_id NULL, so route_items_to_kds resolved no prep station and the
+   * item skipped every prep-station KDS display. The call site read
+   * `(item as any).categoryId` / `.menuId` — fields CartItem doesn't have.
+   */
+  it("addItemToBackend passes the cart's category + menu to addLocalItem", () => {
+    const { readFileSync } = require("fs") as typeof import("fs");
+    const { join } = require("path") as typeof import("path");
+    const src = readFileSync(
+      join(__dirname, "..", "..", "stores", "useOrderStore.ts"),
+      "utf8",
+    );
+
+    const start = src.indexOf("const res = await addLocalItem({");
+    const call = src.slice(start, src.indexOf("modifiers:", start));
+    expect(call).toContain("categoryId: item.addedFromCategoryId");
+    expect(call).toContain("categoryName: item.category_name");
+    expect(call).toContain("menuId: item.addedFromMenuId");
+    expect(call).not.toContain("(item as any)");
+  });
+
   it("defaults cartItemId to the row uuid when the caller omits it", async () => {
     // Proves the default is real — which is why the call site must be explicit.
     const order = await createLocalOrder({

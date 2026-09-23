@@ -10,7 +10,7 @@ import { getWallEdgeFlags, WallEdgeFlags } from "@/lib/wallCornerSnap";
 import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
-import { Crosshair, Lock, LockOpen, Minus, Plus } from "lucide-react-native";
+import { Crosshair, Lock, LockOpen, Minus, Plus } from "@/lib/icons";
 import React, {
   useCallback,
   useEffect,

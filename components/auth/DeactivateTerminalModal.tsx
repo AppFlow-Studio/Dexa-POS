@@ -1,4 +1,5 @@
 import { useSessionKick } from '@/contexts/SessionKickListenerProvider'
+import { usePinEntry } from '@/hooks/usePinEntry'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { useTimeClock } from '@/hooks/useTimeclock'
 import { getDeviceId } from '@/lib/deviceId'
@@ -9,7 +10,7 @@ import { clearLocationData } from '@/services/cacheService'
 import { EmployeeProfile, useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useRouter } from 'expo-router'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -19,7 +20,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
 import PinDisplay from './PinDisplay'
-import PinNumpad from './PinNumpad'
+import PinNumpad, { NumpadInput } from './PinNumpad'
 
 const MAX_PIN_LENGTH = 4
 const MANAGER_ROLES = [
@@ -42,7 +43,7 @@ const DeactivateTerminalModal = ({
   const supabase = useSupabaseClient()
   const timeClock = useTimeClock()
 
-  const [pin, setPin] = useState('')
+  const { pin, setPin, onKeyPress } = usePinEntry({ length: MAX_PIN_LENGTH })
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -74,18 +75,13 @@ const DeactivateTerminalModal = ({
     onClose()
   }
 
-  const handleKeyPress = (input: number | 'backspace' | 'clear') => {
-    setError(null)
-    if (typeof input === 'number') {
-      if (pin.length < MAX_PIN_LENGTH) {
-        setPin(prev => prev + input.toString())
-      }
-    } else if (input === 'backspace') {
-      setPin(prev => prev.slice(0, -1))
-    } else if (input === 'clear') {
-      setPin('')
-    }
-  }
+  const handleKeyPress = useCallback(
+    (input: NumpadInput) => {
+      setError(null)
+      onKeyPress(input)
+    },
+    [onKeyPress]
+  )
 
   const handleSubmit = async () => {
     if (pin.length !== MAX_PIN_LENGTH || !selectedStore) return

@@ -31,7 +31,7 @@ import {
 } from '@/services/offlineSyncService'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { AlertTriangle } from 'lucide-react-native'
+import { AlertTriangle } from '@/lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

@@ -24,7 +24,7 @@ import {
   useNetworkStatus,
 } from "@/hooks/useNetworkStatus";
 import { colors } from "@/lib/theme";
-import { WifiOff } from "lucide-react-native";
+import { WifiOff } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

@@ -2,7 +2,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { colors } from "@/lib/theme";
 import { Role } from "@/lib/types"; // Import Role from lib/types
-import { Filter } from "lucide-react-native";
+import { Filter } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 

@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { AlertCircle, AlertTriangle, BarChart3, ChevronDown, ChevronUp, GitBranch, Map, RefreshCw, UploadCloud } from "lucide-react-native";
+import { AlertCircle, AlertTriangle, BarChart3, ChevronDown, ChevronUp, GitBranch, Map, RefreshCw, UploadCloud } from "@/lib/icons";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Switch } from "~/components/ui/switch";

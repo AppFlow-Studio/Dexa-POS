@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
-import { Bell } from "lucide-react-native";
+import { Bell } from "@/lib/icons";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const NotificationBell = () => {

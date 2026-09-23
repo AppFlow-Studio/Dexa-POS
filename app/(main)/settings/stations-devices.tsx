@@ -14,7 +14,7 @@ import {
   Monitor,
   Plus,
   Trash2
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import { useState } from 'react'
 import {
   ActivityIndicator,

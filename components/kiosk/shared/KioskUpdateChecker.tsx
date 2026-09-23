@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   Download,
   RefreshCw,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useState } from "react";
 import {
   ActivityIndicator,

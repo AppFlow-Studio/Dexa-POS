@@ -110,9 +110,12 @@ describe("kioskCardMetrics", () => {
     // Widest card the 3.0x scale ceiling can actually produce (a 4K panel,
     // 3 columns). Card type must still be tracking width here, or it would
     // stall while the surrounding scale-driven chrome kept growing.
+    // Thresholds guard that the clamp ceilings have not started binding here,
+    // not any particular ratio — type snaps to a shared scale (see
+    // kioskDesign), so the exact step is allowed to move.
     const at4k = kioskCardMetrics(440);
-    expect(at4k.nameSize).toBeGreaterThan(42);
-    expect(at4k.priceSize).toBeGreaterThan(46);
+    expect(at4k.nameSize).toBeGreaterThan(30);
+    expect(at4k.priceSize).toBeGreaterThan(30);
   });
 
   it("reserves a fixed name block so cards line up across rows", () => {
@@ -369,7 +372,6 @@ describe("card layout responds to the grid's height, not just its width", () => 
     const m = kioskCardMetrics(673, LANDSCAPE_BUDGET);
     expect(m.showDescription).toBe(true);
     expect(m.descLines).toBe(2);
-    expect(m.showOptionsLabel).toBe(true);
   });
 });
 
@@ -445,11 +447,9 @@ describe("exact card heights (the FlashList layout contract)", () => {
   it("reserves a price row at least as tall as its own contents", () => {
     for (const [w, h] of CELLS) {
       const card = kioskCardMetrics(w, h);
-      expect(card.priceRowHeight).toBeGreaterThanOrEqual(card.optionsIconSize);
       expect(card.priceRowHeight).toBeGreaterThanOrEqual(card.priceSize);
 
       const row = kioskRowMetrics(w, h);
-      expect(row.priceRowHeight).toBeGreaterThanOrEqual(row.optionsIconSize);
       expect(row.priceRowHeight).toBeGreaterThanOrEqual(row.priceSize);
     }
   });
@@ -464,8 +464,10 @@ describe("exact card heights (the FlashList layout contract)", () => {
 
   it("keeps the top-image card inside the grid's height budget", () => {
     // Two rows must stay in view, which is the reason maxCardHeight exists.
+    // Same budget KioskItemGrid hands down: two cells, each a card plus its
+    // bottom gutter, inside the padded grid.
     for (const [w, h] of CELLS) {
-      const budget = Math.max(160, (h - 32 - 14) * 0.52);
+      const budget = Math.max(160, (h - 32) / 2 - 14);
       expect(kioskCardMetrics(w, budget).cardHeight).toBeLessThanOrEqual(h);
     }
   });

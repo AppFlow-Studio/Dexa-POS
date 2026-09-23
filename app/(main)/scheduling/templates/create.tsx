@@ -12,7 +12,7 @@ import { PREDEFINED_TAGS, ScheduleTemplate, TemplateShift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { addTemplate } from "@/stores/useScheduleTemplateStore";
 import { useRouter } from "expo-router";
-import { Search } from "lucide-react-native";
+import { Search } from "@/lib/icons";
 import React, { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,

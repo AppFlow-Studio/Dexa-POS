@@ -1,8 +1,6 @@
 import NotificationBottomSheet from '@/components/notifications/NotificationBottomSheet'
 import HistoryTab from '@/components/profile/HistoryTab'
 import ProfileInfoTab from '@/components/profile/ProfileInfoTab'
-import PTOPage from '@/app/(main)/pto'
-import RequestsPage from '@/app/(main)/requests'
 import SecurityTab from '@/components/profile/SecurityTab'
 import UserProfileCard from '@/components/timeclock/UserProfileCard'
 import { iosOnly } from '@/lib/safeAnimations'
@@ -12,10 +10,17 @@ import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useNotificationSheetStore } from '@/stores/useNotificationSheetStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { BottomSheetMethods } from '@/components/ui/bottomSheet'
-import { ArrowLeft, Calendar, Menu } from 'lucide-react-native'
-import React, { useEffect, useRef, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { ArrowLeft, Calendar, Menu } from '@/lib/icons'
+import React, { Suspense, useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import Animated, { SlideInRight, SlideOutRight } from 'react-native-reanimated'
+
+// PTO and Requests are full screens (react-native-calendars, popover-view, the
+// whole date-fns index) that only open from this panel's overlay. A static
+// import put them on every device's cold-start path via (main)/_layout;
+// import() defers evaluating them until the overlay first opens.
+const PTOPage = React.lazy(() => import('@/app/(main)/pto'))
+const RequestsPage = React.lazy(() => import('@/app/(main)/requests'))
 
 type TabName = 'Profile Info' | 'Security' | 'History'
 const TABS: TabName[] = ['Profile Info', 'Security', 'History']
@@ -266,7 +271,13 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
             </Text>
           </View>
           <View style={{ flex: 1 }}>
-            {overlay === 'pto' ? <PTOPage /> : <RequestsPage />}
+            <Suspense
+              fallback={
+                <ActivityIndicator color={colors.muted} style={{ marginTop: 24 }} />
+              }
+            >
+              {overlay === 'pto' ? <PTOPage /> : <RequestsPage />}
+            </Suspense>
           </View>
         </Animated.View>
       )}

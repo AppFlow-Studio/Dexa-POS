@@ -14,7 +14,7 @@ import {
   Minus,
   Plus,
   Users
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import { useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

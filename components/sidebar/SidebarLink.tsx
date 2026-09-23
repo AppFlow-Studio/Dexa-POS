@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { LinearGradient } from "expo-linear-gradient";
-import { LucideIcon } from "lucide-react-native";
+import { LucideIcon } from "@/lib/icons";
 import React from "react";
 import {
   GestureResponderEvent,

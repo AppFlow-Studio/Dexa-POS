@@ -1,8 +1,9 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
 import { colors } from "@/lib/theme";
-import { AlertCircle, CheckCircle2, Clock, MapPin, XCircle } from "lucide-react-native";
+import { AlertCircle, CheckCircle2, Clock, MapPin, XCircle } from "@/lib/icons";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const getStatusConfig = (status: string) => {

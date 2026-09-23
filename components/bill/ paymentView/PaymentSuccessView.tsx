@@ -18,7 +18,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { ArrowRight, Check, ChevronUp, Layers, Mail, MessageSquare, Printer } from "lucide-react-native";
+import { ArrowRight, Check, ChevronUp, Layers, Mail, MessageSquare, Printer } from "@/lib/icons";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";

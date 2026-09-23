@@ -3,6 +3,8 @@
 import NetInfo from "@react-native-community/netinfo";
 import * as Application from "expo-application";
 import * as Battery from "expo-battery";
+import * as Network from "expo-network";
+import { sanitizeIpAddress } from "@/lib/network/ipAddress";
 import { getCachedCapabilities } from "./deviceDetection";
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -40,9 +42,19 @@ async function sendHeartbeat(): Promise<void> {
   if (!supabase || !stationId || !locationId) return;
 
   try {
-    // 1. Call station_heartbeat RPC (updates stations.is_online + last_heartbeat_at)
+    // Freshest local IP, guarded against "0.0.0.0" / junk. Passed to the RPC so
+    // the station's stored IP stays current (it was previously frozen at login
+    // time). null → the RPC COALESCEs, keeping the last-known-good value.
+    let ipAddress: string | null = null;
+    try {
+      ipAddress = sanitizeIpAddress(await Network.getIpAddressAsync());
+    } catch {}
+
+    // 1. Call station_heartbeat RPC (updates stations.is_online +
+    //    last_heartbeat_at, and refreshes ip_address / local_ip_address).
     const { error: rpcError } = await supabase.rpc("station_heartbeat", {
       p_station_id: stationId,
+      p_ip_address: ipAddress,
     });
 
     if (rpcError) {

@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import * as PopoverPrimitive from "@rn-primitives/popover";
-import { Check, ChevronDown } from "lucide-react-native";
+import { Check, ChevronDown } from "@/lib/icons";
 import React, { useCallback, useMemo, useRef } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";

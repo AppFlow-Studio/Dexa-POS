@@ -1,10 +1,10 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useVisibleMenus } from "@/hooks/menu/useVisibleMenus";
 import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
 import { MenuItemType, Schedule } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useSearchStore } from "@/stores/searchStore";
-import { useMenuStore } from "@/stores/useMenuStore";
 import { useMenuVisibilityStore } from "@/stores/useMenuVisibilityStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
@@ -13,7 +13,7 @@ import BottomSheet, {
     BottomSheetTextInput,
 } from "@/components/ui/bottomSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
-import { Search, X } from "lucide-react-native";
+import { Search, X } from "@/lib/icons";
 import React, {
     useCallback,
     useDeferredValue,
@@ -92,7 +92,9 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   // baseline view tree the moment a station is selected.
   const [isOpen, setIsOpen] = useState(false);
 
-  const { menus } = useMenuStore((state) => state);
+  // Same selector as the menu rail: search can never surface an item from a
+  // menu this station does not show.
+  const menus = useVisibleMenus();
   const selectedStoreId = useStoreSettingsStore(
     (state) => state.selectedStore?.id ?? null,
   );

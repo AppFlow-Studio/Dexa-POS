@@ -27,7 +27,7 @@ import {
   CircleOff,
   FlaskConical,
   Send,
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useEffect, useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useUiScale } from '@/lib/uiScale'

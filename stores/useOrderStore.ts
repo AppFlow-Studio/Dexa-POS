@@ -2194,10 +2194,17 @@ const addItemToBackend = async (
       quantity: item.quantity,
       unitPrice: item.baseCardPrice ?? item.unitPrice ?? item.price ?? 0,
       cashUnitPrice: item.baseCashPrice ?? item.cashPrice ?? null,
-      categoryId: (item as any).categoryId ?? null,
-      categoryName: (item as any).categoryName ?? null,
-      menuId: (item as any).menuId ?? null,
-      menuName: (item as any).menuName ?? null,
+      // Same CartItem fields the legacy path maps (see addItemParams). The
+      // server resolves the item's prep station from category_id, so reading
+      // anything else here sends NULL, the item lands "Uncategorized", and it
+      // skips every prep-station KDS display.
+      categoryId: item.addedFromCategoryId ?? null,
+      categoryName: item.category_name ?? null,
+      menuId: item.addedFromMenuId ?? null,
+      menuName: item.addedFromMenuId
+        ? (useMenuStore.getState().getMenuById(item.addedFromMenuId)?.name ??
+          null)
+        : null,
       selectedSizeId: item.customizations?.size?.id ?? null,
       selectedSizeName: item.customizations?.size?.name ?? null,
       sizePriceModifier: item.customizations?.size?.priceModifier ?? 0,

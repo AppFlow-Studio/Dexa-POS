@@ -1,6 +1,7 @@
 import { colors } from "@/lib/theme";
-import { addDays, format } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { addDays } from "date-fns/addDays";
+import { format } from "date-fns/format";
+import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

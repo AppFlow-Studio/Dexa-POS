@@ -8,7 +8,7 @@ import {
   DollarSign,
   MessageSquare,
   Send,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useState } from "react";
 import {
   ScrollView,

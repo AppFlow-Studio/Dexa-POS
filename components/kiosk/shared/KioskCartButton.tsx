@@ -1,18 +1,24 @@
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import {
+  kioskFont,
+  kioskMotion,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
-import { ShoppingCart } from "lucide-react-native";
+import { ShoppingCart } from "@/lib/icons";
 import { useEffect } from "react";
 import { Text, View } from "react-native";
 import Animated, {
+  FadeInDown,
   FadeOutDown,
   LinearTransition,
-  SlideInDown,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 
@@ -39,13 +45,14 @@ export function KioskCartButton({
   onPress: () => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const pulse = useSharedValue(1);
 
   useEffect(() => {
     if (itemCount <= 0) return;
     pulse.value = withSequence(
-      withTiming(1.08, { duration: 110 }),
-      withSpring(1, { damping: 10, stiffness: 240, mass: 0.5 }),
+      withTiming(1.05, { duration: 110 }),
+      withTiming(1, { duration: kioskMotion.base }),
     );
   }, [itemCount, pulse]);
 
@@ -57,20 +64,23 @@ export function KioskCartButton({
 
   return (
     <Animated.View
-      entering={SlideInDown.duration(320).springify().damping(16)}
+      entering={FadeInDown.duration(kioskMotion.slow)}
       exiting={FadeOutDown.duration(180)}
       style={[
         {
           position: "absolute",
           right: kioskPx(24, s),
           bottom: kioskPx(24, s),
-          borderRadius: 999,
-          backgroundColor: config.primaryColor,
+          borderRadius: kioskPx(kioskRadius.lg, s),
+          backgroundColor: t.primary,
+          // A floating control genuinely does need separating from the grid
+          // it sits over — but softly. The old drop was doing the job of a
+          // Material elevation layer.
           shadowColor: "#000000",
-          shadowOpacity: 0.25,
-          shadowRadius: 14,
+          shadowOpacity: 0.16,
+          shadowRadius: 18,
           shadowOffset: { width: 0, height: 6 },
-          elevation: 8,
+          elevation: 6,
         },
         pulseStyle,
       ]}
@@ -85,12 +95,16 @@ export function KioskCartButton({
           paddingLeft: kioskPx(24, s),
           paddingRight: kioskPx(28, s),
           height: kioskPx(76, s),
-          borderRadius: 999,
-          backgroundColor: config.primaryColor,
+          borderRadius: kioskPx(kioskRadius.lg, s),
+          backgroundColor: t.primary,
         }}
       >
         <View>
-          <ShoppingCart size={kioskPx(30, s)} color="#FFFFFF" />
+          <ShoppingCart
+            size={kioskPx(28, s)}
+            color={t.onPrimary}
+            strokeWidth={1.75}
+          />
           <View
             style={{
               position: "absolute",
@@ -102,16 +116,16 @@ export function KioskCartButton({
               borderRadius: kioskPx(13, s),
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: config.accentColor,
+              backgroundColor: t.accent,
               borderWidth: 2,
-              borderColor: config.primaryColor,
+              borderColor: t.primary,
             }}
           >
             <Text
               style={{
-                color: "#FFFFFF",
-                fontSize: kioskPx(14, s),
-                fontWeight: "800",
+                color: t.onPrimary,
+                fontSize: kioskPx(13, s),
+                ...kioskFont(t, "bold"),
               }}
             >
               {itemCount}
@@ -122,9 +136,10 @@ export function KioskCartButton({
         <Animated.Text
           layout={LinearTransition.duration(180)}
           style={{
-            color: "#FFFFFF",
-            fontSize: kioskPx(20, s),
-            fontWeight: "700",
+            color: t.onPrimary,
+            fontSize: kioskPx(19, s),
+            letterSpacing: kioskTracking(19),
+            ...kioskFont(t, "bold"),
           }}
         >
           View Cart

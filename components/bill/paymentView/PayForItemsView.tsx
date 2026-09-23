@@ -19,7 +19,7 @@ import {
   FileText,
   Minus,
   Plus
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,

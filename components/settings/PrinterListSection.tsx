@@ -16,8 +16,8 @@ import {
   Settings2,
   Trash2,
   XCircle,
-} from "lucide-react-native";
-import { formatDistanceToNow } from "date-fns";
+} from "@/lib/icons";
+import { formatDistanceToNow } from "date-fns/formatDistanceToNow";
 import type {
   PrinterConfig,
   PrinterDriverType,
