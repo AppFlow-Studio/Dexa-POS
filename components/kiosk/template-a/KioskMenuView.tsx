@@ -18,6 +18,10 @@ import {
 } from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
 import {
+  kioskItemSourceFromKey,
+  type KioskItemSource,
+} from "@/stores/useKioskCartStore";
+import {
   resolveKioskColumns,
   useKioskDeviceSettingsStore,
 } from "@/stores/useKioskDeviceSettingsStore";
@@ -51,7 +55,8 @@ export function KioskMenuView({
   search,
 }: {
   config: KioskConfig;
-  onSelectItem: (item: MenuItemType) => void;
+  /** `source` is the menu + category the item was picked from. */
+  onSelectItem: (item: MenuItemType, source?: KioskItemSource) => void;
   /** Owned by the template shell — the header draws the field, this draws the results. */
   search: KioskMenuSearchState;
 }) {
@@ -138,7 +143,9 @@ export function KioskMenuView({
               items={items}
               numColumns={numColumns}
               resetKey={resolvedKey}
-              onSelectItem={onSelectItem}
+              onSelectItem={(item) =>
+                onSelectItem(item, kioskItemSourceFromKey(resolvedKey))
+              }
             />
           </View>
         </View>
@@ -151,9 +158,9 @@ export function KioskMenuView({
             config={config}
             query={search.query}
             onClear={search.clear}
-            onSelectItem={(item) => {
+            onSelectItem={(item, source) => {
               search.close();
-              onSelectItem(item);
+              onSelectItem(item, source);
             }}
           />
         ) : null}

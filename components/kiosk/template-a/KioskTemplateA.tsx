@@ -14,7 +14,10 @@ import { useKioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuS
 import { KioskCheckoutView } from "@/components/kiosk/template-a/KioskCheckoutView";
 import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
-import { useKioskCartStore } from "@/stores/useKioskCartStore";
+import {
+  useKioskCartStore,
+  type KioskItemSource,
+} from "@/stores/useKioskCartStore";
 import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -41,6 +44,7 @@ export type TemplateAScreen =
 export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   const [screen, setScreen] = useState<TemplateAScreen>("orderType");
   const [selectedItem, setSelectedItem] = useState<MenuItemType | null>(null);
+  const [selectedSource, setSelectedSource] = useState<KioskItemSource>();
   // Set once the checkout reaches the paid/success screen. The order is settled,
   // so the idle timer must NOT treat it as an active cart (which would reset
   // under a customer reading their pickup number).
@@ -189,8 +193,9 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
             <KioskMenuView
               config={config}
               search={search}
-              onSelectItem={(item) => {
+              onSelectItem={(item, source) => {
                 setSelectedItem(item);
+                setSelectedSource(source);
                 setScreen("itemDetail");
               }}
             />
@@ -234,6 +239,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
         <KioskItemDetailModal
           config={config}
           item={selectedItem}
+          source={selectedSource}
           onDismiss={() => setScreen("menu")}
           onAdded={() => setScreen("menu")}
         />

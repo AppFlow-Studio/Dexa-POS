@@ -12,6 +12,7 @@ import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType, ModifierCategory } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import type { KioskItemSource } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { Check, ChevronLeft, Minus, Plus } from "@/lib/icons";
 import { useCallback, useMemo, useState } from "react";
@@ -50,6 +51,7 @@ import Animated, {
 export function KioskItemDetail({
   config,
   item,
+  source,
   onBack,
   onAdded,
   panelWidth,
@@ -57,6 +59,8 @@ export function KioskItemDetail({
 }: {
   config: KioskConfig;
   item: MenuItemType;
+  /** Menu + category the item was picked from; stamped onto the cart line. */
+  source?: KioskItemSource;
   onBack: () => void;
   onAdded: () => void;
   /** Box this renders into. Defaults to the window (full-screen presentation). */
@@ -75,7 +79,7 @@ export function KioskItemDetail({
     canAdd,
     total,
     addToCart,
-  } = useItemModifiers(item);
+  } = useItemModifiers(item, source);
 
   const handleAdd = () => {
     if (addToCart()) onAdded();

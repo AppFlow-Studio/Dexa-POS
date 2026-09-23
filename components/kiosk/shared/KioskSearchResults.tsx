@@ -20,6 +20,10 @@ import { kioskCardSurface } from "@/components/kiosk/shared/kioskSurface";
 import { useKioskSearchEntries } from "@/components/kiosk/shared/useKioskMenuSearch";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import {
+  kioskItemSourceFromKey,
+  type KioskItemSource,
+} from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { FlashList } from "@shopify/flash-list";
 import { Search } from "@/lib/icons";
@@ -56,7 +60,7 @@ export function KioskSearchResults({
 }: {
   config: KioskConfig;
   query: string;
-  onSelectItem: (item: MenuItemType) => void;
+  onSelectItem: (item: MenuItemType, source?: KioskItemSource) => void;
   onClear: () => void;
 }) {
   const s = useKioskUiScale();
@@ -89,6 +93,14 @@ export function KioskSearchResults({
     [],
   );
 
+  // A hit carries the category it was indexed under, so an item ordered from
+  // search routes to the same prep station as one tapped in that category.
+  const handlePress = useCallback(
+    (entry: KioskSearchEntry) =>
+      onSelectItem(entry.item, kioskItemSourceFromKey(entry.categoryKey)),
+    [onSelectItem],
+  );
+
   const renderItem = useCallback(
     ({ item: entry }: { item: KioskSearchEntry }) => (
       <KioskSearchResultRow
@@ -96,10 +108,10 @@ export function KioskSearchResults({
         config={config}
         surface={surface}
         width={rowWidth}
-        onPress={onSelectItem}
+        onPress={handlePress}
       />
     ),
-    [config, surface, rowWidth, onSelectItem],
+    [config, surface, rowWidth, handlePress],
   );
 
   // Rows are a fixed height, so FlashList gets a real size rather than an

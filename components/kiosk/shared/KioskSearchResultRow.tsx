@@ -11,7 +11,6 @@ import type { KioskSearchEntry } from "@/components/kiosk/shared/kioskMenuSearch
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
-import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
@@ -46,7 +45,8 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
   surface: string;
   /** Measured by the panel — FlashList's cells are positioned but unsized. */
   width: number;
-  onPress: (item: MenuItemType) => void;
+  /** Hands up the whole entry so the caller knows which category it was found in. */
+  onPress: (entry: KioskSearchEntry) => void;
 }) {
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
@@ -62,7 +62,7 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
 
   return (
     <KioskPressable
-      onPress={() => onPress(item)}
+      onPress={() => onPress(entry)}
       pressedScale={0.98}
       style={{
         flexDirection: "row",

@@ -23,6 +23,7 @@ import {
   type KioskCartLine,
 } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
+import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCallback, useRef, useState } from "react";
@@ -97,7 +98,7 @@ export interface KioskAssistanceRef {
 
 /** Build a POS CartItem from a kiosk cart line (card pricing). Totals/tax are
  * recomputed by the order store on add, so we only supply prices + modifiers. */
-function toCartItem(line: KioskCartLine): CartItem {
+export function toCartItem(line: KioskCartLine): CartItem {
   const unit = lineUnitPrice(line); // base + modifiers, card
   const cashUnit = lineCashUnitPrice(line); // base + modifiers, cash
   const modifiers = line.modifiers.map((g) => ({
@@ -129,6 +130,15 @@ function toCartItem(line: KioskCartLine): CartItem {
     originalPrice: unit,
     image: line.image,
     paidQuantity: 0,
+    // Same fields the POS ModifierScreen sets. The server resolves the item's
+    // prep station from category_id (category → prep-station default), and KDS
+    // routes on that — without them every kiosk item landed "Uncategorized"
+    // with no prep station and skipped every prep-station display.
+    addedFromCategoryId: line.categoryId ?? null,
+    addedFromMenuId: line.menuId ?? null,
+    category_name: line.categoryId
+      ? useMenuStore.getState().getCategoryById(line.categoryId)?.name
+      : undefined,
     customizations: {
       modifiers: modifiers.length > 0 ? modifiers : undefined,
       notes: line.notes,

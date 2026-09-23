@@ -2,6 +2,7 @@ import type { MenuItemType, ModifierCategory } from "@/lib/types";
 import {
   useKioskCartStore,
   type KioskCartModifierGroup,
+  type KioskItemSource,
 } from "@/stores/useKioskCartStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useMemo, useState } from "react";
@@ -78,6 +79,7 @@ export function buildKioskCartLine(
   item: MenuItemType,
   modifiers: KioskCartModifierGroup[],
   quantity: number,
+  source?: KioskItemSource,
 ): Parameters<ReturnType<typeof useKioskCartStore.getState>["addLine"]>[0] {
   return {
     menuItemId: item.id,
@@ -87,10 +89,15 @@ export function buildKioskCartLine(
     cashUnitPrice: item.cashPrice ?? item.price,
     quantity,
     modifiers,
+    categoryId: source?.categoryId ?? null,
+    menuId: source?.menuId ?? null,
   };
 }
 
-export function useItemModifiers(item: MenuItemType): UseItemModifiers {
+export function useItemModifiers(
+  item: MenuItemType,
+  source?: KioskItemSource,
+): UseItemModifiers {
   const getModifierGroupsByIds = useMenuStore((s) => s.getModifierGroupsByIds);
   const addLine = useKioskCartStore((s) => s.addLine);
 
@@ -168,7 +175,7 @@ export function useItemModifiers(item: MenuItemType): UseItemModifiers {
       })
       .filter((g) => g.options.length > 0);
 
-    return buildKioskCartLine(item, modifiers, quantity);
+    return buildKioskCartLine(item, modifiers, quantity, source);
   };
 
   const addToCart = () => {

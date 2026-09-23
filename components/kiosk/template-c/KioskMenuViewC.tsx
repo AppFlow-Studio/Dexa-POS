@@ -16,6 +16,10 @@ import {
   useVisibleMenus,
 } from "@/hooks/menu/useVisibleMenus";
 import type { Category, MenuItemType } from "@/lib/types";
+import {
+  kioskItemSourceFromKey,
+  type KioskItemSource,
+} from "@/stores/useKioskCartStore";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
   resolveKioskColumns,
@@ -49,7 +53,8 @@ export function KioskMenuViewC({
   search,
 }: {
   config: KioskConfig;
-  onSelectItem: (item: MenuItemType) => void;
+  /** `source` is the menu + category the item was picked from. */
+  onSelectItem: (item: MenuItemType, source?: KioskItemSource) => void;
   /** Owned by the template shell — the header draws the field, this draws the results. */
   search: KioskMenuSearchState;
 }) {
@@ -141,7 +146,9 @@ export function KioskMenuViewC({
           items={items}
           numColumns={numColumns}
           resetKey={resolvedKey}
-          onSelectItem={onSelectItem}
+          onSelectItem={(item) =>
+            onSelectItem(item, kioskItemSourceFromKey(resolvedKey))
+          }
         />
 
         {/* Results cover the grid without unmounting it, so closing search
@@ -151,9 +158,9 @@ export function KioskMenuViewC({
             config={config}
             query={search.query}
             onClear={search.clear}
-            onSelectItem={(item) => {
+            onSelectItem={(item, source) => {
               search.close();
-              onSelectItem(item);
+              onSelectItem(item, source);
             }}
           />
         ) : null}

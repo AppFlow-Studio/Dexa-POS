@@ -6,6 +6,7 @@ import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
+import type { KioskItemSource } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import Animated, { FadeIn, FadeOut, ZoomIn } from "react-native-reanimated";
@@ -32,11 +33,13 @@ const MAX_WIDTH = 1200;
 export function KioskItemDetailModal({
   config,
   item,
+  source,
   onDismiss,
   onAdded,
 }: {
   config: KioskConfig;
   item: MenuItemType;
+  source?: KioskItemSource;
   onDismiss: () => void;
   onAdded: () => void;
 }) {
@@ -84,6 +87,7 @@ export function KioskItemDetailModal({
           <KioskItemDetail
             config={config}
             item={item}
+            source={source}
             onBack={onDismiss}
             onAdded={onAdded}
             panelWidth={width}

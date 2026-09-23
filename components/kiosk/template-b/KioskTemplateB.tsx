@@ -14,7 +14,10 @@ import { useKioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuS
 import { KioskCheckoutView } from "@/components/kiosk/template-a/KioskCheckoutView";
 import { KioskMenuViewB } from "@/components/kiosk/template-b/KioskMenuViewB";
 import type { MenuItemType } from "@/lib/types";
-import { useKioskCartStore } from "@/stores/useKioskCartStore";
+import {
+  useKioskCartStore,
+  type KioskItemSource,
+} from "@/stores/useKioskCartStore";
 import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -39,6 +42,7 @@ export type TemplateBScreen =
 export function KioskTemplateB({ config, onExit }: KioskTemplateProps) {
   const [screen, setScreen] = useState<TemplateBScreen>("orderType");
   const [selectedItem, setSelectedItem] = useState<MenuItemType | null>(null);
+  const [selectedSource, setSelectedSource] = useState<KioskItemSource>();
   const [paid, setPaid] = useState(false);
   // Start Over with something in the basket asks first; empty, it just goes.
   const [confirmingStartOver, setConfirmingStartOver] = useState(false);
@@ -172,8 +176,9 @@ export function KioskTemplateB({ config, onExit }: KioskTemplateProps) {
             <KioskMenuViewB
               config={config}
               search={search}
-              onSelectItem={(item) => {
+              onSelectItem={(item, source) => {
                 setSelectedItem(item);
+                setSelectedSource(source);
                 setScreen("itemDetail");
               }}
             />
@@ -217,6 +222,7 @@ export function KioskTemplateB({ config, onExit }: KioskTemplateProps) {
         <KioskItemDetailModal
           config={config}
           item={selectedItem}
+          source={selectedSource}
           onDismiss={() => setScreen("menu")}
           onAdded={() => setScreen("menu")}
         />
