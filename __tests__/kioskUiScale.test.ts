@@ -21,6 +21,7 @@ import {
   kioskOrderTypeMetrics,
   kioskOrderTypeTileSize,
   kioskRailWidth,
+  kioskStripArrowSize,
   kioskUsesCategoryRail,
 } from "@/components/kiosk/shared/kioskLayout";
 import { categoryPillsFromSections } from "@/components/kiosk/shared/kioskCategoryPills";
@@ -764,6 +765,29 @@ describe("handheld layouts", () => {
     expect(Math.abs(kiosk.title - 66)).toBeLessThanOrEqual(2);
     expect(kiosk.subtitle).toBe(32);
     expect(Math.abs(kiosk.label - 45)).toBeLessThanOrEqual(1);
+  });
+
+  it("shrinks the category strip's arrows on a phone, and only there", () => {
+    // KioskCategoryPillBar's tab height (14 + 22 + 14) at each scale.
+    const tabAt = (scale: number) => Math.round(50 * scale);
+
+    const phone = kioskStripArrowSize(tabAt(KIOSK_MIN_UI_SCALE), true);
+    expect(phone.button).toBeLessThanOrEqual(30);
+    expect(phone.icon).toBeLessThan(tabAt(KIOSK_MIN_UI_SCALE) * 0.5);
+    // Still centred on the tabs, with room for the padded hit area.
+    expect(phone.button).toBeLessThan(tabAt(KIOSK_MIN_UI_SCALE));
+
+    // Panels keep the full-tab circle they shipped with.
+    for (const [w, h] of [
+      [1333, 752],
+      [1080, 1920],
+    ] as const) {
+      const tab = tabAt(computeKioskUiScale(w, h));
+      expect(kioskStripArrowSize(tab, isKioskHandheld(w, h))).toEqual({
+        button: tab,
+        icon: tab * 0.5,
+      });
+    }
   });
 
   it("only lowers the banner on phone-height portrait screens", () => {

@@ -10,6 +10,7 @@ import {
 import React, { useEffect, useRef } from "react";
 import {
     Animated,
+    Dimensions,
     PanResponder,
     Text,
     TouchableOpacity,
@@ -21,6 +22,7 @@ import Reanimated, {
     useSharedValue,
     withTiming,
 } from "react-native-reanimated";
+import type { ToastLayout } from "./toastLayout";
 
 interface CustomToastProps {
   id: string;
@@ -28,6 +30,7 @@ interface CustomToastProps {
   message: string;
   onUndo?: () => void;
   type?: "success" | "error" | "warning";
+  layout: ToastLayout;
 }
 
 const SWIPE_THRESHOLD = 80;
@@ -38,6 +41,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
   message,
   onUndo,
   type = "success",
+  layout,
 }) => {
   const hide = useToastStore((s) => s.hide);
 
@@ -58,7 +62,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
         if (gestureState.dx > SWIPE_THRESHOLD) {
           // Swipe far enough — dismiss with animation
           Animated.timing(translateX, {
-            toValue: 500,
+            toValue: Dimensions.get("window").width,
             duration: 200,
             useNativeDriver: true,
           }).start(() => {
@@ -108,18 +112,14 @@ const CustomToast: React.FC<CustomToastProps> = ({
   const isError = type === "error";
   const isWarning = type === "warning";
 
-  const containerClasses = isError
-    ? "flex-row items-center bg-gray-800 border border-red-500 rounded-lg p-4 w-full"
-    : isWarning
-      ? "flex-row items-center bg-gray-800 border border-yellow-500 rounded-lg p-4 w-full"
-      : "flex-row items-center bg-gray-800 border border-green-500 rounded-lg p-4 w-full";
+  const borderColor = isError ? "#ef4444" : isWarning ? "#eab308" : "#22c55e";
 
   const Icon = isError ? (
-    <XCircle size={24} color={colors.danger} />
+    <XCircle size={layout.iconSize} color={colors.danger} />
   ) : isWarning ? (
-    <AlertTriangle size={24} color={colors.warning} />
+    <AlertTriangle size={layout.iconSize} color={colors.warning} />
   ) : (
-    <CheckCircle2 size={24} color={colors.success} />
+    <CheckCircle2 size={layout.iconSize} color={colors.success} />
   );
 
   // Compact layout when undo is present (e.g. KDS ticket advance)
@@ -134,8 +134,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
         <Reanimated.View
           style={[
             {
-              maxWidth: 300,
-              width: 300,
+              width: layout.compactWidth,
               marginBottom: 6,
             },
             enterStyle,
@@ -148,11 +147,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
               alignItems: "center",
               backgroundColor: "#1f2937",
               borderWidth: 1,
-              borderColor: isError
-                ? "#ef4444"
-                : isWarning
-                  ? "#eab308"
-                  : "#22c55e",
+              borderColor,
               borderRadius: 8,
               paddingHorizontal: 10,
               paddingVertical: 6,
@@ -226,22 +221,52 @@ const CustomToast: React.FC<CustomToastProps> = ({
       <Reanimated.View
         style={[
           {
-            width: 380,
-            maxWidth: 400,
+            width: layout.width,
             marginBottom: 10,
           },
           enterStyle,
         ]}
         exiting={FadeOut.duration(300)}
       >
-        <View className={containerClasses}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: "#1f2937",
+            borderWidth: 1,
+            borderColor,
+            borderRadius: layout.radius,
+            padding: layout.padding,
+          }}
+        >
           {Icon}
-          <View className="flex-1 ml-3">
-            <Text className="text-white font-bold text-base">{title}</Text>
-            <Text className="text-gray-300 text-sm mt-1">{message}</Text>
+          <View style={{ flex: 1, marginHorizontal: layout.gap }}>
+            <Text
+              style={{
+                color: "#fff",
+                fontWeight: "700",
+                fontSize: layout.titleSize,
+                lineHeight: layout.titleLineHeight,
+              }}
+            >
+              {title}
+            </Text>
+            <Text
+              style={{
+                color: "#d1d5db",
+                fontSize: layout.messageSize,
+                lineHeight: layout.messageLineHeight,
+                marginTop: layout.messageGap,
+              }}
+            >
+              {message}
+            </Text>
           </View>
-          <TouchableOpacity onPress={handleDismiss} className="ml-2">
-            <X size={18} color={colors.label} />
+          <TouchableOpacity
+            onPress={handleDismiss}
+            hitSlop={8}
+          >
+            <X size={layout.closeSize} color={colors.label} />
           </TouchableOpacity>
         </View>
       </Reanimated.View>

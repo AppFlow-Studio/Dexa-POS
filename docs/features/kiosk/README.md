@@ -127,6 +127,7 @@ it has to spare). Everything above the breakpoint renders exactly as before.
 | Welcome (attract) | Logo bounded by the short edge; the welcome message is capped at 3 lines and shrinks to fit, so a long one can't push "Tap to start" off a landscape phone |
 | Dine In / Takeaway | Tiles sized by `kioskOrderTypeTileSize` (width-fit as well as short edge — the old 200dp floor overflowed every phone); all its type sized from the tile by `kioskOrderTypeMetrics`, so a phone gets a 25px heading and 16px labels instead of 35px over 130dp tiles. Tablet/kiosk sizes unchanged (±1–2px) |
 | Menu A / B | Portrait: rail → the Template C category strip over a full-width grid (`KioskCategoryMenuBody`). Same-named categories in two menus become `Name · Menu` (`categoryPillsFromSections`) so both stay reachable |
+| Category strip (A/B portrait, C) | Scroll arrows drop to 70% of a tab (`kioskStripArrowSize`) — full-tab circles took a quarter of a 360dp strip. Centred on the tabs; `hitSlop` keeps the tap target a full tab tall |
 | Menu grid (all) | `kioskFitColumns` steps the column count down until cards clear `KIOSK_MIN_CARD_WIDTH` (128dp) — portrait phones get 2 whatever "items per row" says. Kiosk Settings → Items per row runs the same arithmetic ahead of time (`kioskMaxMenuColumns`): counts the panel can't fit are greyed out, with a note saying how many it fits, and "Auto" shows the count it will really use |
 | Item detail | Fills the screen. Landscape: photo takes the left pane alone, title scrolls with the modifiers. Add button label one line, shrink-to-fit |
 | Cart | Narrow: smaller thumb, icon-only Remove |
@@ -137,6 +138,7 @@ it has to spare). Everything above the breakpoint renders exactly as before.
 | Error fallback | Scrolls rather than clipping "Start over" |
 | Manager PIN | Card fits the width; landscape puts the keypad beside the heading |
 | Kiosk Settings | Sidebar → compact header (status, End Session, Close) + scrolling section tabs; colour-picker wheel beside its controls on a landscape phone; dropdown list bounded by the window |
+| Toasts | App-wide, in `components/ui/toastLayout.ts`: width bounded by the window (the fixed 380dp ran off a portrait phone), type floored at 15/13px (the root POS scale put the title at 9.6px), and on a kiosk station sized from the kiosk scale, since the toast layer sits outside `KioskScaleProvider`. A tablet's toast is unchanged |
 
 Safe areas need nothing kiosk-specific: `app/(main)/_layout.tsx` already wraps
 the kiosk route in a `SafeAreaView` on all four edges.

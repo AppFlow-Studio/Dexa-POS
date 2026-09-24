@@ -39,6 +39,27 @@ export function kioskUsesCategoryRail(windowWidth: number): boolean {
 }
 
 /**
+ * The category strip's scroll arrows, given the height of the tabs they sit
+ * against.
+ *
+ * On a panel the arrow is a full tab tall. On a phone that is ~43dp: the pair
+ * of them took a quarter of a 360dp strip and outweighed the tabs they scroll,
+ * so there the circle drops to 70% of a tab. The strip pads the tap target
+ * back out to the full tab height (see KioskCategoryPillBar), so the smaller
+ * arrow is no harder to hit.
+ */
+export function kioskStripArrowSize(
+  tabHeight: number,
+  handheld: boolean,
+): { button: number; icon: number } {
+  if (!handheld) {
+    return { button: tabHeight, icon: tabHeight * 0.5 };
+  }
+  const button = Math.round(tabHeight * 0.7);
+  return { button, icon: Math.round(button * 0.55) };
+}
+
+/**
  * Narrowest a menu card may render. Below this a two-line name no longer fits
  * beside the card's padding at the 16px type floor (see kioskCardMetrics).
  */
