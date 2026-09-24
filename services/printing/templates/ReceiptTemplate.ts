@@ -3,6 +3,7 @@ import { ReceiptItemData, ReceiptTemplateData } from "@/types/printer";
 import { ReceiptTemplateConfig } from "@/types/receipt-template";
 import { formatCurrency } from "@/utils/currency";
 import { EscPosBuilder } from "../escpos/EscPosBuilder";
+import { sanitizeForPrint } from "../utils/sanitizeText";
 
 /**
  * Split a string into lines that each fit within maxLen, breaking at word
@@ -143,7 +144,7 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
       b.bold(true);
       b.textLine(data.orderType);
       if (data.tableName) {
-        b.textLine(formatTableLabel(data.tableName, "Table: "));
+        b.textLine(sanitizeForPrint(formatTableLabel(data.tableName, "Table: ")));
       }
       b.bold(false);
     }

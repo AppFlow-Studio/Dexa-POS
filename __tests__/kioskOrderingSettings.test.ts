@@ -3,6 +3,7 @@ import {
   resolveOrderTypeFlow,
   shouldAskForSeat,
 } from "@/lib/kiosk/orderTypeFlow";
+import { sanitizeForPrint } from "@/services/printing/utils/sanitizeText";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import {
   DEFAULT_KIOSK_ORDERING,
@@ -137,5 +138,13 @@ describe("useKioskCartStore seatLabel", () => {
     cart.setSeatLabel("Bar Seat 6");
     cart.clear();
     expect(useKioskCartStore.getState().seatLabel).toBeNull();
+  });
+});
+
+describe("seat labels on raw ESC/POS prints", () => {
+  it("sanitizes the em-dash instead of printing '?'", () => {
+    expect(sanitizeForPrint(formatTableLabel("Table 6 — Seat 2", "TABLE: "))).toBe(
+      "Table 6 - Seat 2",
+    );
   });
 });
