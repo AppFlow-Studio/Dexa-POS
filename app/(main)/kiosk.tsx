@@ -117,30 +117,36 @@ export default function KioskScreen() {
 
   // No config yet (first ever load, nothing cached). A persisted config renders
   // immediately even while the background poll refreshes.
+  // Inside KioskScaleProvider like every other kiosk screen: outside it these
+  // fell back to the POS scale, which a phone floors at 0.6 — 10px copy.
   if (!config || !effectiveConfig) {
     if (status === "error") {
       return (
-        <View className="flex-1 items-center justify-center bg-black px-8">
-          <Text className="text-white text-xl font-semibold">
-            Kiosk failed to load
-          </Text>
-          <Text className="text-gray-400 mt-2 text-center">
-            {error ?? "Unknown error"}
-          </Text>
-        </View>
+        <KioskScaleProvider>
+          <View className="flex-1 items-center justify-center bg-black px-8">
+            <Text className="text-white text-xl font-semibold text-center">
+              Kiosk failed to load
+            </Text>
+            <Text className="text-gray-400 text-base mt-2 text-center">
+              {error ?? "Unknown error"}
+            </Text>
+          </View>
+        </KioskScaleProvider>
       );
     }
     return (
-      <View className="flex-1 items-center justify-center bg-black">
-        <ActivityIndicator color="#FFFFFF" />
-        <Text className="text-gray-400 mt-3">Loading kiosk…</Text>
-      </View>
+      <KioskScaleProvider>
+        <View className="flex-1 items-center justify-center bg-black">
+          <ActivityIndicator color="#FFFFFF" />
+          <Text className="text-gray-400 text-base mt-3">Loading kiosk…</Text>
+        </View>
+      </KioskScaleProvider>
     );
   }
 
   if (showDiagnostics) {
     return (
-      <KioskScaleProvider>
+      <KioskScaleProvider minScale={1}>
         {/* Raw config, not `effectiveConfig` — this screen inspects and edits
             the profile, so it must show what the profile actually says. It
             resolves the device's own orientation override itself. */}

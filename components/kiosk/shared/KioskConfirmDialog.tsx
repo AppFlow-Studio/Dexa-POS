@@ -7,10 +7,11 @@ import {
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import { KIOSK_HANDHELD_SHORT_EDGE } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, useWindowDimensions, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 /**
@@ -48,6 +49,9 @@ export function KioskConfirmDialog({
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
   const button = kioskPx(64, s);
+  // Panel-sized insets leave two side-by-side buttons ~100dp each on a phone;
+  // tightened there, both labels keep one line.
+  const narrow = useWindowDimensions().width < KIOSK_HANDHELD_SHORT_EDGE;
 
   return (
     <Animated.View
@@ -61,7 +65,7 @@ export function KioskConfirmDialog({
         bottom: 0,
         alignItems: "center",
         justifyContent: "center",
-        paddingHorizontal: kioskPx(40, s),
+        paddingHorizontal: kioskPx(narrow ? 20 : 40, s),
         backgroundColor: t.scrim,
         zIndex: 90,
       }}
@@ -77,7 +81,7 @@ export function KioskConfirmDialog({
         style={{
           width: "100%",
           maxWidth: kioskPx(620, s),
-          padding: kioskPx(40, s),
+          padding: kioskPx(narrow ? 24 : 40, s),
           borderRadius: kioskPx(kioskRadius.xl, s),
           backgroundColor: t.page,
         }}

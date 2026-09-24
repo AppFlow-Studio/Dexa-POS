@@ -8,7 +8,10 @@ import {
   type KioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFontPx,
+  kioskPx,
+} from "@/components/kiosk/shared/KioskScaleProvider";
 import type { Category } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
@@ -83,7 +86,7 @@ export function KioskCategoryRail({
           >
             <Text
               style={{
-                fontSize: kioskPx(12, s),
+                fontSize: kioskFontPx(12, s),
                 letterSpacing: 1.6,
                 textTransform: "uppercase",
                 color: t.textFaint,

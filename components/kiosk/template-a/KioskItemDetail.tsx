@@ -1,4 +1,7 @@
-import { kioskDetailHeroHeight } from "@/components/kiosk/shared/kioskLayout";
+import {
+  isKioskHandheld,
+  kioskDetailHeroHeight,
+} from "@/components/kiosk/shared/kioskLayout";
 import {
   kioskFont,
   kioskRadius,
@@ -41,7 +44,10 @@ import Animated, {
  * through the options, and the fixed third stops a tall panel from turning the
  * hero into a full-screen image the customer has to scroll past.
  *
- * Landscape: side-by-side — photo + details left, modifiers right.
+ * Landscape: side-by-side — photo + details left, modifiers right. On a phone
+ * in landscape (~360dp tall) a photo and the title block cannot share one
+ * fixed column, so the photo takes the left pane alone and the title scrolls
+ * with the modifiers on the right.
  *
  * Every proportion is taken from the panel it is given, not from the window,
  * so the same component renders correctly full-screen and inside the centred
@@ -95,6 +101,10 @@ export function KioskItemDetail({
   const screenWidth = panelWidth ?? windowWidth;
   const screenHeight = panelHeight ?? windowHeight;
   const isHorizontal = screenWidth > screenHeight;
+  // Classified from the window, not the panel: the popup's panel is a fraction
+  // of the window on a tablet and must not read as a phone because of it.
+  const handheld = isKioskHandheld(windowWidth, windowHeight);
+  const compactLandscape = isHorizontal && handheld;
 
   const muted = t.textMuted;
   const faint = t.outline;
@@ -120,20 +130,25 @@ export function KioskItemDetail({
   // `flex: 1` box that takes exactly the leftover space, and we inscribe the
   // largest square that fits the box we measure. Self-correcting for any panel
   // size and any length of item copy, with no magic factors to re-tune.
-  const landscapePanelWidth = hasModifiers ? screenWidth / 2 : screenWidth;
-  const [photoBox, setPhotoBox] = useState(0);
+  const hasRightPane = hasModifiers || compactLandscape;
+  const landscapePanelWidth = hasRightPane ? screenWidth / 2 : screenWidth;
+  // `null` until the box has been measured. A measured box can legitimately be
+  // tiny, and treating 0 as "unmeasured" put the estimate back in its place —
+  // a photo larger than the space it was measured into.
+  const [photoBox, setPhotoBox] = useState<number | null>(null);
   const landscapeImageSize =
-    photoBox > 0
-      ? photoBox
-      : // First-frame estimate, replaced on the next layout pass. Deliberately
-        // conservative so the photo only ever grows into place, never jumps down.
-        Math.round(Math.min(screenHeight * 0.32, landscapePanelWidth * 0.62));
+    photoBox ??
+    // First-frame estimate, replaced on the next layout pass. Deliberately
+    // conservative so the photo only ever grows into place, never jumps down.
+    Math.round(Math.min(screenHeight * 0.32, landscapePanelWidth * 0.62));
 
   const handlePhotoBoxLayout = useCallback(
     (e: { nativeEvent: { layout: { width: number; height: number } } }) => {
       const { width, height } = e.nativeEvent.layout;
       const next = Math.max(0, Math.floor(Math.min(width, height)));
-      setPhotoBox((prev) => (Math.abs(prev - next) > 1 ? next : prev));
+      setPhotoBox((prev) =>
+        prev == null || Math.abs(prev - next) > 1 ? next : prev,
+      );
     },
     [],
   );
@@ -227,8 +242,9 @@ export function KioskItemDetail({
   const descriptionText = item.description ? (
     <Text
       // Landscape is a fixed column above a sticky footer, so it must stay
-      // bounded; portrait scrolls the description and can run long.
-      numberOfLines={isHorizontal ? 4 : undefined}
+      // bounded; portrait — and a landscape phone, where it sits in the
+      // scrolling pane — scrolls the description and can run long.
+      numberOfLines={isHorizontal && !compactLandscape ? 4 : undefined}
       style={{
         fontSize: kioskPx(18, s),
         color: muted,
@@ -421,7 +437,9 @@ export function KioskItemDetail({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: kioskPx(18, s),
+          // Tighter on a phone, where every dp here comes out of the add
+          // button beside it.
+          gap: kioskPx(handheld ? 8 : 18, s),
           paddingHorizontal: kioskPx(10, s),
           height: kioskPx(68, s),
           borderRadius: kioskPx(kioskRadius.md, s),
@@ -465,6 +483,7 @@ export function KioskItemDetail({
           alignItems: "center",
           justifyContent: "center",
           height: kioskPx(68, s),
+          paddingHorizontal: kioskPx(12, s),
           borderRadius: kioskPx(20, s),
           backgroundColor: canAdd
             ? t.primary
@@ -473,6 +492,11 @@ export function KioskItemDetail({
       >
         <Animated.Text
           layout={LinearTransition.duration(180)}
+          // One line always: the label carries the running total, and on a
+          // phone it would otherwise wrap beside the stepper.
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
           style={{
             color: t.onPrimary,
             fontSize: kioskPx(21, s),
@@ -521,11 +545,12 @@ export function KioskItemDetail({
             >
               {renderPhoto(landscapeImageSize)}
             </View>
-            {titleBlock}
+            {compactLandscape ? null : titleBlock}
           </View>
 
-          {/* Right panel — modifiers only (hidden if none) */}
-          {hasModifiers ? (
+          {/* Right panel — modifiers (hidden if none); on a landscape phone the
+              title block scrolls here too. */}
+          {hasRightPane ? (
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{
@@ -536,6 +561,7 @@ export function KioskItemDetail({
               style={{ flex: 1 }}
             >
               <View style={{ width: "100%", maxWidth: kioskPx(720, s) }}>
+                {compactLandscape ? titleBlock : null}
                 {modifierGroups}
               </View>
             </ScrollView>

@@ -1,5 +1,6 @@
 import appJson from "@/app.json";
 import { getKioskReviewOrder, resolveKioskReview } from "./checkoutGuard";
+import { isKioskHandheld } from "@/components/kiosk/shared/kioskLayout";
 import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -2516,6 +2517,169 @@ export function KioskDiagnosticsScreen({
 
   // ── Layout ─────────────────────────────────────────────────────────
 
+  const sectionContent = (
+    <>
+      {activeSection === "overview" && renderOverview()}
+      {activeSection === "profile" && (
+        <KioskProfileEditor
+          config={config}
+          onRefreshKioskConfig={onRefreshKioskConfig}
+        />
+      )}
+      {activeSection === "menu" && renderMenuLayout()}
+      {activeSection === "printers" && renderPrintersPanel()}
+      {activeSection === "terminal" && (
+        <>
+          {renderCodePayCard()}
+          {renderTerminalPanel()}
+        </>
+      )}
+      {activeSection === "about" && renderAbout()}
+    </>
+  );
+
+  const endSessionConfirm = showConfirm ? (
+    <View className="absolute inset-0 bg-black/40 items-center justify-center px-6">
+      <View
+        className="w-full max-w-sm bg-white rounded-3xl p-6"
+        style={cardShadow}
+      >
+        <View className="w-12 h-12 rounded-2xl bg-red-50 items-center justify-center self-center mb-3">
+          <LogOut size={24} color="#DC2626" />
+        </View>
+        <Text className="text-lg font-bold text-gray-900 text-center mb-2">
+          End Station Session
+        </Text>
+        <Text className="text-sm text-gray-500 text-center mb-6">
+          This will end the current station session and return you to
+          station selection. Your account will remain logged in.
+        </Text>
+        <Pressable
+          onPress={handleEndSession}
+          disabled={isEnding}
+          className="py-4 rounded-2xl bg-red-500 items-center mb-2.5"
+        >
+          <Text className="text-white font-bold text-base">
+            {isEnding ? "Ending session…" : "End Session"}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setShowConfirm(false)}
+          disabled={isEnding}
+          className="py-4 rounded-2xl bg-gray-100 items-center"
+        >
+          <Text className="text-gray-700 font-bold text-base">Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  ) : null;
+
+  // On a phone the 288dp sidebar would leave the settings themselves a sliver,
+  // so the page becomes one column: a compact header carrying the station's
+  // status and both exits, the sections as a scrolling tab strip, then the
+  // active section full width.
+  if (isKioskHandheld(winWidth, winHeight)) {
+    return (
+      <View className="flex-1 bg-gray-50">
+        <View className="flex-row items-center gap-2.5 px-4 pt-6 pb-3 bg-white">
+          <View className="flex-1">
+            <Text className="text-lg font-bold text-gray-900" numberOfLines={1}>
+              Kiosk Settings
+            </Text>
+            <View className="flex-row items-center gap-1.5 mt-0.5">
+              <View
+                className={`w-2 h-2 rounded-full ${
+                  rawIsOnline ? "bg-green-500" : "bg-red-500"
+                }`}
+              />
+              <Text className="flex-1 text-xs text-gray-500" numberOfLines={1}>
+                {rawIsOnline ? "Online" : "Offline"}
+                {" · "}
+                {selectedStation?.station_name ?? "Diagnostics"}
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => setShowConfirm(true)}
+            disabled={isEnding}
+            accessibilityRole="button"
+            accessibilityLabel="End Station Session"
+            className="w-11 h-11 rounded-full border border-red-200 bg-red-50 items-center justify-center"
+          >
+            <LogOut size={20} color="#DC2626" />
+          </Pressable>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            className="w-11 h-11 rounded-full bg-gray-100 items-center justify-center"
+          >
+            <X size={22} color="#374151" />
+          </Pressable>
+        </View>
+
+        <View className="bg-white border-b border-gray-200">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingBottom: 12,
+              gap: 8,
+            }}
+          >
+            {SECTIONS.map((section) => {
+              const active = activeSection === section.id;
+              return (
+                <TouchableOpacity
+                  key={section.id}
+                  onPress={() => setActiveSection(section.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  className={`flex-row items-center gap-2 px-3.5 py-2.5 rounded-xl ${
+                    active ? "bg-teal-600" : "bg-gray-100"
+                  }`}
+                >
+                  <section.Icon
+                    size={16}
+                    color={active ? "#FFFFFF" : "#6B7280"}
+                    strokeWidth={active ? 2.4 : 2}
+                  />
+                  <Text
+                    className={`text-sm ${
+                      active ? "font-bold text-white" : "font-medium text-gray-600"
+                    }`}
+                  >
+                    {section.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        <ScrollView
+          className="flex-1 px-4 py-4"
+          contentContainerStyle={{ gap: 16, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View>
+            <Text className="text-xl font-bold text-gray-900">
+              {activeMeta.title}
+            </Text>
+            <Text className="text-sm text-gray-400 mt-0.5">
+              {activeMeta.subtitle}
+            </Text>
+          </View>
+          {sectionContent}
+        </ScrollView>
+
+        {endSessionConfirm}
+      </View>
+    );
+  }
+
   return (
     <View className="flex-1 flex-row bg-gray-50">
       {/* ── Sidebar ── */}
@@ -2623,61 +2787,11 @@ export function KioskDiagnosticsScreen({
           contentContainerStyle={{ gap: 20, paddingBottom: 56 }}
           showsVerticalScrollIndicator={false}
         >
-          {activeSection === "overview" && renderOverview()}
-          {activeSection === "profile" && (
-            <KioskProfileEditor
-              config={config}
-              onRefreshKioskConfig={onRefreshKioskConfig}
-            />
-          )}
-          {activeSection === "menu" && renderMenuLayout()}
-          {activeSection === "printers" && renderPrintersPanel()}
-          {activeSection === "terminal" && (
-            <>
-              {renderCodePayCard()}
-              {renderTerminalPanel()}
-            </>
-          )}
-          {activeSection === "about" && renderAbout()}
+          {sectionContent}
         </ScrollView>
       </View>
 
-      {/* ── End-session confirm ── */}
-      {showConfirm && (
-        <View className="absolute inset-0 bg-black/40 items-center justify-center px-6">
-          <View
-            className="w-full max-w-sm bg-white rounded-3xl p-6"
-            style={cardShadow}
-          >
-            <View className="w-12 h-12 rounded-2xl bg-red-50 items-center justify-center self-center mb-3">
-              <LogOut size={24} color="#DC2626" />
-            </View>
-            <Text className="text-lg font-bold text-gray-900 text-center mb-2">
-              End Station Session
-            </Text>
-            <Text className="text-sm text-gray-500 text-center mb-6">
-              This will end the current station session and return you to
-              station selection. Your account will remain logged in.
-            </Text>
-            <Pressable
-              onPress={handleEndSession}
-              disabled={isEnding}
-              className="py-4 rounded-2xl bg-red-500 items-center mb-2.5"
-            >
-              <Text className="text-white font-bold text-base">
-                {isEnding ? "Ending session…" : "End Session"}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setShowConfirm(false)}
-              disabled={isEnding}
-              className="py-4 rounded-2xl bg-gray-100 items-center"
-            >
-              <Text className="text-gray-700 font-bold text-base">Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
+      {endSessionConfirm}
     </View>
   );
 }

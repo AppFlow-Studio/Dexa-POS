@@ -10,7 +10,17 @@ import {
   isItemOrderable,
 } from "@/components/kiosk/shared/kioskItemAvailability";
 import { selectableModifierGroups } from "@/components/kiosk/shared/useItemModifiers";
-import { kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
+import {
+  isKioskHandheld,
+  KIOSK_HEADER_CONTROL_HEIGHT,
+  KIOSK_MIN_CARD_WIDTH,
+  kioskBannerHeight,
+  kioskFitColumns,
+  kioskOrderTypeTileSize,
+  kioskRailWidth,
+  kioskUsesCategoryRail,
+} from "@/components/kiosk/shared/kioskLayout";
+import { categoryPillsFromSections } from "@/components/kiosk/shared/kioskCategoryPills";
 import {
   kioskCardSurface,
   kioskFadeEnd,
@@ -23,6 +33,15 @@ import {
   KIOSK_MAX_UI_SCALE,
   KIOSK_MIN_UI_SCALE,
 } from "@/lib/uiScale";
+
+/** Common phone viewports, portrait, in dp. */
+const PHONES: [number, number][] = [
+  [360, 640],
+  [360, 800],
+  [390, 844],
+  [412, 915],
+  [430, 932],
+];
 
 /**
  * The kiosk sizing chain: screen dp → kiosk UI scale → card width → card
@@ -62,6 +81,30 @@ describe("computeKioskUiScale", () => {
   it("clamps to the kiosk range at both extremes", () => {
     expect(computeKioskUiScale(3840, 2160)).toBe(KIOSK_MAX_UI_SCALE);
     expect(computeKioskUiScale(320, 480)).toBe(KIOSK_MIN_UI_SCALE);
+  });
+
+  it("puts every phone on the floor, in either orientation", () => {
+    // Raw phone ratios are ~0.5–0.6; they share one scale, the way phone apps
+    // do, rather than a 360dp phone rendering smaller type than a 430dp one.
+    for (const [w, h] of PHONES) {
+      expect(computeKioskUiScale(w, h)).toBe(KIOSK_MIN_UI_SCALE);
+      expect(computeKioskUiScale(h, w)).toBe(KIOSK_MIN_UI_SCALE);
+    }
+  });
+
+  it("keeps the header's controls at a comfortable touch size on a phone", () => {
+    // 44dp is the smallest comfortable touch target. At the old 0.7 floor the
+    // header's X / search / cart controls came out at 36dp.
+    expect(KIOSK_HEADER_CONTROL_HEIGHT * KIOSK_MIN_UI_SCALE).toBeGreaterThanOrEqual(
+      44,
+    );
+  });
+
+  it("does not move any tablet or kiosk panel", () => {
+    // The floor only binds below every real panel's own scale.
+    expect(computeKioskUiScale(1333, 752)).toBeCloseTo(1.12, 2);
+    expect(computeKioskUiScale(1080, 1920)).toBeCloseTo(1.61, 2);
+    expect(computeKioskUiScale(800, 1280)).toBeGreaterThan(KIOSK_MIN_UI_SCALE);
   });
 
   it("falls back to 1 for a missing width", () => {
@@ -609,5 +652,119 @@ describe("resolveKioskOrientationMode", () => {
       "horizontal",
     );
     expect(resolveKioskOrientationMode("auto", "vertical")).toBe("auto");
+  });
+});
+
+describe("handheld layouts", () => {
+  /** KioskItemGrid's padding and gap at the phone scale. */
+  const phonePad = Math.round(16 * KIOSK_MIN_UI_SCALE);
+  const phoneGap = Math.round(14 * KIOSK_MIN_UI_SCALE);
+
+  it("classifies phones as handheld and tablets as not", () => {
+    for (const [w, h] of PHONES) {
+      expect(isKioskHandheld(w, h)).toBe(true);
+      expect(isKioskHandheld(h, w)).toBe(true);
+    }
+    expect(isKioskHandheld(800, 1280)).toBe(false);
+    expect(isKioskHandheld(1333, 752)).toBe(false);
+    expect(isKioskHandheld(1080, 1920)).toBe(false);
+  });
+
+  it("swaps the rail for the strip only where width is scarce", () => {
+    expect(kioskUsesCategoryRail(360)).toBe(false);
+    expect(kioskUsesCategoryRail(430)).toBe(false);
+    // A landscape phone keeps the rail: width is what it has to spare.
+    expect(kioskUsesCategoryRail(915)).toBe(true);
+    expect(kioskUsesCategoryRail(800)).toBe(true);
+  });
+
+  it("gives a portrait phone two columns whatever the setting asks for", () => {
+    for (const [w] of PHONES) {
+      for (const requested of [2, 3, 4]) {
+        expect(kioskFitColumns(requested, w, phonePad, phoneGap)).toBe(2);
+      }
+    }
+  });
+
+  it("never lays a card out narrower than the minimum", () => {
+    for (const width of [240, 360, 540, 700, 1080]) {
+      for (const requested of [1, 2, 3, 4]) {
+        const cols = kioskFitColumns(requested, width, phonePad, phoneGap);
+        expect(cols).toBeLessThanOrEqual(requested);
+        if (cols > 1) {
+          const card =
+            (width - (phonePad - phoneGap / 2) * 2) / cols - phoneGap;
+          expect(card).toBeGreaterThanOrEqual(KIOSK_MIN_CARD_WIDTH);
+        }
+      }
+    }
+  });
+
+  it("honours one column, and leaves tablet grids alone", () => {
+    expect(kioskFitColumns(1, 360, phonePad, phoneGap)).toBe(1);
+    // 1080x1920 portrait kiosk, 3 columns beside a 34% rail: ~713dp of grid.
+    const s = computeKioskUiScale(1080, 1920);
+    expect(
+      kioskFitColumns(3, 713, Math.round(16 * s), Math.round(14 * s)),
+    ).toBe(3);
+    // Baseline tablet, landscape, 4 columns beside a 19% rail.
+    expect(kioskFitColumns(4, 1080, 18, 16)).toBe(4);
+  });
+
+  it("fits both order-type tiles across a phone", () => {
+    const s = KIOSK_MIN_UI_SCALE;
+    for (const [w, h] of PHONES) {
+      const tile = kioskOrderTypeTileSize(w, h, s);
+      // Two tiles, the gap between them and the side padding.
+      expect(tile * 2 + 36 * s + 40 * s * 2).toBeLessThanOrEqual(w);
+      expect(tile).toBeGreaterThan(100);
+    }
+  });
+
+  it("keeps the order-type tiles where they were on a tablet", () => {
+    // Previously round(min(max(752 * 0.38, 200), 420 * 1.12)).
+    expect(
+      kioskOrderTypeTileSize(1333, 752, computeKioskUiScale(1333, 752)),
+    ).toBe(286);
+  });
+
+  it("only lowers the banner on phone-height portrait screens", () => {
+    expect(kioskBannerHeight(640)).toBe(154);
+    expect(kioskBannerHeight(1280)).toBe(307);
+    expect(kioskBannerHeight(1920)).toBe(461);
+  });
+});
+
+describe("categoryPillsFromSections", () => {
+  const section = (menuId: string, title: string, names: string[]) => ({
+    menuId,
+    title,
+    data: names.map((name, i) => ({ id: `${menuId}-${i}`, name })),
+  });
+
+  it("keeps the rail's keys and order", () => {
+    const pills = categoryPillsFromSections([
+      section("lunch", "Lunch", ["Burgers", "Sides"]),
+      section("bar", "Bar", ["Cocktails"]),
+    ]);
+    expect(pills).toEqual([
+      { key: "lunch:lunch-0", name: "Burgers" },
+      { key: "lunch:lunch-1", name: "Sides" },
+      { key: "bar:bar-0", name: "Cocktails" },
+    ]);
+  });
+
+  it("names the menu when a category appears under more than one", () => {
+    // The rail shows both under their menu headings; the strip has none, so
+    // without this one of them would be unreachable — or indistinguishable.
+    const pills = categoryPillsFromSections([
+      section("lunch", "Lunch", ["Drinks", "Mains"]),
+      section("dinner", "Dinner", ["Drinks"]),
+    ]);
+    expect(pills.map((p) => p.name)).toEqual([
+      "Drinks · Lunch",
+      "Mains",
+      "Drinks · Dinner",
+    ]);
   });
 });

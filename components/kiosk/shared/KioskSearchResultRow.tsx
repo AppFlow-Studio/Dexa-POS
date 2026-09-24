@@ -8,7 +8,10 @@ import { KioskItemThumb } from "@/components/kiosk/shared/KioskItemThumb";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskMoney } from "@/components/kiosk/shared/kioskMoney";
 import type { KioskSearchEntry } from "@/components/kiosk/shared/kioskMenuSearch";
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFontPx,
+  kioskPx,
+} from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import { useKioskUiScale } from "@/lib/uiScale";
@@ -116,7 +119,7 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
         <Text
           numberOfLines={1}
           style={{
-            fontSize: kioskPx(14, s),
+            fontSize: kioskFontPx(14, s),
             color: t.textMuted,
             ...kioskFont(t, "regular"),
           }}
@@ -145,7 +148,7 @@ export const KioskSearchResultRow = React.memo(function KioskSearchResultRow({
           <Text
             style={{
               color: "#FFFFFF",
-              fontSize: kioskPx(14, s),
+              fontSize: kioskFontPx(14, s),
               fontWeight: "800",
             }}
           >

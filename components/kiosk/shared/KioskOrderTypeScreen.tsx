@@ -7,6 +7,7 @@ import {
   kioskTracking,
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
+import { kioskOrderTypeTileSize } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
@@ -21,9 +22,9 @@ import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
  * order is created at checkout. Theme-driven from `config` so any template can
  * use it as a session entry step or a mid-session change screen.
  *
- * The two tiles are sized off the viewport's short edge rather than a fixed
- * scaled px value — they're the only content on screen, so on a big panel they
- * should own it, and on a small one they must still fit side by side.
+ * The two tiles are sized off the viewport rather than a fixed scaled px value
+ * — they're the only content on screen, so on a big panel they should own it,
+ * and on a phone they must still fit side by side (kioskOrderTypeTileSize).
  */
 export function KioskOrderTypeScreen({
   config,
@@ -55,12 +56,7 @@ export function KioskOrderTypeScreen({
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
   const { width, height } = useWindowDimensions();
-  const shortEdge = Math.min(width, height);
-  // Two tiles plus a gap plus the screen's own padding have to fit across the
-  // short edge, so cap at ~38% of it.
-  const tileSize = Math.round(
-    Math.min(Math.max(shortEdge * 0.38, 200), kioskPx(420, s)),
-  );
+  const tileSize = kioskOrderTypeTileSize(width, height, s);
 
   return (
     <View
@@ -119,6 +115,9 @@ export function KioskOrderTypeScreen({
               <Icon color={t.primary} size={tileSize * 0.3} />
               <View style={{ alignItems: "center", gap: kioskPx(6, s) }}>
                 <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                   style={{
                     fontSize: kioskPx(28, s),
                     letterSpacing: kioskTracking(28),

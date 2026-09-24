@@ -19,7 +19,7 @@ resolves the same panel to the same scale in either orientation.
 
 A `KIOSK_LEGIBILITY_BOOST` (1.12) then accounts for kiosk viewing distance — a
 customer stands ~2–3 ft from a wall/floor panel, versus ~1 ft for a POS tablet.
-Result is clamped to `KIOSK_MIN/MAX_UI_SCALE` (0.7–3.0).
+Result is clamped to `KIOSK_MIN/MAX_UI_SCALE` (0.85–3.0).
 
 | Panel | Scale |
 | --- | --- |
@@ -27,6 +27,22 @@ Result is clamped to `KIOSK_MIN/MAX_UI_SCALE` (0.7–3.0).
 | 1920×1080 (landscape 1080p) | 1.61 |
 | 2160×3840 (4K portrait) | 3.00 (clamped) |
 | 1333×752 (baseline tablet) | 1.12 |
+| any phone, either orientation | 0.85 (floor) |
+
+**The floor is the phone scale.** Every handset's raw ratio (~0.5–0.6) sits
+below it, so all phones share one scale — as phone apps do; dp already absorbs
+density. 0.85 is where the header's 52dp controls reach 44dp, the smallest
+comfortable touch target. The old 0.7 floor gave 36dp controls and 12.6px body
+type. Every real tablet/kiosk panel is above 0.85, so none of them moved.
+
+Type set below ~15px goes through `kioskFontPx` (floored at
+`KIOSK_MIN_FONT_SIZE`, 12): it can only bind below scale 1, i.e. on a phone,
+where 12–14px captions would otherwise render at 10–11px. Kiosk Settings (a
+Tailwind-sized staff screen) is wrapped in `KioskScaleProvider minScale={1}` —
+Tailwind at 1.0 is already a phone-app type ramp, and the customer floor would
+put its `text-xs` labels at 10px. The kiosk loading / failed-to-load states sit
+inside `KioskScaleProvider` too; outside it they took the POS scale, which a
+phone floors at 0.6.
 
 ### 2. `kioskCardMetrics(cardWidth)` — `components/kiosk/shared/kioskCardMetrics.ts`
 
@@ -99,6 +115,58 @@ cache are both doing real work.
 swallow a short panel. The category rail also narrows as column count rises, so
 the grid gets the width back — but not below two columns, where the feature row
 wants *more* width, not less.
+
+## Handheld (phone) layouts
+
+`isKioskHandheld(w, h)` — short edge under 600dp, Android's own `sw600dp`
+phone/tablet line — is the one breakpoint, with `kioskUsesCategoryRail(width)`
+for the menu (width alone: a landscape phone keeps the rail, since width is what
+it has to spare). Everything above the breakpoint renders exactly as before.
+
+| Page | On a phone |
+| --- | --- |
+| Welcome (attract) | Logo bounded by the short edge; the welcome message is capped at 3 lines and shrinks to fit, so a long one can't push "Tap to start" off a landscape phone |
+| Dine In / Takeaway | Tiles sized by `kioskOrderTypeTileSize` (width-fit as well as short edge — the old 200dp floor overflowed every phone); labels one line |
+| Menu A / B | Portrait: rail → the Template C category strip over a full-width grid (`KioskCategoryMenuBody`). Same-named categories in two menus become `Name · Menu` (`categoryPillsFromSections`) so both stay reachable |
+| Menu grid (all) | `kioskFitColumns` steps the column count down until cards clear `KIOSK_MIN_CARD_WIDTH` (128dp) — portrait phones get 2 whatever "items per row" says |
+| Item detail | Fills the screen. Landscape: photo takes the left pane alone, title scrolls with the modifiers. Add button label one line, shrink-to-fit |
+| Cart | Narrow: smaller thumb, icon-only Remove |
+| Phone / name capture | Landscape: keypad beside the prompt. Narrow: content starts below the floating Back. ScrollView backstop everywhere |
+| Tip | Landscape chooser scrolls if needed; heart badge dropped on a landscape phone |
+| Card / processing / success / error | `StatusLayout` — centred, scrolls only when taller than the panel |
+| Idle warning, Start-over dialog | Tighter card padding on narrow screens so copy and buttons keep one line |
+| Error fallback | Scrolls rather than clipping "Start over" |
+| Manager PIN | Card fits the width; landscape puts the keypad beside the heading |
+| Kiosk Settings | Sidebar → compact header (status, End Session, Close) + scrolling section tabs; colour-picker wheel beside its controls on a landscape phone; dropdown list bounded by the window |
+
+Safe areas need nothing kiosk-specific: `app/(main)/_layout.tsx` already wraps
+the kiosk route in a `SafeAreaView` on all four edges.
+
+Two behaviour changes outside phones, both deliberate: panels whose auto scale
+fell between 0.7 and 0.85 (e.g. an 800×480 or 960×600 landscape panel) now
+render at 0.85; and "4 per row" on an ~8–10" portrait tablet steps down to 3
+where 4 would give ~119dp cards.
+
+### Checklist
+
+- [x] Scale floor + handheld breakpoint + column fit (`lib/uiScale.ts`, `kioskLayout.ts`)
+- [x] Welcome, order type, menu A/B/C, grid, search
+- [x] Item detail, cart, phone/name capture, tip, card/status screens
+- [x] Idle warning, start-over dialog, error fallback
+- [x] Manager PIN, Kiosk Settings (all sections), profile editor modals
+- [x] Unit tests (`__tests__/kioskUiScale.test.ts` → "handheld layouts", `categoryPillsFromSections`)
+- [ ] On-device pass on a phone, both orientations, all three templates
+
+### Review
+
+Replayed the sizing chain (scale → rail/strip → columns → card → rows visible,
+plus the stacked height of each fixed-height screen) at 360×640, 390×844,
+412×915 and their landscapes, and at 800×1280, 1333×752 and 1080×1920. Phones:
+2 columns at 160–186dp in portrait (2.2–3.1 rows visible), 3–4 columns beside
+the rail in landscape (1.7–2.0 rows); order type, success and the split phone
+keypad all fit a 360dp-tall landscape phone. The one overrun is the stacked
+phone-number step on a 360×640 handset (2dp), which its ScrollView absorbs.
+Tablet and kiosk values are unchanged.
 
 ## Orientation
 

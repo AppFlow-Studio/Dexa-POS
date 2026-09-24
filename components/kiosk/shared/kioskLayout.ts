@@ -12,6 +12,84 @@ const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
 /**
+ * Below this short edge the kiosk is running on a handheld — a phone, in
+ * either orientation. 600dp is Android's own phone/tablet line (the `sw600dp`
+ * resource qualifier), so this agrees with how the OS classifies the device.
+ */
+export const KIOSK_HANDHELD_SHORT_EDGE = 600;
+
+export function isKioskHandheld(width: number, height: number): boolean {
+  return Math.min(width, height) < KIOSK_HANDHELD_SHORT_EDGE;
+}
+
+/**
+ * Whether the menu can afford a category rail beside the grid.
+ *
+ * Keyed to width alone: a landscape phone is short but wide, and there the
+ * rail costs width it has to spare, where a strip across the top would cost
+ * the height it has least of. A portrait phone is the opposite — a third of
+ * 360dp is a rail too narrow to read and a grid too narrow to hold a card — so
+ * it gets the horizontal strip instead.
+ */
+export function kioskUsesCategoryRail(windowWidth: number): boolean {
+  return windowWidth >= KIOSK_HANDHELD_SHORT_EDGE;
+}
+
+/**
+ * Narrowest a menu card may render. Below this a two-line name no longer fits
+ * beside the card's padding at the 16px type floor (see kioskCardMetrics).
+ */
+export const KIOSK_MIN_CARD_WIDTH = 128;
+
+/**
+ * The column count the grid can actually honour: the requested count, stepped
+ * down until each card clears `KIOSK_MIN_CARD_WIDTH`.
+ *
+ * "Items per row" is the manager's ceiling, not a promise the panel can
+ * always keep — four columns in a phone's 360dp would be 80dp slivers
+ * overlapping each other. Stepping down reflows the grid instead. It can reach
+ * one column, which is the feature row, built for exactly that width.
+ *
+ * The cell arithmetic mirrors KioskItemGrid: the content container is inset by
+ * `padding − gap/2` and each multi-column cell carries half a gap either side.
+ */
+export function kioskFitColumns(
+  requested: number,
+  gridWidth: number,
+  padding: number,
+  gap: number,
+): number {
+  for (let cols = Math.max(1, requested); cols > 1; cols -= 1) {
+    const contentPadH = padding - gap / 2;
+    const cardWidth = (gridWidth - contentPadH * 2) / cols - gap;
+    if (cardWidth >= KIOSK_MIN_CARD_WIDTH) return cols;
+  }
+  return 1;
+}
+
+/**
+ * Side of each square tile on the Dine In / Takeaway screen.
+ *
+ * On a panel the short edge bounds it; on a phone the width does too — two
+ * tiles, the gap between them and the screen's side padding all have to fit
+ * across 360dp, which the old 200dp floor made impossible.
+ */
+export function kioskOrderTypeTileSize(
+  width: number,
+  height: number,
+  scale: number,
+): number {
+  const shortEdge = Math.min(width, height);
+  const sidePadding = 40 * scale;
+  const gap = 36 * scale;
+  // Floored: rounding this term up overflows the row by a fraction of a dp.
+  const widthFit = Math.floor((width - sidePadding * 2 - gap) / 2);
+  return Math.round(
+    Math.max(0, Math.min(shortEdge * 0.38, 420 * scale, widthFit)),
+  );
+}
+
+/**
  * Width of the category rail, as a percentage string for the flex parent.
  *
  * Tracks the manager's items-per-row setting: more columns means the grid
@@ -35,10 +113,11 @@ export function kioskRailWidth(
 /**
  * Height of the menu-screen media banner (Templates B and C, vertical only).
  * A quarter of the viewport reads as a hero strip on a 1080x1920 panel without
- * crowding out the rail and grid below it.
+ * crowding out the rail and grid below it. The floor only binds on a phone,
+ * where a taller one would take the grid's second row.
  */
 export function kioskBannerHeight(screenHeight: number): number {
-  return Math.round(clamp(screenHeight * 0.24, 200, 620));
+  return Math.round(clamp(screenHeight * 0.24, 140, 620));
 }
 
 /**

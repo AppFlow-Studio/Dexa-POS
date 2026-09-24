@@ -1,14 +1,13 @@
-import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
+import { KioskCategoryMenuBody } from "@/components/kiosk/shared/KioskCategoryMenuBody";
+import type { CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
 import {
   hasOrderableItem,
   useModifierGroupResolver,
   useOrderableItems,
 } from "@/components/kiosk/shared/kioskItemAvailability";
-import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
-import { kioskBannerHeight, kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
+import { kioskBannerHeight } from "@/components/kiosk/shared/kioskLayout";
 import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
-import { KioskSearchResults } from "@/components/kiosk/shared/KioskSearchResults";
 import type { KioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import {
@@ -16,10 +15,7 @@ import {
   useVisibleMenus,
 } from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
-import {
-  kioskItemSourceFromKey,
-  type KioskItemSource,
-} from "@/stores/useKioskCartStore";
+import type { KioskItemSource } from "@/stores/useKioskCartStore";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
   resolveKioskColumns,
@@ -44,7 +40,8 @@ import { useWindowDimensions, View } from "react-native";
  *
  * Nothing sits between the banner and the split: categories are in the rail
  * and search lives in the header, so the rail and grid get the whole of what
- * the banner leaves.
+ * the banner leaves. On a portrait phone the rail becomes a horizontal strip
+ * over a full-width grid (see KioskCategoryMenuBody).
  */
 export function KioskMenuViewB({
   config,
@@ -146,46 +143,16 @@ export function KioskMenuViewB({
         </View>
       ) : null}
 
-      <View className="flex-1">
-        <View className="flex-1 flex-row">
-          {/* Left rail — categories grouped by menu */}
-          <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
-            <KioskCategoryRail
-              config={config}
-              sections={sections}
-              resolvedKey={resolvedKey}
-              onSelect={handleSelectCategory}
-            />
-          </View>
-
-          {/* Right pane — item grid */}
-          <View className="flex-1">
-            <KioskItemGrid
-              config={config}
-              items={items}
-              numColumns={numColumns}
-              resetKey={resolvedKey}
-              onSelectItem={(item) =>
-                onSelectItem(item, kioskItemSourceFromKey(resolvedKey))
-              }
-            />
-          </View>
-        </View>
-
-        {/* Results cover the rail and grid without unmounting them, so closing
-            search restores the category and scroll offset untouched. */}
-        {search.expanded ? (
-          <KioskSearchResults
-            config={config}
-            query={search.query}
-            onClear={search.clear}
-            onSelectItem={(item, source) => {
-              search.close();
-              onSelectItem(item, source);
-            }}
-          />
-        ) : null}
-      </View>
+      <KioskCategoryMenuBody
+        config={config}
+        sections={sections}
+        resolvedKey={resolvedKey}
+        onSelectCategory={handleSelectCategory}
+        items={items}
+        numColumns={numColumns}
+        search={search}
+        onSelectItem={onSelectItem}
+      />
     </View>
   );
 }
