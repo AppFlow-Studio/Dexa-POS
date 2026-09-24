@@ -11,6 +11,7 @@
  *   updateConfig('dining', { enableCoursing: true })
  */
 
+import { createPendingWrites } from "@/lib/pendingWrites";
 import { resolveEffectivePosConfig } from "@/lib/posConfigResolution";
 import { createLazyPersistStorage } from "@/lib/storage";
 import type {
@@ -41,6 +42,8 @@ interface LocationConfigState {
     locationId: string,
     fullConfig: LocationPosConfigPatch,
     stationId?: string | null,
+    /** From beginLocationConfigRead(), taken before the fetch started. */
+    readStartedAt?: number,
   ) => void;
   updateConfig: <N extends ConfigNamespace>(
     namespace: N,
@@ -60,6 +63,21 @@ interface LocationConfigState {
 let _supabase: SupabaseClient | null = null;
 let _stationId: string | null = null;
 
+/** Local edits a config read must not overwrite until they've synced. */
+const _pendingWrites = createPendingWrites();
+
+/** Call as a config read starts; pass the result to hydrateConfig. */
+export const beginLocationConfigRead = () => _pendingWrites.beginRead();
+
+type UnsentBatch = Record<string, { value: unknown; writeId: number }>;
+
+/**
+ * Edits not yet sent, per namespace. The debounce only keeps its last call's
+ * arguments, so edits accumulate here and the flush sends all of them —
+ * otherwise changing two settings within the window dropped the first.
+ */
+const _unsent: Partial<Record<ConfigNamespace, UnsentBatch>> = {};
+
 /** Per-namespace debounced backend sync */
 const _debouncedSyncers: Partial<
   Record<ConfigNamespace, ReturnType<typeof debounce>>
@@ -68,9 +86,25 @@ const _debouncedSyncers: Partial<
 function _getDebouncedSyncer(namespace: ConfigNamespace) {
   if (!_debouncedSyncers[namespace]) {
     _debouncedSyncers[namespace] = debounce(
-      async (locationId: string, data: any) => {
-        if (!_supabase || !locationId) return;
+      async (locationId: string) => {
+        const batch = _unsent[namespace];
+        delete _unsent[namespace];
+        if (!batch) return;
 
+        const settle = (ok: boolean) => {
+          for (const [field, { writeId }] of Object.entries(batch)) {
+            if (ok) _pendingWrites.confirm(namespace, field, writeId);
+            else _pendingWrites.drop(namespace, field, writeId);
+          }
+        };
+        if (!_supabase || !locationId) {
+          settle(false);
+          return;
+        }
+
+        const data = Object.fromEntries(
+          Object.entries(batch).map(([field, { value }]) => [field, value]),
+        );
         try {
           const { error } = await _supabase.rpc("update_location_pos_config", {
             p_location_id: locationId,
@@ -83,13 +117,16 @@ function _getDebouncedSyncer(namespace: ConfigNamespace) {
               `[LocationConfig] RPC error for ${namespace}:`,
               error.message,
             );
+            settle(false);
             return;
           }
 
+          settle(true);
           // Broadcast to other stations
           _broadcastConfigUpdate(locationId, namespace, data);
         } catch (err) {
           console.error(`[LocationConfig] Sync failed for ${namespace}:`, err);
+          settle(false);
         }
       },
       500,
@@ -167,7 +204,9 @@ export const useLocationConfigStore = create<LocationConfigState>()(
         locationId: string,
         fullConfig: LocationPosConfigPatch,
         stationId: string | null = null,
+        readStartedAt: number = 0,
       ) => {
+        if (get()._locationId !== locationId) _pendingWrites.clear();
         set((state) => {
           state._locationId = locationId;
           state._stationId = stationId;
@@ -175,6 +214,20 @@ export const useLocationConfigStore = create<LocationConfigState>()(
 
           // Resolve defaults plus backend/effective values in one place.
           state.config = resolveEffectivePosConfig(fullConfig);
+
+          // Keep edits this read may predate, so a control doesn't flip back
+          // to the old value while (or just after) its save goes through.
+          for (const namespace of Object.keys(
+            state.config,
+          ) as ConfigNamespace[]) {
+            const local = _pendingWrites.overlay(namespace, readStartedAt);
+            if (Object.keys(local).length > 0) {
+              state.config[namespace] = {
+                ...state.config[namespace],
+                ...local,
+              } as any;
+            }
+          }
 
           // Temporary kill switch: per-seat ordering is force-disabled
           // regardless of backend/persisted value while the feature is being
@@ -209,7 +262,14 @@ export const useLocationConfigStore = create<LocationConfigState>()(
 
         // 2. Debounced backend sync + broadcast
         if (locationId) {
-          _getDebouncedSyncer(namespace)(locationId, partialData);
+          const batch: UnsentBatch = (_unsent[namespace] ??= {});
+          for (const [field, value] of Object.entries(partialData)) {
+            batch[field] = {
+              value,
+              writeId: _pendingWrites.record(namespace, field, value),
+            };
+          }
+          _getDebouncedSyncer(namespace)(locationId);
         }
       },
 

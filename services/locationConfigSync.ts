@@ -19,7 +19,10 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import {
+  beginLocationConfigRead,
+  useLocationConfigStore,
+} from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import type { ConfigNamespace } from '@/types/locationConfig'
 import { DEFAULT_POS_CONFIG } from '@/types/locationConfig'
@@ -71,6 +74,8 @@ async function _fetchAndHydrate(
   locationId: string,
   stationId: string | null = null
 ) {
+  // Taken before the fetch so hydrate knows which local edits it may predate.
+  const readStartedAt = beginLocationConfigRead()
   try {
     let config: Record<string, any> | null = null
     let shouldBackfillLocationDefaults = false
@@ -97,7 +102,9 @@ async function _fetchAndHydrate(
       shouldBackfillLocationDefaults = true
     }
 
-    useLocationConfigStore.getState().hydrateConfig(locationId, config, stationId)
+    useLocationConfigStore
+      .getState()
+      .hydrateConfig(locationId, config, stationId, readStartedAt)
     if (__DEV__) {
       console.log(
         `${LOG_TAG} Hydrated config for location ${locationId}` +
