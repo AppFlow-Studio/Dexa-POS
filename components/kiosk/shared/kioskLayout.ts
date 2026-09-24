@@ -9,6 +9,7 @@
  */
 
 import { kioskTypeSize } from "@/components/kiosk/shared/kioskDesign";
+import type { KioskTemplateId } from "@/types/kiosk";
 
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
@@ -65,6 +66,64 @@ export function kioskFitColumns(
     const contentPadH = padding - gap / 2;
     const cardWidth = (gridWidth - contentPadH * 2) / cols - gap;
     if (cardWidth >= KIOSK_MIN_CARD_WIDTH) return cols;
+  }
+  return 1;
+}
+
+/** How the menu screen shares its width with the item grid. */
+export type KioskMenuGridLayout = "rail" | "strip" | "sideMedia";
+
+/**
+ * The layout a template's menu screen uses on a panel of this shape, mirroring
+ * the menu views: Templates A and B put the category rail beside the grid
+ * wherever the width allows it (kioskUsesCategoryRail); Template C always uses
+ * the strip, and in landscape turns its banner carousel into a side column
+ * when there are banner images to show.
+ */
+export function kioskMenuGridLayout(
+  templateId: KioskTemplateId,
+  panelWidth: number,
+  isVertical: boolean,
+  hasBannerImages: boolean,
+): KioskMenuGridLayout {
+  if (templateId === "template_c") {
+    return !isVertical && hasBannerImages ? "sideMedia" : "strip";
+  }
+  return kioskUsesCategoryRail(panelWidth) ? "rail" : "strip";
+}
+
+/**
+ * The most items per row the menu grid can show on a panel: the largest count
+ * whose cards still clear `KIOSK_MIN_CARD_WIDTH` once the rail or media column
+ * has taken its share.
+ *
+ * At runtime the grid measures its own pane and steps down by itself (see
+ * kioskFitColumns in KioskItemGrid). This is the same arithmetic run ahead of
+ * time from the panel's size, so Kiosk Settings can say what a setting will
+ * actually do instead of silently showing fewer columns than were picked.
+ */
+export function kioskMaxMenuColumns({
+  panelWidth,
+  isVertical,
+  scale,
+  layout,
+}: {
+  panelWidth: number;
+  isVertical: boolean;
+  scale: number;
+  layout: KioskMenuGridLayout;
+}): number {
+  const padding = Math.round(KIOSK_GRID_INSET * scale);
+  const gap = Math.round(14 * scale);
+  for (let cols = 4; cols > 1; cols -= 1) {
+    const gridWidth =
+      layout === "rail"
+        ? panelWidth * (1 - parseFloat(kioskRailWidth(isVertical, cols)) / 100)
+        : layout === "sideMedia"
+          ? // Template C's media column: 28% of the panel plus its margins.
+            panelWidth * 0.72 - Math.round(24 * scale)
+          : panelWidth;
+    if (kioskFitColumns(cols, gridWidth, padding, gap) === cols) return cols;
   }
   return 1;
 }

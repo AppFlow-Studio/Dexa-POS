@@ -1,7 +1,12 @@
 import appJson from "@/app.json";
 import { getKioskReviewOrder, resolveKioskReview } from "./checkoutGuard";
 import { useKioskDialog } from "@/components/kiosk/shared/KioskDialog";
-import { isKioskHandheld } from "@/components/kiosk/shared/kioskLayout";
+import {
+  isKioskHandheld,
+  kioskMaxMenuColumns,
+  kioskMenuGridLayout,
+} from "@/components/kiosk/shared/kioskLayout";
+import { useKioskUiScale } from "@/lib/uiScale";
 import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -276,6 +281,34 @@ export function KioskDiagnosticsScreen({
         ? "horizontal"
         : "vertical"
       : orientationTarget;
+
+  // What "Items per row" can actually deliver on this panel. The menu grid
+  // steps down on its own when cards would get too narrow (a phone fits 2),
+  // so without this a manager could pick 4 and see 2 with no reason given.
+  // Uses the customer scale, not this screen's, and the panel's shape in the
+  // orientation the menu will render in.
+  const customerScale = useKioskUiScale();
+  const menuVertical = effectiveOrientation === "vertical";
+  const menuPanelWidth = menuVertical
+    ? Math.min(winWidth, winHeight)
+    : Math.max(winWidth, winHeight);
+  const maxMenuColumns = kioskMaxMenuColumns({
+    panelWidth: menuPanelWidth,
+    isVertical: menuVertical,
+    scale: customerScale,
+    layout: kioskMenuGridLayout(
+      config.templateId,
+      menuPanelWidth,
+      menuVertical,
+      (menuVertical
+        ? config.orderBannerImagesVertical
+        : config.orderBannerImagesHorizontal
+      ).length > 0,
+    ),
+  });
+  // Template defaults, as the menu views resolve "Auto".
+  const autoMenuColumns =
+    config.templateId === "template_c" ? 4 : menuVertical ? 3 : 4;
 
   // ── Payment Terminal ──────────────────────────────────────────────
   const supabase = useSupabaseClient();
@@ -1443,20 +1476,26 @@ export function KioskDiagnosticsScreen({
         <View className="px-5 py-5">
           <Text className="text-sm text-gray-500 mb-4">
             How many menu items show across each row. “Auto” uses the template
-            default ({effectiveOrientation === "vertical" ? "3" : "4"} for this
-            orientation). Fewer columns means wider cards, larger item text, and
-            room for descriptions; more columns fits more on screen at smaller
-            type. “1” switches to the full-width feature row — name and
-            description on the left, photo blended into the right edge — which
-            suits tall vertical kiosks.
+            default ({Math.min(autoMenuColumns, maxMenuColumns)} for this
+            orientation{autoMenuColumns > maxMenuColumns ? " on this screen" : ""}).
+            Fewer columns means wider cards, larger item text, and room for
+            descriptions; more columns fits more on screen at smaller type. “1”
+            switches to the full-width feature row — name and description on
+            the left, photo blended into the right edge — which suits tall
+            vertical kiosks.
           </Text>
           <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
             {(["auto", 1, 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
               const active = menuColumns === opt;
+              // Counts this panel can't fit are shown but can't be picked, so
+              // the row itself says where the limit is.
+              const fits = opt === "auto" || opt <= maxMenuColumns;
               return (
                 <TouchableOpacity
                   key={String(opt)}
                   onPress={() => setMenuColumns(opt)}
+                  disabled={!fits}
+                  accessibilityState={{ disabled: !fits, selected: active }}
                   activeOpacity={0.85}
                   className={`flex-1 py-3.5 items-center rounded-xl ${
                     active ? "bg-white" : ""
@@ -1465,7 +1504,13 @@ export function KioskDiagnosticsScreen({
                 >
                   <Text
                     className={`text-base font-bold ${
-                      active ? "text-teal-700" : "text-gray-400"
+                      active
+                        ? fits
+                          ? "text-teal-700"
+                          : "text-gray-500"
+                        : fits
+                          ? "text-gray-400"
+                          : "text-gray-300"
                     }`}
                   >
                     {opt === "auto" ? "Auto" : opt}
@@ -1474,6 +1519,17 @@ export function KioskDiagnosticsScreen({
               );
             })}
           </View>
+          {maxMenuColumns < 4 ? (
+            <Text className="text-xs text-gray-400 mt-3">
+              {typeof menuColumns === "number" && menuColumns > maxMenuColumns
+                ? `Set to ${menuColumns}, but this screen fits ${maxMenuColumns} per row in ${
+                    menuVertical ? "portrait" : "landscape"
+                  }, so the menu shows ${maxMenuColumns}.`
+                : `This screen fits up to ${maxMenuColumns} per row in ${
+                    menuVertical ? "portrait" : "landscape"
+                  }. More would make the menu cards too narrow to read.`}
+            </Text>
+          ) : null}
         </View>
       </Section>
     </>

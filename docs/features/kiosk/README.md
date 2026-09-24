@@ -128,7 +128,7 @@ it has to spare). Everything above the breakpoint renders exactly as before.
 | Welcome (attract) | Logo bounded by the short edge; the welcome message is capped at 3 lines and shrinks to fit, so a long one can't push "Tap to start" off a landscape phone |
 | Dine In / Takeaway | Tiles sized by `kioskOrderTypeTileSize` (width-fit as well as short edge — the old 200dp floor overflowed every phone); all its type sized from the tile by `kioskOrderTypeMetrics`, so a phone gets a 25px heading and 16px labels instead of 35px over 130dp tiles. Tablet/kiosk sizes unchanged (±1–2px) |
 | Menu A / B | Portrait: rail → the Template C category strip over a full-width grid (`KioskCategoryMenuBody`). Same-named categories in two menus become `Name · Menu` (`categoryPillsFromSections`) so both stay reachable |
-| Menu grid (all) | `kioskFitColumns` steps the column count down until cards clear `KIOSK_MIN_CARD_WIDTH` (128dp) — portrait phones get 2 whatever "items per row" says |
+| Menu grid (all) | `kioskFitColumns` steps the column count down until cards clear `KIOSK_MIN_CARD_WIDTH` (128dp) — portrait phones get 2 whatever "items per row" says. Kiosk Settings → Items per row runs the same arithmetic ahead of time (`kioskMaxMenuColumns`): counts the panel can't fit are greyed out, with a note saying how many it fits, and "Auto" shows the count it will really use |
 | Item detail | Fills the screen. Landscape: photo takes the left pane alone, title scrolls with the modifiers. Add button label one line, shrink-to-fit |
 | Cart | Narrow: smaller thumb, icon-only Remove |
 | Phone / name capture | Landscape: keypad beside the prompt. Narrow: content starts below the floating Back. ScrollView backstop everywhere |
@@ -145,7 +145,7 @@ the kiosk route in a `SafeAreaView` on all four edges.
 Two behaviour changes outside phones, both deliberate: panels whose auto scale
 fell between 0.7 and 0.85 (e.g. an 800×480 or 960×600 landscape panel) now
 render at 0.85; and "4 per row" on an ~8–10" portrait tablet steps down to 3
-where 4 would give ~119dp cards.
+where 4 would give ~126dp cards.
 
 ### Checklist
 

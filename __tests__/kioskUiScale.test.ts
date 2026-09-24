@@ -16,6 +16,8 @@ import {
   KIOSK_MIN_CARD_WIDTH,
   kioskBannerHeight,
   kioskFitColumns,
+  kioskMaxMenuColumns,
+  kioskMenuGridLayout,
   kioskOrderTypeMetrics,
   kioskOrderTypeTileSize,
   kioskRailWidth,
@@ -798,5 +800,51 @@ describe("categoryPillsFromSections", () => {
       "Mains",
       "Drinks · Dinner",
     ]);
+  });
+});
+
+describe("kioskMaxMenuColumns (what Kiosk Settings offers)", () => {
+  const max = (
+    template: "template_a" | "template_b" | "template_c",
+    w: number,
+    h: number,
+    hasBannerImages = false,
+  ) => {
+    const isVertical = h > w;
+    return kioskMaxMenuColumns({
+      panelWidth: w,
+      isVertical,
+      scale: computeKioskUiScale(w, h),
+      layout: kioskMenuGridLayout(template, w, isVertical, hasBannerImages),
+    });
+  };
+
+  it("caps a portrait phone at 2 in every template", () => {
+    for (const [w, h] of PHONES) {
+      for (const t of ["template_a", "template_b", "template_c"] as const) {
+        expect(max(t, w, h)).toBe(2);
+      }
+    }
+  });
+
+  it("offers all 4 on a landscape phone beside the rail", () => {
+    expect(kioskMenuGridLayout("template_a", 844, false, false)).toBe("rail");
+    expect(max("template_a", 844, 390)).toBe(4);
+  });
+
+  it("accounts for Template C's media column in landscape", () => {
+    expect(kioskMenuGridLayout("template_c", 640, false, true)).toBe(
+      "sideMedia",
+    );
+    expect(kioskMenuGridLayout("template_c", 640, false, false)).toBe("strip");
+    expect(max("template_c", 640, 360, true)).toBe(3);
+    expect(max("template_c", 640, 360, false)).toBe(4);
+  });
+
+  it("leaves big panels unrestricted", () => {
+    expect(max("template_a", 1080, 1920)).toBe(4);
+    expect(max("template_a", 1920, 1080)).toBe(4);
+    expect(max("template_a", 1333, 752)).toBe(4);
+    expect(max("template_c", 1080, 1920, true)).toBe(4);
   });
 });
