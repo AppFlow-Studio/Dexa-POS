@@ -8,6 +8,8 @@
  * viewport keeps every panel size sane.
  */
 
+import { kioskTypeSize } from "@/components/kiosk/shared/kioskDesign";
+
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
@@ -87,6 +89,32 @@ export function kioskOrderTypeTileSize(
   return Math.round(
     Math.max(0, Math.min(shortEdge * 0.38, 420 * scale, widthFit)),
   );
+}
+
+/**
+ * Type and spacing for the Dine In / Takeaway screen, derived from the tile.
+ *
+ * The tile already tracks the panel (kioskOrderTypeTileSize), so hanging the
+ * heading and labels off it keeps the screen in proportion at every size.
+ * Scaled independently, a phone got a 35px heading over 130dp tiles with a
+ * label that nearly touched both edges of its tile. The ratios are taken from
+ * the tablet and kiosk layouts, which come out where they were; the floors
+ * keep a phone readable. Sizes snap to the kiosk type scale.
+ */
+export function kioskOrderTypeMetrics(tile: number) {
+  return {
+    title: kioskTypeSize(tile * 0.16, 25, 64),
+    subtitle: kioskTypeSize(tile * 0.075, 16, 32),
+    label: kioskTypeSize(tile * 0.11, 16, 46),
+    hint: kioskTypeSize(tile * 0.063, 13, 28),
+    icon: Math.round(tile * 0.3),
+    /** Icon to label. */
+    innerGap: Math.round(tile * 0.07),
+    /** Label to hint. */
+    labelGap: Math.max(2, Math.round(tile * 0.02)),
+    /** Subtitle to tiles. */
+    headingGap: Math.round(tile * 0.2),
+  };
 }
 
 /**

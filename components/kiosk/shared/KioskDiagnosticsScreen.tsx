@@ -1,5 +1,6 @@
 import appJson from "@/app.json";
 import { getKioskReviewOrder, resolveKioskReview } from "./checkoutGuard";
+import { useKioskDialog } from "@/components/kiosk/shared/KioskDialog";
 import { isKioskHandheld } from "@/components/kiosk/shared/kioskLayout";
 import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
@@ -77,7 +78,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
-    Alert,
     Image,
     Pressable,
     ScrollView,
@@ -246,6 +246,9 @@ export function KioskDiagnosticsScreen({
       setCheckingMenu(false);
     }
   };
+
+  // Staff dialogs in the Settings look, never a native alert.
+  const { show: showDialog, dialog } = useKioskDialog();
 
   // ── Active sidebar section ──
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
@@ -604,7 +607,7 @@ export function KioskDiagnosticsScreen({
       terminal.stationId !== selectedStation.id;
     if (boundElsewhere) {
       const confirmed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
+        showDialog(
           "Move terminal to this station?",
           `${terminal.name} is currently in use at another station. Moving it here disconnects it from that station.`,
           [
@@ -1281,17 +1284,17 @@ export function KioskDiagnosticsScreen({
           <Row label="Order ID" value={getKioskReviewOrder(selectedStation.id) ?? ""} mono />
           <TouchableOpacity
             className="px-5 py-4"
-            onPress={() => Alert.alert(
+            onPress={() => showDialog(
               "Confirm payment reconciliation",
               "Check the Valor transaction and Supabase order/payment first. Record or resolve any captured payment and dispatch the paid order if needed. This only unlocks kiosk checkout; it does not refund, charge, or update payment records.",
               [
                 { text: "Cancel", style: "cancel" },
                 { text: "Reconciled - unlock kiosk", onPress: () => {
                   if (!resolveKioskReview(selectedStation.id)) {
-                    Alert.alert("Payment still running", "Wait for the terminal operation to finish.");
+                    showDialog("Payment still running", "Wait for the terminal operation to finish.");
                     return;
                   }
-                  Alert.alert("Kiosk unlocked", "Close settings and start a new customer session.");
+                  showDialog("Kiosk unlocked", "Close settings and start a new customer session.");
                 } },
               ],
             )}
@@ -2676,6 +2679,7 @@ export function KioskDiagnosticsScreen({
         </ScrollView>
 
         {endSessionConfirm}
+        {dialog}
       </View>
     );
   }
@@ -2792,6 +2796,7 @@ export function KioskDiagnosticsScreen({
       </View>
 
       {endSessionConfirm}
+      {dialog}
     </View>
   );
 }

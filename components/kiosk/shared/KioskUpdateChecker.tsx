@@ -1,3 +1,4 @@
+import { useKioskDialog } from "@/components/kiosk/shared/KioskDialog";
 import AppUpdateModal from "@/components/AppUpdateModal";
 import {
   checkForNativeUpdate,
@@ -14,7 +15,6 @@ import {
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Text,
   TouchableOpacity,
@@ -46,6 +46,8 @@ type UpdateStatus =
  */
 export function KioskUpdateChecker() {
   const [status, setStatus] = useState<UpdateStatus>("idle");
+  // Staff dialogs in the Settings look, never a native alert.
+  const { show: showDialog, dialog } = useKioskDialog();
   const [nativeManifest, setNativeManifest] = useState<VersionManifest | null>(
     null,
   );
@@ -89,7 +91,7 @@ export function KioskUpdateChecker() {
         const result = await Updates.checkForUpdateAsync();
         if (result.isAvailable) {
           setStatus("idle");
-          Alert.alert(
+          showDialog(
             "Update Available",
             "A new update is ready to download. The app will restart after installing.",
             [
@@ -123,6 +125,7 @@ export function KioskUpdateChecker() {
 
   return (
     <View style={{ gap: 10 }}>
+      {dialog}
       <View className="flex-row items-center gap-2">
         <RefreshCw size={16} color="#6B7280" />
         <Text className="text-sm font-bold text-gray-500 uppercase tracking-wide">

@@ -16,6 +16,7 @@ import {
   KIOSK_MIN_CARD_WIDTH,
   kioskBannerHeight,
   kioskFitColumns,
+  kioskOrderTypeMetrics,
   kioskOrderTypeTileSize,
   kioskRailWidth,
   kioskUsesCategoryRail,
@@ -726,6 +727,37 @@ describe("handheld layouts", () => {
     expect(
       kioskOrderTypeTileSize(1333, 752, computeKioskUiScale(1333, 752)),
     ).toBe(286);
+  });
+
+  it("sizes the order-type text to the tile, so a phone is not all heading", () => {
+    // Regression: scaled independently of the tile, a phone got a 35px heading
+    // over 130dp tiles, and "Takeaway" at 24px nearly touched the tile's edges.
+    const tile = kioskOrderTypeTileSize(360, 800, KIOSK_MIN_UI_SCALE);
+    const m = kioskOrderTypeMetrics(tile);
+    expect(m.title).toBeLessThanOrEqual(28);
+    // "Takeaway" (8 bold glyphs ≈ 0.6em) keeps clear margins inside its tile.
+    expect(8 * 0.6 * m.label).toBeLessThan(tile * 0.7);
+    // Readable floors still hold.
+    expect(m.label).toBeGreaterThanOrEqual(16);
+    expect(m.hint).toBeGreaterThanOrEqual(13);
+  });
+
+  it("keeps the order-type text where it was on a tablet and a kiosk", () => {
+    // Previously kioskPx(41 / 20 / 28 / 16, scale).
+    const tablet = kioskOrderTypeMetrics(
+      kioskOrderTypeTileSize(1333, 752, computeKioskUiScale(1333, 752)),
+    );
+    expect(tablet.title).toBe(46);
+    expect(tablet.subtitle).toBe(22);
+    expect(Math.abs(tablet.label - 31)).toBeLessThanOrEqual(1);
+    expect(tablet.hint).toBe(18);
+
+    const kiosk = kioskOrderTypeMetrics(
+      kioskOrderTypeTileSize(1080, 1920, computeKioskUiScale(1080, 1920)),
+    );
+    expect(Math.abs(kiosk.title - 66)).toBeLessThanOrEqual(2);
+    expect(kiosk.subtitle).toBe(32);
+    expect(Math.abs(kiosk.label - 45)).toBeLessThanOrEqual(1);
   });
 
   it("only lowers the banner on phone-height portrait screens", () => {

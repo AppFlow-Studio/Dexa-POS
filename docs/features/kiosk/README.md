@@ -126,7 +126,7 @@ it has to spare). Everything above the breakpoint renders exactly as before.
 | Page | On a phone |
 | --- | --- |
 | Welcome (attract) | Logo bounded by the short edge; the welcome message is capped at 3 lines and shrinks to fit, so a long one can't push "Tap to start" off a landscape phone |
-| Dine In / Takeaway | Tiles sized by `kioskOrderTypeTileSize` (width-fit as well as short edge — the old 200dp floor overflowed every phone); labels one line |
+| Dine In / Takeaway | Tiles sized by `kioskOrderTypeTileSize` (width-fit as well as short edge — the old 200dp floor overflowed every phone); all its type sized from the tile by `kioskOrderTypeMetrics`, so a phone gets a 25px heading and 16px labels instead of 35px over 130dp tiles. Tablet/kiosk sizes unchanged (±1–2px) |
 | Menu A / B | Portrait: rail → the Template C category strip over a full-width grid (`KioskCategoryMenuBody`). Same-named categories in two menus become `Name · Menu` (`categoryPillsFromSections`) so both stay reachable |
 | Menu grid (all) | `kioskFitColumns` steps the column count down until cards clear `KIOSK_MIN_CARD_WIDTH` (128dp) — portrait phones get 2 whatever "items per row" says |
 | Item detail | Fills the screen. Landscape: photo takes the left pane alone, title scrolls with the modifiers. Add button label one line, shrink-to-fit |
@@ -325,6 +325,12 @@ that lets a customer recover from too many results by continuing to type.
 
 ## Conventions
 
+- **Never call `Alert.alert` in kiosk code.** A native alert is the one surface
+  the kiosk can't theme. Use `useKioskDialog` (`KioskDialog.tsx`) — same
+  signature — passing `config` for the customer-themed look (render the
+  returned element at the screen root) or nothing for the staff Settings look
+  (drawn in a Modal, so it works from inside scrolling panels). Keep customer
+  copy generic; staff detail belongs in Kiosk Settings.
 - **Never use raw `px` for a size in a kiosk component.** Route it through
   `kioskPx(n, scale)` or `kioskCardMetrics`, or it will render at a fraction of
   the surrounding UI on a large panel. `KioskIdleModal` shipped with raw px and

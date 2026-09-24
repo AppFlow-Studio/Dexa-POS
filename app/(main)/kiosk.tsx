@@ -1,6 +1,7 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
 import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
 import { KioskAdminPinModal } from "@/components/kiosk/shared/KioskAdminPinModal";
+import { useKioskDialog } from "@/components/kiosk/shared/KioskDialog";
 import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosticsScreen";
 import { KioskErrorBoundary } from "@/components/kiosk/shared/KioskErrorBoundary";
 import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
@@ -19,7 +20,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 /**
  * Kiosk entry point.
@@ -57,22 +58,27 @@ export default function KioskScreen() {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  // Start-screen stops, drawn in the kiosk's own themed dialog rather than a
+  // native alert. Only reachable from the attract screen, so `config` is set.
+  const { show: showNotice, dialog: notice } = useKioskDialog(
+    config ?? undefined,
+  );
   const handleStart = async () => {
     try {
       const stationId = useStoreSettingsStore.getState().selectedStation?.id;
       const location = useStoreSettingsStore.getState().selectedStore;
       if (!stationId || !location?.id || !location.merchant_id || isKioskCheckoutHeld(stationId)) {
-        Alert.alert("Staff assistance required", "Please ask a staff member to check this kiosk's payment status.");
+        showNotice("Staff assistance required", "Please ask a staff member to check this kiosk's payment status.");
         return;
       }
       const access = await refreshSelectedStationOperationalState(supabase);
       if (!access.valid) {
-        Alert.alert(access.failure.title, access.failure.message);
+        showNotice(access.failure.title, access.failure.message);
         return;
       }
       setIdle(false);
     } catch {
-      Alert.alert("Kiosk unavailable", "Could not verify kiosk access. Please see a staff member.");
+      showNotice("Kiosk unavailable", "Could not verify kiosk access. Please see a staff member.");
     }
   };
 
@@ -194,6 +200,8 @@ export default function KioskScreen() {
           />
         )}
       </KioskErrorBoundary>
+
+      {notice}
 
       {/* Manager-PIN gate opened by the secret 5-tap on the attract screen. */}
       <KioskAdminPinModal
