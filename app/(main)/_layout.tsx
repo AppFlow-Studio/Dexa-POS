@@ -1,6 +1,5 @@
 import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import Header from "@/components/Header";
-import MenuSearchSheet from "@/components/menu/MenuSearchSheet";
 import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
 import OnlineOrderDrawer from "@/components/online-orders/OnlineOrderDrawer";
@@ -36,7 +35,6 @@ import { hydrateDrawerSession } from "@/services/cashDrawerService";
 import KDSSoundService from "@/services/kds/kdsSoundService";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
-import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import {
     selectIsOpen as selectModifierOpen,
     useModifierSidebarStore,
@@ -113,20 +111,9 @@ export default function MainLayout() {
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null);
-  const menuSearchSheetRef = useRef<BottomSheetMethods>(null);
   const setSheetRef = useNotificationSheetStore((state) => state.setSheetRef);
   const clearSheetRef = useNotificationSheetStore(
     (state) => state.clearSheetRef,
-  );
-  // Selector-scoped: calling useMenuManagementSearchStore() bare subscribes this
-  // layout to the WHOLE store, so an unrelated `setActiveTab` (menu-management
-  // sidebar) re-rendered the entire app shell — Header, every persistent sheet
-  // and the <Slot/> subtree. These two actions are stable store functions.
-  const setSearchSheetRef = useMenuManagementSearchStore(
-    (s) => s.setSearchSheetRef,
-  );
-  const clearSearchSheetRef = useMenuManagementSearchStore(
-    (s) => s.clearSearchSheetRef,
   );
 
   // Complementary mitigation to the screens animation fix (lib/screenConfig.ts):
@@ -150,12 +137,6 @@ export default function MainLayout() {
       return () => clearSheetRef(ref);
     }
   }, [setSheetRef, clearSheetRef, isKDS]);
-
-  useEffect(() => {
-    const ref = menuSearchSheetRef as React.RefObject<BottomSheetMethods>;
-    setSearchSheetRef(ref);
-    return () => clearSearchSheetRef(ref);
-  }, [setSearchSheetRef, clearSearchSheetRef]);
 
   useEffect(() => {
     if (__DEV__ && !isFullScreenStation) {
@@ -396,7 +377,7 @@ export default function MainLayout() {
   }
 
   // Kiosk (self-service) — plain full-screen layout with none of the POS
-  // bottom sheets (MenuSearchSheet, NotificationBottomSheet, PaymentBottomSheet,
+  // bottom sheets (NotificationBottomSheet, PaymentBottomSheet,
   // PaymentDetailBottomSheet) or online-order chrome that would render on top
   // of the customer-facing UI.
   if (isKiosk || isKioskRoute) {
@@ -499,7 +480,7 @@ export default function MainLayout() {
           </View>
           {/* Global online-orders edge tab + drawer. zIndex 150: above
               PaymentDetail (100) so incoming orders stay reachable
-              mid-payment, below MenuSearchSheet (200). Hidden while the
+              mid-payment. Hidden while the
               modifier screen is up so it can't overlay the modifier UI. */}
           {!isModifierScreenOpen && (
             <View
@@ -517,19 +498,6 @@ export default function MainLayout() {
               <OnlineOrderDrawer />
             </View>
           )}
-          <View
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 200,
-            }}
-            pointerEvents="box-none"
-          >
-            <MenuSearchSheet ref={menuSearchSheetRef} />
-          </View>
           <Modal
             visible={isProfileOpen}
             animationType="none"
