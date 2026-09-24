@@ -1,3 +1,4 @@
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { ReceiptItemData, ReceiptTemplateData } from "@/types/printer";
 import { ReceiptTemplateConfig } from "@/types/receipt-template";
 import { formatCurrency } from "@/utils/currency";
@@ -142,7 +143,7 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
       b.bold(true);
       b.textLine(data.orderType);
       if (data.tableName) {
-        b.textLine(`Table: ${data.tableName}`);
+        b.textLine(formatTableLabel(data.tableName, "Table: "));
       }
       b.bold(false);
     }

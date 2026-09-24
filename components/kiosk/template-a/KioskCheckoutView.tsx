@@ -1,4 +1,5 @@
 import { KioskCustomerInfoStep } from "@/components/kiosk/shared/KioskCustomerInfoStep";
+import { KioskSeatSelectScreen } from "@/components/kiosk/shared/KioskSeatSelectScreen";
 import {
   kioskFont,
   kioskRadius,
@@ -12,9 +13,10 @@ import {
   type KioskCheckoutTotals,
 } from "@/components/kiosk/shared/useKioskCheckout";
 import { useActiveProcessor } from "@/hooks/useActiveProcessor";
+import { shouldAskForSeat } from "@/lib/kiosk/orderTypeFlow";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
-import type { KioskConfig } from "@/types/kiosk";
+import { kioskOrdering, type KioskConfig } from "@/types/kiosk";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -32,12 +34,12 @@ import {
 } from "react-native";
 
 /**
- * Template A checkout flow: prepare order (real totals incl. tax) → optional tip
- * → processing → success. All payment/order logic lives in the shared
+ * Template A checkout flow: customer → seat (dine-in, when the station asks) →
+ * optional tip → processing → success. All payment/order logic lives in the shared
  * useKioskCheckout hook; this is presentation only. On success the cart is
  * cleared and `onDone` returns the kiosk to idle/attract.
  */
-type Step = "customer" | "tip" | "processing" | "success";
+type Step = "customer" | "seat" | "tip" | "processing" | "success";
 
 export function KioskCheckoutView({
   config,
@@ -78,10 +80,18 @@ export function KioskCheckoutView({
   };
 
   const tipEnabled = config.tipScreenEnabled;
+  const ordering = kioskOrdering(config);
+  const orderType = useKioskCartStore((state) => state.orderType);
+  const seatLabel = useKioskCartStore((state) => state.seatLabel);
+  const setSeatLabel = useKioskCartStore((state) => state.setSeatLabel);
+  const askForSeat = shouldAskForSeat(ordering, orderType);
+  const afterSeat: Step = tipEnabled ? "tip" : "processing";
   // Customer capture (phone + name, REQUIRED) is the first checkout step — it
   // sits before tip/pay so every template gets it via this shared view.
   const [step, setStep] = useState<Step>("customer");
   const [pickupNumber, setPickupNumber] = useState<string | undefined>();
+  // Captured before clearCart() wipes it, for the success screen.
+  const [deliverTo, setDeliverTo] = useState<string | null>(null);
 
   const muted = t.textMuted;
 
@@ -99,6 +109,7 @@ export function KioskCheckoutView({
     if (res) {
       onPaid(); // settled — parent stops treating this as a voidable cart
       setPickupNumber(res.displayNumber);
+      setDeliverTo(askForSeat ? seatLabel : null);
       clearCart();
       setStep("success");
     } else {
@@ -122,7 +133,23 @@ export function KioskCheckoutView({
       <KioskCustomerInfoStep
         config={config}
         onBack={onBack}
-        onComplete={() => setStep(tipEnabled ? "tip" : "processing")}
+        onComplete={() => setStep(askForSeat ? "seat" : afterSeat)}
+      />
+    );
+  }
+
+  // ---- SEAT (dine-in "Where are you sitting?") ----
+  if (step === "seat") {
+    return (
+      <KioskSeatSelectScreen
+        config={config}
+        options={ordering.seatOptions}
+        selected={seatLabel}
+        onBack={() => setStep("customer")}
+        onSelect={(label) => {
+          setSeatLabel(label);
+          setStep(afterSeat);
+        }}
       />
     );
   }
@@ -157,6 +184,7 @@ export function KioskCheckoutView({
       <SuccessScreen
         config={config}
         pickupNumber={pickupNumber}
+        deliverTo={deliverTo}
         onDone={onDone}
       />
     );
@@ -514,10 +542,13 @@ function CancelledScreen({
 function SuccessScreen({
   config,
   pickupNumber,
+  deliverTo,
   onDone,
 }: {
   config: KioskConfig;
   pickupNumber?: string;
+  /** Dine-in seat label, when one was picked. */
+  deliverTo?: string | null;
   onDone: () => void;
 }) {
   const s = useKioskUiScale();
@@ -565,6 +596,14 @@ function SuccessScreen({
             {pickupNumber}
           </Text>
         </View>
+      ) : null}
+      {deliverTo ? (
+        <Text
+          style={{ fontSize: kioskPx(20, s), color: t.text, textAlign: "center" }}
+        >
+          We&apos;ll bring it to{" "}
+          <Text style={kioskFont(t, "bold")}>{deliverTo}</Text>
+        </Text>
       ) : null}
       <Pressable
         onPress={onDone}

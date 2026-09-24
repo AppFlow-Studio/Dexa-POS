@@ -414,3 +414,40 @@ as the safety net for an item whose stock changes while a customer is on it.
 `isItemOrderable` fails **open** — an item whose groups can't be resolved (menu
 still hydrating) stays visible. Hiding a sellable item over a loading gap is
 worse than showing one the detail screen will handle.
+
+## Order types & dine-in seat selection
+
+Per-station settings in `stations.kiosk_settings` (jsonb), edited on the website
+station page → **Kiosk** tab (self-service stations only). Migration:
+`dexapos-website/supabase/migrations/20260923130000_station_kiosk_settings.sql`.
+
+| Key | Values | Kiosk behaviour |
+|---|---|---|
+| `order_types` | `both` (default) / `dine_in_only` / `takeout_only` | `resolveOrderTypeFlow` (`lib/kiosk/orderTypeFlow.ts`) |
+| `dine_in_only_skip_prompt` | bool (default true) | Dine-In only: auto-start vs single button |
+| `seat_selection_enabled` | bool | dine-in checkout asks "Where are you sitting?" |
+| `seat_options` | `[{id,label}]`, ≤200, label ≤40 chars | one-tap grid (`KioskSeatSelectScreen`) |
+
+- **Loading.** `useKioskProfile` fetches the station's `kiosk_settings` next to
+  the profile and folds it into `config.ordering` under the same idle-only apply
+  gate and MMKV persistence. Read it through `kioskOrdering(config)` — configs
+  persisted by older builds have no `ordering`. A missing column (42703) reads as
+  defaults; other errors keep the last persisted config.
+- **Order type.** `useKioskOrderTypeFlow` picks each template's first screen
+  (`orderType` or `menu`) and applies the auto type to the cart on mount.
+- **Seat.** Checkout step order is `customer → seat → tip → processing`. The seat
+  step runs only when `shouldAskForSeat` (dine-in + enabled + non-empty list). The
+  label rides `service_location_id` → `p_table_number` → `orders.table_number`,
+  so KDS, kitchen/receipt prints and order details show it with no RPC change.
+- **Display.** `formatTableLabel` (`lib/formatTableLabel.ts`) prefixes only bare
+  names ("6" → "Table 6"). Multi-word labels print as-is, so "Patio Table 4" never
+  becomes "Table Patio Table 4". KDS adds a bold location pill in the header for
+  `order_source === 'kiosk'` tickets.
+
+### Checklist
+- [x] Migration applied on **staging** (`dfwqakoyittmrwbqvxgw`). **PROD pending (manual).**
+- [x] Web: `StationKioskTab`, `updateStation` + server-side normalise, vitest
+- [x] POS: settings load/persist, order-type flow (templates A/B/C)
+- [x] POS: seat step, cart `seatLabel`, `patchOrder`, success screen
+- [x] POS: `formatTableLabel` across KDS/prints/order lists, KDS header pill
+- [ ] Device QA on staging: all 4 order-type modes, seat → KDS/kitchen print/receipt, offline order

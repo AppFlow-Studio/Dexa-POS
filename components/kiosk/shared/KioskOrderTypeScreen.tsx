@@ -16,7 +16,8 @@ import { Text, useWindowDimensions, View } from "react-native";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 
 /**
- * Shared order-type selection. The customer chooses Dine In or Takeaway; the
+ * Shared order-type selection. The customer chooses Dine In or Takeaway (or
+ * taps the single allowed type, per the station's order-type setting); the
  * choice is stored on useKioskCartStore and becomes the order_type when the
  * order is created at checkout. Theme-driven from `config` so any template can
  * use it as a session entry step or a mid-session change screen.
@@ -25,32 +26,37 @@ import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
  * scaled px value — they're the only content on screen, so on a big panel they
  * should own it, and on a small one they must still fit side by side.
  */
+const ORDER_TYPE_TILES: {
+  type: KioskOrderType;
+  label: string;
+  hint: string;
+  Icon: typeof UtensilsCrossed;
+}[] = [
+  {
+    type: "dine_in",
+    label: "Dine In",
+    hint: "Eat here",
+    Icon: UtensilsCrossed,
+  },
+  {
+    type: "takeout",
+    label: "Takeaway",
+    hint: "Take it to go",
+    Icon: ShoppingBag,
+  },
+];
+
 export function KioskOrderTypeScreen({
   config,
+  options: allowed = ["dine_in", "takeout"],
   onSelect,
 }: {
   config: KioskConfig;
+  /** Types the station offers (see resolveOrderTypeFlow). Defaults to both. */
+  options?: KioskOrderType[];
   onSelect: (type: KioskOrderType) => void;
 }) {
-  const options: {
-    type: KioskOrderType;
-    label: string;
-    hint: string;
-    Icon: typeof UtensilsCrossed;
-  }[] = [
-    {
-      type: "dine_in",
-      label: "Dine In",
-      hint: "Eat here",
-      Icon: UtensilsCrossed,
-    },
-    {
-      type: "takeout",
-      label: "Takeaway",
-      hint: "Take it to go",
-      Icon: ShoppingBag,
-    },
-  ];
+  const options = ORDER_TYPE_TILES.filter((o) => allowed.includes(o.type));
 
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
@@ -90,7 +96,7 @@ export function KioskOrderTypeScreen({
           marginBottom: kioskPx(52, s),
         }}
       >
-        Select an option to begin
+        {options.length === 1 ? "Tap to begin" : "Select an option to begin"}
       </Animated.Text>
 
       <View style={{ flexDirection: "row", gap: kioskPx(36, s) }}>

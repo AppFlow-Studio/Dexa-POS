@@ -7,6 +7,7 @@ import { KioskItemDetailModal } from "@/components/kiosk/shared/KioskItemDetailM
 import { kioskCartPlacement } from "@/components/kiosk/shared/kioskLayout";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { KioskOrderTypeScreen } from "@/components/kiosk/shared/KioskOrderTypeScreen";
+import { useKioskOrderTypeFlow } from "@/components/kiosk/shared/useKioskOrderTypeFlow";
 import { KioskCartView } from "@/components/kiosk/shared/KioskCartView";
 import { KioskScreenTransition } from "@/components/kiosk/shared/KioskScreenTransition";
 import { useKioskIdleTimer } from "@/components/kiosk/shared/useKioskIdleTimer";
@@ -40,7 +41,10 @@ export type TemplateBScreen =
   | "confirmation";
 
 export function KioskTemplateB({ config, onExit }: KioskTemplateProps) {
-  const [screen, setScreen] = useState<TemplateBScreen>("orderType");
+  const orderTypeFlow = useKioskOrderTypeFlow(config);
+  const [screen, setScreen] = useState<TemplateBScreen>(
+    orderTypeFlow.initialScreen,
+  );
   const [selectedItem, setSelectedItem] = useState<MenuItemType | null>(null);
   const [selectedSource, setSelectedSource] = useState<KioskItemSource>();
   const [paid, setPaid] = useState(false);
@@ -57,10 +61,10 @@ export function KioskTemplateB({ config, onExit }: KioskTemplateProps) {
     clearCart();
     setPaid(false);
     setConfirmingStartOver(false);
-    setScreen("orderType");
+    setScreen(orderTypeFlow.initialScreen);
     setSelectedItem(null);
     onExit();
-  }, [clearCart, onExit]);
+  }, [clearCart, onExit, orderTypeFlow.initialScreen]);
 
   const handleIdleReset = resetToIdle;
 
@@ -99,6 +103,7 @@ export function KioskTemplateB({ config, onExit }: KioskTemplateProps) {
         <KioskScreenTransition direction="fade">
           <KioskOrderTypeScreen
             config={config}
+            options={orderTypeFlow.options}
             onSelect={(type) => {
               setOrderType(type);
               setScreen("menu");

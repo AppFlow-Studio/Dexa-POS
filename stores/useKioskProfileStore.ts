@@ -1,8 +1,10 @@
 import { createLazyPersistStorage } from "@/lib/storage";
 import {
   DEFAULT_KIOSK_CONFIG,
+  DEFAULT_KIOSK_ORDERING,
   normalizeKioskProfile,
   type KioskConfig,
+  type KioskOrderingSettings,
   type KioskProfileRow,
 } from "@/types/kiosk";
 import { create } from "zustand";
@@ -13,8 +15,15 @@ type KioskLoadStatus = "idle" | "ready" | "error";
 function buildDefaultConfig(
   merchantId: string,
   locationId: string,
+  ordering: KioskOrderingSettings,
 ): KioskConfig {
-  return { id: "default", merchantId, locationId, ...DEFAULT_KIOSK_CONFIG };
+  return {
+    id: "default",
+    merchantId,
+    locationId,
+    ...DEFAULT_KIOSK_CONFIG,
+    ordering,
+  };
 }
 
 interface KioskProfileState {
@@ -35,11 +44,16 @@ interface KioskProfileState {
   /**
    * Apply a profile row resolved by useKioskProfile. Commits immediately when
    * idle; otherwise stashes as pending until the kiosk goes idle.
+   * `ordering` is the station's kiosk_settings, applied under the same gate.
    */
-  applyRow: (row: KioskProfileRow) => void;
+  applyRow: (row: KioskProfileRow, ordering?: KioskOrderingSettings) => void;
 
   /** Build a default config for a location when no profile exists yet. */
-  setDefaultFor: (merchantId: string, locationId: string) => void;
+  setDefaultFor: (
+    merchantId: string,
+    locationId: string,
+    ordering?: KioskOrderingSettings,
+  ) => void;
 
   /**
    * Toggle idle state. Transitioning into idle flushes any pending config so
@@ -62,8 +76,8 @@ export const useKioskProfileStore = create<KioskProfileState>()(
       error: null,
       lastFetchedAt: null,
 
-      applyRow: (row) => {
-        const next = normalizeKioskProfile(row);
+      applyRow: (row, ordering = DEFAULT_KIOSK_ORDERING) => {
+        const next = normalizeKioskProfile(row, ordering);
         const { config, isIdle } = get();
 
         // No change → just refresh timestamps/status.
@@ -96,8 +110,12 @@ export const useKioskProfileStore = create<KioskProfileState>()(
         }
       },
 
-      setDefaultFor: (merchantId, locationId) => {
-        const next = buildDefaultConfig(merchantId, locationId);
+      setDefaultFor: (
+        merchantId,
+        locationId,
+        ordering = DEFAULT_KIOSK_ORDERING,
+      ) => {
+        const next = buildDefaultConfig(merchantId, locationId, ordering);
         const { config, isIdle } = get();
         if (isIdle || !config) {
           set({

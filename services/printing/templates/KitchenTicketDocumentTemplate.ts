@@ -1,3 +1,4 @@
+import { formatTableLabel } from '@/lib/formatTableLabel'
 import {
   PrintDocument,
   PrintNode,
@@ -82,7 +83,7 @@ export function buildKitchenTicketDocument (
       format: scaledFormat(typeText, w, { doubleHeight: true })
     })
     if (data.tableName) {
-      const tableText = `TABLE: ${sanitizeForPrint(data.tableName)}`
+      const tableText = sanitizeForPrint(formatTableLabel(data.tableName, 'TABLE: '))
       nodes.push({
         type: 'text_line',
         content: tableText,

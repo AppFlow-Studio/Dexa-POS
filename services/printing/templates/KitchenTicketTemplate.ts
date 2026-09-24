@@ -1,3 +1,4 @@
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { KitchenTicketData, KitchenTicketItemData } from "@/types/printer";
 import { EscPosBuilder } from "../escpos/EscPosBuilder";
 
@@ -50,7 +51,7 @@ export function buildKitchenTicketCommands(
     b.doubleHeight(true);
     b.textLine(data.orderType.toUpperCase());
     if (data.tableName) {
-      b.textLine(`TABLE: ${data.tableName}`);
+      b.textLine(formatTableLabel(data.tableName, "TABLE: "));
     }
     b.doubleHeight(false);
   }

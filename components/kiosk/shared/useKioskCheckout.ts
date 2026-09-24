@@ -315,6 +315,15 @@ export function useKioskCheckout() {
         // attached from the start.
         orderStore.patchOrder(order.id, {
           ...(cart.orderType ? { order_type: cart.orderType } : {}),
+          // Dine-in seat → orders.table_number via ensureActiveOrderCreated's
+          // p_table_number (resolveTableNameForOrder passes a free-text label
+          // through), which KDS, kitchen tickets and order details all show.
+          ...(cart.orderType === "dine_in" && cart.seatLabel
+            ? {
+                service_location_id: cart.seatLabel,
+                service_location_name: cart.seatLabel,
+              }
+            : {}),
           ...(cart.customerName ? { customer_name: cart.customerName } : {}),
           ...(cart.customerPhone ? { customer_phone: cart.customerPhone } : {}),
           ...(cart.customerId ? { customer_id: cart.customerId } : {}),

@@ -1,3 +1,4 @@
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
@@ -1043,7 +1044,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
                         numberOfLines={1}
                         style={{ color: colors.muted }}
                       >
-                        Table {tableName}
+                        {formatTableLabel(tableName)}
                       </Text>
                     </>
                   ) : null}
