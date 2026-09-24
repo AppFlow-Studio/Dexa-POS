@@ -7,6 +7,10 @@ import {
   kioskTracking,
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
+import {
+  kioskOrderTypeMetrics,
+  kioskOrderTypeTileSize,
+} from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
@@ -21,9 +25,11 @@ import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
  * order is created at checkout. Theme-driven from `config` so any template can
  * use it as a session entry step or a mid-session change screen.
  *
- * The two tiles are sized off the viewport's short edge rather than a fixed
- * scaled px value — they're the only content on screen, so on a big panel they
- * should own it, and on a small one they must still fit side by side.
+ * The two tiles are sized off the viewport rather than a fixed scaled px value
+ * — they're the only content on screen, so on a big panel they should own it,
+ * and on a phone they must still fit side by side (kioskOrderTypeTileSize).
+ * All the type is sized from the tile too (kioskOrderTypeMetrics), so the
+ * heading and labels stay in proportion to it on every panel.
  */
 export function KioskOrderTypeScreen({
   config,
@@ -55,12 +61,8 @@ export function KioskOrderTypeScreen({
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
   const { width, height } = useWindowDimensions();
-  const shortEdge = Math.min(width, height);
-  // Two tiles plus a gap plus the screen's own padding have to fit across the
-  // short edge, so cap at ~38% of it.
-  const tileSize = Math.round(
-    Math.min(Math.max(shortEdge * 0.38, 200), kioskPx(420, s)),
-  );
+  const tileSize = kioskOrderTypeTileSize(width, height, s);
+  const m = kioskOrderTypeMetrics(tileSize);
 
   return (
     <View
@@ -70,13 +72,13 @@ export function KioskOrderTypeScreen({
       <Animated.Text
         entering={FadeInDown.duration(kioskMotion.slow)}
         style={{
-          fontSize: kioskPx(41, s),
-          lineHeight: kioskPx(50, s),
-          letterSpacing: kioskTracking(41),
+          fontSize: m.title,
+          lineHeight: Math.round(m.title * 1.22),
+          letterSpacing: kioskTracking(m.title),
           ...kioskFont(t, "bold"),
           textAlign: "center",
           color: config.headerTextColor,
-          marginBottom: kioskPx(10, s),
+          marginBottom: Math.round(m.title * 0.22),
         }}
       >
         How would you like to order?
@@ -84,10 +86,11 @@ export function KioskOrderTypeScreen({
       <Animated.Text
         entering={FadeInDown.delay(80).duration(360)}
         style={{
-          fontSize: kioskPx(20, s),
+          fontSize: m.subtitle,
           color: t.textMuted,
+          textAlign: "center",
           ...kioskFont(t, "regular"),
-          marginBottom: kioskPx(52, s),
+          marginBottom: m.headingGap,
         }}
       >
         Select an option to begin
@@ -110,18 +113,21 @@ export function KioskOrderTypeScreen({
                 borderRadius: kioskPx(kioskRadius.xl, s),
                 alignItems: "center",
                 justifyContent: "center",
-                gap: kioskPx(20, s),
+                gap: m.innerGap,
                 backgroundColor: t.surface,
                 borderWidth: KIOSK_HAIRLINE,
                 borderColor: t.outlineStrong,
               }}
             >
-              <Icon color={t.primary} size={tileSize * 0.3} />
-              <View style={{ alignItems: "center", gap: kioskPx(6, s) }}>
+              <Icon color={t.primary} size={m.icon} />
+              <View style={{ alignItems: "center", gap: m.labelGap }}>
                 <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                   style={{
-                    fontSize: kioskPx(28, s),
-                    letterSpacing: kioskTracking(28),
+                    fontSize: m.label,
+                    letterSpacing: kioskTracking(m.label),
                     color: t.text,
                     ...kioskFont(t, "bold"),
                   }}
@@ -130,7 +136,7 @@ export function KioskOrderTypeScreen({
                 </Text>
                 <Text
                   style={{
-                    fontSize: kioskPx(16, s),
+                    fontSize: m.hint,
                     color: t.textMuted,
                     ...kioskFont(t, "regular"),
                   }}

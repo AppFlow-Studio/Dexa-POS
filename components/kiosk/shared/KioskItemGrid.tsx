@@ -7,7 +7,10 @@ import {
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import KioskMenuItemFeatureRow from "@/components/kiosk/shared/KioskMenuItemFeatureRow";
 import KioskMenuItemRow from "@/components/kiosk/shared/KioskMenuItemRow";
-import { KIOSK_GRID_INSET } from "@/components/kiosk/shared/kioskLayout";
+import {
+  KIOSK_GRID_INSET,
+  kioskFitColumns,
+} from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
@@ -68,8 +71,9 @@ import Animated, {
  *
  * The list is no longer keyed on the active category either: remounting it per
  * switch would throw away the recycle pool that FlashList exists to build. It
- * is keyed on `numColumns` alone (a manager setting, changed rarely), and the
- * category switch scrolls back to the top through the ref instead.
+ * is keyed on its column count alone (a manager setting, or the panel's own
+ * width — both change rarely), and the category switch scrolls back to the top
+ * through the ref instead.
  */
 export function KioskItemGrid({
   config,
@@ -102,17 +106,24 @@ export function KioskItemGrid({
   // cheaper, and the entrance covers it.
   const measured = grid.width > 0;
 
+  // The requested count is a ceiling: on a pane too narrow to hold it (a phone,
+  // or a panel with a wide rail) the grid steps down rather than rendering
+  // cards narrower than they can lay out. See kioskFitColumns.
+  const columns = measured
+    ? kioskFitColumns(numColumns, grid.width, padding, gap)
+    : numColumns;
+
   // One column carries no side padding of its own, so the content container
   // holds the full outer margin; multi-column cells each carry half a gutter
   // and the container gives that half back, which reproduces the old
   // `columnWrapperStyle` spacing precisely.
-  const isFeatureRow = numColumns === 1;
+  const isFeatureRow = columns === 1;
   const cellPadH = isFeatureRow ? 0 : gap / 2;
   const contentPadH = padding - cellPadH;
 
   const cardWidth = Math.max(
     96,
-    (grid.width - contentPadH * 2) / numColumns - cellPadH * 2,
+    (grid.width - contentPadH * 2) / columns - cellPadH * 2,
   );
   /** Full column width — the cell's own box, gutter padding included. */
   const cellWidth = cardWidth + cellPadH * 2;
@@ -253,15 +264,15 @@ export function KioskItemGrid({
             </View>
           ) : (
             <FlashList
-              // Column count changes the whole layout basis, and it is a
-              // manager setting rather than something the customer touches — a
-              // clean remount there is cheaper than teaching the list to
-              // re-span.
-              key={numColumns}
+              // Column count changes the whole layout basis, and it moves only
+              // with a manager setting or a rotation — never under the
+              // customer's finger — so a clean remount there is cheaper than
+              // teaching the list to re-span.
+              key={columns}
               ref={listRef}
               data={items}
               keyExtractor={(i) => i.id}
-              numColumns={numColumns}
+              numColumns={columns}
               renderItem={renderItem}
               estimatedItemSize={cellHeight}
               overrideItemLayout={overrideItemLayout}

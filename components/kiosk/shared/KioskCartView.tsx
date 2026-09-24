@@ -5,6 +5,7 @@ import {
   useKioskTheme,
   type KioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
+import { KIOSK_HANDHELD_SHORT_EDGE } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
@@ -59,6 +60,9 @@ import Animated, {
  * on a 1920px panel behind a 167px thumbnail, which is all gap and no content,
  * and a full-width totals footer wasted the height landscape has least of.
  * Portrait keeps the single column with the totals pinned at the foot.
+ *
+ * On a narrow screen (a portrait phone) each line tightens — a smaller thumb
+ * and an icon-only Remove — so the name and qty stepper keep a usable column.
  */
 
 /** Landscape list-pane flex against a 1-flex summary pane (mirrors TipStep). */
@@ -108,6 +112,7 @@ export function KioskCartView({
     : screenWidth;
   const twoUp = isHorizontal && listPaneWidth / 2 >= kioskPx(430, s);
   const lineWidth = twoUp ? ("49%" as const) : undefined;
+  const compactLines = screenWidth < KIOSK_HANDHELD_SHORT_EDGE;
 
   const header = (
     <View
@@ -180,6 +185,7 @@ export function KioskCartView({
             index={index}
             line={line}
             width={lineWidth}
+            compact={compactLines}
             config={config}
             faint={faint}
             muted={muted}
@@ -350,6 +356,7 @@ function CartLineRow({
   line,
   index,
   width,
+  compact,
   config,
   faint,
   muted,
@@ -361,6 +368,8 @@ function CartLineRow({
   index: number;
   /** Set in landscape to lay the lines out two-up. */
   width?: "49%";
+  /** Narrow screen: smaller thumb, icon-only Remove. */
+  compact: boolean;
   config: KioskConfig;
   faint: string;
   muted: string;
@@ -383,7 +392,7 @@ function CartLineRow({
     .flatMap((g) => g.options.map((o) => o.name))
     .join(", ");
 
-  const thumb = kioskPx(104, s);
+  const thumb = kioskPx(compact ? 76 : 104, s);
   const total = lineTotal(line);
   const unit = line.quantity > 0 ? total / line.quantity : total;
 
@@ -550,6 +559,8 @@ function CartLineRow({
           <KioskPressable
             onPress={onRemove}
             pressedScale={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${line.name}`}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -562,15 +573,17 @@ function CartLineRow({
             }}
           >
             <Trash2 size={kioskPx(21, s)} color="#EF4444" />
-            <Text
-              style={{
-                fontSize: kioskPx(16, s),
-                ...kioskFont(t, "bold"),
-                color: "#EF4444",
-              }}
-            >
-              Remove
-            </Text>
+            {compact ? null : (
+              <Text
+                style={{
+                  fontSize: kioskPx(16, s),
+                  ...kioskFont(t, "bold"),
+                  color: "#EF4444",
+                }}
+              >
+                Remove
+              </Text>
+            )}
           </KioskPressable>
         </View>
       </View>

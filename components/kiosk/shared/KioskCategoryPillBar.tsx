@@ -5,7 +5,11 @@ import {
   kioskTracking,
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
-import { KIOSK_GRID_INSET } from "@/components/kiosk/shared/kioskLayout";
+import {
+  isKioskHandheld,
+  KIOSK_GRID_INSET,
+  kioskStripArrowSize,
+} from "@/components/kiosk/shared/kioskLayout";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
@@ -14,7 +18,7 @@ import type { KioskConfig } from "@/types/kiosk";
 import { LinearGradient } from "expo-linear-gradient";
 import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, Text } from "react-native";
+import { Pressable, ScrollView, Text, useWindowDimensions } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -47,7 +51,7 @@ const STRIP_PADDING_V = 16;
 const TAB_MAX_WIDTH = 260;
 // The row's own full box height, so the chevron is centred against the height
 // the tabs actually render at.
-const BUTTON_SIZE = TAB_PADDING_V * 2 + TAB_LINE_HEIGHT;
+const TAB_HEIGHT = TAB_PADDING_V * 2 + TAB_LINE_HEIGHT;
 /** A nudge moves most of a viewport, so repeated taps walk the strip. */
 const NUDGE_FRACTION = 0.8;
 /** Scroll-position tolerance, in px. */
@@ -92,6 +96,7 @@ export function KioskCategoryPillBar({
 }) {
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const scrollXRef = useRef(0);
   const viewportWidthRef = useRef(0);
@@ -162,8 +167,11 @@ export function KioskCategoryPillBar({
   const dimStyle = useAnimatedStyle(() => ({ opacity: 1 - dim.value * 0.58 }));
 
   const fadeWidth = kioskPx(FADE_WIDTH, s);
-  const buttonSize = kioskPx(BUTTON_SIZE, s);
-  const chevronSize = buttonSize * 0.5;
+  const tabHeight = kioskPx(TAB_HEIGHT, s);
+  const arrow = kioskStripArrowSize(
+    tabHeight,
+    isKioskHandheld(windowWidth, windowHeight),
+  );
   const chevronInset = kioskPx(4, s);
 
   return (
@@ -243,8 +251,9 @@ export function KioskCategoryPillBar({
           config={config}
           side="left"
           fadeWidth={fadeWidth}
-          buttonSize={buttonSize}
-          chevronSize={chevronSize}
+          bandHeight={tabHeight}
+          buttonSize={arrow.button}
+          chevronSize={arrow.icon}
           inset={chevronInset}
           top={kioskPx(STRIP_PADDING_V, s)}
           onPress={() => nudge(-1)}
@@ -256,8 +265,9 @@ export function KioskCategoryPillBar({
           config={config}
           side="right"
           fadeWidth={fadeWidth}
-          buttonSize={buttonSize}
-          chevronSize={chevronSize}
+          bandHeight={tabHeight}
+          buttonSize={arrow.button}
+          chevronSize={arrow.icon}
           inset={chevronInset}
           top={kioskPx(STRIP_PADDING_V, s)}
           onPress={() => nudge(1)}
@@ -272,12 +282,15 @@ export function KioskCategoryPillBar({
  * is more strip this way) and must appear and disappear together.
  *
  * The chevron itself is unchanged from the build that shipped: a raised circle
- * in the page colour, inset just inside the edge, sitting on the fade.
+ * in the page colour, inset just inside the edge, sitting on the fade. On a
+ * phone the circle is smaller than a tab (kioskStripArrowSize); it is centred
+ * on the tabs, and its hit area is padded back out to the full tab height.
  */
 function EdgeAffordance({
   config,
   side,
   fadeWidth,
+  bandHeight,
   buttonSize,
   chevronSize,
   inset,
@@ -287,6 +300,8 @@ function EdgeAffordance({
   config: KioskConfig;
   side: "left" | "right";
   fadeWidth: number;
+  /** Height of the tabs - the fade covers exactly their band. */
+  bandHeight: number;
   buttonSize: number;
   chevronSize: number;
   /** Gap between the chevron and the strip's edge. */
@@ -294,10 +309,9 @@ function EdgeAffordance({
   /**
    * Top edge of the tab band.
    *
-   * The chevron is exactly one tab tall, so aligning its top with the tabs'
-   * top centres it on them. Centring on the strip instead would put it half a
-   * padding too high, because the strip pads its top and leaves its bottom to
-   * the grid below (see STRIP_PADDING_V).
+   * The chevron is centred within the band rather than the strip. Centring on
+   * the strip would put it half a padding too high, because the strip pads its
+   * top and leaves its bottom to the grid below (see STRIP_PADDING_V).
    */
   top: number;
   onPress: () => void;
@@ -308,6 +322,8 @@ function EdgeAffordance({
   // still types as a ViewStyle.
   const edge = side === "left" ? { left: 0 } : { right: 0 };
   const buttonEdge = side === "left" ? { left: inset } : { right: inset };
+  // Zero on a panel, where the circle is a full tab tall.
+  const slop = Math.max(0, (bandHeight - buttonSize) / 2);
 
   return (
     <>
@@ -323,7 +339,7 @@ function EdgeAffordance({
           position: "absolute",
           ...edge,
           top,
-          height: buttonSize,
+          height: bandHeight,
           width: fadeWidth,
           zIndex: 4,
         }}
@@ -332,6 +348,7 @@ function EdgeAffordance({
 
       <Pressable
         onPress={onPress}
+        hitSlop={slop}
         accessibilityRole="button"
         accessibilityLabel={
           side === "left"
@@ -341,7 +358,7 @@ function EdgeAffordance({
         style={{
           position: "absolute",
           ...buttonEdge,
-          top,
+          top: top + slop,
           width: buttonSize,
           height: buttonSize,
           borderRadius: buttonSize / 2,

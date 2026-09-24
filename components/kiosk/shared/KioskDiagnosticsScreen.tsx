@@ -1,5 +1,12 @@
 import appJson from "@/app.json";
 import { getKioskReviewOrder, resolveKioskReview } from "./checkoutGuard";
+import { useKioskDialog } from "@/components/kiosk/shared/KioskDialog";
+import {
+  isKioskHandheld,
+  kioskMaxMenuColumns,
+  kioskMenuGridLayout,
+} from "@/components/kiosk/shared/kioskLayout";
+import { useKioskUiScale } from "@/lib/uiScale";
 import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -76,7 +83,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
-    Alert,
     Image,
     Pressable,
     ScrollView,
@@ -246,6 +252,9 @@ export function KioskDiagnosticsScreen({
     }
   };
 
+  // Staff dialogs in the Settings look, never a native alert.
+  const { show: showDialog, dialog } = useKioskDialog();
+
   // ── Active sidebar section ──
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
   const activeMeta =
@@ -272,6 +281,34 @@ export function KioskDiagnosticsScreen({
         ? "horizontal"
         : "vertical"
       : orientationTarget;
+
+  // What "Items per row" can actually deliver on this panel. The menu grid
+  // steps down on its own when cards would get too narrow (a phone fits 2),
+  // so without this a manager could pick 4 and see 2 with no reason given.
+  // Uses the customer scale, not this screen's, and the panel's shape in the
+  // orientation the menu will render in.
+  const customerScale = useKioskUiScale();
+  const menuVertical = effectiveOrientation === "vertical";
+  const menuPanelWidth = menuVertical
+    ? Math.min(winWidth, winHeight)
+    : Math.max(winWidth, winHeight);
+  const maxMenuColumns = kioskMaxMenuColumns({
+    panelWidth: menuPanelWidth,
+    isVertical: menuVertical,
+    scale: customerScale,
+    layout: kioskMenuGridLayout(
+      config.templateId,
+      menuPanelWidth,
+      menuVertical,
+      (menuVertical
+        ? config.orderBannerImagesVertical
+        : config.orderBannerImagesHorizontal
+      ).length > 0,
+    ),
+  });
+  // Template defaults, as the menu views resolve "Auto".
+  const autoMenuColumns =
+    config.templateId === "template_c" ? 4 : menuVertical ? 3 : 4;
 
   // ── Payment Terminal ──────────────────────────────────────────────
   const supabase = useSupabaseClient();
@@ -603,7 +640,7 @@ export function KioskDiagnosticsScreen({
       terminal.stationId !== selectedStation.id;
     if (boundElsewhere) {
       const confirmed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
+        showDialog(
           "Move terminal to this station?",
           `${terminal.name} is currently in use at another station. Moving it here disconnects it from that station.`,
           [
@@ -1280,17 +1317,17 @@ export function KioskDiagnosticsScreen({
           <Row label="Order ID" value={getKioskReviewOrder(selectedStation.id) ?? ""} mono />
           <TouchableOpacity
             className="px-5 py-4"
-            onPress={() => Alert.alert(
+            onPress={() => showDialog(
               "Confirm payment reconciliation",
               "Check the Valor transaction and Supabase order/payment first. Record or resolve any captured payment and dispatch the paid order if needed. This only unlocks kiosk checkout; it does not refund, charge, or update payment records.",
               [
                 { text: "Cancel", style: "cancel" },
                 { text: "Reconciled - unlock kiosk", onPress: () => {
                   if (!resolveKioskReview(selectedStation.id)) {
-                    Alert.alert("Payment still running", "Wait for the terminal operation to finish.");
+                    showDialog("Payment still running", "Wait for the terminal operation to finish.");
                     return;
                   }
-                  Alert.alert("Kiosk unlocked", "Close settings and start a new customer session.");
+                  showDialog("Kiosk unlocked", "Close settings and start a new customer session.");
                 } },
               ],
             )}
@@ -1439,20 +1476,26 @@ export function KioskDiagnosticsScreen({
         <View className="px-5 py-5">
           <Text className="text-sm text-gray-500 mb-4">
             How many menu items show across each row. “Auto” uses the template
-            default ({effectiveOrientation === "vertical" ? "3" : "4"} for this
-            orientation). Fewer columns means wider cards, larger item text, and
-            room for descriptions; more columns fits more on screen at smaller
-            type. “1” switches to the full-width feature row — name and
-            description on the left, photo blended into the right edge — which
-            suits tall vertical kiosks.
+            default ({Math.min(autoMenuColumns, maxMenuColumns)} for this
+            orientation{autoMenuColumns > maxMenuColumns ? " on this screen" : ""}).
+            Fewer columns means wider cards, larger item text, and room for
+            descriptions; more columns fits more on screen at smaller type. “1”
+            switches to the full-width feature row — name and description on
+            the left, photo blended into the right edge — which suits tall
+            vertical kiosks.
           </Text>
           <View className="flex-row bg-gray-100 rounded-2xl p-1.5 gap-1.5">
             {(["auto", 1, 2, 3, 4] as KioskMenuColumns[]).map((opt) => {
               const active = menuColumns === opt;
+              // Counts this panel can't fit are shown but can't be picked, so
+              // the row itself says where the limit is.
+              const fits = opt === "auto" || opt <= maxMenuColumns;
               return (
                 <TouchableOpacity
                   key={String(opt)}
                   onPress={() => setMenuColumns(opt)}
+                  disabled={!fits}
+                  accessibilityState={{ disabled: !fits, selected: active }}
                   activeOpacity={0.85}
                   className={`flex-1 py-3.5 items-center rounded-xl ${
                     active ? "bg-white" : ""
@@ -1461,7 +1504,13 @@ export function KioskDiagnosticsScreen({
                 >
                   <Text
                     className={`text-base font-bold ${
-                      active ? "text-teal-700" : "text-gray-400"
+                      active
+                        ? fits
+                          ? "text-teal-700"
+                          : "text-gray-500"
+                        : fits
+                          ? "text-gray-400"
+                          : "text-gray-300"
                     }`}
                   >
                     {opt === "auto" ? "Auto" : opt}
@@ -1470,6 +1519,17 @@ export function KioskDiagnosticsScreen({
               );
             })}
           </View>
+          {maxMenuColumns < 4 ? (
+            <Text className="text-xs text-gray-400 mt-3">
+              {typeof menuColumns === "number" && menuColumns > maxMenuColumns
+                ? `Set to ${menuColumns}, but this screen fits ${maxMenuColumns} per row in ${
+                    menuVertical ? "portrait" : "landscape"
+                  }, so the menu shows ${maxMenuColumns}.`
+                : `This screen fits up to ${maxMenuColumns} per row in ${
+                    menuVertical ? "portrait" : "landscape"
+                  }. More would make the menu cards too narrow to read.`}
+            </Text>
+          ) : null}
         </View>
       </Section>
     </>
@@ -2516,6 +2576,170 @@ export function KioskDiagnosticsScreen({
 
   // ── Layout ─────────────────────────────────────────────────────────
 
+  const sectionContent = (
+    <>
+      {activeSection === "overview" && renderOverview()}
+      {activeSection === "profile" && (
+        <KioskProfileEditor
+          config={config}
+          onRefreshKioskConfig={onRefreshKioskConfig}
+        />
+      )}
+      {activeSection === "menu" && renderMenuLayout()}
+      {activeSection === "printers" && renderPrintersPanel()}
+      {activeSection === "terminal" && (
+        <>
+          {renderCodePayCard()}
+          {renderTerminalPanel()}
+        </>
+      )}
+      {activeSection === "about" && renderAbout()}
+    </>
+  );
+
+  const endSessionConfirm = showConfirm ? (
+    <View className="absolute inset-0 bg-black/40 items-center justify-center px-6">
+      <View
+        className="w-full max-w-sm bg-white rounded-3xl p-6"
+        style={cardShadow}
+      >
+        <View className="w-12 h-12 rounded-2xl bg-red-50 items-center justify-center self-center mb-3">
+          <LogOut size={24} color="#DC2626" />
+        </View>
+        <Text className="text-lg font-bold text-gray-900 text-center mb-2">
+          End Station Session
+        </Text>
+        <Text className="text-sm text-gray-500 text-center mb-6">
+          This will end the current station session and return you to
+          station selection. Your account will remain logged in.
+        </Text>
+        <Pressable
+          onPress={handleEndSession}
+          disabled={isEnding}
+          className="py-4 rounded-2xl bg-red-500 items-center mb-2.5"
+        >
+          <Text className="text-white font-bold text-base">
+            {isEnding ? "Ending session…" : "End Session"}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setShowConfirm(false)}
+          disabled={isEnding}
+          className="py-4 rounded-2xl bg-gray-100 items-center"
+        >
+          <Text className="text-gray-700 font-bold text-base">Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  ) : null;
+
+  // On a phone the 288dp sidebar would leave the settings themselves a sliver,
+  // so the page becomes one column: a compact header carrying the station's
+  // status and both exits, the sections as a scrolling tab strip, then the
+  // active section full width.
+  if (isKioskHandheld(winWidth, winHeight)) {
+    return (
+      <View className="flex-1 bg-gray-50">
+        <View className="flex-row items-center gap-2.5 px-4 pt-6 pb-3 bg-white">
+          <View className="flex-1">
+            <Text className="text-lg font-bold text-gray-900" numberOfLines={1}>
+              Kiosk Settings
+            </Text>
+            <View className="flex-row items-center gap-1.5 mt-0.5">
+              <View
+                className={`w-2 h-2 rounded-full ${
+                  rawIsOnline ? "bg-green-500" : "bg-red-500"
+                }`}
+              />
+              <Text className="flex-1 text-xs text-gray-500" numberOfLines={1}>
+                {rawIsOnline ? "Online" : "Offline"}
+                {" · "}
+                {selectedStation?.station_name ?? "Diagnostics"}
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => setShowConfirm(true)}
+            disabled={isEnding}
+            accessibilityRole="button"
+            accessibilityLabel="End Station Session"
+            className="w-11 h-11 rounded-full border border-red-200 bg-red-50 items-center justify-center"
+          >
+            <LogOut size={20} color="#DC2626" />
+          </Pressable>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            className="w-11 h-11 rounded-full bg-gray-100 items-center justify-center"
+          >
+            <X size={22} color="#374151" />
+          </Pressable>
+        </View>
+
+        <View className="bg-white border-b border-gray-200">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingBottom: 12,
+              gap: 8,
+            }}
+          >
+            {SECTIONS.map((section) => {
+              const active = activeSection === section.id;
+              return (
+                <TouchableOpacity
+                  key={section.id}
+                  onPress={() => setActiveSection(section.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  className={`flex-row items-center gap-2 px-3.5 py-2.5 rounded-xl ${
+                    active ? "bg-teal-600" : "bg-gray-100"
+                  }`}
+                >
+                  <section.Icon
+                    size={16}
+                    color={active ? "#FFFFFF" : "#6B7280"}
+                    strokeWidth={active ? 2.4 : 2}
+                  />
+                  <Text
+                    className={`text-sm ${
+                      active ? "font-bold text-white" : "font-medium text-gray-600"
+                    }`}
+                  >
+                    {section.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        <ScrollView
+          className="flex-1 px-4 py-4"
+          contentContainerStyle={{ gap: 16, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View>
+            <Text className="text-xl font-bold text-gray-900">
+              {activeMeta.title}
+            </Text>
+            <Text className="text-sm text-gray-400 mt-0.5">
+              {activeMeta.subtitle}
+            </Text>
+          </View>
+          {sectionContent}
+        </ScrollView>
+
+        {endSessionConfirm}
+        {dialog}
+      </View>
+    );
+  }
+
   return (
     <View className="flex-1 flex-row bg-gray-50">
       {/* ── Sidebar ── */}
@@ -2623,61 +2847,12 @@ export function KioskDiagnosticsScreen({
           contentContainerStyle={{ gap: 20, paddingBottom: 56 }}
           showsVerticalScrollIndicator={false}
         >
-          {activeSection === "overview" && renderOverview()}
-          {activeSection === "profile" && (
-            <KioskProfileEditor
-              config={config}
-              onRefreshKioskConfig={onRefreshKioskConfig}
-            />
-          )}
-          {activeSection === "menu" && renderMenuLayout()}
-          {activeSection === "printers" && renderPrintersPanel()}
-          {activeSection === "terminal" && (
-            <>
-              {renderCodePayCard()}
-              {renderTerminalPanel()}
-            </>
-          )}
-          {activeSection === "about" && renderAbout()}
+          {sectionContent}
         </ScrollView>
       </View>
 
-      {/* ── End-session confirm ── */}
-      {showConfirm && (
-        <View className="absolute inset-0 bg-black/40 items-center justify-center px-6">
-          <View
-            className="w-full max-w-sm bg-white rounded-3xl p-6"
-            style={cardShadow}
-          >
-            <View className="w-12 h-12 rounded-2xl bg-red-50 items-center justify-center self-center mb-3">
-              <LogOut size={24} color="#DC2626" />
-            </View>
-            <Text className="text-lg font-bold text-gray-900 text-center mb-2">
-              End Station Session
-            </Text>
-            <Text className="text-sm text-gray-500 text-center mb-6">
-              This will end the current station session and return you to
-              station selection. Your account will remain logged in.
-            </Text>
-            <Pressable
-              onPress={handleEndSession}
-              disabled={isEnding}
-              className="py-4 rounded-2xl bg-red-500 items-center mb-2.5"
-            >
-              <Text className="text-white font-bold text-base">
-                {isEnding ? "Ending session…" : "End Session"}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setShowConfirm(false)}
-              disabled={isEnding}
-              className="py-4 rounded-2xl bg-gray-100 items-center"
-            >
-              <Text className="text-gray-700 font-bold text-base">Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
+      {endSessionConfirm}
+      {dialog}
     </View>
   );
 }

@@ -5,11 +5,12 @@ import {
   kioskRadius,
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
+import { KIOSK_HANDHELD_SHORT_EDGE } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { useEffect } from "react";
-import { Keyboard, Text } from "react-native";
+import { Keyboard, Text, useWindowDimensions } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 /**
@@ -37,6 +38,9 @@ export function KioskIdleModal({
 }) {
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
+  // On a phone the card's panel-sized side padding would leave the button
+  // label too little width to sit on one line.
+  const narrow = useWindowDimensions().width < KIOSK_HANDHELD_SHORT_EDGE;
 
   // The software keyboard can cover this, and it is the one thing on screen a
   // customer has seconds to read before their order is dropped. Searching with
@@ -58,7 +62,7 @@ export function KioskIdleModal({
         style={{
           borderRadius: kioskPx(kioskRadius.xl, s),
           backgroundColor: t.page,
-          paddingHorizontal: kioskPx(44, s),
+          paddingHorizontal: kioskPx(narrow ? 24 : 44, s),
           paddingVertical: kioskPx(40, s),
           gap: kioskPx(18, s),
           maxWidth: kioskPx(560, s),
@@ -91,7 +95,7 @@ export function KioskIdleModal({
           pressedScale={0.95}
           style={{
             marginTop: kioskPx(8, s),
-            paddingHorizontal: kioskPx(40, s),
+            paddingHorizontal: kioskPx(narrow ? 24 : 40, s),
             paddingVertical: kioskPx(20, s),
             borderRadius: kioskPx(kioskRadius.md, s),
             backgroundColor: t.primary,

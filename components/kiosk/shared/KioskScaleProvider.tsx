@@ -21,8 +21,20 @@ import { View, type ViewStyle } from "react-native";
  *     <KioskScreen />
  *   </KioskScaleProvider>
  */
-export function KioskScaleProvider({ children }: { children: ReactNode }) {
-  const scale = useKioskUiScale();
+export function KioskScaleProvider({
+  children,
+  minScale,
+}: {
+  children: ReactNode;
+  /**
+   * Floor for this subtree only. Kiosk Settings is a Tailwind-sized staff
+   * screen, where 1.0 is already a phone-app type ramp (text-xs = 12px); the
+   * customer-facing floor would render its labels at 10px on a phone.
+   */
+  minScale?: number;
+}) {
+  const autoScale = useKioskUiScale();
+  const scale = minScale != null ? Math.max(minScale, autoScale) : autoScale;
   return (
     <View
       style={[
@@ -49,4 +61,20 @@ export function KioskScaleProvider({ children }: { children: ReactNode }) {
  */
 export function kioskPx(px: number, scale: number): number {
   return Math.round(px * scale);
+}
+
+/**
+ * Smallest type the kiosk sets. Every kiosk size already clears it on a panel
+ * (scale ≥ 1); it binds only where the scale drops below 1 — a phone — so
+ * captions and count badges don't shrink to 10–11px there.
+ */
+export const KIOSK_MIN_FONT_SIZE = 12;
+
+/**
+ * `kioskPx` for a font size: the same scaling, floored at
+ * KIOSK_MIN_FONT_SIZE. Use it for type set below ~15px; larger sizes can't
+ * reach the floor at any kiosk scale.
+ */
+export function kioskFontPx(px: number, scale: number): number {
+  return Math.max(KIOSK_MIN_FONT_SIZE, kioskPx(px, scale));
 }

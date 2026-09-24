@@ -60,8 +60,14 @@ export const MAX_UI_SCALE = 1.25;
  * much higher ceiling. The baseline reference is still the Samsung tablet, so a
  * 1920×1080dp kiosk display would land at ~1.44× — the ceiling catches even
  * larger 4K screens in portrait (e.g. 3840×2160dp → ~2.88×).
+ *
+ * The floor is where phones land — every handset's raw ratio (~0.5–0.6) sits
+ * below it, so they all share one scale, the way phone apps do (dp already
+ * absorbs density). It is set where the header's 52dp controls come out at
+ * 44dp, the smallest comfortable touch target: at the old 0.7 they were 36dp
+ * with 12.6px body type, too small for a customer ordering in their hand.
  */
-export const KIOSK_MIN_UI_SCALE = 0.7;
+export const KIOSK_MIN_UI_SCALE = 0.85;
 export const KIOSK_MAX_UI_SCALE = 3.0;
 
 /**

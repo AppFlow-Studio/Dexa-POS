@@ -19,7 +19,7 @@ resolves the same panel to the same scale in either orientation.
 
 A `KIOSK_LEGIBILITY_BOOST` (1.12) then accounts for kiosk viewing distance — a
 customer stands ~2–3 ft from a wall/floor panel, versus ~1 ft for a POS tablet.
-Result is clamped to `KIOSK_MIN/MAX_UI_SCALE` (0.7–3.0).
+Result is clamped to `KIOSK_MIN/MAX_UI_SCALE` (0.85–3.0).
 
 | Panel | Scale |
 | --- | --- |
@@ -27,6 +27,22 @@ Result is clamped to `KIOSK_MIN/MAX_UI_SCALE` (0.7–3.0).
 | 1920×1080 (landscape 1080p) | 1.61 |
 | 2160×3840 (4K portrait) | 3.00 (clamped) |
 | 1333×752 (baseline tablet) | 1.12 |
+| any phone, either orientation | 0.85 (floor) |
+
+**The floor is the phone scale.** Every handset's raw ratio (~0.5–0.6) sits
+below it, so all phones share one scale — as phone apps do; dp already absorbs
+density. 0.85 is where the header's 52dp controls reach 44dp, the smallest
+comfortable touch target. The old 0.7 floor gave 36dp controls and 12.6px body
+type. Every real tablet/kiosk panel is above 0.85, so none of them moved.
+
+Type set below ~15px goes through `kioskFontPx` (floored at
+`KIOSK_MIN_FONT_SIZE`, 12): it can only bind below scale 1, i.e. on a phone,
+where 12–14px captions would otherwise render at 10–11px. Kiosk Settings (a
+Tailwind-sized staff screen) is wrapped in `KioskScaleProvider minScale={1}` —
+Tailwind at 1.0 is already a phone-app type ramp, and the customer floor would
+put its `text-xs` labels at 10px. The kiosk loading / failed-to-load states sit
+inside `KioskScaleProvider` too; outside it they took the POS scale, which a
+phone floors at 0.6.
 
 ### 2. `kioskCardMetrics(cardWidth)` — `components/kiosk/shared/kioskCardMetrics.ts`
 
@@ -59,10 +75,17 @@ the photo at 1:1 and fits ~3.5 rows instead of ~1.9. In practice this is the
 ### 2c. `kioskFeatureRowMetrics` — the one-per-row layout
 
 Setting **Items per row** to 1 switches the grid to `KioskMenuItemFeatureRow`:
-a full-width band with the copy on the left and the photo bleeding off the
-right edge, its inner side dissolved into the card by a horizontal gradient
-painted in the card's own background colour. Built for tall vertical kiosks,
-where a grid of small cards wastes the panel.
+a full-width band with name, description and price on the left and a crisp,
+rounded square photo inset on the right — one `pad` from every edge, with the
+card's radius equal to the photo's plus that pad so the corners run parallel.
+Built for tall vertical kiosks and phones, where a grid of small cards wastes
+the width.
+
+It used to bleed the photo off the right edge and dissolve its inner side into
+the card with a horizontal gradient. That was replaced (2026-09) as dated-
+looking; nothing on the card fades now — the photo renders with
+`fadeDuration={0}` (Android otherwise fades every RN `Image` in) and the in-cart
+count ticks with the grid card's eased pop, no spring.
 
 Three things make it work and are easy to break:
 
@@ -72,10 +95,10 @@ Three things make it work and are easy to break:
   is a *scannability* target, not a taste call — it keeps ~7 rows in view on a
   1080x1920 panel. A third of the width fits four, which reads as a stack of
   posters rather than a menu.
-- **The copy stops where the fade starts.** `textInset` is derived from
-  `fadeSolidStop` (the gradient's first stop), so text always lands on solid
-  card colour and never on the crisp half of the photo. The gradient starts on
-  `kioskCardSurface`, the card's own fill — not the page colour.
+- **Type follows the copy column, bounded by the row's height.** Sizes come
+  from `min(textWidth × k, height × k)`, so a wide-but-squat row doesn't get
+  headline type just because it is wide, and a phone's ~187dp column still
+  seats a two-line name and description.
 - **The copy shape is solved, not guessed.** `nameLines` and `descLines` come
   out of `FEATURE_ROW_COPY_SHAPES` — the first shape that fits the height left
   after padding and the price row, preferring to drop description lines before
@@ -83,14 +106,6 @@ Three things make it work and are easy to break:
   the name lets it overflow a band that only budgeted one line, and the band
   clips.
 
-Fade to the surface colour at zero alpha (`kioskFadeEnd`), never to
-`transparent`: RN interpolates toward `rgba(0,0,0,0)` and leaves a grey bruise
-across the middle of the photo.
-
-The photo goes through `OptimizedListImage` (expo-image) rather than RN
-`Image`. A gradient is painted over it before it decodes, so a hard swap-in is
-much more visible here than on a plain card — the cross-dissolve and the disk
-cache are both doing real work.
 
 ### 3. `kioskLayout.ts` — screen-proportional dimensions
 
@@ -99,6 +114,60 @@ cache are both doing real work.
 swallow a short panel. The category rail also narrows as column count rises, so
 the grid gets the width back — but not below two columns, where the feature row
 wants *more* width, not less.
+
+## Handheld (phone) layouts
+
+`isKioskHandheld(w, h)` — short edge under 600dp, Android's own `sw600dp`
+phone/tablet line — is the one breakpoint, with `kioskUsesCategoryRail(width)`
+for the menu (width alone: a landscape phone keeps the rail, since width is what
+it has to spare). Everything above the breakpoint renders exactly as before.
+
+| Page | On a phone |
+| --- | --- |
+| Welcome (attract) | Logo bounded by the short edge; the welcome message is capped at 3 lines and shrinks to fit, so a long one can't push "Tap to start" off a landscape phone |
+| Dine In / Takeaway | Tiles sized by `kioskOrderTypeTileSize` (width-fit as well as short edge — the old 200dp floor overflowed every phone); all its type sized from the tile by `kioskOrderTypeMetrics`, so a phone gets a 25px heading and 16px labels instead of 35px over 130dp tiles. Tablet/kiosk sizes unchanged (±1–2px) |
+| Menu A / B | Portrait: rail → the Template C category strip over a full-width grid (`KioskCategoryMenuBody`). Same-named categories in two menus become `Name · Menu` (`categoryPillsFromSections`) so both stay reachable |
+| Category strip (A/B portrait, C) | Scroll arrows drop to 70% of a tab (`kioskStripArrowSize`) — full-tab circles took a quarter of a 360dp strip. Centred on the tabs; `hitSlop` keeps the tap target a full tab tall |
+| Menu grid (all) | `kioskFitColumns` steps the column count down until cards clear `KIOSK_MIN_CARD_WIDTH` (128dp) — portrait phones get 2 whatever "items per row" says. Kiosk Settings → Items per row runs the same arithmetic ahead of time (`kioskMaxMenuColumns`): counts the panel can't fit are greyed out, with a note saying how many it fits, and "Auto" shows the count it will really use |
+| Item detail | Fills the screen. Landscape: photo takes the left pane alone, title scrolls with the modifiers. Add button label one line, shrink-to-fit |
+| Cart | Narrow: smaller thumb, icon-only Remove |
+| Phone / name capture | Landscape: keypad beside the prompt. Narrow: content starts below the floating Back. ScrollView backstop everywhere |
+| Tip | Landscape chooser scrolls if needed; heart badge dropped on a landscape phone |
+| Card / processing / success / error | `StatusLayout` — centred, scrolls only when taller than the panel |
+| Idle warning, Start-over dialog | Tighter card padding on narrow screens so copy and buttons keep one line |
+| Error fallback | Scrolls rather than clipping "Start over" |
+| Manager PIN | Card fits the width; landscape puts the keypad beside the heading |
+| Kiosk Settings | Sidebar → compact header (status, End Session, Close) + scrolling section tabs; colour-picker wheel beside its controls on a landscape phone; dropdown list bounded by the window |
+| Toasts | App-wide, in `components/ui/toastLayout.ts`: width bounded by the window (the fixed 380dp ran off a portrait phone), type floored at 15/13px (the root POS scale put the title at 9.6px), and on a kiosk station sized from the kiosk scale, since the toast layer sits outside `KioskScaleProvider`. A tablet's toast is unchanged |
+
+Safe areas need nothing kiosk-specific: `app/(main)/_layout.tsx` already wraps
+the kiosk route in a `SafeAreaView` on all four edges.
+
+Two behaviour changes outside phones, both deliberate: panels whose auto scale
+fell between 0.7 and 0.85 (e.g. an 800×480 or 960×600 landscape panel) now
+render at 0.85; and "4 per row" on an ~8–10" portrait tablet steps down to 3
+where 4 would give ~126dp cards.
+
+### Checklist
+
+- [x] Scale floor + handheld breakpoint + column fit (`lib/uiScale.ts`, `kioskLayout.ts`)
+- [x] Welcome, order type, menu A/B/C, grid, search
+- [x] Item detail, cart, phone/name capture, tip, card/status screens
+- [x] Idle warning, start-over dialog, error fallback
+- [x] Manager PIN, Kiosk Settings (all sections), profile editor modals
+- [x] Unit tests (`__tests__/kioskUiScale.test.ts` → "handheld layouts", `categoryPillsFromSections`)
+- [ ] On-device pass on a phone, both orientations, all three templates
+
+### Review
+
+Replayed the sizing chain (scale → rail/strip → columns → card → rows visible,
+plus the stacked height of each fixed-height screen) at 360×640, 390×844,
+412×915 and their landscapes, and at 800×1280, 1333×752 and 1080×1920. Phones:
+2 columns at 160–186dp in portrait (2.2–3.1 rows visible), 3–4 columns beside
+the rail in landscape (1.7–2.0 rows); order type, success and the split phone
+keypad all fit a 360dp-tall landscape phone. The one overrun is the stacked
+phone-number step on a 360×640 handset (2dp), which its ScrollView absorbs.
+Tablet and kiosk values are unchanged.
 
 ## Orientation
 
@@ -185,9 +254,8 @@ the category switch scrolls to the top through the ref instead.
 in for the first frame, but the window is not the grid pane — beside a category
 rail it over-estimates the width by a third — so every card painted once at the
 wrong size and then jumped. On the top-image cards that was a barely-visible
-reflow; on the feature row the photo is *positioned* from that width and its
-gradient stops are derived from it, so the photo slid and the blend re-mixed as
-the row settled. One blank frame is cheaper, and the entrance cascade covers
+reflow; on the feature row the row height and photo size are derived from that
+width, so the whole row resized as it settled. One blank frame is cheaper, and the entrance cascade covers
 it. Don't reintroduce a window-based estimate. `KioskPressable` is the standard
 tappable surface (UI-thread scale+opacity press feedback).
 `KioskScreenTransition` takes a `direction` (`forward` / `up` / `fade`)
@@ -257,6 +325,12 @@ that lets a customer recover from too many results by continuing to type.
 
 ## Conventions
 
+- **Never call `Alert.alert` in kiosk code.** A native alert is the one surface
+  the kiosk can't theme. Use `useKioskDialog` (`KioskDialog.tsx`) — same
+  signature — passing `config` for the customer-themed look (render the
+  returned element at the screen root) or nothing for the staff Settings look
+  (drawn in a Modal, so it works from inside scrolling panels). Keep customer
+  copy generic; staff detail belongs in Kiosk Settings.
 - **Never use raw `px` for a size in a kiosk component.** Route it through
   `kioskPx(n, scale)` or `kioskCardMetrics`, or it will render at a fraction of
   the surrounding UI on a large panel. `KioskIdleModal` shipped with raw px and
@@ -273,7 +347,7 @@ that lets a customer recover from too many results by continuing to type.
 ## Layout variants
 
 `KioskMenuItem` (image on top), `KioskMenuItemRow` (square image left) and
-`KioskMenuItemFeatureRow` (full-width, photo blended off the right edge) are
+`KioskMenuItemFeatureRow` (full-width, square photo inset right) are
 three shapes of the same card, chosen by `KioskItemGrid`: one column always
 means the feature row; otherwise `shouldUseRowLayout` picks between the other
 two per cell. None is template-specific — all three templates get all three
@@ -380,15 +454,10 @@ the menu reads as one system whichever shape a cell resolves to. Before this,
 cards were painted in the page colour and separated by a 1px border alone,
 which reads as a wireframe from the few feet a customer actually stands away.
 
-**It has to be a solid colour, not a translucent overlay.** The feature row
-fades its photo out into the card, and a gradient needs a real colour to start
-from. One derived hex keeps fill and fade in exact agreement; a translucent
-fill would leave the blend ending on the *page* colour, one step off the card
-around it — a faint seam down the middle of every photo.
-
-`kioskFadeEnd` is the matching helper for the far end of any kiosk fade. Both
-return the input unchanged / `null` for colours they cannot parse, so an
-unexpected colour format degrades to the old flat look instead of a dirty one.
+**It is a solid colour, not a translucent overlay** — one derived hex reads the
+same on every card and under every photo, where an alpha fill would pick up
+whatever sits behind it. A colour it cannot parse comes back unchanged, so an
+unexpected format degrades to the old flat look instead of a dirty one.
 
 ## Unavailable modifier options
 

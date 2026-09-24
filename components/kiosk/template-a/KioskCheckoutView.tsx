@@ -5,8 +5,12 @@ import {
   useKioskTheme,
   type KioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
+import { isKioskHandheld } from "@/components/kiosk/shared/kioskLayout";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFontPx,
+  kioskPx,
+} from "@/components/kiosk/shared/KioskScaleProvider";
 import {
   useKioskCheckout,
   type KioskCheckoutTotals,
@@ -21,7 +25,7 @@ import {
   CreditCard,
   Heart,
 } from "@/lib/icons";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -174,13 +178,7 @@ export function KioskCheckoutView({
 
   // ---- PROCESSING / ERROR ----
   return (
-    <View
-      className="flex-1 items-center justify-center px-10"
-      style={{
-        backgroundColor: t.page,
-        gap: kioskPx(20, scale),
-      }}
-    >
+    <StatusLayout theme={t} scale={scale}>
       {status === "assistance" ? (
         <>
           <Text style={{ fontSize: kioskPx(24, scale), ...kioskFont(t, "bold"), color: t.text }}>
@@ -192,7 +190,7 @@ export function KioskCheckoutView({
           {assistanceRef && (
             <Text
               style={{
-                fontSize: kioskPx(13, scale),
+                fontSize: kioskFontPx(13, scale),
                 color: muted,
                 textAlign: "center",
               }}
@@ -307,6 +305,50 @@ export function KioskCheckoutView({
           </Text>
         </>
       )}
+    </StatusLayout>
+  );
+}
+
+/**
+ * Centred column for the one-message checkout screens (processing, error,
+ * cancelled, success, …).
+ *
+ * Scrolls only when the column is taller than the panel. A landscape phone is
+ * ~360dp tall, and a centred View there clips its button off the bottom with no
+ * way to reach it; everywhere else the content fits and this is the same
+ * centred column it always was. `overlay` is for absolutely-positioned chrome
+ * (a Back button) that must stay put rather than scroll — it renders above the
+ * scroller so it keeps its taps.
+ */
+function StatusLayout({
+  theme: t,
+  scale: s,
+  overlay,
+  children,
+}: {
+  theme: KioskTheme;
+  scale: number;
+  overlay?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <View style={{ flex: 1, backgroundColor: t.page }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          flexGrow: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: kioskPx(40, s),
+          paddingVertical: kioskPx(24, s),
+          gap: kioskPx(20, s),
+        }}
+      >
+        {children}
+      </ScrollView>
+      {overlay}
     </View>
   );
 }
@@ -421,10 +463,7 @@ function CancellingScreen({ config }: { config: KioskConfig }) {
   const muted = t.textMuted;
 
   return (
-    <View
-      className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: t.page, gap: kioskPx(20, s) }}
-    >
+    <StatusLayout theme={t} scale={s}>
       <ActivityIndicator size="large" color={t.primary} />
       <Text
         style={{
@@ -440,7 +479,7 @@ function CancellingScreen({ config }: { config: KioskConfig }) {
       >
         Cancelling the payment on the card reader.
       </Text>
-    </View>
+    </StatusLayout>
   );
 }
 
@@ -466,10 +505,7 @@ function CancelledScreen({
   }, [onDone]);
 
   return (
-    <View
-      className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: t.page, gap: kioskPx(20, s) }}
-    >
+    <StatusLayout theme={t} scale={s}>
       <CheckCircle2 size={kioskPx(84, s)} color={t.primary} />
       <Text
         style={{
@@ -501,7 +537,7 @@ function CancelledScreen({
           Back to cart
         </Text>
       </Pressable>
-    </View>
+    </StatusLayout>
   );
 }
 
@@ -530,10 +566,7 @@ function SuccessScreen({
   }, [onDone]);
 
   return (
-    <View
-      className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: t.page, gap: kioskPx(20, s) }}
-    >
+    <StatusLayout theme={t} scale={s}>
       <CheckCircle2 size={kioskPx(96, s)} color={t.primary} />
       <Text
         style={{
@@ -586,7 +619,7 @@ function SuccessScreen({
           Done
         </Text>
       </Pressable>
-    </View>
+    </StatusLayout>
   );
 }
 
@@ -609,34 +642,31 @@ function PreparingScreen({
   const muted = t.textMuted;
   const isError = !!error;
 
-  return (
-    <View
-      className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: t.page, gap: kioskPx(20, s) }}
+  // Back — hidden while loading so the customer can't bail mid-creation and
+  // orphan an in-flight order. Shown only in the error state, where Back is the
+  // intended escape (alongside the Back-to-cart button).
+  const backButton = isError ? (
+    <Pressable
+      onPress={onBack}
+      hitSlop={8}
+      style={{
+        position: "absolute",
+        top: kioskPx(20, s),
+        left: kioskPx(20, s),
+        width: kioskPx(48, s),
+        height: kioskPx(48, s),
+        borderRadius: kioskPx(24, s),
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: t.outline,
+      }}
     >
-      {/* Back — hidden while loading so the customer can't bail mid-creation
-          and orphan an in-flight order. Shown only in the error state, where
-          Back is the intended escape (alongside the Back-to-cart button). */}
-      {isError && (
-        <Pressable
-          onPress={onBack}
-          hitSlop={8}
-          style={{
-            position: "absolute",
-            top: kioskPx(20, s),
-            left: kioskPx(20, s),
-            width: kioskPx(48, s),
-            height: kioskPx(48, s),
-            borderRadius: kioskPx(24, s),
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: t.outline,
-          }}
-        >
-          <ChevronLeft size={kioskPx(26, s)} color={t.text} />
-        </Pressable>
-      )}
+      <ChevronLeft size={kioskPx(26, s)} color={t.text} />
+    </Pressable>
+  ) : null;
 
+  return (
+    <StatusLayout theme={t} scale={s} overlay={backButton}>
       {isError ? (
         <>
           <Text
@@ -695,7 +725,7 @@ function PreparingScreen({
           </Text>
         </>
       )}
-    </View>
+    </StatusLayout>
   );
 }
 
@@ -721,6 +751,10 @@ function TipStep({
   // since nothing scrolled the summary and Pay button were clipped. Two panes
   // spend the width instead — same structure KioskItemDetail uses.
   const isHorizontal = screenWidth > screenHeight;
+  // A landscape phone is ~360dp tall: the heading's heart badge is the one
+  // piece of the chooser that carries no information, so it gives its height
+  // back there.
+  const showHeart = !(isHorizontal && isKioskHandheld(screenWidth, screenHeight));
   const [selected, setSelected] = useState<number | null>(null); // percent, -1 = no tip
   const muted = t.textMuted;
   const faint = t.outline;
@@ -765,22 +799,24 @@ function TipStep({
     <>
       {/* Heading */}
         <View style={{ alignItems: "center", gap: kioskPx(12, s) }}>
-          <View
-            style={{
-              width: kioskPx(72, s),
-              height: kioskPx(72, s),
-              borderRadius: kioskPx(36, s),
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: `${t.primary}14`,
-            }}
-          >
-            <Heart
-              size={kioskPx(34, s)}
-              color={t.primary}
-              fill={t.primary}
-            />
-          </View>
+          {showHeart ? (
+            <View
+              style={{
+                width: kioskPx(72, s),
+                height: kioskPx(72, s),
+                borderRadius: kioskPx(36, s),
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: `${t.primary}14`,
+              }}
+            >
+              <Heart
+                size={kioskPx(34, s)}
+                color={t.primary}
+                fill={t.primary}
+              />
+            </View>
+          ) : null}
           <Text
             style={{
               fontSize: kioskPx(30, s),
@@ -841,7 +877,7 @@ function TipStep({
                 </Text>
                 <Text
                   style={{
-                    fontSize: kioskPx(14, s),
+                    fontSize: kioskFontPx(14, s),
                     ...kioskFont(t, "regular"),
                     color: active ? "rgba(255,255,255,0.85)" : muted,
                   }}
@@ -968,9 +1004,13 @@ function TipStep({
       >
         {backButton}
         <View style={{ flex: 1, flexDirection: "row" }}>
-          <View
-            style={{
-              flex: 1.35,
+          {/* Scrolls only if the chooser outgrows a short panel (a landscape
+              phone, or a long preset row); centred otherwise. */}
+          <ScrollView
+            style={{ flex: 1.35 }}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              flexGrow: 1,
               alignItems: "center",
               justifyContent: "center",
               paddingHorizontal: kioskPx(32, s),
@@ -979,7 +1019,7 @@ function TipStep({
             }}
           >
             {chooser}
-          </View>
+          </ScrollView>
 
           <View
             style={{

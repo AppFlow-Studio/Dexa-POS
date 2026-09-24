@@ -8,7 +8,10 @@ import {
 import { KIOSK_HEADER_CONTROL_HEIGHT } from "@/components/kiosk/shared/kioskLayout";
 import { kioskMoney } from "@/components/kiosk/shared/kioskMoney";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFontPx,
+  kioskPx,
+} from "@/components/kiosk/shared/KioskScaleProvider";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
@@ -132,7 +135,7 @@ export function KioskHeaderCartPill({
               <Text
                 style={{
                   color: t.onPrimary,
-                  fontSize: kioskPx(12, s),
+                  fontSize: kioskFontPx(12, s),
                   ...kioskFont(t, "bold"),
                 }}
               >

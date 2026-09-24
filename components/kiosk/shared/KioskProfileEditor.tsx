@@ -35,6 +35,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -613,6 +614,9 @@ function SelectField({
   onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // The list's cap leaves room for the card's header and the screen margin, so
+  // the sheet still fits a landscape phone.
+  const listMaxHeight = Math.min(360, useWindowDimensions().height - 160);
   // Always include the current value so a web-set option is never lost.
   const opts =
     !value || options.includes(value) ? options : [value, ...options];
@@ -655,7 +659,7 @@ function SelectField({
                 <X size={18} color="#6B7280" />
               </Pressable>
             </View>
-            <ScrollView style={{ maxHeight: 360 }}>
+            <ScrollView style={{ maxHeight: listMaxHeight }}>
               {opts.map((opt) => {
                 const active = opt === value;
                 return (
@@ -839,11 +843,36 @@ function ColorWheelModal({
   onSelect: (hex: string) => void;
 }) {
   const [local, setLocal] = useState(color);
+  // Stacked, this card is ~530dp — taller than a landscape phone. There the
+  // wheel sits beside the preview and buttons, sized to the height it has.
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const sideBySide = winWidth > winHeight && winHeight < 560;
+  const panelSize = sideBySide
+    ? Math.max(120, Math.min(240, winHeight - 150))
+    : 240;
 
   // Reset the working color each time the sheet opens.
   useEffect(() => {
     if (visible) setLocal(color);
   }, [visible, color]);
+
+  const picker = visible ? (
+    <ColorPicker
+      value={color}
+      onCompleteJS={(c) => setLocal(c.hex)}
+      style={{ gap: 24 }}
+    >
+      <Panel3
+        style={{ width: panelSize, height: panelSize, alignSelf: "center" }}
+        thumbSize={28}
+      />
+      <BrightnessSlider
+        style={{ borderRadius: 999 }}
+        sliderThickness={26}
+        thumbSize={28}
+      />
+    </ColorPicker>
+  ) : null;
 
   return (
     <Modal
@@ -862,77 +891,77 @@ function ColorWheelModal({
           <Pressable
             onPress={() => {}}
             className="w-full bg-white rounded-3xl p-6"
-            style={[{ maxWidth: 380 }, modalShadow]}
+            style={[
+              { maxWidth: sideBySide ? 640 : 380 },
+              sideBySide && { flexDirection: "row", gap: 24 },
+              modalShadow,
+            ]}
           >
-            <View className="flex-row items-center justify-between mb-5">
-              <Text className="text-lg font-bold text-black capitalize">
-                {label} color
-              </Text>
-              <Pressable
-                onPress={onClose}
-                className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
-              >
-                <X size={18} color="#6B7280" />
-              </Pressable>
-            </View>
-
-            {visible ? (
-              <ColorPicker
-                value={color}
-                onCompleteJS={(c) => setLocal(c.hex)}
-                style={{ gap: 24 }}
-              >
-                <Panel3
-                  style={{ width: 240, height: 240, alignSelf: "center" }}
-                  thumbSize={28}
-                />
-                <BrightnessSlider
-                  style={{ borderRadius: 999 }}
-                  sliderThickness={26}
-                  thumbSize={28}
-                />
-              </ColorPicker>
+            {sideBySide ? (
+              <View style={{ width: panelSize, justifyContent: "center" }}>
+                {picker}
+              </View>
             ) : null}
 
-            {/* Preview + resolved hex */}
-            <View className="flex-row items-center gap-3 mt-6">
-              <View
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  backgroundColor: local,
-                  borderWidth: 1,
-                  borderColor: "#E5E7EB",
-                }}
-              />
-              <View className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-3">
-                <Text
-                  className="text-base text-black"
-                  style={{ fontFamily: "monospace" }}
+            <View
+              style={
+                sideBySide ? { flex: 1, justifyContent: "center" } : undefined
+              }
+            >
+              <View className="flex-row items-center justify-between mb-5">
+                <Text className="text-lg font-bold text-black capitalize">
+                  {label} color
+                </Text>
+                <Pressable
+                  onPress={onClose}
+                  className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
                 >
-                  {local.toUpperCase()}
-                </Text>
+                  <X size={18} color="#6B7280" />
+                </Pressable>
               </View>
-            </View>
 
-            <View className="flex-row gap-3 mt-5">
-              <Pressable
-                onPress={onClose}
-                className="flex-1 py-3.5 rounded-2xl bg-gray-100 items-center"
-              >
-                <Text className="text-base font-bold text-gray-700">
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => onSelect(local)}
-                className="flex-1 py-3.5 rounded-2xl bg-teal-600 items-center"
-              >
-                <Text className="text-base font-bold text-white">
-                  Use color
-                </Text>
-              </Pressable>
+              {sideBySide ? null : picker}
+
+              {/* Preview + resolved hex */}
+              <View className="flex-row items-center gap-3 mt-6">
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 12,
+                    backgroundColor: local,
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                  }}
+                />
+                <View className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-3">
+                  <Text
+                    className="text-base text-black"
+                    style={{ fontFamily: "monospace" }}
+                  >
+                    {local.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row gap-3 mt-5">
+                <Pressable
+                  onPress={onClose}
+                  className="flex-1 py-3.5 rounded-2xl bg-gray-100 items-center"
+                >
+                  <Text className="text-base font-bold text-gray-700">
+                    Cancel
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => onSelect(local)}
+                  className="flex-1 py-3.5 rounded-2xl bg-teal-600 items-center"
+                >
+                  <Text className="text-base font-bold text-white">
+                    Use color
+                  </Text>
+                </Pressable>
+              </View>
             </View>
           </Pressable>
         </Pressable>

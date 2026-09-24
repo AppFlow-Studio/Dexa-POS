@@ -10,7 +10,10 @@ import {
   kioskTracking,
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFontPx,
+  kioskPx,
+} from "@/components/kiosk/shared/KioskScaleProvider";
 import {
   KIOSK_RESULT_ROW_HEIGHT,
   KioskSearchResultRow,
@@ -162,7 +165,7 @@ export function KioskSearchResults({
               paddingHorizontal: kioskPx(16, s),
               paddingTop: kioskPx(12, s),
               paddingBottom: kioskPx(8, s),
-              fontSize: kioskPx(13, s),
+              fontSize: kioskFontPx(13, s),
               letterSpacing: 1.2,
               textTransform: "uppercase",
               color: t.textMuted,
