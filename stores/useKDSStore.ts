@@ -17,6 +17,7 @@ import {
   type FailedBump,
 } from "@/lib/kds/bumpFailure";
 import { isRecallExpired } from "@/lib/kdsAutomation";
+import { createPendingWrites } from "@/lib/pendingWrites";
 import { DEADLINES } from "@/lib/network/deadlines";
 import type { RpcResult } from "@/lib/network/rpcVersionFallback";
 import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
@@ -52,6 +53,22 @@ let _supabaseClient: SupabaseClient | null = null;
 export const setKDSSupabaseClient = (client: SupabaseClient | null) => {
   _supabaseClient = client;
 };
+
+/** kds_displays column behind each display setting editable from the app. */
+const DISPLAY_COLUMNS = {
+  fontScale: "font_scale",
+  columns: "columns",
+  showServerName: "show_server_name",
+  soundOnNewOrder: "sound_on_new_order",
+  soundConfig: "sound_config",
+} as const satisfies Partial<Record<keyof KDSDisplayConfig, string>>;
+
+export type KDSDisplayPatch = Partial<
+  Pick<KDSDisplayConfig, keyof typeof DISPLAY_COLUMNS>
+>;
+
+/** Display edits a fetchKDSDisplay read must not overwrite (scope: display id). */
+const _displayWrites = createPendingWrites();
 
 const getClient = () => {
   if (!_supabaseClient) {
@@ -141,6 +158,14 @@ interface KDSState {
 
   // Actions
   fetchKDSDisplay: (stationId: string) => Promise<void>;
+  /**
+   * Save display settings: applied to the store at once, written to
+   * kds_displays, reverted if the write fails. Resolves whether it saved.
+   */
+  updateKDSDisplay: (
+    displayId: string,
+    patch: KDSDisplayPatch,
+  ) => Promise<boolean>;
   fetchTickets: (locationId: string) => Promise<void>;
   _backgroundFetchTickets: (locationId: string) => Promise<void>;
   _fetchTicketsForOrder: (
@@ -1629,6 +1654,7 @@ export const useKDSStore = create<KDSState>()(
       fetchKDSDisplay: async (stationId: string) => {
         const client = getClient();
         if (!client) return;
+        const readStartedAt = _displayWrites.beginRead();
 
         try {
           // Query kds_displays by station_id (1:1 FK). Deadline-wrapped so a
@@ -1771,6 +1797,12 @@ export const useKDSStore = create<KDSState>()(
             showServerName: display.show_server_name ?? null,
             fontScale: display.font_scale ?? null,
             showAllItems: display.show_all_items ?? null,
+            // Edits this read may predate win, so a setting doesn't flip back
+            // while (or just after) its save goes through.
+            ...(_displayWrites.overlay(
+              display.id,
+              readStartedAt,
+            ) as KDSDisplayPatch),
           };
 
           set({
@@ -1792,6 +1824,54 @@ export const useKDSStore = create<KDSState>()(
             enrichedRules: [],
           });
         }
+      },
+
+      updateKDSDisplay: async (displayId, patch) => {
+        const client = getClient();
+        if (!client) return false;
+        const fields = Object.keys(patch) as (keyof KDSDisplayPatch)[];
+        const setLocal = (values: KDSDisplayPatch) => {
+          const st = get();
+          if (st.kdsDisplayId === displayId && st.kdsDisplayConfig) {
+            set({ kdsDisplayConfig: { ...st.kdsDisplayConfig, ...values } });
+          }
+        };
+
+        const current = get().kdsDisplayConfig;
+        const previous: KDSDisplayPatch =
+          get().kdsDisplayId === displayId && current
+            ? Object.fromEntries(fields.map((f) => [f, current[f]]))
+            : {};
+        const writeIds = fields.map((f) =>
+          _displayWrites.record(displayId, f, patch[f]),
+        );
+        setLocal(patch);
+
+        let saved = false;
+        try {
+          const { error } = await client
+            .from("kds_displays")
+            .update(
+              Object.fromEntries(
+                fields.map((f) => [DISPLAY_COLUMNS[f], patch[f]]),
+              ) as any,
+            )
+            .eq("id", displayId);
+          if (error) console.error("[KDSStore] updateKDSDisplay error:", error);
+          else saved = true;
+        } catch (err) {
+          console.error("[KDSStore] updateKDSDisplay exception:", err);
+        }
+
+        const revert: KDSDisplayPatch = {};
+        fields.forEach((f, i) => {
+          if (saved) _displayWrites.confirm(displayId, f, writeIds[i]);
+          // A newer edit to the field supersedes this one; leave it be.
+          else if (_displayWrites.drop(displayId, f, writeIds[i]) && f in previous)
+            (revert as Record<string, unknown>)[f] = previous[f];
+        });
+        if (Object.keys(revert).length > 0) setLocal(revert);
+        return saved;
       },
 
       // ─── Fetch Tickets ────────────────────────────────────────────

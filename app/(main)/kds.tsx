@@ -25,7 +25,7 @@ import {
   setKdsDeviceTruthContext,
 } from "@/services/kds/kdsDeviceTruth";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
+import { KDSScaleProvider, useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
 import KDSSoundService, {
     DEFAULT_SOUND_CONFIG,
@@ -3510,6 +3510,7 @@ const KitchenDisplayScreen = () => {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
+            columnGap: s(12),
           }}
         >
           {/* LEFT: Status tabs */}
@@ -3582,9 +3583,18 @@ const KitchenDisplayScreen = () => {
             })}
           </View>
 
-          {/* RIGHT: Order types + display badge + station/time */}
+          {/* RIGHT: Order types + display badge + station/time. Takes the
+              remaining width and wraps onto a second line rather than running
+              off screen at larger display sizes. */}
           <View
-            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: s(6),
+            }}
           >
             {/* Order type filters */}
             {TYPE_TABS.map((tab) => {
@@ -4233,7 +4243,10 @@ const KitchenDisplayScreen = () => {
                so a selection repaints only the cards whose focus flipped. */
             renderCard={renderBoardCard}
             estimateHeight={estimateBoardCardHeight}
-            cacheNamespace={isDoneTab ? "done" : "active"}
+            // Scale in the key: after a display-size change, cards that are
+            // off screen fall back to the (rescaled) estimate instead of a
+            // height measured at the old size.
+            cacheNamespace={`${isDoneTab ? "done" : "active"}@${uiScale}`}
             horizontalPadding={s(4)}
             cellGutter={s(2)}
             topPadding={s(4)}
@@ -4656,11 +4669,29 @@ const KitchenDisplayScreen = () => {
             zIndex: 120,
           }}
         >
-          <KdsSettingsPanel onBack={handleCloseSettings} />
+          {/* Settings stay at the normal size: the display size is picked
+              here, and the page shouldn't resize under the operator's finger. */}
+          <KDSScaleProvider override={null}>
+            <KdsSettingsPanel onBack={handleCloseSettings} />
+          </KDSScaleProvider>
         </View>
       )}
     </View>
   );
 };
 
-export default KitchenDisplayScreen;
+/**
+ * Sizes the whole board (header, tabs, tickets, its modals) by this display's
+ * `font_scale`. Provided above the screen so the screen's own useUiScale() —
+ * which drives the header and the board's height estimates — sees it too.
+ */
+const KitchenDisplayRoute = () => {
+  const fontScale = useKDSStore((s) => s.kdsDisplayConfig?.fontScale ?? null);
+  return (
+    <KDSScaleProvider override={fontScale}>
+      <KitchenDisplayScreen />
+    </KDSScaleProvider>
+  );
+};
+
+export default KitchenDisplayRoute;

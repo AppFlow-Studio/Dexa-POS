@@ -178,23 +178,66 @@ export function useCFDScaleOverride(): number | null {
 }
 
 /**
+ * Clamp range for the KDS board. The ceiling sits well above the POS one:
+ * kitchen screens run from 10" tablets up to wall-mounted monitors read from
+ * across the line, and the operator picks the size for the cooks' distance.
+ */
+export const MIN_KDS_UI_SCALE = 0.6;
+export const MAX_KDS_UI_SCALE = 2.0;
+
+/**
+ * KDS board scale, from the display's `kds_displays.font_scale` (edited in
+ * KDS settings and in the dashboard's station editor). Like the CFD override
+ * it replaces the POS `uiScaleOverride` inside its tree rather than stacking
+ * on it, so the board and the POS settings size independently.
+ */
+const KDSScaleContext = React.createContext<number | null>(null);
+
+/**
+ * Applies a KDS scale to a subtree: to `useUiScale()` and to the
+ * `--ui-scale` variable the Tailwind utilities read. `override={null}` takes a
+ * subtree back to the normal scale (e.g. settings shown over the board).
+ */
+export function KDSScaleProvider({
+  override,
+  children,
+}: {
+  override: number | null | undefined;
+  children: React.ReactNode;
+}) {
+  return React.createElement(
+    KDSScaleContext.Provider,
+    { value: override ?? null },
+    React.createElement(UiScaleProvider, null, children),
+  );
+}
+
+/**
  * Reactive UI scale. Re-computes if the window dimensions change (e.g. a
  * foldable, or split-screen). Use this in components that do raw numeric
  * sizing off Dimensions and need to scale manually.
  *
  * Inside a CFD screen tree (see CFDScaleProvider) the CFD's own override and
  * clamp range apply instead of the POS ones, so operators can size the
- * customer display independently of the POS UI.
+ * customer display independently of the POS UI. The KDS board works the same
+ * way through KDSScaleProvider.
  */
 export function useUiScale(): number {
   const { width, height } = useWindowDimensions();
   const posOverride = useSettingsStore((s) => s.uiScaleOverride);
   const cfdOverride = useCFDScaleOverride();
+  const kdsOverride = React.useContext(KDSScaleContext);
   const base = computeUiScale(width, height);
   if (cfdOverride != null) {
     return Math.min(
       MAX_CFD_UI_SCALE,
       Math.max(MIN_CFD_UI_SCALE, base * cfdOverride),
+    );
+  }
+  if (kdsOverride != null) {
+    return Math.min(
+      MAX_KDS_UI_SCALE,
+      Math.max(MIN_KDS_UI_SCALE, base * kdsOverride),
     );
   }
   if (posOverride == null) return base;
