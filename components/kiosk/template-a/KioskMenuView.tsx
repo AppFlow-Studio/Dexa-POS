@@ -12,10 +12,8 @@ import { kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
 import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
 import { KioskSearchResults } from "@/components/kiosk/shared/KioskSearchResults";
 import type { KioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
-import {
-  useIsStationMenuScopeEmpty,
-  useVisibleMenus,
-} from "@/hooks/menu/useVisibleMenus";
+import { useKioskScheduledMenus } from "@/components/kiosk/shared/useKioskScheduledMenus";
+import { useIsStationMenuScopeEmpty } from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
 import {
   kioskItemSourceFromKey,
@@ -25,7 +23,6 @@ import {
   resolveKioskColumns,
   useKioskDeviceSettingsStore,
 } from "@/stores/useKioskDeviceSettingsStore";
-import { useMenuStore } from "@/stores/useMenuStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
@@ -60,12 +57,11 @@ export function KioskMenuView({
   /** Owned by the template shell — the header draws the field, this draws the results. */
   search: KioskMenuSearchState;
 }) {
-  // Kiosk channel + per-station scope are applied by the shared selector.
-  const menus = useVisibleMenus();
+  // Kiosk channel, per-station scope and menu/category schedules are applied
+  // by the shared selectors.
+  const { menus, closedBySchedule } = useKioskScheduledMenus();
   const scopedToNothing = useIsStationMenuScopeEmpty();
   const resolveGroups = useModifierGroupResolver();
-  const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
-  const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
   const isVertical = config.orientation === "vertical";
   // Column count: manager device setting wins; "auto" falls back to the
@@ -76,19 +72,15 @@ export function KioskMenuView({
   // Build one section per available menu, listing its available categories.
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter((m) => isMenuAvailableNow(m.id))
       .map((m) => ({
         menuId: m.id,
         title: m.name,
-        data: m.categories.filter(
-          (c) =>
-            c.isActive &&
-            isCategoryAvailableNow(c.name) &&
-            hasOrderableItem(c.items, resolveGroups),
+        data: m.categories.filter((c) =>
+          hasOrderableItem(c.items, resolveGroups),
         ),
       }))
       .filter((s) => s.data.length > 0);
-  }, [menus, isMenuAvailableNow, isCategoryAvailableNow, resolveGroups]);
+  }, [menus, resolveGroups]);
 
   // Selection keyed by menuId+categoryId so the same category name in two menus
   // stays distinct.
@@ -121,6 +113,9 @@ export function KioskMenuView({
   // Scoped to a selection that leaves nothing: fail closed to the empty state,
   // never to the full menu. After every hook, so the hook order is stable.
   if (scopedToNothing) return <KioskNoMenusState config={config} />;
+  if (closedBySchedule) {
+    return <KioskNoMenusState config={config} reason="schedule" />;
+  }
 
   return (
     <View className="flex-1">

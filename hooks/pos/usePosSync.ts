@@ -1,5 +1,13 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+  formatScheduleSummary,
+  mapApiSchedules,
+} from "@/lib/menu/menuSchedule";
 import { DEADLINES } from "@/lib/network/deadlines";
+import {
+  rpcWithVersionFallback,
+  type RpcResult,
+} from "@/lib/network/rpcVersionFallback";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -14,7 +22,9 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 /**
- * Raw envelope returned by `get_pos_bootstrap_v2`.
+ * Raw envelope returned by `get_pos_bootstrap_v3` (or v2 on an environment
+ * that has not run the v3 migration — then schedules are simply absent and
+ * the menu renders unscheduled).
  *
  * Differs from `PosSyncData` in one place: `snoozes` arrives as the grouped
  * `{ items, modifiers }` object that `get_active_snoozes` produces, and is
@@ -41,7 +51,7 @@ interface PosBootstrapPayload {
 /**
  * Hook to sync POS data from the backend.
  *
- * ONE round trip: `get_pos_bootstrap_v2` returns the menu tree, recipes, tax
+ * ONE round trip: `get_pos_bootstrap_v3` returns the menu tree, recipes, tax
  * rates and active snoozes in a single versioned envelope. This replaced five
  * parallel requests (get_pos_full_sync + two recipe tables + tax_rates +
  * get_active_snoozes), two of which duplicated queries useStandaloneSync was
@@ -60,14 +70,24 @@ export const usePosSync = (locationId: string | null) => {
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
 
-      // Single round trip. v2 enriches the existing bootstrap with menu channel
-      // visibility. Wrapped with deadline so bad WiFi falls back to
-      // TanStack `offlineFirst` cache instead of hanging the UI.
+      // Single round trip. v3 = v2 (channel visibility, station scopes) plus
+      // menu + category schedules. Falls back to v2 where the v3 migration
+      // has not landed yet (migrations reach staging before prod). Wrapped
+      // with deadline so bad WiFi falls back to TanStack `offlineFirst` cache
+      // instead of hanging the UI.
       const result = await withDeadline(
-        async (signal) =>
-          await (supabase.rpc as any)("get_pos_bootstrap_v2", {
-            p_location_id: locationId,
-          }).abortSignal(signal),
+        (signal) =>
+          rpcWithVersionFallback<PosBootstrapPayload>(
+            "get_pos_bootstrap_v3",
+            () =>
+              (supabase.rpc as any)("get_pos_bootstrap_v3", {
+                p_location_id: locationId,
+              }).abortSignal(signal) as Promise<RpcResult<PosBootstrapPayload>>,
+            () =>
+              (supabase.rpc as any)("get_pos_bootstrap_v2", {
+                p_location_id: locationId,
+              }).abortSignal(signal) as Promise<RpcResult<PosBootstrapPayload>>,
+          ),
         DEADLINES.menuSync,
         "pos_sync",
       );
@@ -78,8 +98,8 @@ export const usePosSync = (locationId: string | null) => {
         throw result.error;
       }
 
-      const data = result.data as unknown as PosBootstrapPayload | null;
-      if (!data) throw new Error("get_pos_bootstrap_v2 returned no payload");
+      const data = result.data;
+      if (!data) throw new Error("get_pos_bootstrap returned no payload");
 
       // Tax rates now ride along in the envelope. The zero-row case is still
       // worth shouting about: it usually means a stale JWT or a location
@@ -118,6 +138,32 @@ export const usePosSync = (locationId: string | null) => {
         version: data.version,
         menus: data.menus?.length ?? 0,
         firstMenu: data.menus?.[0],
+      });
+
+      // Schedule diagnostics: which RPC answered, and every menu/category that
+      // arrived with schedules, as the rules the tablet will enforce. An entry
+      // with raw > 0 but no rules was dropped (inactive, or no active slots).
+      const describe = (entries: Parameters<typeof mapApiSchedules>[0]) => ({
+        raw: entries?.length ?? 0,
+        rules: formatScheduleSummary(mapApiSchedules(entries)) || "(none)",
+      });
+      console.log("[schedules] bootstrap", {
+        rpc: result.usedFallback
+          ? "get_pos_bootstrap_v2 (FALLBACK — v3 not found; no schedules)"
+          : "get_pos_bootstrap_v3",
+        version: data.version,
+        scheduled: (data.menus ?? []).flatMap((menu) => [
+          ...(menu.schedules?.length
+            ? [{ menu: menu.name, ...describe(menu.schedules) }]
+            : []),
+          ...(menu.categories ?? [])
+            .filter((entry) => entry.schedules?.length)
+            .map((entry) => ({
+              menu: menu.name,
+              category: entry.category?.name,
+              ...describe(entry.schedules),
+            })),
+        ]),
       });
 
       return {

@@ -25,7 +25,9 @@ import {
 import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useOnlineMenu } from "@/hooks/pos/useOnlineMenu";
 import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
+import { useScheduleClock } from "@/hooks/useScheduleClock";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { formatScheduleSummary } from "@/lib/menu/menuSchedule";
 import { getMenuStatusChips } from "@/lib/menu/menuStatusReasons";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import {
@@ -190,68 +192,6 @@ interface DraggableMenuProps {
   isOnlineMenu?: boolean;
 }
 
-// Helper to check if now is within a schedule
-const checkAvailability = (schedules: any[] | undefined): boolean => {
-  if (!schedules || schedules.length === 0) return true;
-
-  const now = new Date();
-
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const currentDay = dayNames[now.getDay()];
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  return schedules.some((rule) => {
-    if (!rule.isActive) return false;
-    // Respect the day if it exists and is not empty
-    if (rule.days && rule.days.length > 0 && !rule.days.includes(currentDay)) {
-      return false;
-    }
-
-    let startMinutes = 0;
-    let endMinutes = 0;
-
-    // Helper to get minutes from time string (ISO or HH:MM)
-    const getMinutes = (timeStr: string) => {
-      if (!timeStr) return 0;
-      if (timeStr.includes("T")) {
-        // ISO String: Parse as Date (converts to local time)
-        const date = new Date(timeStr);
-        if (isNaN(date.getTime())) return 0;
-        return date.getHours() * 60 + date.getMinutes();
-      } else if (timeStr.includes(":")) {
-        // HH:MM format
-        const [h, m] = timeStr.split(":").map(Number);
-        return (h || 0) * 60 + (m || 0);
-      }
-      return 0;
-    };
-
-    startMinutes = getMinutes(rule.startTime);
-    endMinutes = getMinutes(rule.endTime);
-
-    // Handle overnight shift (e.g. 22:00 - 02:00)
-    if (endMinutes < startMinutes) {
-      // Available if we are after start (e.g. 23:00) OR before end (e.g. 01:00)
-      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
-    }
-
-    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
-  });
-};
-
-// Helper to format time string for display (e.g. converts ISO to 6:00 AM)
-const formatTimeDisplay = (timeStr: string) => {
-  if (!timeStr) return "";
-
-  if (timeStr.includes("T")) {
-    const date = new Date(timeStr);
-    if (isNaN(date.getTime())) return timeStr;
-    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  }
-
-  return timeStr;
-};
-
 const MENU_DRAG_ROW_HEIGHT = 96;
 
 const DraggableMenu = React.memo(
@@ -378,7 +318,8 @@ const DraggableMenu = React.memo(
       };
     });
 
-    const isAvailable = checkAvailability(menu.schedules);
+    // Computed by the parent with the shared evaluator and schedule clock.
+    const isAvailable = !!menu.isAvailableNow;
     const statusChips = useMemo(
       () =>
         getMenuStatusChips(menu, {
@@ -1043,6 +984,7 @@ const MenuPage: React.FC = () => {
   );
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
+  const now = useScheduleClock();
   const isCategoryActiveForMenu = useMenuStore(
     (s) => s.isCategoryActiveForMenu,
   );
@@ -1153,14 +1095,14 @@ const MenuPage: React.FC = () => {
   // Convert store menus to display format
   // Since storeMenus now contains the full tree (Menu -> Category -> Item),
   // we just need to add computed availability for the top-level menu.
-  // Availability is calculated inline in DraggableMenu via checkAvailability(),
-  // so no need for a periodic forceUpdate here.
+  // `now` re-runs this when a schedule window opens or closes; DraggableMenu
+  // reads the resulting `isAvailableNow`.
   const menus = useMemo(
     () =>
       (Array.isArray(storeMenus) ? storeMenus : [])
         .map((storeMenu) => ({
           ...storeMenu,
-          isAvailableNow: isMenuAvailableNow(storeMenu.id),
+          isAvailableNow: isMenuAvailableNow(storeMenu.id, now),
         }))
         .sort((a, b) => {
           // Sort by displayOrder if available, otherwise by name
@@ -1169,7 +1111,7 @@ const MenuPage: React.FC = () => {
           if (aOrder !== bOrder) return aOrder - bOrder;
           return a.name.localeCompare(b.name);
         }),
-    [storeMenus, isMenuAvailableNow],
+    [storeMenus, isMenuAvailableNow, now],
   );
 
   const visibleMenus = useMemo(() => {
@@ -3121,46 +3063,25 @@ const MenuPage: React.FC = () => {
                             {r.name || r.id}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.label }}>
-                            {(r.days || []).join(", ")} ·{" "}
-                            {formatTimeDisplay(r.startTime)} –{" "}
-                            {formatTimeDisplay(r.endTime)}
+                            {formatScheduleSummary([r])}
                           </Text>
                         </View>
                       ))}
                     </View>
                   )}
-                  <TouchableOpacity
-                    onPress={
-                      menu.location_id === selectedStore?.id
-                        ? () => router.push(`/menu/edit-menu?id=${menu.id}`)
-                        : undefined
-                    }
-                    disabled={menu.location_id !== selectedStore?.id}
-                    style={{
-                      alignSelf: "flex-start",
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                      backgroundColor: colors.teal + "20",
-                      borderWidth: 1,
-                      borderColor: colors.teal + "50",
-                      opacity: menu.location_id === selectedStore?.id ? 1 : 0.4,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "600",
-                        color: colors.teal,
-                      }}
-                    >
-                      Edit Schedules
-                    </Text>
-                  </TouchableOpacity>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>
+                    Schedules are managed in Dexa Admin.
+                  </Text>
                 </View>
               ))
             : (Array.isArray(storeCategories) ? storeCategories : []).map(
-                (category) => (
+                (category) => {
+                  const categoryOpen = isCategoryAvailableNow(
+                    category.id,
+                    null,
+                    now,
+                  );
+                  return (
                   <View
                     key={category.id}
                     style={{
@@ -3193,11 +3114,11 @@ const MenuPage: React.FC = () => {
                           paddingHorizontal: 10,
                           paddingVertical: 4,
                           borderRadius: 6,
-                          backgroundColor: isCategoryAvailableNow(category.name)
+                          backgroundColor: categoryOpen
                             ? colors.teal + "20"
                             : colors.danger + "15",
                           borderWidth: 1,
-                          borderColor: isCategoryAvailableNow(category.name)
+                          borderColor: categoryOpen
                             ? colors.teal + "40"
                             : colors.danger + "30",
                         }}
@@ -3206,12 +3127,12 @@ const MenuPage: React.FC = () => {
                           style={{
                             fontSize: 11,
                             fontWeight: "600",
-                            color: isCategoryAvailableNow(category.name)
+                            color: categoryOpen
                               ? colors.teal
                               : colors.danger,
                           }}
                         >
-                          {isCategoryAvailableNow(category.name)
+                          {categoryOpen
                             ? "Available"
                             : "Unavailable"}
                         </Text>
@@ -3249,52 +3170,18 @@ const MenuPage: React.FC = () => {
                               {r.name || r.id}
                             </Text>
                             <Text style={{ fontSize: 12, color: colors.label }}>
-                              {(r.days || []).join(", ")} ·{" "}
-                              {formatTimeDisplay(r.startTime)} –{" "}
-                              {formatTimeDisplay(r.endTime)}
+                              {formatScheduleSummary([r])}
                             </Text>
                           </View>
                         ))}
                       </View>
                     )}
-                    <TouchableOpacity
-                      onPress={
-                        canWrite && category.location_id === selectedStore?.id
-                          ? () =>
-                              router.push(
-                                `/menu/edit-category?id=${category.id}`,
-                              )
-                          : undefined
-                      }
-                      disabled={
-                        !canWrite || category.location_id !== selectedStore?.id
-                      }
-                      style={{
-                        alignSelf: "flex-start",
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 8,
-                        backgroundColor: colors.teal + "20",
-                        borderWidth: 1,
-                        borderColor: colors.teal + "50",
-                        opacity:
-                          canWrite && category.location_id === selectedStore?.id
-                            ? 1
-                            : 0.4,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "600",
-                          color: colors.teal,
-                        }}
-                      >
-                        Edit Schedules
-                      </Text>
-                    </TouchableOpacity>
+                    <Text style={{ fontSize: 11, color: colors.muted }}>
+                      Schedules are managed in Dexa Admin.
+                    </Text>
                   </View>
-                ),
+                  );
+                },
               )}
         </View>
       </ScrollView>

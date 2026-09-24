@@ -1,3 +1,4 @@
+import { useScheduleClock } from '@/hooks/useScheduleClock'
 import { colors } from '@/lib/theme'
 import type { Menu } from '@/lib/types'
 import { useColorScheme } from '@/lib/useColorScheme'
@@ -305,6 +306,9 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   const menus = menuOptions ?? storeMenus
   const isCategoryAvailableNow = useMenuStore(s => s.isCategoryAvailableNow)
   const isCategoryActiveForMenu = useMenuStore(s => s.isCategoryActiveForMenu)
+  // Re-renders this (memoized) bar when a category's window opens or closes,
+  // so tab locks follow the clock rather than the next parent render.
+  const now = useScheduleClock()
   const temporaryActiveCategories = useMenuStore(
     s => s.temporaryActiveCategories
   )
@@ -619,13 +623,18 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                 typeof cat === 'string'
                   ? false
                   : !!(cat.schedules && cat.schedules.length > 0)
+              // Legacy string entries carry no id and no schedule.
+              const isOnSchedule =
+                typeof cat === 'string' ||
+                (!!currentMenu &&
+                  isCategoryAvailableNow(cat.id, currentMenu.id, now))
               const isNormallyAvailable =
-                isCategoryAvailableNow(tab) && currentMenu
-                  ? isCategoryActiveForMenu(
-                      currentMenu.id,
-                      typeof cat === 'string' ? tab : cat.id
-                    )
-                  : false
+                !!currentMenu &&
+                isOnSchedule &&
+                isCategoryActiveForMenu(
+                  currentMenu.id,
+                  typeof cat === 'string' ? tab : cat.id
+                )
               // A grant on the containing menu counts too: unlocking a menu is
               // what lets staff browse it, and MenuSection renders its items on
               // the same basis. Without this the tab would show a lock while

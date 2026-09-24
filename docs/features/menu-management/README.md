@@ -8,3 +8,6 @@ dual-pricing data QA belong here.
 - `per-station-menu-scope.md` — per-station "All menus / Selected menus" scope
   on top of the channel toggle; shared selector, cart pruning, offline
   snapshots, change signal.
+- `category-scheduling.md` — menu + category schedules enforced on POS and
+  kiosk (`get_pos_bootstrap_v3`, 0=Sunday day mapping, shared evaluator and
+  minute clock, read-only schedule summary in place of the phantom editor).

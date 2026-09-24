@@ -243,6 +243,49 @@ describe("round trip — what comes out is what went in", () => {
   });
 
   /**
+   * get_pos_bootstrap_v3 puts schedules on the menu AND on each category
+   * entry. Both must survive the mirror, or an offline cold start renders
+   * every scheduled category as always open.
+   */
+  it("carries menu and category schedules through", async () => {
+    const schedule = {
+      id: "cs-1",
+      schedule: {
+        id: "sched-lunch",
+        name: "Lunch",
+        description: null,
+        is_active: true,
+        time_slots: [
+          {
+            day_of_week: 1,
+            start_time: "11:00:00",
+            end_time: "14:00:00",
+            is_active: true,
+          },
+        ],
+      },
+    };
+    const scheduled = payload({
+      menus: [
+        {
+          ...menu("menu-lunch", [
+            {
+              ...categoryEntry("mc-1", "cat-burgers", [
+                itemEntry("ci-1", "item-burger", "cat-burgers"),
+              ]),
+              schedules: [schedule],
+            },
+          ]),
+          schedules: [{ ...schedule, id: "ms-1" }],
+        },
+      ] as unknown as PosSyncData["menus"],
+    });
+
+    await writeMenuSnapshot("kiosk", LOCATION, scheduled);
+    expect(await readMenuSnapshot(LOCATION)).toEqual(scheduled);
+  });
+
+  /**
    * The boot race, asserted directly.
    *
    * Every entry point here runs at boot, and `initLocalDb()` is kicked off from

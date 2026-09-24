@@ -111,7 +111,6 @@ const EditCategoryScreen: React.FC = () => {
       updateCategory(existing.id, {
         name: data.name,
         isActive: data.isActive,
-        schedules: data.schedules,
       });
 
       // 3. Update Items (Diffing) - handle additions/removals

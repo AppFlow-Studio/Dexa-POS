@@ -144,7 +144,6 @@ const EditMenuScreen: React.FC = () => {
         description: data.description,
         isActive: data.isActive,
         categories: data.categories,
-        schedules: data.schedules,
       });
 
       show({

@@ -6,9 +6,8 @@ import {
   buildKioskSearchEntry,
   type KioskSearchEntry,
 } from "@/components/kiosk/shared/kioskMenuSearch";
-import { useVisibleMenus } from "@/hooks/menu/useVisibleMenus";
+import { useKioskScheduledMenus } from "@/components/kiosk/shared/useKioskScheduledMenus";
 import type { Category } from "@/lib/types";
-import { useMenuStore } from "@/stores/useMenuStore";
 import { useMemo } from "react";
 
 /**
@@ -16,17 +15,15 @@ import { useMemo } from "react";
  * flattened out of the menu tree with its folded text precomputed.
  *
  * Applies exactly the same visibility filters the menu templates apply to the
- * rail and the grid — kiosk channel and per-station scope (both inside
- * `useVisibleMenus`), menu and category schedules, 86 state and unbuildable
+ * rail and the grid — kiosk channel, per-station scope and menu/category
+ * schedules (all inside `useKioskScheduledMenus`), 86 state and unbuildable
  * required modifier groups — so search can never surface something the
  * browsing path deliberately hides. It is built from the same inputs, in one
- * `useMemo`, so it recomputes only when the menu itself changes, not per
- * keystroke.
+ * `useMemo`, so it recomputes when the menu changes or a schedule window
+ * opens/closes, not per keystroke.
  */
 export function useKioskSearchEntries(): KioskSearchEntry[] {
-  const menus = useVisibleMenus();
-  const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
-  const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
+  const { menus } = useKioskScheduledMenus();
   const resolveGroups = useModifierGroupResolver();
 
   return useMemo(() => {
@@ -37,12 +34,7 @@ export function useKioskSearchEntries(): KioskSearchEntry[] {
     const seen = new Set<string>();
 
     for (const menu of menus) {
-      if (!isMenuAvailableNow(menu.id)) continue;
-
       for (const category of menu.categories as Category[]) {
-        if (!category.isActive) continue;
-        if (!isCategoryAvailableNow(category.name)) continue;
-
         for (const item of category.items ?? []) {
           if (seen.has(item.id)) continue;
           if (!isItemOrderable(item, resolveGroups)) continue;
@@ -60,5 +52,5 @@ export function useKioskSearchEntries(): KioskSearchEntry[] {
     }
 
     return entries;
-  }, [menus, isMenuAvailableNow, isCategoryAvailableNow, resolveGroups]);
+  }, [menus, resolveGroups]);
 }

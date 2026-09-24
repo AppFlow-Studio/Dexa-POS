@@ -93,7 +93,6 @@ const AddCategoryScreen: React.FC = () => {
         name: data.name,
         isActive: data.isActive,
         order: newOrder,
-        schedules: data.schedules,
         location_id: locationId, // Mark as local to current store
         id: createdCategory.id,
       });

@@ -11,10 +11,8 @@ import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskSearchResults } from "@/components/kiosk/shared/KioskSearchResults";
 import type { KioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
-import {
-  useIsStationMenuScopeEmpty,
-  useVisibleMenus,
-} from "@/hooks/menu/useVisibleMenus";
+import { useKioskScheduledMenus } from "@/components/kiosk/shared/useKioskScheduledMenus";
+import { useIsStationMenuScopeEmpty } from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
 import {
   kioskItemSourceFromKey,
@@ -25,7 +23,6 @@ import {
   resolveKioskColumns,
   useKioskDeviceSettingsStore,
 } from "@/stores/useKioskDeviceSettingsStore";
-import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useCallback, useMemo, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
@@ -58,12 +55,11 @@ export function KioskMenuViewB({
   search: KioskMenuSearchState;
 }) {
   const s = useKioskUiScale();
-  // Kiosk channel + per-station scope are applied by the shared selector.
-  const menus = useVisibleMenus();
+  // Kiosk channel, per-station scope and menu/category schedules are applied
+  // by the shared selectors.
+  const { menus, closedBySchedule } = useKioskScheduledMenus();
   const scopedToNothing = useIsStationMenuScopeEmpty();
   const resolveGroups = useModifierGroupResolver();
-  const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
-  const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
   const isVertical = config.orientation === "vertical";
   const columnsPref = useKioskDeviceSettingsStore((st) => st.menuColumns);
@@ -71,19 +67,15 @@ export function KioskMenuViewB({
 
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter((m) => isMenuAvailableNow(m.id))
       .map((m) => ({
         menuId: m.id,
         title: m.name,
-        data: m.categories.filter(
-          (c) =>
-            c.isActive &&
-            isCategoryAvailableNow(c.name) &&
-            hasOrderableItem(c.items, resolveGroups),
+        data: m.categories.filter((c) =>
+          hasOrderableItem(c.items, resolveGroups),
         ),
       }))
       .filter((s) => s.data.length > 0);
-  }, [menus, isMenuAvailableNow, isCategoryAvailableNow, resolveGroups]);
+  }, [menus, resolveGroups]);
 
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -119,6 +111,9 @@ export function KioskMenuViewB({
   // Scoped to a selection that leaves nothing: fail closed to the empty state,
   // never to the full menu. After every hook, so the hook order is stable.
   if (scopedToNothing) return <KioskNoMenusState config={config} />;
+  if (closedBySchedule) {
+    return <KioskNoMenusState config={config} reason="schedule" />;
+  }
 
   return (
     <View className="flex-1">

@@ -1,4 +1,5 @@
 import { useOverlayTelemetry } from '@/hooks/useOverlayTelemetry'
+import { useScheduleClock } from '@/hooks/useScheduleClock'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchStore'
@@ -21,7 +22,7 @@ import {
   useState
 } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
-import { ScheduleCard } from './ScheduleCard'
+import { ScheduleSummary } from './ScheduleSummary'
 
 const TAB_LABELS: Record<string, string> = {
   menus: 'Menus',
@@ -41,6 +42,7 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
   const storeMenus = useMenuStore(s => s.menus)
   const modifierGroups = useMenuStore(s => s.modifierGroups)
   const isMenuAvailableNow = useMenuStore(s => s.isMenuAvailableNow)
+  const now = useScheduleClock()
   const [searchQuery, setSearchQuery] = useState('')
   // Input binds to `searchQuery` (instant); the filter below reads this DEFERRED
   // copy so React runs the whole-list filter in a later, interruptible render
@@ -200,7 +202,7 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
 
       case 'menus': {
         const isActive = item.isActive
-        const isAvailableNow = isMenuAvailableNow(item.id)
+        const isAvailableNow = isMenuAvailableNow(item.id, now)
         const statusOk = isActive && isAvailableNow
         return (
           <View style={cardStyle}>
@@ -266,9 +268,7 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
               <Text style={{ ...nameStyle, flex: 1 }}>{item.name}</Text>
               <Badge label={isMenu ? 'Menu' : 'Category'} available={true} s={s} />
             </View>
-            {item.schedules?.map((schedule: any) => (
-              <ScheduleCard key={schedule.id} item={schedule} />
-            ))}
+            <ScheduleSummary schedules={item.schedules} scale={s} />
           </View>
         )
       }

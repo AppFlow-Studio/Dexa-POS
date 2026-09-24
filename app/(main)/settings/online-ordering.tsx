@@ -9,6 +9,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { useScheduleClock } from '@/hooks/useScheduleClock'
 import { colors } from '@/lib/theme'
 import { useKDSStore } from '@/stores/useKDSStore'
 import { useMenuStore } from '@/stores/useMenuStore'
@@ -143,6 +144,8 @@ const OnlineOrderingScreen = () => {
   const insets = useSafeAreaInsets()
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
+  // Re-renders the "active now" indicators when a schedule window flips.
+  const now = useScheduleClock()
 
   // Store Connection
   const onlineOrderingEnabled = useStoreSettingsStore(
@@ -834,7 +837,7 @@ const OnlineOrderingScreen = () => {
                 {/* Active menu indicator */}
                 {(() => {
                   const activeMenu = menus.find(m =>
-                    useMenuStore.getState().isMenuAvailableNow(m.id)
+                    useMenuStore.getState().isMenuAvailableNow(m.id, now)
                   )
                   return (
                     <View
@@ -879,9 +882,9 @@ const OnlineOrderingScreen = () => {
                   {menus.map((menu, i) => {
                     const isActiveNow = useMenuStore
                       .getState()
-                      .isMenuAvailableNow(menu.id)
+                      .isMenuAvailableNow(menu.id, now)
                     const activeSchedules = (menu.schedules || []).filter(
-                      (s: any) => s.isActive
+                      (rule: any) => rule.isActive
                     )
                     const dotColor =
                       TIMELINE_COLORS_HEX[i % TIMELINE_COLORS_HEX.length]
@@ -985,9 +988,9 @@ const OnlineOrderingScreen = () => {
                             </Text>
                           </View>
                         ) : (
-                          activeSchedules.map((s: any) => (
+                          activeSchedules.map((rule: any) => (
                             <View
-                              key={s.id}
+                              key={rule.id}
                               style={{
                                 paddingHorizontal: s(12),
                                 paddingVertical: s(10),
@@ -1007,7 +1010,7 @@ const OnlineOrderingScreen = () => {
                                   marginRight: s(12)
                                 }}
                               >
-                                {(s.days || []).map((day: string) => (
+                                {(rule.days || []).map((day: string) => (
                                   <View
                                     key={day}
                                     style={{
@@ -1041,8 +1044,8 @@ const OnlineOrderingScreen = () => {
                                 <Text
                                   style={{ fontSize: s(12), color: colors.label }}
                                 >
-                                  {formatScheduleTime(s.startTime)} –{' '}
-                                  {formatScheduleTime(s.endTime)}
+                                  {formatScheduleTime(rule.startTime)} –{' '}
+                                  {formatScheduleTime(rule.endTime)}
                                 </Text>
                               </View>
                             </View>
@@ -1077,7 +1080,7 @@ const OnlineOrderingScreen = () => {
                       color: colors.label
                     }}
                   >
-                    Edit Menu Schedules
+                    View Menu Schedules
                   </Text>
                 </TouchableOpacity>
               </View>
