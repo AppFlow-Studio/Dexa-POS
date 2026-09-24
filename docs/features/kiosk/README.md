@@ -75,10 +75,17 @@ the photo at 1:1 and fits ~3.5 rows instead of ~1.9. In practice this is the
 ### 2c. `kioskFeatureRowMetrics` — the one-per-row layout
 
 Setting **Items per row** to 1 switches the grid to `KioskMenuItemFeatureRow`:
-a full-width band with the copy on the left and the photo bleeding off the
-right edge, its inner side dissolved into the card by a horizontal gradient
-painted in the card's own background colour. Built for tall vertical kiosks,
-where a grid of small cards wastes the panel.
+a full-width band with name, description and price on the left and a crisp,
+rounded square photo inset on the right — one `pad` from every edge, with the
+card's radius equal to the photo's plus that pad so the corners run parallel.
+Built for tall vertical kiosks and phones, where a grid of small cards wastes
+the width.
+
+It used to bleed the photo off the right edge and dissolve its inner side into
+the card with a horizontal gradient. That was replaced (2026-09) as dated-
+looking; nothing on the card fades now — the photo renders with
+`fadeDuration={0}` (Android otherwise fades every RN `Image` in) and the in-cart
+count ticks with the grid card's eased pop, no spring.
 
 Three things make it work and are easy to break:
 
@@ -88,10 +95,10 @@ Three things make it work and are easy to break:
   is a *scannability* target, not a taste call — it keeps ~7 rows in view on a
   1080x1920 panel. A third of the width fits four, which reads as a stack of
   posters rather than a menu.
-- **The copy stops where the fade starts.** `textInset` is derived from
-  `fadeSolidStop` (the gradient's first stop), so text always lands on solid
-  card colour and never on the crisp half of the photo. The gradient starts on
-  `kioskCardSurface`, the card's own fill — not the page colour.
+- **Type follows the copy column, bounded by the row's height.** Sizes come
+  from `min(textWidth × k, height × k)`, so a wide-but-squat row doesn't get
+  headline type just because it is wide, and a phone's ~187dp column still
+  seats a two-line name and description.
 - **The copy shape is solved, not guessed.** `nameLines` and `descLines` come
   out of `FEATURE_ROW_COPY_SHAPES` — the first shape that fits the height left
   after padding and the price row, preferring to drop description lines before
@@ -99,14 +106,6 @@ Three things make it work and are easy to break:
   the name lets it overflow a band that only budgeted one line, and the band
   clips.
 
-Fade to the surface colour at zero alpha (`kioskFadeEnd`), never to
-`transparent`: RN interpolates toward `rgba(0,0,0,0)` and leaves a grey bruise
-across the middle of the photo.
-
-The photo goes through `OptimizedListImage` (expo-image) rather than RN
-`Image`. A gradient is painted over it before it decodes, so a hard swap-in is
-much more visible here than on a plain card — the cross-dissolve and the disk
-cache are both doing real work.
 
 ### 3. `kioskLayout.ts` — screen-proportional dimensions
 
@@ -253,9 +252,8 @@ the category switch scrolls to the top through the ref instead.
 in for the first frame, but the window is not the grid pane — beside a category
 rail it over-estimates the width by a third — so every card painted once at the
 wrong size and then jumped. On the top-image cards that was a barely-visible
-reflow; on the feature row the photo is *positioned* from that width and its
-gradient stops are derived from it, so the photo slid and the blend re-mixed as
-the row settled. One blank frame is cheaper, and the entrance cascade covers
+reflow; on the feature row the row height and photo size are derived from that
+width, so the whole row resized as it settled. One blank frame is cheaper, and the entrance cascade covers
 it. Don't reintroduce a window-based estimate. `KioskPressable` is the standard
 tappable surface (UI-thread scale+opacity press feedback).
 `KioskScreenTransition` takes a `direction` (`forward` / `up` / `fade`)
@@ -347,7 +345,7 @@ that lets a customer recover from too many results by continuing to type.
 ## Layout variants
 
 `KioskMenuItem` (image on top), `KioskMenuItemRow` (square image left) and
-`KioskMenuItemFeatureRow` (full-width, photo blended off the right edge) are
+`KioskMenuItemFeatureRow` (full-width, square photo inset right) are
 three shapes of the same card, chosen by `KioskItemGrid`: one column always
 means the feature row; otherwise `shouldUseRowLayout` picks between the other
 two per cell. None is template-specific — all three templates get all three
@@ -454,15 +452,10 @@ the menu reads as one system whichever shape a cell resolves to. Before this,
 cards were painted in the page colour and separated by a 1px border alone,
 which reads as a wireframe from the few feet a customer actually stands away.
 
-**It has to be a solid colour, not a translucent overlay.** The feature row
-fades its photo out into the card, and a gradient needs a real colour to start
-from. One derived hex keeps fill and fade in exact agreement; a translucent
-fill would leave the blend ending on the *page* colour, one step off the card
-around it — a faint seam down the middle of every photo.
-
-`kioskFadeEnd` is the matching helper for the far end of any kiosk fade. Both
-return the input unchanged / `null` for colours they cannot parse, so an
-unexpected colour format degrades to the old flat look instead of a dirty one.
+**It is a solid colour, not a translucent overlay** — one derived hex reads the
+same on every card and under every photo, where an alpha fill would pick up
+whatever sits behind it. A colour it cannot parse comes back unchanged, so an
+unexpected format degrades to the old flat look instead of a dirty one.
 
 ## Unavailable modifier options
 

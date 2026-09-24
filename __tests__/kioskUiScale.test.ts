@@ -24,10 +24,7 @@ import {
   kioskUsesCategoryRail,
 } from "@/components/kiosk/shared/kioskLayout";
 import { categoryPillsFromSections } from "@/components/kiosk/shared/kioskCategoryPills";
-import {
-  kioskCardSurface,
-  kioskFadeEnd,
-} from "@/components/kiosk/shared/kioskSurface";
+import { kioskCardSurface } from "@/components/kiosk/shared/kioskSurface";
 import {
   BASELINE_HEIGHT_DP,
   BASELINE_WIDTH_DP,
@@ -537,22 +534,32 @@ describe("kioskFeatureRowMetrics", () => {
     expect(m.height).toBeLessThanOrEqual(140);
   });
 
-  it("keeps the copy clear of the photo's un-faded half", () => {
+  it("insets a whole square photo, with the copy beside it", () => {
+    for (const width of [320, 480, PORTRAIT_ROW_WIDTH, 1388, 2400]) {
+      const m = kioskFeatureRowMetrics(width, 2000);
+      // One pad above and below the photo fills the band exactly.
+      expect(m.imageSize + m.pad * 2).toBe(m.height);
+      // Inset, photo, gutter and copy account for the whole width.
+      expect(m.pad * 3 + m.imageSize + m.textWidth).toBeLessThanOrEqual(
+        Math.max(240, width),
+      );
+    }
+    // On a portrait kiosk the copy is still most of the row.
     const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 879);
-    const copyRightEdge = PORTRAIT_ROW_WIDTH - m.textInset;
-    const photoLeftEdge = PORTRAIT_ROW_WIDTH - m.imageWidth;
-    const fadeStartsAt = photoLeftEdge + m.imageWidth * m.fadeSolidStop;
-
-    // Text ends before the gradient starts lifting off the photo.
-    expect(copyRightEdge).toBeLessThanOrEqual(fadeStartsAt + 1);
-    // …but the copy column is still the dominant half of the row.
-    expect(copyRightEdge).toBeGreaterThan(PORTRAIT_ROW_WIDTH * 0.5);
+    expect(m.textWidth).toBeGreaterThan(PORTRAIT_ROW_WIDTH * 0.5);
   });
 
-  it("leaves the photo's outer edge fully crisp", () => {
+  it("runs the card's corner parallel to the photo's", () => {
     const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 879);
-    expect(m.fadeStop).toBeGreaterThan(m.fadeSolidStop);
-    expect(m.fadeStop).toBeLessThan(1);
+    expect(m.radius).toBe(m.imageRadius + m.pad);
+  });
+
+  it("keeps the phone row's description", () => {
+    // A portrait phone's single column is ~332dp wide.
+    const m = kioskFeatureRowMetrics(332);
+    expect(m.showDescription).toBe(true);
+    expect(m.nameLines).toBe(2);
+    expect(m.nameSize).toBeGreaterThanOrEqual(16);
   });
 
   it("fits the copy shape it reports inside the band at every size", () => {
@@ -563,7 +570,7 @@ describe("kioskFeatureRowMetrics", () => {
       const m = kioskFeatureRowMetrics(width, 2000);
       const blocks = m.showDescription ? 3 : 2;
       const copy =
-        m.padV * 2 +
+        m.pad * 2 +
         m.nameLineHeight * m.nameLines +
         (m.showDescription ? m.descLineHeight * m.descLines : 0) +
         m.priceRowHeight +
@@ -582,8 +589,8 @@ describe("kioskFeatureRowMetrics", () => {
   });
 
   it("gives up description lines before name lines when height is scarce", () => {
-    const squat = kioskFeatureRowMetrics(681, 150);
-    expect(squat.height).toBe(150);
+    const squat = kioskFeatureRowMetrics(681, 100);
+    expect(squat.height).toBe(100);
     expect(squat.nameLines).toBe(2);
     expect(squat.showDescription).toBe(false);
   });
@@ -623,18 +630,15 @@ describe("kioskCardSurface", () => {
     expect(light).toBe("#f2f2f2");
   });
 
-  it("returns a parseable solid colour, so the fade can start from it", () => {
+  it("returns a solid colour, never a translucent one", () => {
     for (const bg of ["#FFFFFF", "#101010", "#fff", "#0C4FD1"]) {
-      const surface = kioskCardSurface(bg);
-      expect(surface).toMatch(/^#[0-9a-f]{6}$/);
-      expect(kioskFadeEnd(surface)).toBe(`${surface}00`);
+      expect(kioskCardSurface(bg)).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
 
   it("leaves a colour it cannot parse exactly as it found it", () => {
     // A card matching the page is the old look — plain, but never wrong.
     expect(kioskCardSurface("rgb(255,255,255)")).toBe("rgb(255,255,255)");
-    expect(kioskFadeEnd("rgb(255,255,255)")).toBeNull();
   });
 });
 

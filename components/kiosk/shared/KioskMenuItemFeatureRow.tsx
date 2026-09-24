@@ -4,50 +4,45 @@ import {
 } from "@/components/kiosk/shared/kioskCardMetrics";
 import {
   kioskFont,
+  kioskMotion,
   kioskRadius,
   kioskTracking,
   useKioskTheme,
+  type KioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
-import {
-  kioskCardSurface,
-  kioskFadeEnd,
-} from "@/components/kiosk/shared/kioskSurface";
+import { kioskCardSurface } from "@/components/kiosk/shared/kioskSurface";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import OptimizedListImage from "@/components/ui/OptimizedListImage";
-import { LinearGradient } from "expo-linear-gradient";
-import { ShoppingCart } from "@/lib/icons";
 import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  withTiming,
 } from "react-native-reanimated";
 
 /**
  * Feature row — the one-item-per-row menu card.
  *
  * Selected by setting "Items per row" to 1 (Kiosk Settings → Menu Layout).
- * Built for tall vertical kiosks, where a grid of small cards wastes the panel:
- * one item per row gives each dish a full-width band with editorial-sized type.
+ * One item per row gives each dish a full-width band: name, description and
+ * price on the left, the photo on the right.
  *
- * The photo sits on the **right**, bleeding to the card's edge, and its left
- * side dissolves into the card via a horizontal gradient painted in the card's
- * own surface colour. So there is no visible photo boundary — the image
- * appears to emerge out of the row rather than sit in a box on it. The copy
- * column reserves `textInset` on its right so text always lands on solid
- * surface, never on the crisp half of the photo.
+ * The photo is a crisp rounded square inset in the row — one `pad` from every
+ * edge — rather than an image bleeding off the card and dissolved into it by a
+ * gradient. The card's corner radius is the photo's plus that inset, so the two
+ * curves run parallel. Nothing on the card fades: the photo appears as soon as
+ * it decodes (`fadeDuration={0}` — Android otherwise fades every RN image in),
+ * and the in-cart count ticks without bouncing, like the grid card's.
  *
- * Same visual language as the other kiosk cards: `kioskCardSurface` fill, no
- * cast shadow (see the shadows note in docs/features/kiosk), hairline accent
- * border, and an in-cart badge that springs on change.
+ * Same surface as the other kiosk cards: `kioskCardSurface` fill, no cast
+ * shadow (see the shadows note in docs/features/kiosk).
  */
 interface KioskMenuItemFeatureRowProps {
   item: MenuItemType;
@@ -72,7 +67,6 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
   );
   const isDisabled = item.availability === false;
   const qtyInCart = useKioskItemQuantity(item.id);
-  const inCart = qtyInCart > 0;
 
   const resolvedImageSource = useMemo(
     () => resolveMenuItemImageSource(item.image),
@@ -85,14 +79,10 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
   );
 
   const t = useKioskTheme(config);
-  const accent = config.accentColor;
-  // The photo fades into the *card*, not the page — so the fade starts on the
-  // card's own surface colour and ends on that same colour at zero alpha.
   const surface = useMemo(
     () => kioskCardSurface(config.backgroundColor),
     [config.backgroundColor],
   );
-  const surfaceClear = useMemo(() => kioskFadeEnd(surface), [surface]);
 
   return (
     <KioskPressable
@@ -101,84 +91,24 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
       onPress={() => onPress(item)}
       style={{
         height: m.height,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: m.pad,
+        padding: m.pad,
         borderRadius: m.radius,
-        overflow: "hidden",
         backgroundColor: surface,
         opacity: isDisabled ? 0.45 : 1,
       }}
     >
-      {/* Photo — pinned to the right edge, full bleed top to bottom. The tint
-          is what the row shows while the photo decodes, so a loading card
-          reads as a designed surface rather than an empty one. */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: m.imageWidth,
-          backgroundColor: `${accent}10`,
-        }}
-      >
-        {resolvedImageSource ? (
-          // expo-image, not RN Image: it cross-dissolves the photo in when it
-          // decodes instead of snapping it under a gradient that's already
-          // painted, and caches to disk so a scroll back up is instant.
-          <OptimizedListImage
-            source={resolvedImageSource}
-            style={{ width: "100%", height: "100%" }}
-            recyclingKey={item.id}
-          />
-        ) : (
-          <View
-            style={{
-              width: "100%",
-              height: "100%",
-              alignItems: "center",
-              justifyContent: "center",
-              // Centre the glyph in the part of the box the fade leaves alone —
-              // dead centre would put it under the gradient and wash it out.
-              paddingLeft: m.imageWidth * m.fadeStop,
-              backgroundColor: `${accent}10`,
-            }}
-          >
-            <PlaceholderIcon
-              color={`${config.textColor}55`}
-              size={m.placeholderSize}
-            />
-          </View>
-        )}
-
-        {/* The blend: solid card colour on the left, gone by `fadeStop`. */}
-        {surfaceClear ? (
-          <LinearGradient
-            colors={[surface, surface, surfaceClear]}
-            locations={[0, m.fadeSolidStop, m.fadeStop]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={StyleSheet.absoluteFill}
-          />
-        ) : null}
-      </View>
-
-      {/* Copy — sits on solid background, clear of the photo. */}
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          paddingLeft: m.padH,
-          paddingRight: m.textInset,
-          paddingVertical: m.padV,
-          gap: m.gap,
-        }}
-      >
+      {/* Copy */}
+      <View style={{ flex: 1, justifyContent: "center", gap: m.gap }}>
         <Text
           style={{
             fontSize: m.nameSize,
             lineHeight: m.nameLineHeight,
-            fontWeight: "700",
+            letterSpacing: kioskTracking(m.nameSize),
             color: config.textColor,
+            ...kioskFont(t, "bold"),
           }}
           // From the solved copy shape — see kioskFeatureRowMetrics. Hard-coding
           // 2 here would let a long name overflow a band that only budgeted one
@@ -209,7 +139,7 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
             flexDirection: "row",
             alignItems: "center",
             height: m.priceRowHeight,
-            gap: m.padH * 0.7,
+            gap: m.pad,
           }}
         >
           <Text
@@ -228,8 +158,8 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
             <Text
               style={{
                 fontSize: m.descSize,
-                fontWeight: "700",
-                color: `${config.textColor}88`,
+                color: t.textMuted,
+                ...kioskFont(t, "bold"),
               }}
             >
               {kioskStrings.soldOut}
@@ -238,27 +168,58 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
         </View>
       </View>
 
-      {/* In-cart badge rides the photo's crisp corner, where it reads cleanly
-          against the image rather than competing with the copy. */}
-      {inCart && <InCartBadge qty={qtyInCart} accent={accent} m={m} />}
+      {/* Photo — a rounded square inside the row. The tint is what shows while
+          it decodes, so a loading row reads as designed rather than empty. */}
+      <View
+        style={{
+          width: m.imageSize,
+          height: m.imageSize,
+          borderRadius: m.imageRadius,
+          overflow: "hidden",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: t.sunken,
+        }}
+      >
+        {resolvedImageSource ? (
+          <Image
+            source={resolvedImageSource}
+            style={{ width: "100%", height: "100%" }}
+            resizeMode="cover"
+            fadeDuration={0}
+          />
+        ) : (
+          <PlaceholderIcon color={t.textFaint} size={m.placeholderSize} />
+        )}
+
+        {qtyInCart > 0 ? <InCartBadge qty={qtyInCart} t={t} m={m} /> : null}
+      </View>
     </KioskPressable>
   );
 };
 
+/**
+ * "N in cart" mark on the photo's corner — the same plain count the grid card
+ * carries, ticking on each change so a second add is visible from standing
+ * distance. A short eased tick, no spring.
+ */
 function InCartBadge({
   qty,
-  accent,
+  t,
   m,
 }: {
   qty: number;
-  accent: string;
+  t: KioskTheme;
   m: KioskFeatureRowMetrics;
 }) {
   const pop = useSharedValue(1);
 
   React.useEffect(() => {
-    pop.value = 1.28;
-    pop.value = withSpring(1, { damping: 9, stiffness: 260, mass: 0.5 });
+    pop.value = 1.12;
+    pop.value = withTiming(1, {
+      duration: kioskMotion.base,
+      easing: kioskMotion.easing,
+    });
   }, [qty, pop]);
 
   const style = useAnimatedStyle(() => ({
@@ -271,25 +232,25 @@ function InCartBadge({
       style={[
         {
           position: "absolute",
-          top: m.padV * 0.7,
-          right: m.padH * 0.6,
-          paddingHorizontal: m.padH * 0.5,
-          paddingVertical: m.padV * 0.28,
+          top: m.gap * 1.5,
+          right: m.gap * 1.5,
+          minWidth: m.badgeTextSize * 1.9,
+          paddingHorizontal: m.badgeTextSize * 0.45,
+          paddingVertical: m.badgeTextSize * 0.2,
           borderRadius: kioskRadius.xs,
-          flexDirection: "row",
           alignItems: "center",
-          gap: m.gap * 0.8,
-          backgroundColor: accent,
+          justifyContent: "center",
+          backgroundColor: t.primary,
         },
         style,
       ]}
     >
-      <ShoppingCart size={m.badgeIconSize} color="#FFFFFF" strokeWidth={2.75} />
       <Text
         style={{
-          color: "#FFFFFF",
-          fontWeight: "800",
+          color: t.onPrimary,
           fontSize: m.badgeTextSize,
+          fontVariant: ["tabular-nums"],
+          ...kioskFont(t, "bold"),
         }}
       >
         {qty}
@@ -308,9 +269,9 @@ export default React.memo(KioskMenuItemFeatureRow, (prev, next) => {
     prev.item.image === next.item.image &&
     prev.cardWidth === next.cardWidth &&
     prev.maxCardHeight === next.maxCardHeight &&
-    prev.config.accentColor === next.config.accentColor &&
     prev.config.backgroundColor === next.config.backgroundColor &&
     prev.config.textColor === next.config.textColor &&
+    prev.config.primaryColor === next.config.primaryColor &&
     prev.onPress === next.onPress
   );
 });
