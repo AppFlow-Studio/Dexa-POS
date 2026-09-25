@@ -4,7 +4,7 @@ The Supabase project is at 59 of the 60 connections that Micro compute allows, a
 
 ## Status (2026-09-25)
 
-Every code change in the plan is written and verified locally. Nothing is applied to a database or deployed yet: this workspace has no database credentials, Supabase CLI or dashboard access. The [deployment runbook](#deployment-runbook) lists what to run, in order.
+Every code change in the plan is written and verified locally. Nothing is applied to a database or deployed yet: this workspace has no database credentials, Supabase CLI or dashboard access. The [deployment runbook](#deployment-runbook) lists what to run, in order, and the [deployment checklist](SUPABASE-CONNECTIONS-AND-STORAGE-DEPLOYMENT-2026-09-25.md) lists the migrations, edge functions and env flags per repo.
 
 | Phase | Code | Applied / deployed |
 | --- | --- | --- |
