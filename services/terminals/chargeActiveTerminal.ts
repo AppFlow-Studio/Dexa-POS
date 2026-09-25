@@ -476,12 +476,25 @@ export async function chargeActiveTerminal(
     // onActivityResult, so — unlike ATOM — the POS is re-foregrounded
     // automatically; no bringToForeground needed. Tip is pre-known here, so we
     // bake it in (no on-screen tip prompt).
-    const result = await service.processSale({
-      amount: base,
-      ...(tipAmount > 0 ? { tipAmount } : {}),
-      referenceId,
-      onScreenTip: false,
-    });
+    let result: Awaited<ReturnType<typeof service.processSale>>;
+    try {
+      result = await service.processSale({
+        amount: base,
+        ...(tipAmount > 0 ? { tipAmount } : {}),
+        referenceId,
+        onScreenTip: false,
+      });
+    } catch (err) {
+      // The bridge only rejects BEFORE Register is launched (NO_ACTIVITY, BUSY,
+      // NO_CODEPAY_REGISTER, LAUNCH_FAILED, bridge missing) — no card was read,
+      // so this is a clean failure, not a hold-the-kiosk "may have charged".
+      const reason = err instanceof Error ? err.message : String(err);
+      failPaymentJournal(journalId, `terminal_launch_failed: ${reason}`);
+      return {
+        ok: false,
+        message: "The card reader could not be started. Please try again.",
+      };
+    }
 
     const codepayTx = result.terminalResponse?.codepay_transaction as
       | Record<string, unknown>

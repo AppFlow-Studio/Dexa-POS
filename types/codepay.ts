@@ -315,8 +315,14 @@ export const CODEPAY_AUTO_PROVISION_ENABLED = true;
 export const CODEPAY_TERMINAL_DISPLAY_NAME = "CodePay (on-terminal)";
 
 // Per-op timeouts (ms)
-/** Live sale window — the terminal reads the card and contacts the host. */
-export const CODEPAY_SALE_TIMEOUT_MS = 120_000;
+/**
+ * Our native watchdog for a live sale. MUST outlast the order expiry we hand
+ * CodePay Register (`expires`) so Register's own timeout returns a definitive
+ * result first. When both were 120s, a slow customer raced the two timers: our
+ * watchdog won, the real result was dropped, and the kiosk locked on a
+ * "may have charged" sale that almost never charged.
+ */
+export const CODEPAY_SALE_TIMEOUT_MS = (CODEPAY_DEFAULT_EXPIRES_SEC + 60) * 1000;
 /** Non-card ops (query / batch close / referenced refund). */
 export const CODEPAY_QUERY_TIMEOUT_MS = 30_000;
 /** Hard ceiling for the interactive "Test Connection" spinner. */

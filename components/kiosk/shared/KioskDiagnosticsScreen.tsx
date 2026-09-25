@@ -9,6 +9,7 @@ import {
 import { useKioskUiScale } from "@/lib/uiScale";
 import { KioskProfileEditor } from "@/components/kiosk/shared/KioskProfileEditor";
 import { KioskUpdateChecker } from "@/components/kiosk/shared/KioskUpdateChecker";
+import { resolveActiveProcessor } from "@/hooks/useActiveProcessor";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
 import {
@@ -1319,7 +1320,8 @@ export function KioskDiagnosticsScreen({
             className="px-5 py-4"
             onPress={() => showDialog(
               "Confirm payment reconciliation",
-              "Check the Valor transaction and Supabase order/payment first. Record or resolve any captured payment and dispatch the paid order if needed. This only unlocks kiosk checkout; it does not refund, charge, or update payment records.",
+              `Check the ${terminalTypeLabel(resolveActiveProcessor().activeTerminal?.terminal_type ?? "payment")} transaction history and the order/payment first.`
+                + " Record or resolve any captured payment and dispatch the paid order if needed. This only unlocks kiosk checkout; it does not refund, charge, or update payment records.",
               [
                 { text: "Cancel", style: "cancel" },
                 { text: "Reconciled - unlock kiosk", onPress: () => {

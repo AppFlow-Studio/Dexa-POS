@@ -22,6 +22,7 @@ import {
   CODEPAY_PAY_SCENARIO,
   CODEPAY_QUERY_TIMEOUT_MS,
   CODEPAY_TOPIC,
+  CODEPAY_TRANS_STATUS,
   CODEPAY_TRANS_TYPE,
   type CodePayBatchCloseParams,
   type CodePayConnectionConfig,
@@ -80,6 +81,51 @@ export class CodePayService {
    * pre-known `tipAmount`. `referenceId` becomes merchant_order_no (idempotency).
    */
   async processSale(params: CodePaySaleParams): Promise<CodePayTxnResult> {
+    const result = await this._runSale(params);
+    if (!result.indeterminate) return result;
+    // Outcome unknown (watchdog elapsed / unreadable result). Ask Register what
+    // happened to this merchant_order_no before handing off to a manual review
+    // — mirrors Valor's TRAN_MODE 90 recovery.
+    const recovered = await this._recoverSale(params.referenceId, params.amount);
+    return recovered ?? result;
+  }
+
+  /**
+   * Look up an indeterminate sale by merchant_order_no. Returns a success result
+   * ONLY when Register confirms a completed sale for this exact order; anything
+   * else (lookup failed, not found, other status) returns null so the caller
+   * keeps the indeterminate hold — we never infer "no charge" from a lookup.
+   */
+  private async _recoverSale(
+    referenceId: string,
+    amount: number,
+  ): Promise<CodePayTxnResult | null> {
+    try {
+      const q = await this.query({ merchantOrderNo: referenceId });
+      const raw = q.raw;
+      if (!q.success || !raw) return null;
+      if (Number(raw.trans_status) !== CODEPAY_TRANS_STATUS.COMPLETED) return null;
+      if (raw.merchant_order_no != null && raw.merchant_order_no !== referenceId) {
+        return null;
+      }
+      if (raw.trans_type != null && String(raw.trans_type) !== CODEPAY_TRANS_TYPE.SALE) {
+        return null;
+      }
+      if (raw.order_amount != null && fmtAmount(Number(raw.order_amount)) !== fmtAmount(amount)) {
+        return null;
+      }
+      console.log("[CodePayService] indeterminate sale recovered via query", {
+        referenceId,
+        transNo: q.transNo,
+      });
+      return { ...q, merchantOrderNo: referenceId };
+    } catch (e) {
+      console.warn("[CodePayService] sale recovery query failed:", e);
+      return null;
+    }
+  }
+
+  private async _runSale(params: CodePaySaleParams): Promise<CodePayTxnResult> {
     const cfg = this.requireConfig();
     return this._mutex.runExclusive(async () => {
       const biz: Record<string, unknown> = {
