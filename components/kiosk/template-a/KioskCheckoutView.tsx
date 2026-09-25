@@ -13,7 +13,11 @@ import {
   type KioskCheckoutTotals,
 } from "@/components/kiosk/shared/useKioskCheckout";
 import { useActiveProcessor } from "@/hooks/useActiveProcessor";
-import { shouldAskForSeat } from "@/lib/kiosk/orderTypeFlow";
+import { formatTableLabel } from "@/lib/formatTableLabel";
+import {
+  resolveKioskLocationLabel,
+  shouldAskForSeat,
+} from "@/lib/kiosk/orderTypeFlow";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { kioskOrdering, type KioskConfig } from "@/types/kiosk";
@@ -109,7 +113,11 @@ export function KioskCheckoutView({
     if (res) {
       onPaid(); // settled — parent stops treating this as a voidable cart
       setPickupNumber(res.displayNumber);
-      setDeliverTo(askForSeat ? seatLabel : null);
+      setDeliverTo(
+        formatTableLabel(
+          resolveKioskLocationLabel(ordering, orderType, seatLabel),
+        ) || null,
+      );
       clearCart();
       setStep("success");
     } else {
@@ -144,6 +152,7 @@ export function KioskCheckoutView({
       <KioskSeatSelectScreen
         config={config}
         options={ordering.seatOptions}
+        tableLabel={ordering.tableLabel}
         selected={seatLabel}
         onBack={() => setStep("customer")}
         onSelect={(label) => {

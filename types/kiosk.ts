@@ -11,6 +11,12 @@ export type KioskOrderType = "dine_in" | "takeout";
 
 export type KioskOrderTypesMode = "both" | "dine_in_only" | "takeout_only";
 
+/**
+ * How a dine-in order gets its seat: off (none), ask (guest picks from
+ * `seatOptions`), fixed (this kiosk always sends `fixedSeatLabel`).
+ */
+export type KioskSeatMode = "off" | "ask" | "fixed";
+
 export interface KioskSeatOption {
   id: string;
   label: string;
@@ -26,6 +32,12 @@ export interface KioskOrderingSettings {
   orderTypes: KioskOrderTypesMode;
   /** Dine-In only: start as Dine-In without asking (false = single button). */
   dineInOnlySkipPrompt: boolean;
+  /** Fixed table for every dine-in order from this kiosk (null = none). */
+  tableLabel: string | null;
+  seatMode: KioskSeatMode;
+  /** Used when seatMode === "fixed". */
+  fixedSeatLabel: string | null;
+  /** Legacy mirror of `seatMode === "ask"`; read `seatMode` instead. */
   seatSelectionEnabled: boolean;
   seatOptions: KioskSeatOption[];
 }
@@ -33,9 +45,36 @@ export interface KioskOrderingSettings {
 export const DEFAULT_KIOSK_ORDERING: KioskOrderingSettings = {
   orderTypes: "both",
   dineInOnlySkipPrompt: true,
+  tableLabel: null,
+  seatMode: "off",
+  fixedSeatLabel: null,
   seatSelectionEnabled: false,
   seatOptions: [],
 };
+
+function cleanKioskLabel(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const label = raw.trim().replace(/\s+/g, " ").slice(0, KIOSK_SEAT_LABEL_MAX);
+  return label || null;
+}
+
+/**
+ * Seat mode from settings that may predate it: rows saved before `seat_mode`
+ * only carry the boolean. A fixed mode with no label degrades to off.
+ */
+function resolveSeatMode(
+  rawMode: unknown,
+  legacyEnabled: unknown,
+  fixedSeatLabel: string | null,
+): KioskSeatMode {
+  const mode: KioskSeatMode =
+    rawMode === "off" || rawMode === "ask" || rawMode === "fixed"
+      ? rawMode
+      : legacyEnabled === true
+        ? "ask"
+        : "off";
+  return mode === "fixed" && !fixedSeatLabel ? "off" : mode;
+}
 
 const KIOSK_SEAT_LABEL_MAX = 40;
 const KIOSK_SEAT_OPTIONS_MAX = 200;
@@ -75,13 +114,23 @@ export function normalizeKioskOrderingSettings(
     }
   }
 
+  const fixedSeatLabel = cleanKioskLabel(obj.fixed_seat_label);
+  const seatMode = resolveSeatMode(
+    obj.seat_mode,
+    obj.seat_selection_enabled,
+    fixedSeatLabel,
+  );
+
   return {
     orderTypes,
     dineInOnlySkipPrompt:
       typeof obj.dine_in_only_skip_prompt === "boolean"
         ? obj.dine_in_only_skip_prompt
         : DEFAULT_KIOSK_ORDERING.dineInOnlySkipPrompt,
-    seatSelectionEnabled: obj.seat_selection_enabled === true,
+    tableLabel: cleanKioskLabel(obj.table_label),
+    seatMode,
+    fixedSeatLabel,
+    seatSelectionEnabled: seatMode === "ask",
     seatOptions,
   };
 }
@@ -216,11 +265,22 @@ function asStringArray(value: unknown): string[] {
   return value.filter((s): s is string => typeof s === "string");
 }
 
-/** Ordering settings for a config, defaulting configs persisted before they existed. */
+/**
+ * Ordering settings for a config, defaulting configs persisted (MMKV) before
+ * they — or the table/seat-mode fields — existed.
+ */
 export function kioskOrdering(
   config: KioskConfig | null | undefined,
 ): KioskOrderingSettings {
-  return config?.ordering ?? DEFAULT_KIOSK_ORDERING;
+  const ordering = config?.ordering;
+  if (!ordering) return DEFAULT_KIOSK_ORDERING;
+  if (ordering.seatMode) return ordering;
+  return {
+    ...ordering,
+    tableLabel: ordering.tableLabel ?? null,
+    fixedSeatLabel: ordering.fixedSeatLabel ?? null,
+    seatMode: resolveSeatMode(undefined, ordering.seatSelectionEnabled, null),
+  };
 }
 
 /**

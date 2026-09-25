@@ -1,5 +1,9 @@
-import { formatTableLabel } from "@/lib/formatTableLabel";
 import {
+  composeKioskLocationLabel,
+  formatTableLabel,
+} from "@/lib/formatTableLabel";
+import {
+  resolveKioskLocationLabel,
   resolveOrderTypeFlow,
   shouldAskForSeat,
 } from "@/lib/kiosk/orderTypeFlow";
@@ -48,6 +52,9 @@ describe("normalizeKioskOrderingSettings", () => {
     ).toEqual({
       orderTypes: "dine_in_only",
       dineInOnlySkipPrompt: false,
+      tableLabel: null,
+      seatMode: "ask",
+      fixedSeatLabel: null,
       seatSelectionEnabled: true,
       seatOptions: [
         { id: "a", label: "Table 6 — Seat 2" },
@@ -58,6 +65,48 @@ describe("normalizeKioskOrderingSettings", () => {
 
   it("defaults configs persisted before ordering existed", () => {
     expect(kioskOrdering(null)).toBe(DEFAULT_KIOSK_ORDERING);
+  });
+
+  it("reads a fixed table + fixed seat and derives the legacy flag", () => {
+    const s = normalizeKioskOrderingSettings({
+      table_label: "  Table   1 ",
+      seat_mode: "fixed",
+      fixed_seat_label: " 3 ",
+      seat_selection_enabled: true,
+    });
+    expect(s.tableLabel).toBe("Table 1");
+    expect(s.seatMode).toBe("fixed");
+    expect(s.fixedSeatLabel).toBe("3");
+    expect(s.seatSelectionEnabled).toBe(false);
+  });
+
+  it("maps rows without seat_mode from the legacy boolean", () => {
+    expect(
+      normalizeKioskOrderingSettings({ seat_selection_enabled: true }).seatMode,
+    ).toBe("ask");
+    expect(normalizeKioskOrderingSettings({}).seatMode).toBe("off");
+  });
+
+  it("degrades a fixed seat with no label to off", () => {
+    const s = normalizeKioskOrderingSettings({
+      seat_mode: "fixed",
+      fixed_seat_label: "  ",
+    });
+    expect(s.seatMode).toBe("off");
+    expect(s.fixedSeatLabel).toBeNull();
+  });
+
+  it("fills seat mode for MMKV configs persisted before it existed", () => {
+    const legacy = {
+      orderTypes: "both",
+      dineInOnlySkipPrompt: true,
+      seatSelectionEnabled: true,
+      seatOptions: [{ id: "a", label: "Bar 1" }],
+    } as unknown as KioskOrderingSettings;
+    const s = kioskOrdering({ ordering: legacy } as never);
+    expect(s.seatMode).toBe("ask");
+    expect(s.tableLabel).toBeNull();
+    expect(s.fixedSeatLabel).toBeNull();
   });
 });
 
@@ -91,6 +140,7 @@ describe("resolveOrderTypeFlow", () => {
 
 describe("shouldAskForSeat", () => {
   const on = settings({
+    seatMode: "ask",
     seatSelectionEnabled: true,
     seatOptions: [{ id: "1", label: "Table 1" }],
   });
@@ -99,10 +149,65 @@ describe("shouldAskForSeat", () => {
     expect(shouldAskForSeat(on, "dine_in")).toBe(true);
     expect(shouldAskForSeat(on, "takeout")).toBe(false);
     expect(shouldAskForSeat(on, null)).toBe(false);
-    expect(
-      shouldAskForSeat({ ...on, seatSelectionEnabled: false }, "dine_in"),
-    ).toBe(false);
+    expect(shouldAskForSeat({ ...on, seatMode: "off" }, "dine_in")).toBe(false);
     expect(shouldAskForSeat({ ...on, seatOptions: [] }, "dine_in")).toBe(false);
+  });
+
+  it("never asks when the kiosk has a fixed seat", () => {
+    expect(
+      shouldAskForSeat({ ...on, seatMode: "fixed", fixedSeatLabel: "3" }, "dine_in"),
+    ).toBe(false);
+  });
+});
+
+describe("composeKioskLocationLabel", () => {
+  it("prefixes numbers and keeps named labels", () => {
+    expect(composeKioskLocationLabel("1", "3")).toBe("Table 1, Seat 3");
+    expect(composeKioskLocationLabel("Counter", "Stool 3")).toBe("Counter, Stool 3");
+    expect(composeKioskLocationLabel("Table 1", null)).toBe("Table 1");
+    expect(composeKioskLocationLabel(null, "3")).toBe("Seat 3");
+    expect(composeKioskLocationLabel(" ", null)).toBe("");
+  });
+});
+
+describe("resolveKioskLocationLabel", () => {
+  const cases: [Partial<KioskOrderingSettings>, string | null, string | null][] = [
+    // [settings, picked seat, expected]
+    [{ tableLabel: "1", seatMode: "fixed", fixedSeatLabel: "3" }, null, "Table 1, Seat 3"],
+    [{ tableLabel: "1", seatMode: "ask" }, "5", "Table 1, Seat 5"],
+    [{ tableLabel: "1", seatMode: "off" }, "5", "Table 1"],
+    [{ seatMode: "fixed", fixedSeatLabel: "3" }, null, "Seat 3"],
+    [{ seatMode: "ask" }, "Patio Table 4", "Patio Table 4"],
+    [{ seatMode: "ask" }, "12", "12"], // legacy list: raw, staff surfaces format it
+    [{ seatMode: "ask" }, null, null],
+    [{ seatMode: "off" }, null, null],
+  ];
+
+  it.each(cases)("dine-in %j + %p → %p", (patch, picked, expected) => {
+    expect(resolveKioskLocationLabel(settings(patch), "dine_in", picked)).toBe(
+      expected,
+    );
+  });
+
+  it("is null for takeout even with a fixed table and seat", () => {
+    expect(
+      resolveKioskLocationLabel(
+        settings({ tableLabel: "1", seatMode: "fixed", fixedSeatLabel: "3" }),
+        "takeout",
+        null,
+      ),
+    ).toBeNull();
+  });
+
+  it("stays readable on raw ESC/POS prints", () => {
+    const label = resolveKioskLocationLabel(
+      settings({ tableLabel: "1", seatMode: "fixed", fixedSeatLabel: "3" }),
+      "dine_in",
+      null,
+    );
+    expect(sanitizeForPrint(formatTableLabel(label, "TABLE: "))).toBe(
+      "Table 1, Seat 3",
+    );
   });
 });
 

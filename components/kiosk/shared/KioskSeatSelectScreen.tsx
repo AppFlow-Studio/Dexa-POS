@@ -7,6 +7,7 @@ import {
 } from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { ChevronLeft, MapPin } from "@/lib/icons";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig, KioskSeatOption } from "@/types/kiosk";
@@ -24,12 +25,15 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 export function KioskSeatSelectScreen({
   config,
   options,
+  tableLabel,
   selected,
   onSelect,
   onBack,
 }: {
   config: KioskConfig;
   options: KioskSeatOption[];
+  /** Kiosk's fixed table — the question narrows to seats at it. */
+  tableLabel?: string | null;
   selected: string | null;
   onSelect: (label: string) => void;
   onBack: () => void;
@@ -83,7 +87,9 @@ export function KioskSeatSelectScreen({
             color: config.headerTextColor,
           }}
         >
-          Where are you sitting?
+          {tableLabel
+            ? `Which seat at ${formatTableLabel(tableLabel)}?`
+            : "Where are you sitting?"}
         </Text>
         <Text
           style={{

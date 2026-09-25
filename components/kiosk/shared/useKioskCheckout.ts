@@ -22,7 +22,9 @@ import {
   useKioskCartStore,
   type KioskCartLine,
 } from "@/stores/useKioskCartStore";
+import { resolveKioskLocationLabel } from "@/lib/kiosk/orderTypeFlow";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
+import { kioskOrdering } from "@/types/kiosk";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -309,19 +311,26 @@ export function useKioskCheckout() {
         // takeout. startNewOrder({ tableId: null }) always yields takeout, so we
         // patch it from the cart selection.
         const order = orderStore.startNewOrder({});
+        // Fixed table/seat from the station's kiosk settings, or the guest's
+        // pick from the seat step ("Table 1, Seat 3").
+        const deliverTo = resolveKioskLocationLabel(
+          kioskOrdering(useKioskProfileStore.getState().config),
+          cart.orderType,
+          cart.seatLabel,
+        );
         // Apply order type + the captured customer BEFORE the backend row is
         // created — ensureActiveOrderCreated sends p_customer_name/p_customer_phone
         // on creation, so the name/phone (and thus the receipt greeting) are
         // attached from the start.
         orderStore.patchOrder(order.id, {
           ...(cart.orderType ? { order_type: cart.orderType } : {}),
-          // Dine-in seat → orders.table_number via ensureActiveOrderCreated's
+          // Dine-in location → orders.table_number via ensureActiveOrderCreated's
           // p_table_number (resolveTableNameForOrder passes a free-text label
           // through), which KDS, kitchen tickets and order details all show.
-          ...(cart.orderType === "dine_in" && cart.seatLabel
+          ...(deliverTo
             ? {
-                service_location_id: cart.seatLabel,
-                service_location_name: cart.seatLabel,
+                service_location_id: deliverTo,
+                service_location_name: deliverTo,
               }
             : {}),
           ...(cart.customerName ? { customer_name: cart.customerName } : {}),

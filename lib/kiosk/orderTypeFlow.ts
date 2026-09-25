@@ -1,3 +1,4 @@
+import { composeKioskLocationLabel } from "@/lib/formatTableLabel";
 import type {
   KioskOrderingSettings,
   KioskOrderType,
@@ -38,8 +39,9 @@ export function resolveOrderTypeFlow(
 
 /**
  * Whether checkout should ask "Where are you sitting?". Dine-in only, the
- * merchant has it on, and there is at least one location to pick — an empty
- * list skips the step rather than trapping the customer.
+ * merchant lets the guest pick (seat mode "ask"), and there is at least one
+ * location to pick — an empty list skips the step rather than trapping the
+ * customer. A fixed seat never asks.
  */
 export function shouldAskForSeat(
   settings: KioskOrderingSettings,
@@ -47,7 +49,36 @@ export function shouldAskForSeat(
 ): boolean {
   return (
     orderType === "dine_in" &&
-    settings.seatSelectionEnabled &&
+    settings.seatMode === "ask" &&
     settings.seatOptions.length > 0
   );
+}
+
+/**
+ * Where staff deliver a kiosk order — the label written to
+ * `orders.table_number`. Null for takeout or when nothing is configured.
+ *
+ *   fixed table + fixed seat  → "Table 1, Seat 3"
+ *   fixed table + guest pick  → "Table 1, Seat 5"
+ *   fixed table only          → "Table 1"
+ *   fixed seat only           → "Seat 3"
+ *   guest pick, no table      → the picked label verbatim (pre-existing
+ *                               behaviour; staff surfaces format it)
+ */
+export function resolveKioskLocationLabel(
+  settings: KioskOrderingSettings,
+  orderType: KioskOrderType | null,
+  pickedSeat: string | null,
+): string | null {
+  if (orderType !== "dine_in") return null;
+  const seat =
+    settings.seatMode === "fixed"
+      ? settings.fixedSeatLabel
+      : settings.seatMode === "ask"
+        ? pickedSeat
+        : null;
+  if (!settings.tableLabel && settings.seatMode === "ask") {
+    return pickedSeat?.trim() || null;
+  }
+  return composeKioskLocationLabel(settings.tableLabel, seat) || null;
 }

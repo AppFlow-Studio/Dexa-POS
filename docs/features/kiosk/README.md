@@ -425,8 +425,11 @@ station page → **Kiosk** tab (self-service stations only). Migration:
 |---|---|---|
 | `order_types` | `both` (default) / `dine_in_only` / `takeout_only` | `resolveOrderTypeFlow` (`lib/kiosk/orderTypeFlow.ts`) |
 | `dine_in_only_skip_prompt` | bool (default true) | Dine-In only: auto-start vs single button |
-| `seat_selection_enabled` | bool | dine-in checkout asks "Where are you sitting?" |
-| `seat_options` | `[{id,label}]`, ≤200, label ≤40 chars | one-tap grid (`KioskSeatSelectScreen`) |
+| `table_label` | string ≤40 / null | fixed table for every dine-in order from this kiosk |
+| `seat_mode` | `off` / `ask` / `fixed` | no seat / guest picks from `seat_options` / always `fixed_seat_label` (no prompt) |
+| `fixed_seat_label` | string ≤40 / null | the kiosk's seat when `seat_mode = fixed` |
+| `seat_selection_enabled` | bool, **legacy** | written as `seat_mode === 'ask'` for older kiosk builds; rows without `seat_mode` map `true → ask`, else `off` |
+| `seat_options` | `[{id,label}]`, ≤200, label ≤40 chars | one-tap grid (`KioskSeatSelectScreen`); kept in every mode |
 
 - **Loading.** `useKioskProfile` fetches the station's `kiosk_settings` next to
   the profile and folds it into `config.ordering` under the same idle-only apply
@@ -436,9 +439,21 @@ station page → **Kiosk** tab (self-service stations only). Migration:
 - **Order type.** `useKioskOrderTypeFlow` picks each template's first screen
   (`orderType` or `menu`) and applies the auto type to the cart on mount.
 - **Seat.** Checkout step order is `customer → seat → tip → processing`. The seat
-  step runs only when `shouldAskForSeat` (dine-in + enabled + non-empty list). The
-  label rides `service_location_id` → `p_table_number` → `orders.table_number`,
+  step runs only when `shouldAskForSeat` (dine-in + `seat_mode = ask` + non-empty
+  list); a fixed seat never asks. With a fixed table the question reads "Which
+  seat at Table 1?".
+- **Location label.** `resolveKioskLocationLabel` (`lib/kiosk/orderTypeFlow.ts`)
+  builds what staff see, via `composeKioskLocationLabel` (`lib/formatTableLabel.ts`,
+  mirrored on the web): table + fixed seat → "Table 1, Seat 3"; table + pick →
+  "Table 1, Seat 5"; table only → "Table 1"; fixed seat only → "Seat 3"; a pick
+  with no table stays verbatim (legacy lists). Values starting with a digit get the
+  "Table "/"Seat " prefix; named labels ("Counter", "Stool 3") don't. The separator
+  is an ASCII comma so raw ESC/POS prints never show "?". Takeout → no label.
+  The label rides `service_location_id` → `p_table_number` → `orders.table_number`,
   so KDS, kitchen/receipt prints and order details show it with no RPC change.
+- **Example (Bread & Butter).** One shared table, 7 kiosks: each station gets
+  Table `1` + Fixed seat `1`…`7` → orders read "Table 1, Seat 3" and customers are
+  never asked.
 - **Display.** `formatTableLabel` (`lib/formatTableLabel.ts`) prefixes only bare
   names ("6" → "Table 6"). Multi-word labels print as-is, so "Patio Table 4" never
   becomes "Table Patio Table 4". KDS adds a bold location pill in the header for
@@ -450,4 +465,6 @@ station page → **Kiosk** tab (self-service stations only). Migration:
 - [x] POS: settings load/persist, order-type flow (templates A/B/C)
 - [x] POS: seat step, cart `seatLabel`, `patchOrder`, success screen
 - [x] POS: `formatTableLabel` across KDS/prints/order lists, KDS header pill
+- [x] Web + POS: fixed table + seat mode (`off`/`ask`/`fixed`), legacy mapping, tests
 - [ ] Device QA on staging: all 4 order-type modes, seat → KDS/kitchen print/receipt, offline order
+- [ ] Device QA on staging: fixed table + fixed seat (no seat step, "Table 1, Seat 3" on KDS/print), table + guest pick
