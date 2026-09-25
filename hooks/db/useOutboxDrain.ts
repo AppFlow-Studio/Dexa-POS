@@ -45,8 +45,12 @@ import {
 } from "@/services/localFirst/localWrites";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { toastService } from "@/lib/toastService";
+import { jitterMs } from "@/lib/network/jitter";
 
 const DRAIN_INTERVAL_MS = 30_000;
+// On a reconnect (not on mount), release the queue after 0-3s: a Supabase or
+// network blip flips every device back online at the same moment.
+const RECONNECT_DRAIN_JITTER_MS = 3_000;
 
 /** Any local-first write path on at all? Nothing to drain otherwise. */
 const ANY_LOCAL_WRITES =
@@ -60,6 +64,8 @@ export function useOutboxDrain(): void {
   const runningRef = useRef(false);
   // Last reported parked count, so the reason dump prints once per change.
   const lastReportedFailedRef = useRef(-1);
+  // null until the first effect run, so mount is not treated as a reconnect.
+  const wasOnlineRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (!ANY_LOCAL_WRITES) {
@@ -192,6 +198,8 @@ export function useOutboxDrain(): void {
     // operator as sync being broken rather than merely slow. A reconnect
     // invalidates the reason those attempts failed, so it invalidates their
     // schedule too. Runs BEFORE the drain, or the drain claims nothing.
+    const isReconnect = isOnline && wasOnlineRef.current === false;
+    wasOnlineRef.current = isOnline;
     if (isOnline) {
       void (async () => {
         if (!isLocalDbReady()) {
@@ -199,6 +207,11 @@ export function useOutboxDrain(): void {
           if (!db || cancelled) return;
         }
         await resetBackoffForReconnect();
+        if (isReconnect) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, jitterMs(RECONNECT_DRAIN_JITTER_MS)),
+          );
+        }
         if (!cancelled) void run();
       })();
     }

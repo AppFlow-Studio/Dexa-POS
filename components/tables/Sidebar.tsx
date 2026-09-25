@@ -1,4 +1,5 @@
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
+import { jitterMs, withJitter } from "@/lib/network/jitter";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -66,33 +67,29 @@ const Sidebar: React.FC<SidebarProps> = ({
     !floor.isConnected && floor.status.state === "CHANNEL_ERROR";
   const isSyncing = !floor.isConnected && !isOffline;
 
-  // Background periodic retry when channel is in error state
-  // This handles both: internet restored AND server restored scenarios
+  // Background periodic retry once the channel's own backoff has given up.
+  // While it is still retrying, a forced reconnect only restarts its sequence
+  // (another private join + access check per device), so leave it alone.
+  // This handles both: internet restored AND server restored scenarios.
+  const retriesExhausted = isOffline && floor.status.retriesExhausted === true;
   useEffect(() => {
-    // Only set up retry interval when we're offline (channel error)
-    if (!isOffline) return;
+    if (!retriesExhausted) return;
 
     console.log(
-      "[Sidebar] Channel offline, starting periodic retry (every 30s)...",
+      "[Sidebar] Channel retries exhausted, starting periodic retry (~30s)...",
     );
 
-    // Initial retry after 5 seconds
-    const initialRetryId = setTimeout(() => {
-      console.log("[Sidebar] Initial retry attempt...");
-      reconnectFloorRef.current();
-    }, 5000);
-
-    // Then periodic retry every 30 seconds
-    const intervalId = setInterval(() => {
+    // Jittered: a Realtime outage exhausts every device's retries together.
+    let timer = setTimeout(function retry() {
       console.log("[Sidebar] Periodic retry attempt...");
       reconnectFloorRef.current();
-    }, 30000); // 30 seconds
+      timer = setTimeout(retry, withJitter(30_000, 0.3));
+    }, 5_000 + jitterMs(5_000));
 
     return () => {
-      clearTimeout(initialRetryId);
-      clearInterval(intervalId);
+      clearTimeout(timer);
     };
-  }, [isOffline]);
+  }, [retriesExhausted]);
 
   // Manual reconnect handler (for tappable status indicator)
   const handleManualReconnect = () => {

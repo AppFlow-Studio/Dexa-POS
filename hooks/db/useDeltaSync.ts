@@ -25,11 +25,18 @@ import type { StationKind } from "@/lib/db/policy";
 import { reconcileManifest, syncEntity } from "@/lib/db/syncEngine";
 import { dbWriteMutex } from "@/lib/db/write";
 import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
+import { jitterMs } from "@/lib/network/jitter";
 
 const DELTA_SYNC_ENABLED = process.env.EXPO_PUBLIC_DELTA_SYNC === "1";
 
-/** Steady state is one near-empty round trip per tick. */
-const SYNC_INTERVAL_MS = 30_000;
+/**
+ * Safety net only: every order broadcast already triggers a pull through
+ * lib/db/deltaNudge.ts, so the tick just catches anything a dropped broadcast
+ * missed. Steady state is one near-empty round trip per tick.
+ */
+const SYNC_INTERVAL_MS = 120_000;
+/** Spread the first pull: a token refresh or reconnect re-runs every device's effect at once. */
+const FIRST_CYCLE_JITTER_MS = 5_000;
 /** The manifest is the rare-case safety net — once a day is plenty. */
 const MANIFEST_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** How long to wait for initLocalDb() at mount before giving up this cycle. */
@@ -204,9 +211,11 @@ export function useDeltaSync(opts: {
     // order otherwise waits up to a full interval to land completely.
     registerDeltaCycle(runCycle);
 
-    // First pull immediately so the mirror populates, then on the tick.
-    void runCycle();
-    void runReconcile();
+    // First pull right away (0-5s jitter) so the mirror populates, then on the tick.
+    const firstCycleTimer = setTimeout(() => {
+      void runCycle();
+      void runReconcile();
+    }, jitterMs(FIRST_CYCLE_JITTER_MS));
 
     const syncTimer = setInterval(() => {
       void runCycle();
@@ -218,6 +227,7 @@ export function useDeltaSync(opts: {
     return () => {
       controller.abort();
       registerDeltaCycle(null);
+      clearTimeout(firstCycleTimer);
       clearInterval(syncTimer);
       clearInterval(manifestTimer);
     };

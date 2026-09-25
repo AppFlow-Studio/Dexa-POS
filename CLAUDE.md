@@ -127,7 +127,11 @@ EXPO_PUBLIC_SUPABASE_URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY
 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 EXPO_PUBLIC_CFD_DISABLE_LOYALTY  # 1 or "true" to bypass CFD loyalty flow entirely
+EXPO_PUBLIC_FLOOR_BROADCAST_APPLY  # "1" = apply table_sessions broadcasts to the floor store directly (off by default; needs migration 20260925123000)
+EXPO_PUBLIC_CLERK_SUPABASE_JWT_TEMPLATE  # Clerk JWT template name for Supabase tokens (5-min lifetime); unset = Clerk session token
 ```
+
+The last two come from `docs/engineering/database/SUPABASE-CONNECTIONS-AND-STORAGE-2026-09-24.md` (Phase 6.2 and 6.3), which lists the rollout steps.
 
 **`EXPO_PUBLIC_CFD_DISABLE_LOYALTY`** — kill switch for the CFD loyalty path while it's being stabilized. When set:
 - Approved screen on the CFD never shows the Join Loyalty CTA (`merchantHasLoyalty` is forced to `false` in the CFD payload).

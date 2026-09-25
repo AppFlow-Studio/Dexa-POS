@@ -1,3 +1,7 @@
+import {
+  applySessionBroadcast,
+  type SessionBroadcastPayload,
+} from "@/lib/floor/applySessionBroadcast";
 import { findReservationTableConflictForWindow } from "@/lib/reservationConflicts";
 import { createLazyPersistStorage } from "@/lib/storage";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
@@ -42,6 +46,10 @@ const wasRecentlyCleared = (sessionId: string | undefined | null): boolean => {
     require("./useTableSessionStore") as typeof import("./useTableSessionStore")
   ).wasSessionRecentlyCleared(sessionId);
 };
+
+// Newest broadcast timestamp applied per session, so a broadcast delivered out
+// of order can't roll a session back (applySessionBroadcastPayload).
+const _lastSessionBroadcastAt = new Map<string, number>();
 
 // Lazy accessor — breaks circular dependency with useReservationStore
 const getReservationStore = () =>
@@ -377,6 +385,11 @@ interface FloorPlanState {
   loadFloorPlanStatus: (force?: boolean) => Promise<void>;
   loadFloorPlanStatusIfStale: (ttlMs?: number) => Promise<void>;
   refreshTableSessions: () => Promise<void>;
+  /**
+   * Apply one tables-channel session broadcast directly (no RPC). Returns false
+   * when it can't be applied safely; the caller then reconciles as before.
+   */
+  applySessionBroadcastPayload: (payload: SessionBroadcastPayload) => boolean;
   getCachedFloorPlan: (floorPlanId: string) => {
     tables: FloorPlanObject[];
     sections: ServerSection[];
@@ -1434,6 +1447,53 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           getTableSessionStore()
             .getState()
             ._patchSessionsFromTables(mergedTables, { clearMissing: true });
+        },
+
+        applySessionBroadcastPayload: (payload: SessionBroadcastPayload) => {
+          const floorPlanId = get().activeFloorPlanId;
+          const sessionId = payload?.data?.session?.id;
+          if (!floorPlanId || !sessionId || get().tables.length === 0) {
+            return false;
+          }
+
+          const sentAt = payload.timestamp ? Date.parse(payload.timestamp) : NaN;
+          const lastAt = _lastSessionBroadcastAt.get(sessionId);
+          if (Number.isFinite(sentAt) && lastAt !== undefined && sentAt < lastAt) {
+            // Older than what we already applied: nothing to do.
+            return true;
+          }
+
+          const result = applySessionBroadcast(
+            get().tables,
+            payload,
+            (id) => wasRecentlyCleared(id),
+          );
+          if (!result) return false;
+          if (Number.isFinite(sentAt)) {
+            _lastSessionBroadcastAt.set(sessionId, sentAt);
+          }
+          if (result.changedTables.length === 0) return true;
+
+          set({
+            tables: result.tables,
+            tablesById: buildTablesById(result.tables),
+            floorPlanCache: {
+              ...get().floorPlanCache,
+              [floorPlanId]: {
+                tables: result.tables,
+                sections: get().sections,
+                sectionsById: get().sectionsById,
+                lastSyncAt: get().lastSyncAt,
+              },
+            },
+          });
+
+          // Only the changed tables: clearMissing then frees exactly the
+          // tables this session left, and nothing else.
+          getTableSessionStore()
+            .getState()
+            ._patchSessionsFromTables(result.changedTables, { clearMissing: true });
+          return true;
         },
 
         getCachedFloorPlan: (floorPlanId: string) => {

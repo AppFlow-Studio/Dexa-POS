@@ -205,7 +205,8 @@ export default function MainLayout() {
     });
   }, [isKDS, notifConfig]);
 
-  useTableSessionInit({ skip: isKDS });
+  // KDS and self-service kiosks render no floor.
+  useTableSessionInit({ skip: isKDS || isKiosk });
 
   // KDS skips useOrdersQuery, so seed the shared order store with active
   // online orders for the edge tab/drawer (broadcasts keep them live after).
@@ -362,6 +363,9 @@ export default function MainLayout() {
       <LocationRealtimeProvider
         locationId={selectedStore?.id}
         maxReconnectAttempts={20}
+        // Table names come from the ticket (get_kds_tickets_v3 table_name) and
+        // the persisted floor store, never from the floor channel.
+        floorEnabled={false}
         callbacks={{
           onOrderChange: handleOrderChangeKDS,
           onPaymentChange: handlePaymentChange,
@@ -403,6 +407,7 @@ export default function MainLayout() {
     return (
       <LocationRealtimeProvider
         locationId={selectedStore?.id}
+        floorEnabled={false}
         callbacks={{
           onOrderChange: handleOrderChange,
           onPaymentChange: handlePaymentChange,

@@ -165,7 +165,9 @@ export type ReopenCheckResult = {
  *
  * Safe to cache on the ORDER paths because this guard is the last and weakest
  * of four kick-detection layers: `useSessionKickListener` already covers kicks
- * via realtime broadcast (instant), a 30s poll, and app-foreground
+ * via realtime broadcast (instant), a 30s session poll (the same
+ * `check_device_session_status` RPC; station and billing state are refreshed
+ * separately, every 5 min and on `station_updated` nudges), and app-foreground
  * revalidation — and this function fails open on any RPC error anyway. The
  * default TTL matches that poller's 30s interval, so the guard is never staler
  * than the primary detection the app already relies on.

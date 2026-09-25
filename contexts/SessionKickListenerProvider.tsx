@@ -13,12 +13,15 @@ interface SessionKickContextValue {
   isKicked: boolean;
   /** Call before intentionally ending the session to suppress the kicked-out modal. */
   markVoluntaryLogout: () => void;
+  /** Re-read station + billing state soon (a `station_updated` nudge arrived). */
+  requestStationRefresh: () => void;
 }
 
 const SessionKickContext = createContext<SessionKickContextValue>({
   validateSession: async () => true,
   isKicked: false,
   markVoluntaryLogout: () => {},
+  requestStationRefresh: () => {},
 });
 
 /**
@@ -51,10 +54,13 @@ export function SessionKickListenerProvider({
     acknowledgeKick,
     validateSession,
     markVoluntaryLogout,
+    requestStationRefresh,
   } = useSessionKickListener();
 
   return (
-    <SessionKickContext.Provider value={{ validateSession, isKicked, markVoluntaryLogout }}>
+    <SessionKickContext.Provider
+      value={{ validateSession, isKicked, markVoluntaryLogout, requestStationRefresh }}
+    >
       {children}
       <KickedOutModal
         visible={isKicked}

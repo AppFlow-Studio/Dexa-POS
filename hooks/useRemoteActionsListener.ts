@@ -1,3 +1,4 @@
+import { useSessionKick } from "@/contexts/SessionKickListenerProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
   handleClearCache,
@@ -25,6 +26,11 @@ import { useCallback, useEffect, useRef } from "react";
  * deactivate, config_update, send_logs).
  *
  * Each action reports status feedback on the same channel and writes an audit log.
+ *
+ * The same channel carries `station_updated`, an empty nudge sent by database
+ * triggers when the station (or its payment terminal) is edited. It is not a
+ * remote action: no status report, no audit row, and it never waits on
+ * isProcessingRef. It asks the session-kick listener to re-read station state.
  */
 export function useRemoteActionsListener() {
   const supabase = useSupabaseClient();
@@ -34,8 +40,13 @@ export function useRemoteActionsListener() {
   const clearSelectedStation = useStoreSettingsStore((s) => s.clearSelectedStation);
   const setStationSessionId = useStoreSettingsStore((s) => s.setStationSessionId);
 
+  const { requestStationRefresh } = useSessionKick();
+
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isProcessingRef = useRef(false);
+  // Ref so a new callback identity never re-subscribes the channel.
+  const requestStationRefreshRef = useRef(requestStationRefresh);
+  requestStationRefreshRef.current = requestStationRefresh;
 
   // Keep refs to avoid stale closures in broadcast callbacks
   const supabaseRef = useRef(supabase);
@@ -161,6 +172,11 @@ export function useRemoteActionsListener() {
         handleAction(channelRef.current!, payload, stationId);
       });
     }
+
+    ch = ch.on("broadcast", { event: "station_updated" }, () => {
+      if (__DEV__) console.log("[RemoteActions] station_updated nudge");
+      requestStationRefreshRef.current();
+    });
 
     ch.subscribe((status) => {
       if (status === "SUBSCRIBED") {
