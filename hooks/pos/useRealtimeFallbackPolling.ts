@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
+import { jitterMs } from "@/lib/network/jitter";
+
+// A CLOSED during a token-refresh resubscribe lasts well under this, so the
+// poll only starts for a real outage; the random part spreads the fleet.
+const GRACE_MS = 10_000;
+const GRACE_JITTER_MS = 5_000;
 
 type Channel = "orders" | "floor";
 
@@ -16,12 +22,11 @@ interface Options {
  * Realtime-first, polling-fallback primitive.
  *
  * Subscribes to `useLocationRealtime()` for the configured channel's
- * `isConnected` flag. While the channel is NOT connected (including the
- * ~1s window between mount and the first SUBSCRIBED event), it fires `pollFn`
- * once immediately and then every `intervalMs`. As soon as `isConnected`
- * flips to `true`, the interval is cleared and no further polling happens —
- * broadcasts keep the stores fresh. If the channel later drops, polling
- * automatically resumes.
+ * `isConnected` flag. Once the channel has been NOT connected for a 10-15s
+ * grace period, it fires `pollFn` and then every `intervalMs`. As soon as
+ * `isConnected` flips to `true`, polling stops — broadcasts keep the stores
+ * fresh. If the channel later drops, polling automatically resumes. (The
+ * mount→SUBSCRIBED gap is covered by the caller's initial query.)
  *
  * `pollFn` is stored in a ref so callers can pass inline lambdas without
  * risking stale closures or re-triggering the effect on every render.
@@ -48,13 +53,18 @@ export function useRealtimeFallbackPolling(
     // Realtime is up — do nothing. Broadcasts keep consumers fresh.
     if (isConnected) return;
 
-    // Realtime is down (or still connecting): fire once immediately to cover
-    // the mount→SUBSCRIBED gap, then poll on the configured cadence until
-    // we're back.
-    void fnRef.current();
-    const id = setInterval(() => {
+    // Realtime is down (or still connecting): after the grace period, poll on
+    // the configured cadence until we're back.
+    let id: ReturnType<typeof setInterval> | null = null;
+    const start = setTimeout(() => {
       void fnRef.current();
-    }, intervalMs);
-    return () => clearInterval(id);
+      id = setInterval(() => {
+        void fnRef.current();
+      }, intervalMs);
+    }, GRACE_MS + jitterMs(GRACE_JITTER_MS));
+    return () => {
+      clearTimeout(start);
+      if (id) clearInterval(id);
+    };
   }, [isConnected, intervalMs, enabled]);
 }

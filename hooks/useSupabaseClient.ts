@@ -32,7 +32,21 @@ const getTokenRef = { current: null as (() => Promise<string | null>) | null };
 // margin means we always hand out a token with >=30s of life left — ample for
 // any in-flight request — while still refreshing before it can actually expire.
 // ---------------------------------------------------------------------------
+// Must stay above the 25s Realtime heartbeat (lib/realtimeConfig.ts).
 const REFRESH_MARGIN_MS = 30_000;
+
+// Optional Clerk JWT template for Supabase (plan Phase 6.3). The ~60s session
+// token rotates every ~30s with the margin above, and each rotation re-auths
+// every Realtime channel (an authorization query per private channel). A
+// template with a 5-minute lifetime rotates every ~4.5 min instead. The
+// template must be registered in Supabase's Clerk third-party auth and carry
+// the claims the database reads: role = "authenticated", sub, org.id, email.
+// Unset (default): the session token, exactly as before.
+const CLERK_SUPABASE_JWT_TEMPLATE =
+  process.env.EXPO_PUBLIC_CLERK_SUPABASE_JWT_TEMPLATE || undefined;
+const GET_TOKEN_OPTIONS = CLERK_SUPABASE_JWT_TEMPLATE
+  ? { template: CLERK_SUPABASE_JWT_TEMPLATE }
+  : undefined;
 let cachedToken: string | null = null;
 let cachedTokenExpMs = 0;
 // Coalesce concurrent refreshes so a burst of parallel requests triggers one
@@ -176,12 +190,12 @@ export function useSupabaseClient(): SupabaseClient {
   getTokenStable.current = getToken;
 
   useEffect(() => {
-    getTokenRef.current = () => getTokenStable.current();
+    getTokenRef.current = () => getTokenStable.current(GET_TOKEN_OPTIONS);
   }, []);
 
   // Set immediately on first render too (before useEffect fires)
   if (!getTokenRef.current) {
-    getTokenRef.current = () => getTokenStable.current();
+    getTokenRef.current = () => getTokenStable.current(GET_TOKEN_OPTIONS);
   }
 
   return getSharedClient();

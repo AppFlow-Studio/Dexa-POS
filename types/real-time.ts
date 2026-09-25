@@ -296,6 +296,8 @@ export interface ChannelStatus {
   lastError: Error | null;
   reconnectAttempts: number;
   subscribedAt: Date | null;
+  /** True once the automatic backoff has used every attempt and stopped. */
+  retriesExhausted?: boolean;
 }
 
 // ============================================================================

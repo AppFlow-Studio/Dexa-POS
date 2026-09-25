@@ -141,6 +141,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     (state) => state.selectedStation,
   );
   const isKDS = selectedStation?.station_type === "kds";
+  // Self-service kiosks show no floor: no floor plan sync, no floor converge.
+  const isKiosk = selectedStation?.station_type === "self_service";
   // The station kind the menu mirror writes as. Memoized so it is a stable
   // effect dependency rather than a new string on every render.
   const menuStationKind = React.useMemo(
@@ -1092,20 +1094,22 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       // syncFloorPlans reconcile in the background. Blanking tables here on
       // every boot caused a blank board (and forced the re-fetch that paints
       // from the session-stripped cache) before fresh data arrived.
-      const fp = useFloorPlanStore.getState();
-      if (fp.locationId && fp.locationId !== storeId) {
-        useFloorPlanStore.setState({
-          tables: [],
-          lastSyncAt: null,
-        });
-      }
+      if (!isKiosk) {
+        const fp = useFloorPlanStore.getState();
+        if (fp.locationId && fp.locationId !== storeId) {
+          useFloorPlanStore.setState({
+            tables: [],
+            lastSyncAt: null,
+          });
+        }
 
-      syncFloorPlans(storeId);
+        syncFloorPlans(storeId);
+      }
       syncTaxRates(storeId);
       useReceiptTemplateStore.getState().fetchTemplates(storeId);
     });
     return () => task.cancel();
-  }, [selectedStore?.id, isKDS, syncFloorPlans, syncTaxRates]);
+  }, [selectedStore?.id, isKDS, isKiosk, syncFloorPlans, syncTaxRates]);
 
   // Resume recovery, registered with the lifecycle coordinator instead of a
   // private AppState listener. Each item keeps the exact gate it had before —
@@ -1120,7 +1124,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         id: "pos.floor-status-converge",
         bucket: "frame",
         requiresNetwork: true,
-        shouldRun: () => !isKDS,
+        shouldRun: () => !isKDS && !isKiosk,
         run: () => {
           // Floor realtime (re)connection is owned by useFloorRealtime /
           // useRealtimeChannel. Here we only converge state via the
@@ -1253,7 +1257,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     ];
 
     return () => unregister.forEach((fn) => fn());
-  }, [isKDS, supabase, refreshEmployeesIfStale]);
+  }, [isKDS, isKiosk, supabase, refreshEmployeesIfStale]);
 
   // Unified location config sync — hydrates pos_config + subscribes to real-time updates
   // Also handles legacy SETTINGS_UPDATE events for backward compat with older stations

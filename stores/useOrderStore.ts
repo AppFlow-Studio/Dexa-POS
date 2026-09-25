@@ -19352,6 +19352,38 @@ useStoreSettingsStore.subscribe((state) => {
       });
       console.log("[OrderStore] Station context cleared");
     }
+  } else if (selectedStation) {
+    // Same station, edited on the dashboard: the station_updated nudge
+    // refreshes selectedStation, so carry name / view_scope / capability
+    // changes into the order store too.
+    const current = useOrderStore.getState().currentStation;
+    if (
+      current &&
+      current.id === selectedStation.id &&
+      (current.station_name !== selectedStation.station_name ||
+        current.view_scope !== selectedStation.view_scope ||
+        current.can_create_orders !== selectedStation.can_create_orders ||
+        current.can_process_payments !== selectedStation.can_process_payments ||
+        current.can_void_orders !== selectedStation.can_void_orders ||
+        current.can_apply_discounts !== selectedStation.can_apply_discounts ||
+        current.can_update_kitchen_status !==
+          selectedStation.can_update_kitchen_status)
+    ) {
+      const viewScopeChanged = current.view_scope !== selectedStation.view_scope;
+      useOrderStore.getState().setCurrentStation({
+        ...current,
+        station_name: selectedStation.station_name,
+        view_scope: selectedStation.view_scope,
+        can_create_orders: selectedStation.can_create_orders,
+        can_process_payments: selectedStation.can_process_payments,
+        can_void_orders: selectedStation.can_void_orders,
+        can_apply_discounts: selectedStation.can_apply_discounts,
+        can_update_kitchen_status: selectedStation.can_update_kitchen_status,
+      });
+      if (viewScopeChanged) {
+        void useOrderStore.getState().fetchVisibleOrders();
+      }
+    }
   }
 });
 

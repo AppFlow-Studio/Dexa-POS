@@ -52,6 +52,12 @@ interface LocationRealtimeProviderProps {
   children: ReactNode;
   /** Enable/disable all subscriptions */
   enabled?: boolean;
+  /**
+   * Join the floor/tables channel (default true). KDS and kiosk render no
+   * floor, so they skip the private join, its access check and the floor
+   * catch-up reads on every reconnect.
+   */
+  floorEnabled?: boolean;
   /** Max reconnect attempts for realtime channels (default 5, increase for always-on KDS) */
   maxReconnectAttempts?: number;
   /** Callbacks for handling events (optional) */
@@ -94,13 +100,14 @@ export function LocationRealtimeProvider({
   locationId,
   children,
   enabled = true,
+  floorEnabled = true,
   maxReconnectAttempts,
   callbacks,
 }: LocationRealtimeProviderProps) {
   // Floor realtime subscription
   const floorRealtime = useFloorRealtime({
     locationId,
-    enabled,
+    enabled: enabled && floorEnabled,
     maxReconnectAttempts,
     onSessionChange: callbacks?.onSessionChange,
     onTableAssignment: callbacks?.onTableAssignment,
@@ -139,14 +146,14 @@ export function LocationRealtimeProvider({
     ordersRealtime.disconnect();
   }, [floorRealtime, ordersRealtime]);
 
-  // Aggregate status
+  // Aggregate status (a floor channel that is off by design is not "down")
   const allConnected =
-    floorRealtime.isConnected  && 
+    (!floorEnabled || floorRealtime.isConnected) &&
     // waitlistRealtime.isConnected &&
     ordersRealtime.isConnected;
 
   const isReconnecting =
-    floorRealtime.isReconnecting || 
+    (floorEnabled && floorRealtime.isReconnecting) ||
     // waitlistRealtime.isReconnecting ||
     ordersRealtime.isReconnecting;
 

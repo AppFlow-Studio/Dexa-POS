@@ -13,6 +13,7 @@ import {
     type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { jitterMs } from "@/lib/network/jitter";
 import { getDeviceId } from "@/lib/deviceId";
 import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
@@ -2733,7 +2734,10 @@ const KitchenDisplayScreen = () => {
       // No poll needed when realtime is healthy and no display filter —
       // broadcasts cover all updates. Only poll when offline or display-filtered.
       if (isRealtimeConnectedRef.current && !hasDisplayFilter) return;
-      const interval = isRealtimeConnectedRef.current ? 30_000 : 15_000;
+      // Jittered so a fleet of displays that lost Realtime together doesn't
+      // poll get_kds_tickets_v3 in lockstep.
+      const interval =
+        (isRealtimeConnectedRef.current ? 30_000 : 15_000) + jitterMs(5_000);
       timeoutId = setTimeout(() => {
         if (cancelled) return;
         backgroundFetchTickets(locationId);
@@ -2756,12 +2760,17 @@ const KitchenDisplayScreen = () => {
     hasDisplayFilter,
   ]);
 
-  // On reconnection (false -> true), trigger a single background fetch
+  // On reconnection (false -> true), trigger a single background fetch,
+  // after 0-5s so displays that reconnect together don't fetch together.
   useEffect(() => {
     const wasDisconnected = !prevRealtimeConnectedRef.current;
     prevRealtimeConnectedRef.current = isRealtimeConnected;
     if (isRealtimeConnected && wasDisconnected && isReady && locationId) {
-      backgroundFetchTickets(locationId);
+      const timer = setTimeout(
+        () => backgroundFetchTickets(locationId),
+        jitterMs(5_000),
+      );
+      return () => clearTimeout(timer);
     }
   }, [isRealtimeConnected, isReady, locationId, backgroundFetchTickets]);
 

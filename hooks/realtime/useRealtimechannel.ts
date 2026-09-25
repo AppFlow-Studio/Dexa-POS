@@ -79,6 +79,7 @@ export function useRealtimeChannel<T>({
     lastError: null,
     reconnectAttempts: 0,
     subscribedAt: null,
+    retriesExhausted: false,
   });
 
   // Wall-clock start of the current disconnected stretch, or null while
@@ -185,6 +186,7 @@ export function useRealtimeChannel<T>({
               lastError: null,
               reconnectAttempts: 0,
               subscribedAt: new Date(),
+              retriesExhausted: false,
             });
             break;
 
@@ -232,6 +234,7 @@ export function useRealtimeChannel<T>({
       updateStatus({
         state: 'CHANNEL_ERROR',
         lastError: new Error('Max reconnection attempts reached'),
+        retriesExhausted: true,
       });
       return;
     }
@@ -250,6 +253,7 @@ export function useRealtimeChannel<T>({
 
     updateStatus({
       reconnectAttempts: reconnectAttemptsRef.current,
+      retriesExhausted: false,
     });
 
     if (__DEV__) console.log(`[Realtime] Reconnecting ${topic} in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
@@ -272,9 +276,16 @@ export function useRealtimeChannel<T>({
     }, delay);
   }, [supabaseClient, topic, maxReconnectAttempts, reconnectDelay, updateStatus]);
 
-  // Manual reconnect trigger
+  // Manual / forced reconnect: one attempt now. It cancels a pending backoff
+  // retry (so the two can't both subscribe) and keeps the retry budget: a
+  // forced reconnect used to restart the whole backoff sequence, i.e. another
+  // private join + access check round per device. A successful SUBSCRIBED
+  // resets the budget; network-restored and app-resume reset it explicitly.
   const reconnect = useCallback(() => {
-    reconnectAttemptsRef.current = 0;
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
     subscribe();
   }, [subscribe]);
 
