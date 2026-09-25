@@ -16,7 +16,13 @@ import {
 } from "@/lib/kitchenStatusUtils";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
-import { isNothingLeftToCollect } from "@/lib/paymentGuards";
+import {
+  describeVoidBlock,
+  getUnrefundedCardCharges,
+  isCardPaymentVoidRefusal,
+  isNothingLeftToCollect,
+  type UnrefundedCardCharge,
+} from "@/lib/paymentGuards";
 import { toDbPaymentMethod } from "@/lib/paymentMethod";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
@@ -51,6 +57,7 @@ import {
   completePaymentJournal,
   failPaymentJournal,
   getJournalById,
+  getJournalsForOrder,
   updatePaymentJournal,
   writePaymentJournal,
 } from "@/services/paymentJournal";
@@ -527,6 +534,35 @@ export const calculateOrderTotalsForOrder = calculateOrderTotals;
  * Coalescing into one microtask-flushed batch turns that back into a single
  * commit: the effects run once, with every item already bound.
  */
+/**
+ * Card charges on this order that still have money on a customer's card.
+ * Non-empty ⇒ the order must not be voided (see `getUnrefundedCardCharges`).
+ * Reads the payment journal too, so a charge the terminal approved but that
+ * never landed on the order still blocks.
+ */
+export function getUnrefundedCardChargesForOrder(
+  orderId: string,
+): UnrefundedCardCharge[] {
+  const order = useOrderStore.getState().ordersById[orderId];
+  if (!order) return [];
+  return getUnrefundedCardCharges(order.payments, getJournalsForOrder(orderId));
+}
+
+/**
+ * Returns false (and tells the operator why) when the order still holds card
+ * money. Every void entry point calls this BEFORE doing anything irreversible.
+ */
+export function guardOrderVoid(orderId: string): boolean {
+  const charges = getUnrefundedCardChargesForOrder(orderId);
+  if (charges.length === 0) return true;
+  toastService.show({
+    title: "Can't void — card payment on this order",
+    message: describeVoidBlock(charges),
+    type: "error",
+  });
+  return false;
+}
+
 const pendingItemBindings = new Map<string, Map<string, string>>();
 let bindingFlushScheduled = false;
 
@@ -4368,6 +4404,35 @@ const syncPaymentToBackend = async (
   } catch (error) {
     console.error("Backend payment sync error:", error);
 
+    // A CARD payment was already approved by the terminal — reverting would
+    // erase the only record of real money. Keep it on the order, keep the
+    // journal terminal_approved, and hand it to the recovery flow so the
+    // operator reconciles it (never re-charge).
+    const cardJournal =
+      paymentDetails.method === "Card" && paymentDetails.paymentJournal?.id
+        ? getJournalById(paymentDetails.paymentJournal.id)
+        : null;
+    if (cardJournal) {
+      try {
+        Sentry.captureMessage("payment_sync.card_unexpected_error_kept", {
+          level: "error",
+          extra: {
+            journal_id: cardJournal.id,
+            amount: cardJournal.amount,
+            error: (error as any)?.message ?? String(error),
+          },
+        });
+      } catch {}
+      usePaymentRecoveryStore.getState().add(cardJournal);
+      toastService.show({
+        title: "Card payment not saved yet",
+        message:
+          "The card was charged but the payment couldn't be saved. Do NOT charge again — it is kept on this tablet for review.",
+        type: "error",
+      });
+      return false;
+    }
+
     // Wave Cat-B: terminal failure — local state will be reverted; mark journal failed
     if (paymentDetails.paymentJournal?.id) {
       const errMsg =
@@ -4731,7 +4796,8 @@ interface OrderState {
   ) => string;
   deleteOrder: (orderId: string) => void;
   clearCart: () => void;
-  voidOrder: (orderId: string) => void;
+  /** Returns false when refused (read-only, or card money still on the order). */
+  voidOrder: (orderId: string) => boolean;
 
   // Payment void action - reverts payment and restores items to unpaid
   voidPayment: (orderId: string, paymentId: string) => Promise<boolean>;
@@ -12745,13 +12811,16 @@ export const useOrderStore = create<OrderState>()(
             // Only roll back payments that never reached the backend. A payment
             // with a db_payment_id is the server's responsibility (void/refund),
             // never a silent client-side discard. Pre-auths are excluded — they
-            // have their own release path.
+            // have their own release path. Card payments are excluded too: the
+            // terminal already took the money, so "unsynced" still means
+            // charged — discarding it would erase the only record of it.
             const toDiscard = (order.payments ?? []).filter(
               (p) =>
                 !p.db_payment_id &&
                 p.sync_status === "pending" &&
                 !p.isPreAuth &&
-                !p.isVoided,
+                !p.isVoided &&
+                p.method !== "Card",
             );
             if (toDiscard.length === 0) return false;
 
@@ -12865,14 +12934,48 @@ export const useOrderStore = create<OrderState>()(
             // Local state is updated optimistically, backend sync happens later
             // This allows payments to work even when offline or with slow network
 
-            if (!_checkCartEditable(get(), orderId)) return false;
+            // A card that arrives here was ALREADY approved by the terminal.
+            // If a guard below refuses it, the money is real but would have no
+            // record — so instead of a silent `return false`, keep the journal
+            // terminal_approved and route it to the recovery flow.
+            const escalateApprovedCharge = (reason: string): boolean => {
+              const handle = (transactionDetails as any)?.paymentJournalHandle as
+                | { id: string }
+                | undefined;
+              const journal =
+                method === "Card" && handle?.id ? getJournalById(handle.id) : null;
+              if (journal) {
+                try {
+                  Sentry.captureMessage("payment.approved_charge_refused", {
+                    level: "error",
+                    extra: { reason, journal_id: journal.id, amount: journal.amount, orderId },
+                  });
+                } catch {}
+                usePaymentRecoveryStore.getState().add(journal);
+                toastService.show({
+                  title: "Card charged — needs review",
+                  message: `The card was charged $${(journal.amount + (journal.tipAmount ?? 0)).toFixed(2)} but couldn't be added to this order (${reason}). Do NOT charge again.`,
+                  type: "error",
+                });
+                return true;
+              }
+              return false;
+            };
+
+            if (!_checkCartEditable(get(), orderId)) {
+              escalateApprovedCharge("order is read-only on this station");
+              return false;
+            }
 
             // Flush any deferred totals recompute before reading totals — items
             // added via the rapid-add fast-path may not have settled yet.
             get()._ensureTotalsFresh(orderId);
 
             const order = get().ordersById[orderId]; // O(1) lookup
-            if (!order) return false;
+            if (!order) {
+              escalateApprovedCharge("order not found");
+              return false;
+            }
 
             const prePaymentTotals = calculateOrderTotals(
               order.items,
@@ -12912,6 +13015,7 @@ export const useOrderStore = create<OrderState>()(
             // (Regressed once — 90f0ed1e reverted 40dee0fd — so the predicate
             // now lives in lib/paymentGuards.ts with a unit test.)
             if (isNothingLeftToCollect(outstandingBeforePayment, amount)) {
+              if (escalateApprovedCharge("order already paid")) return false;
               toastService.show({
                 title: "Already Paid",
                 message: "No unpaid items remaining on this order.",
@@ -13141,6 +13245,7 @@ export const useOrderStore = create<OrderState>()(
               .filter((c): c is OrderPaymentItemCoverage => c !== null);
 
             if (itemsCovered.length === 0 && !forceExplicitAmount) {
+              if (escalateApprovedCharge("no unpaid items")) return false;
               toastService.show({
                 title: "No Unpaid Items",
                 message: "Select unpaid items or adjust payment amount.",
@@ -15128,7 +15233,10 @@ export const useOrderStore = create<OrderState>()(
             });
           },
           voidOrder: (orderId: string) => {
-            if (!_checkCartEditable(get(), orderId)) return;
+            if (!_checkCartEditable(get(), orderId)) return false;
+            // Voiding never refunds a card, and process_payment refuses void
+            // orders — so a void here would strand the charge with no record.
+            if (!guardOrderVoid(orderId)) return false;
             const { archiveOrder, ordersById } = get();
             const order = ordersById[orderId];
 
@@ -15178,6 +15286,14 @@ export const useOrderStore = create<OrderState>()(
                       return;
                     }
                     console.error("[useOrderStore.voidOrder] DB error:", error);
+                    if (isCardPaymentVoidRefusal(error)) {
+                      toastService.show({
+                        title: "Can't void — card payment on this order",
+                        message:
+                          "This order still has a card charge on the server. Refund the card payment first, then void the order.",
+                        type: "error",
+                      });
+                    }
                     // Rollback optimistic update on failure
                     set((state) => {
                       state.ordersById[orderId] = order; // Restore original

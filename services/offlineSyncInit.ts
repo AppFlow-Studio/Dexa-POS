@@ -1292,11 +1292,12 @@ async function executeQueuedOperation(
               console.log(
                 `[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no create_order and not in store`,
               );
-              console.log(
-                `[OfflineSync:payment] Discarding orphaned payment operation`,
+              // It can never replay — but it is a real charge. Park it for
+              // the operator instead of deleting the only record of it.
+              return OpTerminal(
+                "PAYMENT_ORPHANED",
+                `Payment of ${paymentParams?.p_amount ?? "full balance"} has no order on the server`,
               );
-              // Return true to remove this operation from queue (it will never succeed)
-              return true;
             }
 
             // Also check if order exists in store but has no db_order_id and no pending create_order
@@ -1308,10 +1309,10 @@ async function executeQueuedOperation(
               console.log(
                 `[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no db_order_id and no create_order`,
               );
-              console.log(
-                `[OfflineSync:payment] Discarding orphaned payment operation`,
+              return OpTerminal(
+                "PAYMENT_ORPHANED",
+                `Payment of ${paymentParams?.p_amount ?? "full balance"} has no order on the server`,
               );
-              return true;
             }
 
             console.log(
@@ -1485,9 +1486,15 @@ async function executeQueuedOperation(
           preCheckOrderStatus === "cancelled"
         ) {
           console.warn(
-            `[OfflineSync:payment] Order ${finalParams.p_order_id} is ${preCheckOrderStatus} — discarding payment`,
+            `[OfflineSync:payment] Order ${finalParams.p_order_id} is ${preCheckOrderStatus} — parking payment for the operator`,
           );
-          return true; // Discard
+          // process_payment refuses void orders, but the money was taken.
+          // Dead-letter it (journal stays terminal_approved) so it is refunded
+          // or re-recorded — never silently dropped.
+          return OpTerminal(
+            "PAYMENT_ORDER_VOID",
+            `Order is ${preCheckOrderStatus} but a payment of ${finalParams.p_amount ?? "full balance"} was taken`,
+          );
         }
 
         if (authCheckResult?.matched) {
@@ -1495,6 +1502,11 @@ async function executeQueuedOperation(
             `[OfflineSync:payment] DUPLICATE-CHARGE PREVENTED — payment for order ${finalParams.p_order_id} (amount=${finalParams.p_amount ?? "full-remaining"}, portion=${finalParams.p_split_portion_index ?? "-"}) already exists on server. Discarding queued op.`,
             authCheckResult.raw,
           );
+          // The server already has it — close the journal so it isn't
+          // resurrected as an unresolved charge.
+          if (queuedJournal?.id) {
+            completePaymentJournal(queuedJournal.id, "server_match_precheck");
+          }
           return true; // discard queued op without replaying
         }
 
@@ -1591,10 +1603,8 @@ async function executeQueuedOperation(
               error,
             );
             if (queuedJournal?.id) {
-              failPaymentJournal(
-                queuedJournal.id,
-                `unique_violation: ${errMsg}`,
-              );
+              // The charge IS recorded — completed, not failed.
+              completePaymentJournal(queuedJournal.id, "unique_violation");
             }
             // The charge exists server-side; the desired state holds.
             return OpOk("duplicate key — payment already recorded");

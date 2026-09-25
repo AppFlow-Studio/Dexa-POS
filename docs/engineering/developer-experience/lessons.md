@@ -137,3 +137,8 @@
 - Product rule (user, 2026-09-23): mock/demo data does not belong in the app. When asked to take it off a hot path, delete it and the assets only it used — don't move it into a new module to keep it alive (I moved `MENU_IMAGE_MAP` into `lib/menuImageMap.ts` and was corrected). Replace each fake fallback with real data or an empty state (`—`, an icon placeholder), never another sample person or number.
 - Mock data hides under other names: `mockDiscounts`, `mockApplicants`, `// --- Mock Data ---` blocks, hardcoded "Downtown Location" pickers, and demo defaults in stores (`useSettingsStore` had fake delivery partners and a funding balance). Grep for the fake values (`John Smith`, `Tom Hardy`, `Downtown`), not only for `mock`.
 - Not everything named "mock" is fake data: the Castles/Valor mock transports are a QA tool for rehearsing terminal failures; receipt-template preview samples and `lib/db/measure.ts` fixtures are deliberate. Ask before removing tools.
+
+## Staging SQL: the target goes in the call, never in hidden CLI state
+
+- 2026-09-25: I ran `cat supabase/.temp/project-ref; supabase db query --linked --file …` as ONE command in `dexapos-website`. The ref was **prod**, so the `void_order` P0010 guard went live on prod unapproved (reverted minutes later with the user's OK; prod logs showed no void was blocked in the window).
+- Rule: apply staging SQL with the Supabase MCP `execute_sql` and an explicit `project_id: "dfwqakoyittmrwbqvxgw"`. If the CLI is ever unavoidable, check `.temp/project-ref` in a SEPARATE step, read the result, and only then apply. Printing the target in the same command as the write is not a check.

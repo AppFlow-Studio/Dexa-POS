@@ -20,6 +20,7 @@ import {
   deriveRemedy,
   deriveSubtitle,
   deriveTitle,
+  isPaymentOp,
   isRetryable,
   ORDER_BOUND_OPS
 } from '@/lib/offlineSyncSubtitles'
@@ -209,6 +210,10 @@ const OrderSyncBanner: React.FC = () => {
                   Retry
                 </Text>
               </TouchableOpacity>
+            ) : isPaymentOp(op) ? (
+              // No Dismiss for money: the charge is real. The remedy line says
+              // what to do (refund on the terminal or re-record it).
+              null
             ) : (
               <TouchableOpacity
                 onPress={() => handleDismiss(op.id)}
