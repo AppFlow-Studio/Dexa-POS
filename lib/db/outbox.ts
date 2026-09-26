@@ -668,6 +668,15 @@ export async function amendPendingOpPayload(
         [merged, row.id],
       );
       if (row.status === "failed") {
+        // Ops on this row that were refused only because the create had not
+        // landed ("Order item not found" on a quantity change) retry behind
+        // it. Otherwise the server kept the old quantity until a Charge tap
+        // or relaunch requeued them ($11.43 vs $22.86 in the test B re-run).
+        await db.runAsync(
+          `UPDATE outbox SET status = 'pending', next_at = NULL
+            WHERE entity_id = ? AND status = 'failed'`,
+          [entityId],
+        );
         console.warn(
           `[LF] edit amended rejected ${op} ${entityId.slice(0, 8)} — requeued`,
         );

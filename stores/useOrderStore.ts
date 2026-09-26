@@ -2131,6 +2131,49 @@ const addItemToBackend = async (
   onSyncComplete?: (orderId: string) => void, // Callback after successful sync
   options?: {
     isMerge?: boolean; // If true, update quantity instead of creating new item
+/**
+ * The server's copy of an order, plus the local lines it does not have yet.
+ *
+ * Bulk hydrates preserve orders with unsynced lines, then overlay the server
+ * copy — and when the server ALSO returned that order (same db-id key) the
+ * overlay replaced it wholesale, dropping the very lines it was preserved
+ * for. A reload lost a rejected line from the tablet while its add stayed
+ * queued, so the server later disagreed with the tablet (test B, 2026-09-25).
+ */
+export function withUnsyncedLocalLines(
+  local: OrderProfile,
+  server: OrderProfile,
+): OrderProfile {
+  const serverRowIds = new Set(
+    server.items.map((i) => i.db_order_item_id).filter(Boolean),
+  );
+  const unsyncedLines = local.items.filter(
+    (i) =>
+      !i.db_order_item_id &&
+      !i.isDraft &&
+      // Landed since (bound on the server, not yet locally).
+      !(i.item_row_id && serverRowIds.has(i.item_row_id)),
+  );
+  if (unsyncedLines.length === 0) return server;
+  const items = [...server.items, ...unsyncedLines];
+  const totals = calculateOrderTotals(
+    items,
+    server.checkDiscount,
+    server.payments || [],
+    useStoreSettingsStore.getState().taxRatesMap,
+    server,
+  );
+  return {
+    ...server,
+    items,
+    total_amount: totals.total_amount,
+    total_tax: totals.tax_amount,
+    total_discount: totals.discount_amount,
+    amount_due: totals.outstanding_total,
+    cash_amount_due: totals.cash_outstanding_total,
+  };
+}
+
     addedQuantity?: number; // The quantity being added (for merge operations)
   },
 ): Promise<boolean> => {
@@ -17716,6 +17759,18 @@ export const useOrderStore = create<OrderState>()(
                 cash_outstanding_subtotal: 0,
                 cash_outstanding_tax: 0,
                 cash_outstanding_total: 0,
+
+                // A preserved order the server ALSO returned (same db-id key)
+                // must keep its unsynced lines; see withUnsyncedLocalLines.
+                for (const id of preservedIds) {
+                  if (newOrders[id]) {
+                    newOrders[id] = withUnsyncedLocalLines(
+                      state.ordersById[id],
+                      newOrders[id],
+                    );
+                  }
+                }
+
                 service_charge: 0,
                 cash_service_charge: 0,
                 outstanding_service_charge: 0,

@@ -95,6 +95,27 @@ describe("editing a rejected add (bug 1)", () => {
     expect(row!.payload.cartItemId).toBe(CART);
   });
 
+  it("requeues the row's other parked ops with it", async () => {
+    await seedAdd();
+    await commitLocalWrite([], [
+      {
+        id: "op-qty",
+        op: "update_item_quantity",
+        entity: "order_item",
+        entityId: ROW,
+        orderId: ORDER,
+        payload: { orderId: ORDER, itemId: ROW, quantity: 2 },
+      },
+    ]);
+    await markRejected("op-add", "FAILTEST trigger", { table: "order_items", id: ROW });
+    await markRejected("op-qty", "Order item not found", { table: "order_items", id: ROW });
+
+    await amendPendingOpPayload(ROW, "add_item", { specialInstructions: "ok" });
+
+    expect((await op("op-qty"))!.status).toBe("pending");
+    expect(await unsyncedOpCountForOrder(ORDER)).toEqual({ pending: 2, failed: 0 });
+  });
+
   it("still refuses a pending add that was already attempted", async () => {
     await seedAdd();
     await markRetry("op-add", 0, "network timeout");
