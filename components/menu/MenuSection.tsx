@@ -69,6 +69,7 @@ import { useVisibleMenus } from "@/hooks/menu/useVisibleMenus";
 import { useScheduleClock } from "@/hooks/useScheduleClock";
 import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
+import { getCategoryLockState } from "@/lib/menu/categoryLockState";
 import MenuItem from "./MenuItem";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
 import OpenItemAdder from "./OpenItemAdder";
@@ -308,6 +309,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     (s) => s.temporaryActiveCategories,
   );
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
+  const isCategoryActiveForMenu = useMenuStore(
+    (s) => s.isCategoryActiveForMenu,
+  );
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
   const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
   const menuNavigationMode = useSettingsStore(
@@ -1381,6 +1385,20 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                   : category?.name || "Category";
                               const isSelectedCategory =
                                 isSelected && activeCategory === categoryLabel;
+                              const {
+                                isScheduled: isCategoryScheduled,
+                                isNormallyAvailable: isCategoryOnSchedule,
+                                hasOverride: isCategoryUnlocked,
+                                showLock: isCategoryLocked,
+                              } = getCategoryLockState({
+                                category,
+                                menu,
+                                at: now,
+                                isCategoryAvailableNow,
+                                isCategoryActiveForMenu,
+                                grantedCategories: temporaryActiveCategorySet,
+                                grantedMenus: temporaryActiveMenuSet,
+                              });
 
                               return (
                                 <TouchableOpacity
@@ -1392,6 +1410,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                     )
                                   }
                                   style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    gap: sc(4),
                                     paddingHorizontal: sc(10),
                                     paddingVertical: sc(4),
                                     borderRadius: sc(12),
@@ -1402,9 +1423,24 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                     borderColor: isSelectedCategory
                                       ? colors.teal + "70"
                                       : colors.border,
+                                    opacity:
+                                      isCategoryLocked && !isSelectedCategory
+                                        ? 0.7
+                                        : 1,
                                   }}
                                   activeOpacity={0.78}
                                 >
+                                  {isCategoryLocked && (
+                                    <Lock size={sc(10)} color={colors.muted} />
+                                  )}
+                                  {isCategoryScheduled &&
+                                    !isCategoryOnSchedule &&
+                                    isCategoryUnlocked && (
+                                      <Clock
+                                        size={sc(10)}
+                                        color={colors.teal}
+                                      />
+                                    )}
                                   <Text
                                     style={{
                                       fontSize: sc(12),
