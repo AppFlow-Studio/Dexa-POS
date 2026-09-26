@@ -49,7 +49,19 @@ export function finalizeDineInPaymentClear(args: {
     (o) => o.session_id === sessionId || o.local_session_id === sessionId,
   );
 
-  const siblingsDue = sessionOrders.some((o) => (o.amount_due ?? 0) > 0.01);
+  // Dual pricing + mixed tender (cash-priced cash + card) leaves the card-basis
+  // amount_due at the cash/card spread (e.g. $3.38) even though cash_amount_due
+  // is 0 — that blocked auto-clear and forced a manual close. Accept the cash
+  // basis only when a cash-priced payment actually exists, so a card-only
+  // short payment still blocks. The items-level guard below still catches
+  // genuine partial payments.
+  const siblingsDue = sessionOrders.some((o) => {
+    if ((o.amount_due ?? 0) <= 0.01) return false;
+    const hasCashPricedPayment = (o.payments ?? []).some(
+      (p) => p.isCashPriced === true,
+    );
+    return !(hasCashPricedPayment && (o.cash_amount_due ?? Infinity) <= 0.01);
+  });
   if (siblingsDue) {
     return { cleared: false, reason: "siblings-due" };
   }
