@@ -27,7 +27,7 @@ import {
     useFloorPlanStore,
 } from "@/stores/useFloorPlanStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { guardOrderVoid, useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useReservationStore } from "@/stores/useReservationStore";
@@ -1580,6 +1580,10 @@ const BillSectionContent = ({
 
   const handleConfirmVoidOrder = useCallback(async () => {
     if (!activeOrderId || !activeOrder) return;
+    if (!guardOrderVoid(activeOrderId)) {
+      setIsVoidConfirmOpen(false);
+      return;
+    }
 
     const sessionStore = useTableSessionStore.getState();
     const sessionId = activeOrder.session_id;

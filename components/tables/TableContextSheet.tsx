@@ -248,6 +248,14 @@ const KITCHEN_STATUS_COLORS = {
   served: colors.info,
 } as const;
 
+const EMPTY_TABLES: FloorPlanObject[] = [];
+const EMPTY_CACHE = {} as ReturnType<
+  typeof useFloorPlanStore.getState
+>["floorPlanCache"];
+const EMPTY_SESSIONS = {} as ReturnType<
+  typeof useTableSessionStore.getState
+>["sessions"];
+
 const TableContextSheet: React.FC<TableContextSheetProps> = ({
   table,
   onClose,
@@ -264,14 +272,23 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
   const transferSession = useFloorPlanStore((s) => s.transferSession);
   const refreshTableSessions = useFloorPlanStore((s) => s.refreshTableSessions);
-  const floorTables = useFloorPlanStore((s) => s.tables);
+  const [isTransferPickerOpen, setTransferPickerOpen] = useState(false);
+  // The whole-floor subscriptions below only feed the transfer picker. The
+  // sheet is always mounted, so subscribing while the picker is closed
+  // re-ran the all-floor-plans copy on every table broadcast.
+  const floorTables = useFloorPlanStore((s) =>
+    isTransferPickerOpen ? s.tables : EMPTY_TABLES,
+  );
   const floorPlans = useFloorPlanStore((s) => s.floorPlans);
-  const floorPlanCache = useFloorPlanStore((s) => s.floorPlanCache);
+  const floorPlanCache = useFloorPlanStore((s) =>
+    isTransferPickerOpen ? s.floorPlanCache : EMPTY_CACHE,
+  );
   const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
-  const sessionsByTableId = useTableSessionStore((s) => s.sessions);
+  const sessionsByTableId = useTableSessionStore((s) =>
+    isTransferPickerOpen ? s.sessions : EMPTY_SESSIONS,
+  );
   const showToast = useToastStore((s) => s.show);
   const { isOnline } = useNetworkStatus();
-  const [isTransferPickerOpen, setTransferPickerOpen] = useState(false);
   const [isTransferPickerLoading, setTransferPickerLoading] = useState(false);
   const [transferSourceTable, setTransferSourceTable] =
     useState<FloorPlanObject | null>(null);

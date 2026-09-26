@@ -256,6 +256,54 @@ const UNKNOWN_ERROR_MAX_ATTEMPTS = 3;
 const DEBOUNCE_MS = 3000;
 const MAX_QUEUE_SIZE = 500;
 const MAX_DEAD_LETTER_SIZE = 50;
+
+/**
+ * Ops that carry a charge the terminal (or drawer) already took. The queue
+ * must never discard or evict one: the customer's money is real whether or
+ * not the op ever reaches the server. They end in exactly one of: synced,
+ * or dead-lettered in front of the operator.
+ */
+const PAYMENT_OP_TYPES: ReadonlySet<string> = new Set([
+  "process_payment",
+  "process_card_payment",
+  "process_cash_payment",
+]);
+
+export function isPaymentOperation(op: { type: string }): boolean {
+  return PAYMENT_OP_TYPES.has(op.type);
+}
+
+/**
+ * Trim the dead-letter queue to the cap WITHOUT evicting payment ops —
+ * oldest non-payment entries go first. Payments above the cap are kept:
+ * losing the only record of a captured charge is worse than a long list.
+ */
+function capDeadLetter(queue: OfflineOperation[]): OfflineOperation[] {
+  let excess = queue.length - MAX_DEAD_LETTER_SIZE;
+  if (excess <= 0) return queue;
+  return queue.filter((op) => {
+    if (excess > 0 && !isPaymentOperation(op)) {
+      excess--;
+      return false;
+    }
+    return true;
+  });
+}
+
+/** Reset every retry/block gate so an operator Retry actually re-runs the op. */
+function resetRetryGates(op: OfflineOperation): void {
+  op.status = "pending";
+  op.retryCount = 0;
+  op.firstAttemptedAtMs = undefined;
+  op.nextAttemptAtMs = undefined;
+  op.slowModeRetryCount = 0;
+  op.isTerminal = false;
+  // Without these a BLOCK_COUNT_EXCEEDED op re-dead-letters on its very next
+  // block — the Retry button looked like it did nothing.
+  op.blockCount = 0;
+  op.blockReason = undefined;
+  op.blockedAtMs = undefined;
+}
 const OPERATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const OPERATION_TIMEOUT_MS = 30_000;
 // Wave 2.8: cap on consecutive block transitions to prevent pathological
@@ -1458,6 +1506,13 @@ export async function markOperationBlocked (
       order?.order_status === 'void' ||
       order?.order_status === 'cancelled'
     ) {
+      if (isPaymentOperation(op)) {
+        // A charge on a voided order — never silently discard. Park it where
+        // the operator sees it so it gets refunded or re-recorded.
+        await deadLetterPaymentOp(op, 'PAYMENT_ORDER_VOID',
+          'Card charged on an order that was voided — refund or record it')
+        return
+      }
       op.status = 'discarded'
       await saveQueueToStorage()
       return
@@ -1526,8 +1581,14 @@ export async function markOperationBlocked (
 export async function cancelOrderOperations(
   localOrderId: string,
 ): Promise<void> {
+  // Payment ops are NEVER cancelled with the order: they record money already
+  // taken. They stay queued; if the order is void the handler parks them in
+  // dead-letter for the operator (see deadLetterPaymentOp).
   const opsToCancel = pendingOperations.filter(
-    (op) => op.localOrderId === localOrderId && op.status !== "discarded",
+    (op) =>
+      op.localOrderId === localOrderId &&
+      op.status !== "discarded" &&
+      !isPaymentOperation(op),
   );
 
   for (const op of opsToCancel) {
@@ -1832,22 +1893,71 @@ function moveToDeadLetter(operation: OfflineOperation): void {
     status: "failed" as const,
     deadLetteredAtMs: operation.deadLetteredAtMs ?? Date.now(),
   });
-  // FIFO eviction: discard oldest entries when cap is exceeded
-  if (deadLetterQueue.length > MAX_DEAD_LETTER_SIZE) {
-    deadLetterQueue = deadLetterQueue.slice(-MAX_DEAD_LETTER_SIZE);
-  }
+  // FIFO eviction of the oldest NON-payment entries when over the cap.
+  deadLetterQueue = capDeadLetter(deadLetterQueue);
   saveDeadLetterToStorage();
   notifyDeadLetterSubscribers();
+}
+
+/**
+ * Move a payment op out of the active queue into dead-letter with a reason,
+ * loudly. Used everywhere the legacy path used to `return true` / discard a
+ * payment it couldn't apply. The payment journal is left `terminal_approved`
+ * on purpose — it stays an unresolved charge until an operator resolves it.
+ */
+export async function deadLetterPaymentOp(
+  op: OfflineOperation,
+  code: string,
+  message: string,
+): Promise<void> {
+  op.lastError = { code, message, remedy: remedyFor(code) };
+  op.isTerminal = true;
+  op.deadLetteredAtMs = Date.now();
+  removeFromIndex(op);
+  moveToDeadLetter(op);
+  pendingOperations = pendingOperations.filter((o) => o.id !== op.id);
+  await saveQueueToStorage();
+  onQueueChange?.(getActivePendingCount());
+  try {
+    Sentry.captureMessage(`[OfflineSync] payment op parked: ${code}`, {
+      level: "error",
+      tags: { op_type: op.type, code },
+      extra: {
+        local_order_id: op.localOrderId,
+        amount: (op.params as any)?.params?.p_amount ?? (op.params as any)?.p_amount,
+        journal_id: (op.params as any)?.paymentJournal?.id,
+      },
+    });
+  } catch {}
+}
+
+/**
+ * Whether a payment op tied to this journal is still queued or dead-lettered.
+ * Reads persisted storage too, so it is correct before the queue is loaded.
+ */
+export function hasQueuedPaymentForJournal(journalId: string): boolean {
+  const carries = (op: OfflineOperation) =>
+    isPaymentOperation(op) &&
+    op.status !== "discarded" &&
+    (op.params as any)?.paymentJournal?.id === journalId;
+  if (pendingOperations.some(carries) || deadLetterQueue.some(carries)) {
+    return true;
+  }
+  try {
+    const storedQueue = getSyncJSON<OfflineOperation[]>(STORAGE_KEY) ?? [];
+    const storedDead =
+      getSyncJSON<OfflineOperation[]>(DEAD_LETTER_STORAGE_KEY) ?? [];
+    return storedQueue.some(carries) || storedDead.some(carries);
+  } catch {
+    return false;
+  }
 }
 
 function loadDeadLetterFromStorage(): void {
   try {
     const stored = getSyncJSON<OfflineOperation[]>(DEAD_LETTER_STORAGE_KEY);
     if (stored) {
-      deadLetterQueue =
-        stored.length > MAX_DEAD_LETTER_SIZE
-          ? stored.slice(-MAX_DEAD_LETTER_SIZE)
-          : stored;
+      deadLetterQueue = capDeadLetter(stored);
     }
   } catch (error) {
     console.error("[OfflineSync] Failed to load dead letter queue:", error);
@@ -1901,14 +2011,10 @@ export async function retryDeadLetterOperation(
   saveDeadLetterToStorage();
   notifyDeadLetterSubscribers();
 
-  op.status = "pending";
-  op.retryCount = 0;
   // Clear retry gating, or the op would sit behind a stale backoff window /
-  // spent slow-mode budget and appear to do nothing when the operator taps Retry.
-  op.nextAttemptAtMs = undefined;
-  op.slowModeRetryCount = 0;
-  op.isTerminal = false;
-  op.firstAttemptedAtMs = undefined;
+  // spent slow-mode budget / block count and appear to do nothing when the
+  // operator taps Retry.
+  resetRetryGates(op);
   pendingOperations.push(op);
   addToIndex(op);
   await saveQueueToStorage();
@@ -1983,12 +2089,7 @@ export async function retrySyncForItem(itemId: string): Promise<number> {
   const dlMatches = deadLetterQueue.filter((op) => op.localItemId === itemId);
   for (const op of dlMatches) {
     deadLetterQueue = deadLetterQueue.filter((o) => o.id !== op.id);
-    op.status = "pending";
-    op.retryCount = 0;
-    op.firstAttemptedAtMs = undefined;
-    op.nextAttemptAtMs = undefined;
-    op.slowModeRetryCount = 0;
-    op.isTerminal = false;
+    resetRetryGates(op);
     pendingOperations.push(op);
     addToIndex(op);
     count++;
@@ -1998,12 +2099,7 @@ export async function retrySyncForItem(itemId: string): Promise<number> {
   // Reset any failed ops still in the active queue.
   for (const op of pendingOperations) {
     if (op.localItemId === itemId && op.status === "failed") {
-      op.status = "pending";
-      op.retryCount = 0;
-      op.firstAttemptedAtMs = undefined;
-      op.nextAttemptAtMs = undefined;
-      op.slowModeRetryCount = 0;
-      op.isTerminal = false;
+      resetRetryGates(op);
       count++;
     }
   }

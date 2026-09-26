@@ -1,5 +1,6 @@
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { isCardPaymentVoidRefusal } from '@/lib/paymentGuards'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as Haptics from 'expo-haptics'
@@ -131,8 +132,12 @@ export function useVoidOrder () {
     onError: (error: Error) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
       toast.show({
-        title: 'Error',
-        message: error.message || 'Failed to void order',
+        title: isCardPaymentVoidRefusal(error)
+          ? "Can't void — card payment on this order"
+          : 'Error',
+        message: isCardPaymentVoidRefusal(error)
+          ? 'Refund the card payment first, then void the order.'
+          : error.message || 'Failed to void order',
         type: 'error'
       })
     }

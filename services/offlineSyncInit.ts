@@ -12,6 +12,7 @@
 
 import { queryClient } from "@/contexts/TanstackProvider";
 import { getDeviceId } from "@/lib/deviceId";
+import { sanitizeModifierRowsForRpc } from "@/lib/modifierRpc";
 import {
     buildKitchenSendQueueParams,
     clearKitchenSendInFlight,
@@ -865,23 +866,7 @@ async function executeQueuedOperation(
         // hard-casts to uuid, so those rows would dead-letter forever. Strip
         // any value that isn't a valid UUID — group/item ids are nullable on
         // the server schema, name + price columns carry the real data.
-        const UUID_RE =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const sanitized = Array.isArray(modifiers)
-          ? modifiers.map((m: any) => ({
-              ...m,
-              modifier_group_id:
-                typeof m?.modifier_group_id === "string" &&
-                UUID_RE.test(m.modifier_group_id)
-                  ? m.modifier_group_id
-                  : null,
-              modifier_item_id:
-                typeof m?.modifier_item_id === "string" &&
-                UUID_RE.test(m.modifier_item_id)
-                  ? m.modifier_item_id
-                  : null,
-            }))
-          : modifiers;
+        const sanitized = sanitizeModifierRowsForRpc(modifiers);
 
         const { error } = await OrderService.replaceOrderItemModifiers(
           _supabaseClient,
@@ -1292,11 +1277,12 @@ async function executeQueuedOperation(
               console.log(
                 `[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no create_order and not in store`,
               );
-              console.log(
-                `[OfflineSync:payment] Discarding orphaned payment operation`,
+              // It can never replay — but it is a real charge. Park it for
+              // the operator instead of deleting the only record of it.
+              return OpTerminal(
+                "PAYMENT_ORPHANED",
+                `Payment of ${paymentParams?.p_amount ?? "full balance"} has no order on the server`,
               );
-              // Return true to remove this operation from queue (it will never succeed)
-              return true;
             }
 
             // Also check if order exists in store but has no db_order_id and no pending create_order
@@ -1308,10 +1294,10 @@ async function executeQueuedOperation(
               console.log(
                 `[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no db_order_id and no create_order`,
               );
-              console.log(
-                `[OfflineSync:payment] Discarding orphaned payment operation`,
+              return OpTerminal(
+                "PAYMENT_ORPHANED",
+                `Payment of ${paymentParams?.p_amount ?? "full balance"} has no order on the server`,
               );
-              return true;
             }
 
             console.log(
@@ -1322,6 +1308,41 @@ async function executeQueuedOperation(
           }
           paymentParams.p_order_id = resolvedOrderId;
           console.log(`[OfflineSync:payment] Resolved to: ${resolvedOrderId}`);
+        }
+
+        // ── Local-first: never settle ahead of the outbox. ──────────────────
+        //
+        // A full-remaining or split-evenly payment carries no allocations, and
+        // process_payment_v17 settles `p_amount = NULL` against the server's
+        // OWN remaining balance — short while this order still has items in
+        // the outbox (Charcoal Gardenia S1-0008, 2026-09-25). Allocation ids
+        // are not the only dependency, so wait for every pending or parked op
+        // on the order. A parked op holds the payment until the operator
+        // repairs the line; the block budget then dead-letters it where the
+        // Wave-1 banner surfaces it, exactly as `item_not_synced` does today.
+        if (isValidUUID(paymentParams?.p_order_id ?? "")) {
+          try {
+            const { LOCAL_WRITES_ITEMS } =
+              require("@/services/localFirst/localWrites") as typeof import("@/services/localFirst/localWrites");
+            if (LOCAL_WRITES_ITEMS) {
+              const { unsyncedOpCountForOrder } =
+                require("@/lib/db/outbox") as typeof import("@/lib/db/outbox");
+              const { pending, failed } = await unsyncedOpCountForOrder(
+                paymentParams.p_order_id,
+              );
+              if (pending + failed > 0) {
+                console.log(
+                  `[OfflineSync:payment] BLOCKED - order ${paymentParams.p_order_id} still has ${pending} pending / ${failed} failed outbox op(s)`,
+                );
+                return OpBlocked("order_ops_pending");
+              }
+            }
+          } catch (outboxErr) {
+            console.warn(
+              "[OfflineSync:payment] outbox check failed, proceeding:",
+              outboxErr,
+            );
+          }
         }
 
         // Resolve item allocations (support per-item/split-by-item payments queued with local IDs)
@@ -1485,9 +1506,15 @@ async function executeQueuedOperation(
           preCheckOrderStatus === "cancelled"
         ) {
           console.warn(
-            `[OfflineSync:payment] Order ${finalParams.p_order_id} is ${preCheckOrderStatus} — discarding payment`,
+            `[OfflineSync:payment] Order ${finalParams.p_order_id} is ${preCheckOrderStatus} — parking payment for the operator`,
           );
-          return true; // Discard
+          // process_payment refuses void orders, but the money was taken.
+          // Dead-letter it (journal stays terminal_approved) so it is refunded
+          // or re-recorded — never silently dropped.
+          return OpTerminal(
+            "PAYMENT_ORDER_VOID",
+            `Order is ${preCheckOrderStatus} but a payment of ${finalParams.p_amount ?? "full balance"} was taken`,
+          );
         }
 
         if (authCheckResult?.matched) {
@@ -1495,6 +1522,11 @@ async function executeQueuedOperation(
             `[OfflineSync:payment] DUPLICATE-CHARGE PREVENTED — payment for order ${finalParams.p_order_id} (amount=${finalParams.p_amount ?? "full-remaining"}, portion=${finalParams.p_split_portion_index ?? "-"}) already exists on server. Discarding queued op.`,
             authCheckResult.raw,
           );
+          // The server already has it — close the journal so it isn't
+          // resurrected as an unresolved charge.
+          if (queuedJournal?.id) {
+            completePaymentJournal(queuedJournal.id, "server_match_precheck");
+          }
           return true; // discard queued op without replaying
         }
 
@@ -1591,10 +1623,8 @@ async function executeQueuedOperation(
               error,
             );
             if (queuedJournal?.id) {
-              failPaymentJournal(
-                queuedJournal.id,
-                `unique_violation: ${errMsg}`,
-              );
+              // The charge IS recorded — completed, not failed.
+              completePaymentJournal(queuedJournal.id, "unique_violation");
             }
             // The charge exists server-side; the desired state holds.
             return OpOk("duplicate key — payment already recorded");

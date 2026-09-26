@@ -39,6 +39,9 @@ async function sendHeartbeat(): Promise<void> {
   const supabase = currentSupabase;
   const stationId = currentStationId;
   const locationId = currentLocationId;
+  // Captured too: stopHeartbeat() nulls it mid-tick, and device_heartbeats
+  // rejects a NULL created_at (seen as 6x400/day on staging).
+  const sessionStart = currentSessionStart ?? new Date().toISOString();
   if (!supabase || !stationId || !locationId) return;
 
   try {
@@ -92,7 +95,7 @@ async function sendHeartbeat(): Promise<void> {
           network_type: networkType,
           printer_status: cached?.hasBuiltinPrinter ? "available" : "none",
           cfd_connected: cached?.hasBuiltinCfd ?? false,
-          created_at: currentSessionStart,
+          created_at: sessionStart,
         },
         { onConflict: "station_id" }
       );
@@ -223,10 +226,14 @@ export function startHeartbeat(
       bucket: "immediate",
       run: cancelBackgroundOfflineTimer,
     }),
+    // Deliberately NOT `requiresNetwork`: a resume that lands while Wi-Fi is
+    // still re-associating would skip this task and nothing re-armed the
+    // interval afterwards — the station stayed "offline" and the KDS
+    // device-truth buffer never flushed again that session. A tick that fails
+    // while offline is harmless; the next one succeeds.
     registerResumeTask({
       id: "hardware.heartbeat-resume",
       bucket: "interactions",
-      requiresNetwork: true,
       run: handleResume,
     }),
     registerSuspendTask({

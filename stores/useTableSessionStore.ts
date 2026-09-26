@@ -1024,11 +1024,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           if (changedIds) {
             const changedSet = new Set(changedIds);
-            let anyChanged = false;
-            let newTablesById = floorPlanState.tablesById;
+            // Copied ONCE, on the first real change — not once per table.
+            let newTablesById: typeof floorPlanState.tablesById | null = null;
 
             for (const tableId of changedIds) {
-              const existingTable = newTablesById[tableId];
+              const existingTable = floorPlanState.tablesById[tableId];
               if (!existingTable) continue;
 
               const session = sessions[tableId];
@@ -1038,19 +1038,19 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
               if (!needsUpdate) continue;
 
-              anyChanged = true;
-              const updated = session
+              newTablesById ??= { ...floorPlanState.tablesById };
+              newTablesById[tableId] = session
                 ? { ...existingTable, session }
                 : { ...existingTable, session: undefined };
-              newTablesById = { ...newTablesById, [tableId]: updated };
             }
 
-            if (!anyChanged) return;
+            if (!newTablesById) return;
 
+            const nextById = newTablesById;
             const newTables = floorPlanState.tables.map((t) =>
               changedSet.has(t.id) &&
-              newTablesById[t.id] !== floorPlanState.tablesById[t.id]
-                ? newTablesById[t.id]
+              nextById[t.id] !== floorPlanState.tablesById[t.id]
+                ? nextById[t.id]
                 : t,
             );
             useFloorPlanStore.setState({

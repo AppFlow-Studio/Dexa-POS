@@ -98,6 +98,31 @@ function serializationKey(op: ClaimedOp): string {
 let draining = false;
 
 /**
+ * Upper bound on one handler call.
+ *
+ * The Supabase fetch has no timeout, and a request that never answers kept
+ * `draining` (and this order's lock) held forever — every later nudge and
+ * interval tick returned immediately, for every order on the tablet, until the
+ * app restarted. A timeout is a RETRY: the RPCs are idempotent on the op id and
+ * the client-minted row id, so a late success followed by a resend is safe.
+ */
+const OP_DEADLINE_MS = 25_000;
+
+function withOpDeadline(
+  work: Promise<DrainOutcome>,
+  op: ClaimedOp,
+): Promise<DrainOutcome> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<DrainOutcome>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(`[LF] ${op.op} ${op.entityId} exceeded ${OP_DEADLINE_MS}ms`);
+      resolve({ kind: "retry", error: `deadline exceeded (${OP_DEADLINE_MS}ms)` });
+    }, OP_DEADLINE_MS);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
+/**
  * Drain one batch. Safe to call repeatedly; overlapping calls are ignored.
  *
  * Returns stats rather than throwing — a drain failure is a normal condition
@@ -161,7 +186,7 @@ export async function drainOnce(
             stats.attempted++;
             let outcome: DrainOutcome;
             try {
-              outcome = await handler(op);
+              outcome = await withOpDeadline(handler(op), op);
             } catch (error) {
               // A THROWN handler is treated as transient. This direction is
               // deliberate: an unexpected exception is more likely a network

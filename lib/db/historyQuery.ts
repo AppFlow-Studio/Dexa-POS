@@ -39,6 +39,72 @@ import type { HistoryOrderSummary } from "@/services/orderService";
 
 export type SqlValue = string | number | null;
 
+/**
+ * One mirror `order_items` row → the server-shaped item object the order
+ * transformer expects (`transformBroadcastToOrder`).
+ *
+ * `payload` is verbatim server JSON for a synced row, but a row written by the
+ * local-first add path carries only its open-item facts (see `addLocalItem`),
+ * so reading the payload alone gave Previous Orders a line with no name, no
+ * quantity and no price: "Unknown Item", and a receipt preview that threw on
+ * the missing quantity and took the POS to the error screen (Charcoal
+ * Gardenia S1-0008, 2026-09-25). The promoted columns always carry those
+ * fields, so they fill whatever the payload lacks.
+ *
+ * Precedence: a synced row's payload wins, so those rows read exactly as
+ * before. A local row's columns win, because every later local write —
+ * quantity, void, seat — updates the columns and never the payload.
+ */
+export function itemRowToFetchedItem(
+  row: Record<string, SqlValue>,
+): Record<string, unknown> {
+  const money = (v: SqlValue | undefined) =>
+    typeof v === "number" ? v / 100 : null;
+  const bool = (v: SqlValue | undefined) => v === 1 || v === "1";
+  const columns: Record<string, unknown> = {
+    id: row.id,
+    order_id: row.order_id,
+    menu_item_id: row.menu_item_id ?? null,
+    menu_id: row.menu_id ?? null,
+    category_id: row.category_id ?? null,
+    item_name: row.item_name ?? null,
+    category_name: row.category_name ?? null,
+    menu_name: row.menu_name ?? null,
+    quantity: typeof row.quantity === "number" ? row.quantity : 0,
+    unit_price: money(row.unit_price_minor),
+    subtotal: money(row.subtotal_minor),
+    tax_amount: money(row.tax_amount_minor),
+    cash_price: money(row.cash_unit_price_minor),
+    cash_subtotal: money(row.cash_subtotal_minor),
+    cash_tax_amount: money(row.cash_tax_amount_minor),
+    item_status: row.item_status ?? null,
+    kitchen_status: row.kitchen_status ?? null,
+    course_number: row.course_number ?? null,
+    seat_number: row.seat_number ?? null,
+    is_voided: bool(row.is_voided),
+    is_to_go: bool(row.is_to_go),
+    special_instructions: row.special_instructions ?? null,
+    selected_size_id: row.selected_size_id ?? null,
+    selected_size_name: row.selected_size_name ?? null,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+  const payload = parseJsonObject(row.payload);
+  return row._sync_status === "synced"
+    ? { ...columns, ...payload }
+    : { ...payload, ...columns };
+}
+
+function parseJsonObject(value: SqlValue | undefined): Record<string, unknown> {
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export interface HistoryQuerySpec {
   locationId: string;
   filters: HistoryOrderFilters;

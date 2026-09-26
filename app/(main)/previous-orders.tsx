@@ -37,6 +37,7 @@ import {
 import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 import {
     calculateOrderTotalsForOrder,
+    guardOrderVoid,
     useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -744,6 +745,7 @@ const PreviousOrdersScreen = () => {
   const handleVoidOrder = useCallback(
     (order: OrderProfile) => {
       if (!order.db_order_id) return;
+      if (!guardOrderVoid(order.id)) return;
       voidOrderMutation.mutate({ dbOrderId: order.db_order_id });
     },
     [voidOrderMutation],

@@ -35,8 +35,22 @@ export const ORDER_BOUND_OPS: ReadonlySet<OperationType> = new Set<OperationType
   'update_order_details',
   'fire_course',
   'apply_discount',
-  'void_discount'
+  'void_discount',
+  // A payment that can't reach the server is a charge with no record — it
+  // must be on the order screen, not buried in Settings (2026-09-25).
+  'process_payment',
+  'process_card_payment',
+  'process_cash_payment'
 ])
+
+/** Payment ops carry money already taken — they are never "Dismiss"-able. */
+export function isPaymentOp (op: Pick<OfflineOperation, 'type'>): boolean {
+  return (
+    op.type === 'process_payment' ||
+    op.type === 'process_card_payment' ||
+    op.type === 'process_cash_payment'
+  )
+}
 
 /**
  * Title for the per-item Retry chip / banner row. One short clause.
@@ -88,6 +102,17 @@ export function deriveTitle (op: OfflineOperation): string {
       return "Discount didn't apply"
     case 'void_discount':
       return "Discount removal didn't save"
+    case 'process_payment':
+    case 'process_card_payment':
+    case 'process_cash_payment': {
+      const p = ((op.params as any)?.params ?? op.params ?? {}) as Record<string, any>
+      const method = String(p.p_payment_method ?? '').toLowerCase()
+      const amount = Number(p.p_amount)
+      const amountText = Number.isFinite(amount) && amount > 0 ? ` $${amount.toFixed(2)}` : ''
+      return method === 'cash'
+        ? `Cash payment${amountText} not saved`
+        : `Card charged${amountText} — not saved`
+    }
     default:
       return 'Sync pending'
   }
@@ -200,6 +225,8 @@ export function describeBlockReason (reason: string): string {
     case 'item_not_synced':
     case 'no_local_order_id_for_item':
       return 'the item to finish syncing'
+    case 'order_ops_pending':
+      return "the order's items to reach the server"
     case 'session_not_synced':
       return 'the table session to finish syncing'
     case 'staff_id_unavailable':

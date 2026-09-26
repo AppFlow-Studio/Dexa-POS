@@ -193,6 +193,10 @@ const REMEDIES: Record<string, string> = {
   UNDEFINED_FUNCTION: 'App/server version mismatch. Report this to support.',
   ORDER_MATH_INCONSISTENT:
     "The order's totals don't add up. Reopen the check to rebuild them.",
+  PAYMENT_ORPHANED:
+    'The card was charged but its order never reached the server. Refund it on the terminal, or record it on a new order.',
+  PAYMENT_ORDER_VOID:
+    'The card was charged but the order was voided. Refund it on the terminal, or record it on a new order.',
   NOT_FOUND: 'It no longer exists — likely voided on another station. Refresh.',
   KITCHEN_ITEMS_UNRESOLVED:
     'Those items did not reach the kitchen. Re-fire them from the order.',
