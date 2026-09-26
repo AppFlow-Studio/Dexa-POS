@@ -1,5 +1,4 @@
-import ScheduleFormSheet from "@/components/menu/ScheduleFormSheet";
-import ScheduleManager from "@/components/menu/ScheduleManager";
+import { ScheduleSummary } from "@/components/menu/ScheduleSummary";
 import BottomSheet, {
     BottomSheetBackdrop,
     BottomSheetFlatList,
@@ -15,7 +14,7 @@ import {
     type MenuItemPlaceholderIconKey,
 } from "@/lib/menuItemPlaceholderIcon";
 import { bottomSheetTheme, colors } from "@/lib/theme";
-import { Category, MenuItemType, Schedule } from "@/lib/types";
+import { Category, MenuItemType } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router } from "expo-router";
@@ -47,7 +46,6 @@ import {
 interface CategoryFormData {
   name: string;
   isActive: boolean;
-  schedules: Schedule[];
   selectedItems: string[];
   customPricing: Record<string, number>;
 }
@@ -84,9 +82,6 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
 
   const [name, setName] = useState(initialData?.name || "");
   const [isActive, setIsActive] = useState(initialData?.isActive ?? true);
-  const [schedules, setSchedules] = useState<Schedule[]>(
-    initialData?.schedules || [],
-  );
   const [selectedItemIds, setSelectedItemIds] =
     useState<string[]>(initialItems);
   const [pendingCustomPrices, setPendingCustomPrices] = useState<
@@ -107,9 +102,6 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
 
   const quickSearchSheetRef = useRef<BottomSheet>(null);
   const [quickSearchQuery, setQuickSearchQuery] = useState("");
-  const scheduleSheetRef = useRef<BottomSheet>(null);
-  const [editingRule, setEditingRule] = useState<Schedule | null>(null);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const isEditMode = !!initialData;
 
@@ -120,21 +112,18 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
   useEffect(() => {
     const nameChanged = (initialData?.name || "") !== name;
     const activeChanged = (initialData?.isActive ?? true) !== isActive;
-    const schedulesChanged =
-      JSON.stringify(initialData?.schedules || []) !==
-      JSON.stringify(schedules);
     const itemsChanged =
       JSON.stringify(initialItems.sort()) !==
       JSON.stringify(selectedItemIds.sort());
     const isNewAndChanged =
       !initialData &&
-      (name !== "" || selectedItemIds.length > 0 || schedules.length > 0);
+      (name !== "" || selectedItemIds.length > 0);
     setHasChanges(
       initialData
-        ? nameChanged || activeChanged || schedulesChanged || itemsChanged
+        ? nameChanged || activeChanged || itemsChanged
         : isNewAndChanged,
     );
-  }, [name, isActive, schedules, selectedItemIds, initialData, initialItems]);
+  }, [name, isActive, selectedItemIds, initialData, initialItems]);
 
   const filteredItems = useMemo(() => {
     const q = quickSearchQuery.trim().toLowerCase();
@@ -154,7 +143,6 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
     const success = await onSubmit({
       name: name.trim(),
       isActive,
-      schedules,
       selectedItems: selectedItemIds,
       customPricing: {},
     });
@@ -171,20 +159,6 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
         ? prev.filter((id) => id !== item.id)
         : [...prev, item.id],
     );
-  };
-
-  const openScheduleSheet = (rule?: Schedule, index?: number) => {
-    setEditingRule(rule || null);
-    setEditingIndex(index ?? null);
-    scheduleSheetRef.current?.expand();
-  };
-
-  const handleSaveSchedule = (newRule: Schedule) => {
-    if (editingIndex !== null) {
-      setSchedules(schedules.map((r, i) => (i === editingIndex ? newRule : r)));
-    } else {
-      setSchedules([...schedules, newRule]);
-    }
   };
 
   const handleAddCustomPricing = (itemId: string) => {
@@ -475,12 +449,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               >
                 Schedule
               </Text>
-              <ScheduleManager
-                value={schedules}
-                onChange={setSchedules}
-                onAdd={() => openScheduleSheet()}
-                onEdit={(rule, idx) => openScheduleSheet(rule, idx)}
-              />
+              <ScheduleSummary schedules={initialData?.schedules} scale={s} />
             </View>
 
             {/* Selected items summary chips */}
@@ -1047,7 +1016,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                     color: colors.label,
                   }}
                 >
-                  {schedules.length}
+                  {initialData?.schedules?.length ?? 0}
                 </Text>
               </View>
             </View>
@@ -1083,11 +1052,6 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
         isOpen={isDialogVisible}
         onCancel={handleCancel}
         onDiscard={handleDiscard}
-      />
-      <ScheduleFormSheet
-        ref={scheduleSheetRef}
-        rule={editingRule}
-        onSave={handleSaveSchedule}
       />
 
       {/* Quick Search Sheet */}

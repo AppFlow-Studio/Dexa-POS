@@ -1,6 +1,9 @@
 import { FailedSyncsPanel } from "@/components/settings/sync-status/FailedSyncsPanel";
 import { SyncQueuePanel } from "@/components/settings/sync-status/SyncQueuePanel";
-import { menuVersionQueryKey } from "@/hooks/pos/useMenuVersionWatch";
+import {
+  fetchMenuVersion,
+  menuVersionQueryKey,
+} from "@/hooks/pos/useMenuVersionWatch";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors, spinnerColor } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
@@ -106,12 +109,9 @@ const SyncingScreen: React.FC = () => {
     if (!supabase || !locationId) return;
     setSyncingKey("menu_version");
     try {
-      const { data, error } = await supabase.rpc("get_pos_menu_version_v1", {
-        p_location_id: locationId,
-      });
-      if (error) throw error;
-
-      const remoteVersion = (data as string | null) ?? null;
+      // Same probe as the background watcher: v3 is byte-identical to the
+      // pos_sync envelope's version, so an unchanged menu really matches.
+      const remoteVersion = await fetchMenuVersion(supabase, locationId);
       const appliedVersion =
         queryClient.getQueryData<{ version?: string | null }>([
           "pos_sync",

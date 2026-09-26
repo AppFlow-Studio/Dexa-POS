@@ -137,3 +137,13 @@
 - Product rule (user, 2026-09-23): mock/demo data does not belong in the app. When asked to take it off a hot path, delete it and the assets only it used — don't move it into a new module to keep it alive (I moved `MENU_IMAGE_MAP` into `lib/menuImageMap.ts` and was corrected). Replace each fake fallback with real data or an empty state (`—`, an icon placeholder), never another sample person or number.
 - Mock data hides under other names: `mockDiscounts`, `mockApplicants`, `// --- Mock Data ---` blocks, hardcoded "Downtown Location" pickers, and demo defaults in stores (`useSettingsStore` had fake delivery partners and a funding balance). Grep for the fake values (`John Smith`, `Tom Hardy`, `Downtown`), not only for `mock`.
 - Not everything named "mock" is fake data: the Castles/Valor mock transports are a QA tool for rehearsing terminal failures; receipt-template preview samples and `lib/db/measure.ts` fixtures are deliberate. Ask before removing tools.
+
+## Suspense-based freezing and transitions don't mix
+
+- To stop hidden keep-alive tabs re-rendering, I wrapped menu management panels in a `react-freeze`-style `Freeze` (the child throws a thenable that never settles) and swapped the shown tab inside `startTransition`. The user got "Can't perform a React state update on a component that hasn't mounted yet" for `ItemGridBase`, `ModifiersPanel` and `Surface`, all below `Suspender`.
+- Cause: freezing the outgoing tab suspends a Suspense boundary that is already showing content. Inside a transition, React keeps the old screen and waits for the thenable rather than hiding revealed content. A thenable that never settles means the transition can't commit, so React keeps rendering the incoming panel in work-in-progress trees that never mount. The only way out is lane expiry, a multi-second stall that React then forces through synchronously.
+- Rule: never suspend already-revealed content inside a transition. A never-settling freeze thenable is the extreme case. If you freeze, toggle it outside any transition. On low-end tablets, prefer mounting only the visible tab and making remounts cheap: shared module-level derivation caches, view state in a store, and a remembered scroll position. That removes the hidden re-renders and the memory with no Suspense involved.
+
+## Filters narrow a list; they don't change its layout
+
+- The menu management Items grid dropped its A–Z letter headers whenever a status pill or a search was active. I thought the headers were noise for a short list. The user read it as "items are not sorted by alphabet when we switch filter pills", even though the order never changed. Keep structural grouping stable across filters: a filter changes which rows show, not how the list is organised.

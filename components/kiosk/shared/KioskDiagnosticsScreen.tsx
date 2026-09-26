@@ -14,6 +14,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
 import {
     MENU_VERSION_POLL_MS,
+    fetchMenuVersion,
     menuVersionQueryKey,
 } from "@/hooks/pos/useMenuVersionWatch";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -205,13 +206,12 @@ export function KioskDiagnosticsScreen({
     if (!menuVersionSupabase || !locationId) return;
     setCheckingMenu(true);
     try {
-      const { data, error } = await menuVersionSupabase.rpc(
-        "get_pos_menu_version_v1",
-        { p_location_id: locationId },
+      // Same probe as the background watcher: v3 is byte-identical to the
+      // pos_sync envelope's version, so an unchanged menu really matches.
+      const remoteVersion = await fetchMenuVersion(
+        menuVersionSupabase,
+        locationId,
       );
-      if (error) throw error;
-
-      const remoteVersion = (data as string | null) ?? null;
       const appliedVersion =
         menuQueryClient.getQueryData<{ version?: string | null }>([
           "pos_sync",

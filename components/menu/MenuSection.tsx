@@ -66,8 +66,10 @@ import MenuControls from "./MenuControls";
 import MenuStaleBanner from "./MenuStaleBanner";
 import MenuUnavailableState from "./MenuUnavailableState";
 import { useVisibleMenus } from "@/hooks/menu/useVisibleMenus";
+import { useScheduleClock } from "@/hooks/useScheduleClock";
 import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
+import { getCategoryLockState } from "@/lib/menu/categoryLockState";
 import MenuItem from "./MenuItem";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
 import OpenItemAdder from "./OpenItemAdder";
@@ -307,6 +309,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     (s) => s.temporaryActiveCategories,
   );
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
+  const isCategoryActiveForMenu = useMenuStore(
+    (s) => s.isCategoryActiveForMenu,
+  );
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
   const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
   const menuNavigationMode = useSettingsStore(
@@ -513,12 +518,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const isOrderTypeDrawerOpen = useOrderTypeDrawerStore((s) => s.isOpen);
   const closeDrawer = useOrderTypeDrawerStore((s) => s.closeDrawer);
 
-  // Tick each minute to refresh availability indicators
-  const [availabilityTick, setAvailabilityTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setAvailabilityTick((t) => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // Wall clock to the minute. Passed as `at` to the schedule getters so every
+  // availability memo/effect below re-evaluates when a window opens or closes
+  // (the getters themselves are stable store methods).
+  const now = useScheduleClock();
 
   const [activeTab, setActiveTab] = useState("Menu");
 
@@ -562,9 +565,27 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     () =>
       visibleMenus.filter(
         (menu) =>
-          isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name),
+          isMenuAvailableNow(menu.id, now) ||
+          temporaryActiveMenuSet.has(menu.name),
       ),
-    [visibleMenus, isMenuAvailableNow, temporaryActiveMenuSet],
+    [visibleMenus, isMenuAvailableNow, temporaryActiveMenuSet, now],
+  );
+
+  // The category to land on when opening `menu`: the first one the operator
+  // can actually use right now (on schedule, or unlocked by a manager grant),
+  // so a menu switch never opens onto a locked, empty grid. Falls back to the
+  // first category when none is open.
+  const firstOpenCategoryName = useCallback(
+    (menu: (typeof menus)[number]) => {
+      const open = menu.categories.find(
+        (category) =>
+          temporaryActiveMenuSet.has(menu.name) ||
+          temporaryActiveCategorySet.has(category.name) ||
+          isCategoryAvailableNow(category.id, menu.id, now),
+      );
+      return (open ?? menu.categories[0])?.name || "";
+    },
+    [isCategoryAvailableNow, now, temporaryActiveCategorySet, temporaryActiveMenuSet],
   );
 
   useEffect(() => {
@@ -600,7 +621,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       const lastMenu = menusById.get(lastSelectedMenuId);
       if (
         lastMenu &&
-        (isMenuAvailableNow(lastMenu.id) ||
+        (isMenuAvailableNow(lastMenu.id, now) ||
           temporaryActiveMenuSet.has(lastMenu.name))
       ) {
         return lastMenu;
@@ -624,7 +645,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
   const [activeCategory, setActiveCategory] = useState<string | null>(() => {
     const startMenu = getPreferredMenu();
-    return startMenu ? startMenu.categories[0]?.name || "" : null;
+    return startMenu ? firstOpenCategoryName(startMenu) : null;
   });
 
   const activeCategoryEntry = useMemo(
@@ -669,7 +690,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       // Keep the current menu as long as it's available — items may still be loading
       if (currentMenu) {
         const isAvailable =
-          isMenuAvailableNow(currentMenu.id) ||
+          isMenuAvailableNow(currentMenu.id, now) ||
           temporaryActiveMenuSet.has(currentMenu.name);
         if (isAvailable) return;
       }
@@ -683,7 +704,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       // Switch to next available with items
       if (activeMeal !== nextAvailable.name) {
         setActiveMeal(nextAvailable.name);
-        setActiveCategory(nextAvailable.categories[0]?.name || "");
+        setActiveCategory(firstOpenCategoryName(nextAvailable));
       }
     } else {
       // Nothing available: Show graceful "No Menu" state
@@ -696,12 +717,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   }, [
     activeMeal,
     menus,
-    // isMenuAvailableNow intentionally omitted: it's a store method whose reference
-    // changes on every store update, causing an infinite loop when included here.
-    // The function itself is stable in behavior — only its JS reference is unstable.
+    // Store getters are stable references; `now` is what re-runs this when a
+    // menu's schedule window opens or closes.
     temporaryActiveMenus,
     temporaryActiveMenuSet,
-    availabilityTick,
+    now,
     lastSelectedMenuId,
     menusByName,
   ]);
@@ -718,11 +738,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       setActiveTab("Menu");
       setActiveMeal(value);
       const menu = menusByName.get(value);
-      setActiveCategory(menu?.categories[0]?.name || "");
+      setActiveCategory(menu ? firstOpenCategoryName(menu) : "");
       // Persist selection
       if (menu) setLastSelectedMenuId(menu.id);
     },
-    [menusByName, setLastSelectedMenuId],
+    [firstOpenCategoryName, menusByName, setLastSelectedMenuId],
   );
 
   const openSearch = useSearchStore((state) => state.openSearch);
@@ -741,13 +761,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     const applySelection = () => {
       setActiveTab("Menu");
       setActiveMeal(menuName);
-      setActiveCategory(menu.categories[0]?.name || "");
+      setActiveCategory(firstOpenCategoryName(menu));
       setIsMenuDialogOpen(false);
       setLastSelectedMenuId(menu.id);
     };
 
     const isAvailable =
-      isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name);
+      isMenuAvailableNow(menu.id, now) || temporaryActiveMenuSet.has(menu.name);
 
     if (isAvailable) {
       applySelection();
@@ -784,7 +804,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
       const isAvailable =
         menuAlreadyApproved ||
-        isMenuAvailableNow(menu.id) ||
+        isMenuAvailableNow(menu.id, now) ||
         temporaryActiveMenuSet.has(menu.name);
 
       // Each lock is cleared on its own — no global "manager is unlocked" state.
@@ -804,7 +824,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         // so a still-valid unlock doesn't re-prompt on every tap.
         temporaryActiveCategorySet.has(categoryName) ||
         temporaryActiveMenuSet.has(menu.name) ||
-        (isCategoryAvailableNow(categoryName) &&
+        (!!category &&
+          isCategoryAvailableNow(category.id, menu.id, now) &&
           useMenuStore.getState().isCategoryActiveForMenu(menu.id, categoryKey));
 
       if (!isCategoryAvailable) {
@@ -824,6 +845,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       isCategoryAvailableNow,
       isMenuAvailableNow,
       menusByName,
+      now,
       temporaryActiveCategorySet,
       requestPinOverride,
       setLastSelectedMenuId,
@@ -860,7 +882,29 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     if (staleMenus.length || staleCategories.length) {
       store.revokeTemporaryAccess(staleMenus, staleCategories);
     }
-  }, [activeMeal, activeCategory, overrideTimeoutMinutes, availabilityTick]);
+  }, [activeMeal, activeCategory, overrideTimeoutMinutes, now]);
+
+  // The active category's window closed while it was on screen (or the grant
+  // that opened it expired): move to the first category that is still open
+  // rather than leaving an empty grid. Stays put when nothing else is open.
+  useEffect(() => {
+    if (!activeMenu || !activeCategoryEntry) return;
+    const stillOpen =
+      temporaryActiveMenuSet.has(activeMenu.name) ||
+      temporaryActiveCategorySet.has(activeCategoryEntry.name) ||
+      isCategoryAvailableNow(activeCategoryEntry.id, activeMenu.id, now);
+    if (stillOpen) return;
+    const next = firstOpenCategoryName(activeMenu);
+    if (next && next !== activeCategoryEntry.name) setActiveCategory(next);
+  }, [
+    activeMenu,
+    activeCategoryEntry,
+    firstOpenCategoryName,
+    isCategoryAvailableNow,
+    now,
+    temporaryActiveCategorySet,
+    temporaryActiveMenuSet,
+  ]);
 
   const filteredMenuItems = useMemo(() => {
     // TEMP(menu-override-debug): remove once the empty-grid report is resolved.
@@ -894,7 +938,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     const unlockedByOverride =
       temporaryActiveCategorySet.has(activeCategory) ||
       (!!activeMeal && temporaryActiveMenuSet.has(activeMeal));
-    const scheduleAllows = isCategoryAvailableNow(activeCategory);
+    const scheduleAllows = isCategoryAvailableNow(
+      activeCategoryEntry.id,
+      activeMenu?.id,
+      now,
+    );
     if (!scheduleAllows && !unlockedByOverride) {
       debug("bail:category-gate", { scheduleAllows, unlockedByOverride });
       return [];
@@ -924,11 +972,12 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     activeCategory,
     activeCategoryEntry,
     activeMeal,
+    activeMenu,
     isCategoryAvailableNow,
     temporaryActiveCategorySet,
     temporaryActiveMenuSet,
     visibleMenus,
-    availabilityTick,
+    now,
   ]);
   const numColumns = 5;
   // NOTE: no last-row spacer padding here (the FlatList-era hack). FlashList's
@@ -1203,7 +1252,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 >
                   {visibleMenus.map((menu) => {
                     const isAvailable =
-                      isMenuAvailableNow(menu.id) ||
+                      isMenuAvailableNow(menu.id, now) ||
                       temporaryActiveMenuSet.has(menu.name);
                     const isScheduled =
                       menu.schedules && menu.schedules.length > 0;
@@ -1336,6 +1385,20 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                   : category?.name || "Category";
                               const isSelectedCategory =
                                 isSelected && activeCategory === categoryLabel;
+                              const {
+                                isScheduled: isCategoryScheduled,
+                                isNormallyAvailable: isCategoryOnSchedule,
+                                hasOverride: isCategoryUnlocked,
+                                showLock: isCategoryLocked,
+                              } = getCategoryLockState({
+                                category,
+                                menu,
+                                at: now,
+                                isCategoryAvailableNow,
+                                isCategoryActiveForMenu,
+                                grantedCategories: temporaryActiveCategorySet,
+                                grantedMenus: temporaryActiveMenuSet,
+                              });
 
                               return (
                                 <TouchableOpacity
@@ -1347,6 +1410,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                     )
                                   }
                                   style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    gap: sc(4),
                                     paddingHorizontal: sc(10),
                                     paddingVertical: sc(4),
                                     borderRadius: sc(12),
@@ -1357,9 +1423,24 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                     borderColor: isSelectedCategory
                                       ? colors.teal + "70"
                                       : colors.border,
+                                    opacity:
+                                      isCategoryLocked && !isSelectedCategory
+                                        ? 0.7
+                                        : 1,
                                   }}
                                   activeOpacity={0.78}
                                 >
+                                  {isCategoryLocked && (
+                                    <Lock size={sc(10)} color={colors.muted} />
+                                  )}
+                                  {isCategoryScheduled &&
+                                    !isCategoryOnSchedule &&
+                                    isCategoryUnlocked && (
+                                      <Clock
+                                        size={sc(10)}
+                                        color={colors.teal}
+                                      />
+                                    )}
                                   <Text
                                     style={{
                                       fontSize: sc(12),

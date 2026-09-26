@@ -164,9 +164,7 @@ app/
 | `tables/edit-layout.tsx:262` | Floor Plan Editor | Tap (Gesture.Tap) | Canvas background | Clears current table selection | Always | Partially | High |
 | `tables/edit-layout.tsx:266` | Floor Plan Editor | Simultaneous(pinch, pan, tap) | Canvas | All three work together | Always | N/A | High |
 | **MENU EDITOR** ||||||||
-| `menu/index.tsx:205` | Menu Editor | Pan (Gesture.Pan) | Category row | Drag to reorder categories | Edit mode | Partially — drag handle visible | High |
-| `menu/index.tsx:441` | Menu Editor | Pan (Gesture.Pan) | Submenu row | Drag to reorder submenus | Edit mode | Partially | High |
-| `components/menu/DraggableMenuItem.tsx:108` | Menu Editor | Pan (Gesture.Pan) | Menu item row | Drag to reorder items (scale 1.05x during drag) | Edit mode | Partially — drag handle visible | High |
+| `components/menu/management/ReorderList.tsx` | Menu Editor | Long-press / handle drag (DraggableFlatList) | Menu, category-in-menu, item-in-category and modifier-group rows | Drag to reorder; each drop saves | Reorder mode (toolbar "Reorder") | Yes — explicit mode with grip handles | High |
 | **SCHEDULING** ||||||||
 | `components/scheduling/DraggableShift.tsx:75` | Scheduling Dashboard | Pan (4-stage) | Shift chip | Drag shift to new employee/date cell; collision detection per-frame | Always | Partially — chip looks draggable | High |
 | `components/scheduling/DraggableTemplateShift.tsx:73` | Schedule Templates | Pan (4-stage) | Template shift chip | Drag template shift to new cell | Always | Partially | High |
@@ -202,7 +200,7 @@ app/
 | `hooks/orders/useTipAdjustMutation.ts:235,263` | Tip adjustment | Haptic notification | N/A | Success/Error on tip adjust | After tip adjust | Yes (tactile) | High |
 | **PULL-TO-REFRESH** ||||||||
 | `components/panels/TablesPanel.tsx:463` | Tables Panel | RefreshControl | FlatList | Refreshes table list | Always | Yes | High |
-| `menu/index.tsx:1006,1058,1373,1564` | Menu Editor (4 tabs) | RefreshControl | FlatList (x4) | Refreshes menus/categories/items/modifiers | Always | Yes | High |
+| `components/menu/management/MenuManagementTabs.tsx` | Menu Editor | Refresh button | Tab strip | Refetches the menu from the server | Always | Yes | High |
 | `settings/end-of-day.tsx:450,463,479,487,496` | EOD Wizard (5 steps) | onRefresh button | Step areas | Refreshes EOD data | Always | Yes | High |
 | `components/menu/PreviousOrdersSection.tsx:483` | Previous Orders Section | RefreshControl | FlatList | Refreshes orders | Always | Yes | High |
 | `components/menu/OrdersTable.tsx:575` | Orders Table | RefreshControl | FlatList | Refreshes orders | When onRefresh prop provided | Yes | High |

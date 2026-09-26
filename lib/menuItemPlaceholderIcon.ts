@@ -84,3 +84,14 @@ export function getMenuItemPlaceholderIcon (
   const resolvedKey = key ?? DEFAULT_MENU_ITEM_PLACEHOLDER_ICON
   return MENU_ITEM_PLACEHOLDER_ICON_COMPONENTS[resolvedKey]
 }
+
+/** The placeholder icon for an item with no image: explicit key, else the one encoded in cardBgColor. */
+export function getItemPlaceholderIcon (item: {
+  placeholderIcon?: string
+  cardBgColor?: string
+}): LucideIcon {
+  const key =
+    (item.placeholderIcon as MenuItemPlaceholderIconKey | undefined) ??
+    extractMenuItemPlaceholderIconKey(item.cardBgColor)
+  return getMenuItemPlaceholderIcon(key)
+}

@@ -9,7 +9,7 @@ import {
 import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
-import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
+import { useMenuManagementUiStore } from "@/stores/useMenuManagementUiStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
@@ -31,7 +31,7 @@ const EditCategoryScreen: React.FC = () => {
     useIsSingleLocation();
   const { canWrite } = useMenuWriteGate();
   const [isSaving, setIsSaving] = useState(false);
-  const setMenuTab = useMenuManagementSearchStore((s) => s.setActiveTab);
+  const setMenuTab = useMenuManagementUiStore((s) => s.setActiveTab);
 
   const existing = useMemo(
     () => categories.find((c) => c.id === id),
@@ -111,7 +111,6 @@ const EditCategoryScreen: React.FC = () => {
       updateCategory(existing.id, {
         name: data.name,
         isActive: data.isActive,
-        schedules: data.schedules,
       });
 
       // 3. Update Items (Diffing) - handle additions/removals

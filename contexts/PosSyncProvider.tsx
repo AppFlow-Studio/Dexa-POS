@@ -5,7 +5,10 @@ import { useAutoSettlementScheduler } from "@/hooks/pos/useAutoSettlementSchedul
 import { isAutoSettleSupportedType } from "@/services/autoSettlementScheduler";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
-import { useMenuVersionWatch } from "@/hooks/pos/useMenuVersionWatch";
+import {
+  menuVersionQueryKey,
+  useMenuVersionWatch,
+} from "@/hooks/pos/useMenuVersionWatch";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
@@ -1158,6 +1161,32 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       }),
 
       // --- interactions: config refresh + terminal pre-warm ------------------
+      registerResumeTask({
+        id: "pos.menu-version-probe",
+        bucket: "interactions",
+        requiresNetwork: true,
+        // A menu/schedule edit made in the dashboard while the tablet slept
+        // should land on wake, not up to five minutes later. Only the cheap
+        // probe re-runs; useMenuVersionWatch refetches the menu if it moved.
+        // Skipped when the probe ran in the last minute (brief
+        // background/foreground cycles).
+        shouldRun: () => {
+          if (isKDS) return false;
+          const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+          if (!locationId) return false;
+          const probe = queryClient.getQueryState(
+            menuVersionQueryKey(locationId),
+          );
+          return Date.now() - (probe?.dataUpdatedAt ?? 0) > 60 * 1000;
+        },
+        run: () => {
+          const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+          if (!locationId) return;
+          void queryClient.invalidateQueries({
+            queryKey: menuVersionQueryKey(locationId),
+          });
+        },
+      }),
       registerResumeTask({
         id: "pos.store-settings-refresh",
         bucket: "interactions",

@@ -1,12 +1,10 @@
-import ScheduleFormSheet from "@/components/menu/ScheduleFormSheet";
-import ScheduleManager from "@/components/menu/ScheduleManager";
+import { ScheduleSummary } from "@/components/menu/ScheduleSummary";
 import AppNoticeModal from "@/components/ui/AppNoticeModal";
-import BottomSheet from "@/components/ui/bottomSheet";
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { colors } from "@/lib/theme";
-import { Menu, Schedule } from "@/lib/types";
+import { Menu } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router } from "expo-router";
@@ -82,10 +80,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
         )
       : [],
   );
-  const [schedules, setSchedules] = useState<Schedule[]>(
-    initialData?.schedules || [],
-  );
-
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -100,10 +94,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
     hasChanges && !hasSavedRef.current,
   );
 
-  const scheduleSheetRef = useRef<BottomSheet>(null);
-  const [editingRule, setEditingRule] = useState<Schedule | null>(null);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-
   useEffect(() => {
     Keyboard.dismiss();
   }, []);
@@ -115,29 +105,17 @@ const MenuForm: React.FC<MenuFormProps> = ({
     const catsChanged =
       JSON.stringify((initialData?.categories || []).sort()) !==
       JSON.stringify(selectedCategories.sort());
-    const schedulesChanged =
-      JSON.stringify(initialData?.schedules || []) !==
-      JSON.stringify(schedules);
 
     const isNewAndChanged =
       !initialData &&
-      (name !== "" ||
-        description !== "" ||
-        selectedCategories.length > 0 ||
-        schedules.length > 0);
+      (name !== "" || description !== "" || selectedCategories.length > 0);
 
     if (initialData) {
-      setHasChanges(
-        nameChanged ||
-          descChanged ||
-          activeChanged ||
-          catsChanged ||
-          schedulesChanged,
-      );
+      setHasChanges(nameChanged || descChanged || activeChanged || catsChanged);
     } else {
       setHasChanges(isNewAndChanged);
     }
-  }, [name, description, isActive, selectedCategories, schedules, initialData]);
+  }, [name, description, isActive, selectedCategories, initialData]);
 
   const availableCategories = useMemo(
     () =>
@@ -193,7 +171,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
       description: description.trim() || undefined,
       isActive,
       categories: selectedCategories,
-      schedules,
     };
     const success = await onSubmit(formData);
     if (success) {
@@ -213,20 +190,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
 
   const previewItems = getPreviewItems();
   const totalItems = Object.values(previewItems).flat().length;
-
-  const openScheduleSheet = (rule?: Schedule, index?: number) => {
-    setEditingRule(rule || null);
-    setEditingIndex(index ?? null);
-    scheduleSheetRef.current?.expand();
-  };
-
-  const handleSaveSchedule = (newRule: Schedule) => {
-    if (editingIndex !== null) {
-      setSchedules(schedules.map((r, i) => (i === editingIndex ? newRule : r)));
-    } else {
-      setSchedules([...schedules, newRule]);
-    }
-  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.panel }}>
@@ -501,12 +464,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
               >
                 Schedules
               </Text>
-              <ScheduleManager
-                value={schedules}
-                onChange={setSchedules}
-                onAdd={() => openScheduleSheet()}
-                onEdit={(rule, idx) => openScheduleSheet(rule, idx)}
-              />
+              <ScheduleSummary schedules={initialData?.schedules} scale={s} />
             </View>
 
             {/* Categories */}
@@ -1039,7 +997,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
                     color: colors.label,
                   }}
                 >
-                  {schedules.length}
+                  {initialData?.schedules?.length ?? 0}
                 </Text>
               </View>
             </View>
@@ -1220,12 +1178,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
         title={validationNotice?.title || ""}
         description={validationNotice?.description || ""}
         variant="warning"
-      />
-
-      <ScheduleFormSheet
-        ref={scheduleSheetRef}
-        rule={editingRule}
-        onSave={handleSaveSchedule}
       />
     </View>
   );
