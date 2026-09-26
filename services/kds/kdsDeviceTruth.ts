@@ -21,12 +21,16 @@
 //     persisted per display); the server's unique index
 //     (kds_display_id, order_item_id, event_type, client_event_at) makes a
 //     replayed buffer a no-op instead of a duplicate.
-//   - Each item is emitted at most once per display within SEEN_TTL_MS. The
+//   - Each (item, fire epoch) is emitted as `arrived` at most once per display
+//     within SEEN_TTL_MS — the same identity the server's kds_routing_log
+//     uses (order_item_id, kds_display_id, fired_at), so a genuinely re-fired
+//     item gets a fresh row while a bump/recall/re-render does not. The
 //     seen-sets are persisted too: before 2026-09-26 they were per app
 //     session, so every remount re-emitted the WHOLE persisted board with one
 //     fresh client second — the HQ panel then reported the last remount as
-//     "device received". The diff only asks "has this display ever
-//     arrived/acked this item"; a re-render after a remount is not a delivery.
+//     "device received". A storage wipe (station logout) drops the sets and
+//     the board is re-claimed with source=mount; the server keeps the
+//     originals and its reader takes the first, so nothing is lost.
 //   - Every `arrived` carries the delivery path (`source`) that put the ticket
 //     on the board, so HQ can tell a broadcast from a poll, a reconnect, a
 //     resume, or a rehydrated board.
@@ -227,14 +231,19 @@ function enqueue(
 /**
  * The item's ticket arrived from the server into the KDS store.
  * `source` is the path that put it there (see KdsArrivalSource).
+ * `fireEpochMs` is the ticket's fire time: it scopes the once-per-item claim
+ * to this routing event, mirroring kds_routing_log's (item, display, fired_at).
  */
 export function markKdsItemArrived(
   orderItemId: string,
   orderId: string | null,
-  source: KdsArrivalSource = "unknown"
+  source: KdsArrivalSource = "unknown",
+  fireEpochMs?: number
 ): void {
-  if (!orderItemId || !kdsDisplayId || seenArrived.has(orderItemId)) return;
-  seenArrived.set(orderItemId, Date.now());
+  if (!orderItemId || !kdsDisplayId) return;
+  const seenKey = fireEpochMs ? `${orderItemId}@${fireEpochMs}` : orderItemId;
+  if (seenArrived.has(seenKey)) return;
+  seenArrived.set(seenKey, Date.now());
   enqueue(orderItemId, orderId, "arrived", source);
 }
 

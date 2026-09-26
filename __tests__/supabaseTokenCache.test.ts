@@ -22,6 +22,7 @@ import {
   __resetSupabaseTokenCacheForTest,
   getCachedTokenExpMs,
   getSupabaseAccessToken,
+  getSupabaseSessionState,
   MINT_DEADLINE_MS,
   PROACTIVE_LEAD_MS,
   REFRESH_MARGIN_MS,
@@ -196,11 +197,16 @@ describe("supabaseTokenCache", () => {
     setClerkGetToken(getToken);
     setRealtimeAuthTarget({ realtime: { setAuth } });
 
+    // Session state is the realtime hook's auth-error exit: 'unknown' before
+    // Clerk answers, 'active' with a token, 'none' once Clerk says signed out.
+    expect(getSupabaseSessionState()).toBe("unknown");
     await getSupabaseAccessToken();
+    expect(getSupabaseSessionState()).toBe("active");
     signedOut = true;
     jest.advanceTimersByTime(TOKEN_LIFETIME_MS - REFRESH_MARGIN_MS + 1_000);
     expect(await getSupabaseAccessToken()).toBeNull();
     expect(getCachedTokenExpMs()).toBe(0);
+    expect(getSupabaseSessionState()).toBe("none");
 
     // No proactive push for a dead session.
     await jest.advanceTimersByTimeAsync(TOKEN_LIFETIME_MS);

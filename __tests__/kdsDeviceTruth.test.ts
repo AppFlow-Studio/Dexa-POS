@@ -279,6 +279,26 @@ describe("kdsDeviceTruth emitter", () => {
       expect(payloadOf(rpc).p_app_version).toBe("1.0.1");
     });
 
+    it("claims a re-FIRED item again (new fire epoch) but not a re-rendered one", async () => {
+      const { rpc, client } = makeSupabase();
+      setKdsDeviceTruthContext("display-1", "dev-1", "1.0.0");
+      markKdsItemArrived("item-1", "order-1", "broadcast", 1_000);
+      markKdsItemArrived("item-1", "order-1", "poll", 1_000); // same routing event
+      await flushKdsDeviceTruth(client);
+      expect(payloadOf(rpc).p_events).toHaveLength(1);
+
+      // Same item routed again with a later fire time = a new server-side
+      // routing row (item, display, fired_at) = a new delivery to measure.
+      markKdsItemArrived("item-1", "order-1", "broadcast", 2_000);
+      await flushKdsDeviceTruth(client);
+      expect(rpc).toHaveBeenCalledTimes(2);
+      expect(payloadOf(rpc, 1).p_events[0]).toMatchObject({
+        order_item_id: "item-1",
+        event_type: "arrived",
+        source: "broadcast",
+      });
+    });
+
     it("keeps persisted state per display", async () => {
       const { rpc, client } = makeSupabase();
       setKdsDeviceTruthContext("display-1", "dev-1", "1.0.0");

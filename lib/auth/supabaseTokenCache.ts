@@ -57,6 +57,13 @@ let realtimeTarget: RealtimeAuthTarget | null = null;
 
 let cachedToken: string | null = null;
 let cachedTokenExpMs = 0;
+/**
+ * 'unknown' until Clerk has answered once; 'active' while we hold a token;
+ * 'none' after Clerk answered null (signed out / session revoked). Lets the
+ * realtime hook idle instead of re-joining with no credentials.
+ */
+export type SupabaseSessionState = "unknown" | "active" | "none";
+let sessionState: SupabaseSessionState = "unknown";
 let inFlight: Promise<string | null> | null = null;
 /** After a deadline/failure, the next mint bypasses Clerk's in-flight dedupe. */
 let forceNextMint = false;
@@ -78,6 +85,10 @@ export function setRealtimeAuthTarget(target: RealtimeAuthTarget | null): void {
 /** Epoch ms of the cached token's `exp` (0 when nothing is cached). */
 export function getCachedTokenExpMs(): number {
   return cachedTokenExpMs;
+}
+
+export function getSupabaseSessionState(): SupabaseSessionState {
+  return sessionState;
 }
 
 export function decodeJwtExpMs(token: string): number {
@@ -135,6 +146,7 @@ function cacheToken(token: string | null): void {
     const exp = decodeJwtExpMs(token);
     if (cachedToken && exp !== 0 && exp < cachedTokenExpMs) return;
     cachedToken = token;
+    sessionState = "active";
     // Undecodable exp -> treat as immediately stale (0) so we never pin a
     // token we can't reason about; the per-call path then re-mints each time.
     cachedTokenExpMs = exp;
@@ -149,6 +161,7 @@ function cacheToken(token: string | null): void {
     // Signed out / no session: drop the dead token and stop refreshing.
     cachedToken = null;
     cachedTokenExpMs = 0;
+    sessionState = "none";
     clearProactiveTimer();
   }
 }
@@ -301,6 +314,7 @@ export async function pushTokenToRealtime(): Promise<void> {
 export function clearSupabaseTokenCache(): void {
   cachedToken = null;
   cachedTokenExpMs = 0;
+  sessionState = "unknown";
   inFlight = null;
   forceNextMint = false;
   mintStalledSince = null;

@@ -2668,7 +2668,14 @@ const KitchenDisplayScreen = () => {
     const source = useKDSStore.getState()._lastTicketSource;
     for (const ticket of allTickets) {
       for (const item of ticket.items ?? []) {
-        if (item.id) markKdsItemArrived(item.id, ticket.db_order_id, source);
+        if (item.id) {
+          markKdsItemArrived(
+            item.id,
+            ticket.db_order_id,
+            source,
+            ticket.start_time_epoch,
+          );
+        }
       }
     }
   }, [allTickets]);

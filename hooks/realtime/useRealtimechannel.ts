@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as Sentry from '@sentry/react-native';
 import { registerResumeTask } from '@/lib/lifecycle/appLifecycleCoordinator';
+import { getSupabaseSessionState } from '@/lib/auth/supabaseTokenCache';
 import {
   KEY_RT_CHANNEL_DISCONNECT,
   KEY_RT_CHANNEL_SUBSCRIBED,
@@ -104,6 +105,9 @@ export function useRealtimeChannel<T>({
   const shouldBeConnectedRef = useRef(false);
   const statusRef = useRef<ChannelState>('CLOSED');
   const isIntentionalCloseRef = useRef(false);
+  // True while we are deliberately NOT joining because Clerk reported no
+  // session. Keeps subscribe()'s finally-block from re-entering immediately.
+  const authWaitRef = useRef(false);
   // Pending requestAnimationFrame handles for deferred broadcast dispatch, so
   // they can be cancelled on teardown (otherwise a frame scheduled just before
   // unmount/disconnect still fires its callback after the channel is gone).
@@ -208,6 +212,27 @@ export function useRealtimeChannel<T>({
         return;
       }
 
+      // Auth-aware exit: Clerk answered "no session" (signed out / revoked).
+      // The layout redirects to /login and unmounts us within the ClerkGate
+      // grace window; until then, do not hammer the socket with credential-
+      // less joins — idle and re-check every MAX_BACKOFF_MS instead. A token
+      // that exists but is REJECTED is deliberately not treated as an exit:
+      // that is the transient-mint case, and each retry mints a fresh one.
+      if (getSupabaseSessionState() === 'none') {
+        authWaitRef.current = true;
+        updateStatus({
+          state: 'CHANNEL_ERROR',
+          lastError: new Error('No auth session — waiting for sign-in'),
+        });
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null;
+          authWaitRef.current = false;
+          if (shouldBeConnectedRef.current) subscribeRef.current();
+        }, MAX_BACKOFF_MS);
+        return;
+      }
+
       // Create new channel with private config
       const channel = supabaseClient.channel(topic, {
         config: { private: true },
@@ -277,7 +302,11 @@ export function useRealtimeChannel<T>({
       if (subscribePromiseRef.current === promise) {
         subscribePromiseRef.current = null;
       }
-      if (shouldBeConnectedRef.current && !channelRef.current) {
+      if (
+        shouldBeConnectedRef.current &&
+        !channelRef.current &&
+        !authWaitRef.current
+      ) {
         subscribeRef.current();
       }
     });
@@ -351,6 +380,7 @@ export function useRealtimeChannel<T>({
     shouldBeConnectedRef.current = false;
     subscriptionAttemptRef.current += 1;
     isIntentionalCloseRef.current = true;
+    authWaitRef.current = false;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
