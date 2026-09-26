@@ -1,3 +1,4 @@
+import type { KdsArrivalSource } from "@/services/kds/kdsDeviceTruth";
 import type {
     BroadcastOrderData,
     BroadcastOrderItemData,
@@ -136,6 +137,12 @@ interface KDSState {
 
   // Last fetched location (for error recovery refetches)
   _lastLocationId: string | null;
+  /**
+   * Delivery path of the most recent write to `tickets`. Read by the KDS
+   * screen's arrival effect so kds_device_events can tell a broadcast from a
+   * poll, a reconnect, a resume, or a rehydrated (already-present) board.
+   */
+  _lastTicketSource: KdsArrivalSource;
 
   // Bulk mode
   bulkMode: boolean;
@@ -166,8 +173,15 @@ interface KDSState {
     displayId: string,
     patch: KDSDisplayPatch,
   ) => Promise<boolean>;
-  fetchTickets: (locationId: string) => Promise<void>;
-  _backgroundFetchTickets: (locationId: string) => Promise<void>;
+  /** `source` = what put the tickets on the board; recorded on device-truth `arrived` events. */
+  fetchTickets: (
+    locationId: string,
+    source?: Extract<KdsArrivalSource, "mount" | "manual">,
+  ) => Promise<void>;
+  _backgroundFetchTickets: (
+    locationId: string,
+    source?: Extract<KdsArrivalSource, "poll" | "reconnect" | "resume" | "broadcast">,
+  ) => Promise<void>;
   _fetchTicketsForOrder: (
     locationId: string,
     orderId: string,
@@ -181,7 +195,11 @@ interface KDSState {
   _processOrderBroadcast: (payload: OrderBroadcastPayload) => void;
   nowEpochMs: number;
   incrementTimerTick: () => void;
-  scheduleRefetch: (locationId: string, immediate?: boolean) => void;
+  scheduleRefetch: (
+    locationId: string,
+    immediate?: boolean,
+    source?: "broadcast",
+  ) => void;
   _scheduleOrderRefetch: (
     locationId: string,
     orderId: string,
@@ -1632,6 +1650,7 @@ export const useKDSStore = create<KDSState>()(
       prepStations: {},
       enrichedRules: [],
       _lastLocationId: null,
+      _lastTicketSource: "rehydrate",
 
       // New-order callback
       _onNewOrderCallback: null,
@@ -1875,7 +1894,7 @@ export const useKDSStore = create<KDSState>()(
       },
 
       // ─── Fetch Tickets ────────────────────────────────────────────
-      fetchTickets: async (locationId: string) => {
+      fetchTickets: async (locationId: string, source = "manual") => {
         const client = getClient();
         if (!client) return;
 
@@ -2047,6 +2066,7 @@ export const useKDSStore = create<KDSState>()(
             doneTickets: nextDoneTickets,
             doneCount: nextDoneTickets.length,
             ...bucketed,
+            _lastTicketSource: source,
             _hasHydrated: true,
             isInitialLoading: false,
             isFetching: false,
@@ -2063,7 +2083,7 @@ export const useKDSStore = create<KDSState>()(
 
       // Background fetch — only sets isFetching, never isInitialLoading.
       // Used by scheduleRefetch and polling to avoid skeleton flashes.
-      _backgroundFetchTickets: async (locationId: string) => {
+      _backgroundFetchTickets: async (locationId: string, source = "poll") => {
         // In-flight guard: skip if another background fetch is running
         if (_fetchInFlight) return;
         _fetchInFlight = true;
@@ -2351,6 +2371,7 @@ export const useKDSStore = create<KDSState>()(
             doneTickets: nextDoneTickets,
             doneCount: nextDoneTickets.length,
             ...bucketed,
+            _lastTicketSource: source,
             _hasHydrated: true,
             isFetching: false,
           });
@@ -3154,11 +3175,11 @@ export const useKDSStore = create<KDSState>()(
         }));
       },
 
-      scheduleRefetch: (locationId: string, immediate?: boolean) => {
+      scheduleRefetch: (locationId: string, immediate?: boolean, source?: "broadcast") => {
         if (_refetchTimeout) clearTimeout(_refetchTimeout);
         _refetchTimeout = setTimeout(
           () => {
-            get()._backgroundFetchTickets(locationId);
+            get()._backgroundFetchTickets(locationId, source);
           },
           immediate ? 300 : 1500,
         );
@@ -3203,7 +3224,7 @@ export const useKDSStore = create<KDSState>()(
         // This path patches a board; it cannot build one. Before first hydration
         // there is nothing to splice into, so defer to the full read.
         if (!get()._hasHydrated) {
-          get().scheduleRefetch(locationId, true);
+          get().scheduleRefetch(locationId, true, "broadcast");
           return;
         }
 
@@ -3252,7 +3273,7 @@ export const useKDSStore = create<KDSState>()(
           );
 
           if (usedFallback) {
-            get().scheduleRefetch(locationId, true);
+            get().scheduleRefetch(locationId, true, "broadcast");
             return;
           }
 
@@ -3265,7 +3286,7 @@ export const useKDSStore = create<KDSState>()(
             // (app/(main)/kds.tsx arms no timer while realtime is connected), so
             // dropping this refresh silently would leave the order stale until the
             // next broadcast for it.
-            get().scheduleRefetch(locationId);
+            get().scheduleRefetch(locationId, false, "broadcast");
             return;
           }
 
@@ -3402,6 +3423,7 @@ export const useKDSStore = create<KDSState>()(
             doneTickets: nextDoneTickets,
             doneCount: nextDoneTickets.length,
             ...bucketed,
+            _lastTicketSource: "broadcast",
           });
 
           // Chime for tickets that appeared for this order — a later course fired,
@@ -3430,7 +3452,7 @@ export const useKDSStore = create<KDSState>()(
         } catch (err) {
           if (_orderFetchSeq.get(orderId) !== mySeq) return;
           console.error("[KDSStore] _fetchTicketsForOrder exception:", err);
-          get().scheduleRefetch(locationId);
+          get().scheduleRefetch(locationId, false, "broadcast");
         }
       },
 
@@ -4633,6 +4655,9 @@ export const useKDSStore = create<KDSState>()(
         if (state) {
           state._hasHydrated = true;
           state.isInitialLoading = false;
+          // Tickets restored from MMKV were already on this board: their
+          // device-truth `arrived` (if any) must be labelled a re-emission.
+          state._lastTicketSource = "rehydrate";
           // Rebuild tickets array + indexes + buckets from persisted _ticketsById
           const byId = state._ticketsById ?? {};
           const tickets = Object.values(byId);

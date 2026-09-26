@@ -16,7 +16,8 @@ import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { guardOrderVoid, useOrderStore } from "@/stores/useOrderStore";
+import { getUnrefundedCardCharges } from "@/lib/paymentGuards";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -377,6 +378,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const handleVoidOrderClick = () => {
+    if (activeOrderId && !guardOrderVoid(activeOrderId)) return;
     closeAndThen(() => {
       setVoidPromptFromClearCart(false);
       setVoidConfirmOpen(true);
@@ -384,6 +386,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const onConfirmVoid = async () => {
+    if (activeOrderId && !guardOrderVoid(activeOrderId)) {
+      setVoidConfirmOpen(false);
+      setVoidPromptFromClearCart(false);
+      return;
+    }
     if (activeOrderId && activeOrder) {
       // Dispatch VOID_ORDER — the effect handles inventory deduction + void
       const sessionStore = useTableSessionStore.getState();
@@ -625,8 +632,16 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   // Wave 2.2: gate void on cross-station ownership too — the server-side
   // guard for void is tracked in Wave 2.3.2; the UI gate makes the locked
   // state visible.
+  // Card money still on the order blocks the void: voiding never refunds a
+  // card, and process_payment refuses void orders, so the charge would be
+  // stranded with no record. Journals are re-checked on tap (guardOrderVoid).
+  const unrefundedCardCharges = useMemo(
+    () => getUnrefundedCardCharges(activeOrder?.payments),
+    [activeOrder?.payments],
+  );
   const canVoid =
     !isReadOnlyForStation &&
+    unrefundedCardCharges.length === 0 &&
     ((activeOrder &&
       activeOrder.items?.length > 0 &&
       activeOrder.paid_status !== "Paid") ||
@@ -1392,7 +1407,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
                 {isReadOnlyForStation
                   ? "Owned by another station"
-                  : "This action cannot be undone"}
+                  : unrefundedCardCharges.length > 0
+                    ? "Refund card payments first"
+                    : "This action cannot be undone"}
               </Text>
             </View>
             <ChevronRight size={14} color={colors.muted} />

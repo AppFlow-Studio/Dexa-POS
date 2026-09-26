@@ -1,4 +1,6 @@
+import { ProductionErrorBoundary } from "@/components/ErrorBoundary";
 import { calculateOrderTotals } from "@/lib/order-calculator";
+import * as Sentry from "@sentry/react-native";
 import { CartItem, OrderProfile } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { SelectedLocation, useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -384,39 +386,53 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   // Calculate totals from order data
   const totals = useMemo(() => {
-    if (!order) {
-      return {
-        subtotal: 0,
-        cashSubtotal: 0,
-        tax: 0,
-        cashTax: 0,
-        discount: 0,
-        tip: 0,
-        total: 0,
-        cashTotal: 0,
-      };
+    const empty = {
+      subtotal: 0,
+      cashSubtotal: 0,
+      tax: 0,
+      cashTax: 0,
+      discount: 0,
+      tip: 0,
+      total: 0,
+      cashTotal: 0,
+    };
+    if (!order) return empty;
+
+    // This runs during render. A line the calculator cannot price must not
+    // take the screen down with it: a never-synced line with no quantity
+    // threw here and the POS fell to the error screen (Charcoal Gardenia
+    // S1-0008). The preview then shows the order's own total and no breakdown.
+    try {
+      // Use the single source of truth for order totals — same as the app's order summary.
+      const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
+      const orderTotals = calculateOrderTotals({
+        items: order.items,
+        checkDiscount: order.checkDiscount ?? null,
+        taxRatesMap,
+        payments: order.payments ?? [],
+      });
+
+      const subtotal = orderTotals.subtotal;
+      const cashSubtotal = orderTotals.cash_subtotal;
+      const tax = orderTotals.tax_amount;
+      const cashTax = orderTotals.cash_tax_amount;
+      const discount = orderTotals.discount_amount;
+      const tip =
+        order.payments?.reduce((sum, p) => sum + (p.tip_amount || 0), 0) || 0;
+      const total = order.total_amount || (orderTotals.total_amount + tip);
+      const cashTotal = orderTotals.cash_total_amount + tip;
+
+      return { subtotal, cashSubtotal, tax, cashTax, discount, tip, total, cashTotal };
+    } catch (err) {
+      console.error("[ReceiptModal] totals failed for order", order.id, err);
+      try {
+        Sentry.captureException(err, {
+          tags: { section: "receipt-preview-totals" },
+          extra: { order_id: order.id, db_order_id: order.db_order_id ?? null },
+        });
+      } catch {}
+      return { ...empty, total: order.total_amount || 0 };
     }
-
-    // Use the single source of truth for order totals — same as the app's order summary.
-    const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
-    const orderTotals = calculateOrderTotals({
-      items: order.items,
-      checkDiscount: order.checkDiscount ?? null,
-      taxRatesMap,
-      payments: order.payments ?? [],
-    });
-
-    const subtotal = orderTotals.subtotal;
-    const cashSubtotal = orderTotals.cash_subtotal;
-    const tax = orderTotals.tax_amount;
-    const cashTax = orderTotals.cash_tax_amount;
-    const discount = orderTotals.discount_amount;
-    const tip =
-      order.payments?.reduce((sum, p) => sum + (p.tip_amount || 0), 0) || 0;
-    const total = order.total_amount || (orderTotals.total_amount + tip);
-    const cashTotal = orderTotals.cash_total_amount + tip;
-
-    return { subtotal, cashSubtotal, tax, cashTax, discount, tip, total, cashTotal };
   }, [order]);
 
   // Build location address
@@ -554,6 +570,15 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
           >
             {/* Receipt Paper */}
             <View className="relative mt-3 mb-3 items-center">
+              {/* A malformed line must never take the POS down with the preview. */}
+              <ProductionErrorBoundary
+                section="receipt-preview"
+                fallback={
+                  <Text style={{ fontSize: 12, color: colors.label, textAlign: "center", padding: 24 }}>
+                    Receipt preview unavailable for this order.
+                  </Text>
+                }
+              >
               {/* Paper Container - Fixed width for receipt-like appearance */}
               <View
                 className="bg-[#FAF9F6] py-6 rounded-sm"
@@ -723,6 +748,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   </View>
                 )}
               </View>
+              </ProductionErrorBoundary>
             </View>
           </ScrollView>
 

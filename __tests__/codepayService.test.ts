@@ -217,6 +217,81 @@ describe("CodePayService.processSale disposition", () => {
 
 // ── Referenced reversal payloads ───────────────────────────────────
 
+describe("CodePayService.processSale indeterminate recovery (query)", () => {
+  const timedOut = intentResult({ resultCode: 0, timedOut: true, responseMsg: "timeout" });
+  const queryBiz = (over: Record<string, unknown>) =>
+    intentResult({
+      responseCode: "000",
+      bizData: JSON.stringify({
+        merchant_order_no: "CP_r",
+        trans_type: "1",
+        trans_status: "2",
+        order_amount: "10.00",
+        trans_no: "TX9",
+        card_no: "430277****5723",
+        auth_code: "A1",
+        ...over,
+      }),
+    });
+
+  test("query confirms a completed sale for this order → success", async () => {
+    mockTransact.mockResolvedValueOnce(timedOut).mockResolvedValueOnce(queryBiz({}));
+    const r = await makeService().processSale({ amount: 10, referenceId: "CP_r" });
+    expect(r.success).toBe(true);
+    expect(r.indeterminate).toBeFalsy();
+    expect(r.transNo).toBe("TX9");
+    expect(r.merchantOrderNo).toBe("CP_r");
+    // Second Intent is the query, keyed on our merchant_order_no.
+    expect(mockTransact.mock.calls[1][0]).toBe("ecrhub.pay.query");
+    expect(JSON.parse(mockTransact.mock.calls[1][2] as string)).toEqual({ merchant_order_no: "CP_r" });
+  });
+
+  test("trans_status as a number is honored", async () => {
+    mockTransact.mockResolvedValueOnce(timedOut).mockResolvedValueOnce(queryBiz({ trans_status: 2 }));
+    const r = await makeService().processSale({ amount: 10, referenceId: "CP_r" });
+    expect(r.success).toBe(true);
+  });
+
+  test.each([
+    ["non-completed status", { trans_status: "1" }],
+    ["different merchant_order_no", { merchant_order_no: "CP_other" }],
+    ["not a sale", { trans_type: "3" }],
+    ["amount mismatch", { order_amount: "12.00" }],
+  ])("%s → stays indeterminate (never inferred)", async (_label, over) => {
+    mockTransact.mockResolvedValueOnce(timedOut).mockResolvedValueOnce(queryBiz(over));
+    const r = await makeService().processSale({ amount: 10, referenceId: "CP_r" });
+    expect(r.success).toBe(false);
+    expect(r.indeterminate).toBe(true);
+  });
+
+  test("query declined / not found → stays indeterminate", async () => {
+    mockTransact
+      .mockResolvedValueOnce(timedOut)
+      .mockResolvedValueOnce(intentResult({ responseCode: "404", responseMsg: "not found", bizData: "{}" }));
+    const r = await makeService().processSale({ amount: 10, referenceId: "CP_r" });
+    expect(r.indeterminate).toBe(true);
+  });
+
+  test("query launch rejects → stays indeterminate (no throw)", async () => {
+    mockTransact.mockResolvedValueOnce(timedOut).mockRejectedValueOnce(new Error("BUSY"));
+    const r = await makeService().processSale({ amount: 10, referenceId: "CP_r" });
+    expect(r.indeterminate).toBe(true);
+  });
+
+  test("definitive results never trigger a query", async () => {
+    mockTransact.mockResolvedValueOnce(intentResult({ resultCode: 0, canceled: true }));
+    await makeService().processSale({ amount: 10, referenceId: "CP_r" });
+    expect(mockTransact).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("CodePay sale watchdog", () => {
+  test("outlasts the Register order expiry", () => {
+    const { CODEPAY_SALE_TIMEOUT_MS, CODEPAY_DEFAULT_EXPIRES_SEC } = jest.requireActual("@/types/codepay");
+    expect(CODEPAY_SALE_TIMEOUT_MS).toBeGreaterThanOrEqual(CODEPAY_DEFAULT_EXPIRES_SEC * 1000 + 30_000);
+  });
+});
+
 describe("CodePayService refund/void payloads", () => {
   test("referenced refund sends trans_type 3 + orig_merchant_order_no", async () => {
     mockTransact.mockResolvedValue(intentResult({ responseCode: "000", bizData: "{}" }));

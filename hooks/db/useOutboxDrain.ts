@@ -62,6 +62,9 @@ export function useOutboxDrain(): void {
   // a drain over a degraded link is how a struggling connection gets worse.
   const { isOnline } = useNetworkStatus();
   const runningRef = useRef(false);
+  // A nudge that lands mid-drain. Dropping it left an item added while the
+  // previous one was in flight waiting for the 30s tick (never, in slow mode).
+  const rerunRef = useRef(false);
   // Last reported parked count, so the reason dump prints once per change.
   const lastReportedFailedRef = useRef(-1);
   // null until the first effect run, so mount is not treated as a reconnect.
@@ -102,7 +105,11 @@ export function useOutboxDrain(): void {
     });
 
     const run = async () => {
-      if (cancelled || runningRef.current) return;
+      if (cancelled) return;
+      if (runningRef.current) {
+        rerunRef.current = true;
+        return;
+      }
       // Never push while offline. `nudgeDrain` fires on every local write, and
       // a drain with no network turns each one into a failed attempt with an
       // exponentially longer `next_at` — see nudgeDrain's header. The write is
@@ -157,6 +164,10 @@ export function useOutboxDrain(): void {
         }
       } finally {
         runningRef.current = false;
+        if (rerunRef.current && !cancelled) {
+          rerunRef.current = false;
+          setTimeout(() => void run(), 0);
+        }
       }
     };
 
