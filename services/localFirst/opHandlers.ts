@@ -32,6 +32,7 @@ import { getDb } from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/mutex";
 import type { ClaimedOp } from "@/lib/db/outbox";
 import { isTerminalKitchenMutationError } from "@/lib/kdsSendTraceability";
+import { sanitizeModifierRowsForRpc } from "@/lib/modifierRpc";
 import { markSessionSynced } from "@/lib/localFirst/unsyncedSessions";
 import {
   outcomeFromError,
@@ -375,7 +376,9 @@ export function makeOpHandlers(
             p_selected_size_id: p.selectedSizeId ?? null,
             p_selected_size_name: p.selectedSizeName ?? null,
             p_size_price_modifier: p.sizePriceModifier ?? 0,
-            p_modifiers: p.modifiers ?? null,
+            // Sanitized at send time too, so ops queued by an older build
+            // with a custom modifier's sentinel ids heal instead of 22P02-ing.
+            p_modifiers: sanitizeModifierRowsForRpc(p.modifiers ?? null),
             p_special_instructions: p.specialInstructions ?? null,
             p_course_number: p.courseNumber ?? 1,
             p_seat_number: p.seatNumber ?? null,
@@ -449,7 +452,7 @@ export function makeOpHandlers(
       try {
         const { error } = await client.rpc("replace_order_item_modifiers_v2", {
           p_order_item_id: p.itemId,
-          p_modifiers: p.modifiers,
+          p_modifiers: sanitizeModifierRowsForRpc(p.modifiers),
           p_idempotency_key: op.id,
         });
         if (error) return rpcError("replace_order_item_modifiers_v2", error);

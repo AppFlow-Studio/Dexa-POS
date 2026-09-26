@@ -9,6 +9,7 @@ import { round2 } from "@/lib/order-calculator";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { useUiScale } from "@/lib/uiScale";
+import { ensureOrderReadyForPayment } from "@/services/localFirst/paymentSyncGate";
 import { PrinterService } from "@/services/printing/PrinterService";
 import {
     useActiveOrder,
@@ -103,7 +104,18 @@ const CashPaymentView = () => {
     return () => setBaseAmount(null);
   }, [setBaseAmount, showPayment, total]);
 
+  const cashGateRef = useRef(false);
   const handleProcessCashPayment = async () => {
+    if (cashGateRef.current) return;
+    cashGateRef.current = true;
+    try {
+      // Never record cash against items the server rejected (paymentSyncGate).
+      if (!(await ensureOrderReadyForPayment(activeOrder?.db_order_id, "cash"))) {
+        return;
+      }
+    } finally {
+      cashGateRef.current = false;
+    }
     // Snapshot display values before toggling processing to avoid a one-frame
     // flash of stale ref values (e.g. showing -full amount briefly).
     frozenGrandTotal.current = totalWithTip;

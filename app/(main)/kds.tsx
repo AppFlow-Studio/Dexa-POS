@@ -14,6 +14,7 @@ import {
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
+import { registerResumeTask } from "@/lib/lifecycle/appLifecycleCoordinator";
 import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -2658,11 +2659,16 @@ const KitchenDisplayScreen = () => {
     );
   }, [kdsDisplayId]);
 
-  // arrived: the item's ticket reached this device from the server.
+  // arrived: the item's ticket reached this device from the server. Tagged
+  // with the path that wrote `tickets` (broadcast / poll / reconnect / resume
+  // / mount / manual / rehydrate) so HQ's lag metric is honest about how the
+  // item got here; the emitter dedupes per display across restarts, so a
+  // rehydrated board does not re-claim items it already reported.
   useEffect(() => {
+    const source = useKDSStore.getState()._lastTicketSource;
     for (const ticket of allTickets) {
       for (const item of ticket.items ?? []) {
-        if (item.id) markKdsItemArrived(item.id, ticket.db_order_id);
+        if (item.id) markKdsItemArrived(item.id, ticket.db_order_id, source);
       }
     }
   }, [allTickets]);
@@ -2718,25 +2724,26 @@ const KitchenDisplayScreen = () => {
     return () => clearTimeout(timer);
   }, [isRealtimeConnected]);
 
-  // Initial fetch + adaptive polling via setTimeout chain
-  // Display-filtered KDS stations use 30s polling as a safety net since
-  // client-side broadcast filtering may miss items that server-side routing includes.
-  const hasDisplayFilter = routingMode !== null && routingMode !== "all";
+  // Initial fetch + board poll via setTimeout chain. The poll is ALWAYS armed:
+  // 30 s while the orders channel is SUBSCRIBED, 15 s otherwise, in every
+  // routing mode. Broadcasts are the fast path; the poll is the bounded
+  // staleness guarantee — a half-open socket still reports SUBSCRIBED until
+  // the next realtime heartbeat times out (25–50 s), and the old "no poll
+  // while healthy and unfiltered" rule let that chain die for good after the
+  // first SUBSCRIBED. Reads the connection flag from a ref on purpose:
+  // re-arming on every flap would reset the timer and could starve the poll.
   useEffect(() => {
     if (!isReady || !locationId) return;
 
-    fetchTickets(locationId);
+    fetchTickets(locationId, "mount");
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
     const schedulePoll = () => {
-      // No poll needed when realtime is healthy and no display filter —
-      // broadcasts cover all updates. Only poll when offline or display-filtered.
-      if (isRealtimeConnectedRef.current && !hasDisplayFilter) return;
       const interval = isRealtimeConnectedRef.current ? 30_000 : 15_000;
       timeoutId = setTimeout(() => {
         if (cancelled) return;
-        backgroundFetchTickets(locationId);
+        backgroundFetchTickets(locationId, "poll");
         if (!cancelled) {
           schedulePoll();
         }
@@ -2748,22 +2755,32 @@ const KitchenDisplayScreen = () => {
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [
-    isReady,
-    locationId,
-    fetchTickets,
-    backgroundFetchTickets,
-    hasDisplayFilter,
-  ]);
+  }, [isReady, locationId, fetchTickets, backgroundFetchTickets]);
 
   // On reconnection (false -> true), trigger a single background fetch
   useEffect(() => {
     const wasDisconnected = !prevRealtimeConnectedRef.current;
     prevRealtimeConnectedRef.current = isRealtimeConnected;
     if (isRealtimeConnected && wasDisconnected && isReady && locationId) {
-      backgroundFetchTickets(locationId);
+      backgroundFetchTickets(locationId, "reconnect");
     }
   }, [isRealtimeConnected, isReady, locationId, backgroundFetchTickets]);
+
+  // Foreground resume: refetch the board even when the channel still looks
+  // SUBSCRIBED. While the activity is paused the JS timers and the deferred
+  // broadcast dispatch are frozen, so items can be missed without the socket
+  // ever reporting an error; the channel hook only refreshes auth in that
+  // case. `frame` bucket = after auth/realtime recovery, before interactions.
+  // The in-flight guard makes a same-tick reconnect-edge fetch a no-op.
+  useEffect(() => {
+    if (!isReady || !locationId) return;
+    return registerResumeTask({
+      id: "kds.board-refetch",
+      bucket: "frame",
+      requiresNetwork: true,
+      run: () => backgroundFetchTickets(locationId, "resume"),
+    });
+  }, [isReady, locationId, backgroundFetchTickets]);
 
   // Auto-fire: pending → cooking after configured delay
   useEffect(() => {

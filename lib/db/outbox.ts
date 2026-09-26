@@ -27,6 +27,8 @@
  * server row is never enqueued, and a local row is never pruned by retention
  * (see `RETENTION EXEMPTION` below).
  */
+import * as Sentry from "@sentry/react-native";
+
 import { getDb, getReadDb, isLocalDbReady } from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/mutex";
 import type { SqlValue } from "@/lib/db/write";
@@ -491,6 +493,15 @@ export async function markRejected(
   } catch (error) {
     console.warn("[Outbox] markRejected failed:", error);
   }
+  // Prod builds have no Dev Flags screen, so a parked op is otherwise
+  // invisible to us — and a parked add_item is a line the server never gets.
+  try {
+    Sentry.captureMessage("[LF] outbox op rejected", {
+      level: "error",
+      tags: { lf_event: "op_rejected", lf_table: row?.table ?? "none" },
+      extra: { op_id: opId, row_id: row?.id, reason: reason.slice(0, 500) },
+    });
+  } catch {}
 }
 
 /**
@@ -766,11 +777,68 @@ export async function purgeUnsyncableOps(): Promise<number> {
  */
 const REQUEUE_ATTEMPT_CEILING = 3;
 
+/**
+ * Item ops rejected for a non-uuid modifier id. Before the sanitizer shipped,
+ * the local-first flatten sent a custom modifier's sentinel ids
+ * ("custom-modifiers" / "custom_mod_…"), add_order_item_v5 failed its uuid cast
+ * and the whole item was parked as failed — the line never reached the server
+ * and the card payment behind it waited forever (Charcoal S1-0011,
+ * 2026-09-25). The drain now sanitizes modifiers at send time, so these ops
+ * are healable whatever their attempt count.
+ */
+const MODIFIER_UUID_HEALABLE_OPS = ["add_item", "replace_modifiers"];
+const MODIFIER_UUID_ERROR_LIKE = "%invalid input syntax for type uuid%";
+
+async function healModifierUuidRejections(
+  db: NonNullable<ReturnType<typeof getDb>>,
+): Promise<number> {
+  const placeholders = MODIFIER_UUID_HEALABLE_OPS.map(() => "?").join(", ");
+  const rows = await db.getAllAsync<{
+    id: string;
+    op: string;
+    order_id: string | null;
+    entity_id: string;
+    last_error: string | null;
+  }>(
+    `SELECT id, op, order_id, entity_id, last_error FROM outbox
+      WHERE status = 'failed' AND op IN (${placeholders})
+        AND last_error LIKE ?`,
+    [...MODIFIER_UUID_HEALABLE_OPS, MODIFIER_UUID_ERROR_LIKE],
+  );
+  if (rows.length === 0) return 0;
+
+  await db.runAsync(
+    `UPDATE outbox SET status = 'pending', next_at = NULL, attempts = 0
+      WHERE status = 'failed' AND op IN (${placeholders})
+        AND last_error LIKE ?`,
+    [...MODIFIER_UUID_HEALABLE_OPS, MODIFIER_UUID_ERROR_LIKE],
+  );
+  for (const row of rows) {
+    console.warn(
+      `[LF] healing ${row.op} ${row.entity_id} (order ${row.order_id}): ${row.last_error}`,
+    );
+    try {
+      Sentry.captureMessage("[LF] poisoned modifier op healed", {
+        level: "warning",
+        tags: { lf_event: "poisoned_op_healed", op_type: row.op },
+        extra: {
+          op_id: row.id,
+          order_id: row.order_id,
+          entity_id: row.entity_id,
+          last_error: row.last_error,
+        },
+      });
+    } catch {}
+  }
+  return rows.length;
+}
+
 export async function requeueFailedOps(): Promise<number> {
   const db = getDb();
   if (!db) return 0;
   try {
     return await dbWriteMutex.runExclusive(async () => {
+      const healed = await healModifierUuidRejections(db);
       // Only ops that have not already burned their retries.
       //
       // A shipped fix can rescue an op whose failure was in the CODE. It can
@@ -784,7 +852,7 @@ export async function requeueFailedOps(): Promise<number> {
           WHERE status = 'failed' AND attempts < ?`,
         [REQUEUE_ATTEMPT_CEILING],
       );
-      const n = res.changes ?? 0;
+      const n = (res.changes ?? 0) + healed;
       if (n > 0) {
         console.warn(
           `[LF] requeued ${n} previously-failed op(s) for one retry ` +
@@ -804,6 +872,29 @@ export async function requeueFailedOps(): Promise<number> {
     });
   } catch (error) {
     console.warn("[LF] requeueFailedOps failed:", error);
+    return 0;
+  }
+}
+
+/**
+ * Operator-driven retry for ONE order's parked ops (the pre-payment gate).
+ * No attempt ceiling: a human asked, and the drain sanitizes payloads at send
+ * time, so a code fix shipped since the op was parked can now land it.
+ */
+export async function requeueFailedOpsForOrder(orderId: string): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  try {
+    return await dbWriteMutex.runExclusive(async () => {
+      const res = await db.runAsync(
+        `UPDATE outbox SET status = 'pending', next_at = NULL
+          WHERE status = 'failed' AND (order_id = ? OR entity_id = ?)`,
+        [orderId, orderId],
+      );
+      return res.changes ?? 0;
+    });
+  } catch (error) {
+    console.warn("[LF] requeueFailedOpsForOrder failed:", error);
     return 0;
   }
 }

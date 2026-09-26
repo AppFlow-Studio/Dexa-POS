@@ -14,6 +14,7 @@ import {
   getOrderSentStatus,
   isKitchenItemSent,
 } from "@/lib/kitchenStatusUtils";
+import { sanitizeModifierRowsForRpc } from "@/lib/modifierRpc";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
 import {
@@ -699,20 +700,26 @@ function isCustomModifierGroup(categoryId: string | undefined | null): boolean {
  * The inverse of transformBackendModifiers below. Add-ons ride along too:
  * they are priced by the calculator, so they must reach the server as
  * modifier rows or the server-side total would disagree with the cart's.
+ *
+ * Ids go through sanitizeModifierRowsForRpc: a custom modifier's sentinel ids
+ * fail the RPC's uuid cast and roll back the whole item (see lib/modifierRpc).
  */
-function flattenModifiersForRpc(item: CartItem): unknown[] | null {
+export function flattenModifiersForRpc(item: CartItem): unknown[] | null {
   const rows: unknown[] = [];
 
   for (const group of item.customizations?.modifiers ?? []) {
+    const isCustom = isCustomModifierGroup(group.categoryId);
     for (const opt of group.options ?? []) {
+      const isNo = (opt as { isNo?: boolean }).isNo ?? false;
       rows.push({
-        modifier_group_id: group.categoryId ?? null,
-        modifier_item_id: opt.id ?? null,
+        modifier_group_id: isCustom ? null : (group.categoryId ?? null),
+        modifier_item_id: isCustom ? null : (opt.id ?? null),
         modifier_group_name: group.categoryName ?? "Modifiers",
         modifier_name: opt.name ?? "",
-        price_modifier: opt.price ?? 0,
+        // Same as the legacy paths: a "no" option never adds to the price.
+        price_modifier: isNo ? 0 : (opt.price ?? 0),
         quantity: 1,
-        is_no: (opt as { isNo?: boolean }).isNo ?? false,
+        is_no: isNo,
       });
     }
   }
@@ -729,7 +736,7 @@ function flattenModifiersForRpc(item: CartItem): unknown[] | null {
     });
   }
 
-  return rows.length > 0 ? rows : null;
+  return rows.length > 0 ? sanitizeModifierRowsForRpc(rows) : null;
 }
 
 /**
@@ -16526,6 +16533,11 @@ export const useOrderStore = create<OrderState>()(
                   // Without this merge, allItems=[] wipes the pending items. rekeyOrder then
                   // runs after and puts them back — but addItemToBackend's setState may have
                   // already set db_order_item_id on items that no longer exist in the array.
+                  //
+                  // Scoped to parallel keys of THIS order (same db_order_id). Matching by
+                  // table instead pulled every earlier paid/archived order's items at the
+                  // same table into the live check (Table 53 ghost-items bug), and voiding
+                  // those ghosts then voided items on the already-paid orders.
                   const allItemsDbIds = new Set(
                     allItems.map((i) => i.db_order_item_id).filter(Boolean),
                   );
@@ -16534,13 +16546,7 @@ export const useOrderStore = create<OrderState>()(
                     state.ordersById,
                   )) {
                     if (key === localOrderId) continue;
-                    if (
-                      candidate.service_location_id !==
-                      (localOrder?.service_location_id ??
-                        dbOrder.table_number ??
-                        dbOrder.service_location_id)
-                    )
-                      continue;
+                    if (candidate.db_order_id !== dbOrderId) continue;
                     for (const item of candidate.items) {
                       if (item.isDraft) continue;
                       if (allItemsLocalIds.has(item.id)) continue;

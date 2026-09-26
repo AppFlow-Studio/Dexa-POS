@@ -142,3 +142,21 @@
 
 - 2026-09-25: I ran `cat supabase/.temp/project-ref; supabase db query --linked --file …` as ONE command in `dexapos-website`. The ref was **prod**, so the `void_order` P0010 guard went live on prod unapproved (reverted minutes later with the user's OK; prod logs showed no void was blocked in the window).
 - Rule: apply staging SQL with the Supabase MCP `execute_sql` and an explicit `project_id: "dfwqakoyittmrwbqvxgw"`. If the CLI is ever unavoidable, check `.temp/project-ref` in a SEPARATE step, read the result, and only then apply. Printing the target in the same command as the write is not a check.
+
+## Local-first payload builders reuse the legacy sanitizers
+
+- 2026-09-25 (Charcoal Gardenia S1-0011): the local-first `flattenModifiersForRpc` sent a custom modifier's sentinel ids (`"custom-modifiers"` / `"custom_mod_…"`). Both legacy paths nulled them, but the new path didn't. `add_order_item_v5` failed its `::uuid` cast and rolled the item back. The drain parked the op as failed with no UI, and the Castles charge behind it was never recorded.
+- Rule: when a new write path replaces an old one, diff its payload builder against the old one field by field. Any id sent to an RPC that casts `::uuid` goes through `sanitizeModifierRowsForRpc` (`lib/modifierRpc.ts`), and the drain handler sanitizes again at send time so older queued payloads heal.
+- A prod POS build has no Dev Flags screen. Any failure that parks a write must report to Sentry. Otherwise the first signal is a customer holding a receipt.
+
+## Never merge items across orders by table
+
+- 2026-09-25 (Charcoal Gardenia, Table 53): the "parallel local key" merge in `syncOrderFromDatabase` matched candidates by `service_location_id`. `archiveOrder` keeps paid orders in `ordersById` for History, so every earlier party's items at that table were appended to the live check, keeping their original `db_order_item_id`s. Staff voided the ghosts, and the voids landed on the already-paid orders.
+- Rule: any merge or rescue of items between local order entries must match on order identity (`db_order_id`), never on table, session, or location. Closed orders stay in memory with their table binding, so "same table" is never "same order".
+
+## A "delivery lag" metric that is really a flush/remount timestamp
+
+- The KDS "device received" number (`get_kds_device_truth_for_order`) was `max(received_at)` over a ledger where (a) every row of a heartbeat flush shares one server timestamp and (b) every screen remount re-emitted the whole persisted board with a fresh client time. So "24 items all arrived at 21:27:12" was one flush of one remount, and a 2-day "delay" was a pickup screen that had been powered off. Six investigators and a devil's-advocate pass were needed to separate the metric artifact from four real-but-latent delivery gaps that the same data could not have distinguished.
+- Pattern: before chasing a batching bug from a timestamp, find the WRITER of that timestamp and ask (1) is it stamped per row or per batch, (2) is it re-emitted on restart, (3) does the reader take min or max. Staging can usually reproduce the signature (here: every mass cluster sat 1–2 s after a `device_login_history` row).
+- Pattern: any third-party call on the request critical path needs a deadline, not just our own RPCs. The Clerk mint sat outside the Bad-WiFi deadline umbrella and, via a single shared in-flight promise, could pin REST, the Realtime socket's own reconnect and every resubscribe path. `lib/auth/supabaseTokenCache.ts` now bounds it.
+- Memory hygiene: a memory note claimed a fix migration file existed that was never written (its apply had been blocked). Verify a remembered file with `ls` before planning around it.

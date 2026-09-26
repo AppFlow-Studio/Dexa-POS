@@ -141,11 +141,28 @@ const QuickActionButton: React.FC<{
   );
 };
 
+const EMPTY_NAMES: string[] = [];
+
 const useTableData = (table: FloorPlanObject) => {
-  const tablesById = useFloorPlanStore((s) => s.tablesById);
   const liveSession = useTableSessionStore((s) => s.sessions[table.id]);
   const getEmployeeByStaffId = useEmployeeStore((s) => s.getEmployeeByStaffId);
   const session = liveSession ?? table.session;
+
+  // Names of the OTHER tables merged into this session. Subscribing to the
+  // whole tablesById re-rendered every row on every floor-plan write — O(n²)
+  // per broadcast on a busy floor.
+  const mergedTableIds = session?.merged_tables;
+  const mergedNames = useFloorPlanStore(
+    useShallow((s) => {
+      if (!mergedTableIds?.length) return EMPTY_NAMES;
+      const names: string[] = [];
+      for (const id of new Set(mergedTableIds)) {
+        const t = id && id !== table.id ? s.tablesById[id] : undefined;
+        if (t) names.push(t.name);
+      }
+      return names.length ? names : EMPTY_NAMES;
+    }),
+  );
 
   // Get session order ID for payment calculations — reactive via useOrderByAnyId
   const sessionOrderId = session?.order_id || null;
@@ -188,10 +205,7 @@ const useTableData = (table: FloorPlanObject) => {
     }
 
     // Check for merged tables
-    const mergedIds = (session?.merged_tables || []).filter(
-      (id) => id && id !== table.id && !!tablesById[id],
-    );
-    const isMerged = mergedIds.length > 0;
+    const isMerged = mergedNames.length > 0;
 
     // For merged tables, they all share the same session_id and order_id
     // So we just need to check the current table's session
@@ -220,11 +234,6 @@ const useTableData = (table: FloorPlanObject) => {
     // Reactive lookup via useOrderByAnyId (checks ordersById + dbOrderIdIndex)
     let order: OrderProfile | undefined = resolvedOrder ?? undefined;
 
-    // Get merged table names for display — O(1) per lookup via tablesById
-    const uniqueGroupIds = Array.from(new Set([table.id, ...mergedIds]));
-    const groupTables = uniqueGroupIds
-      .map((id) => tablesById[id])
-      .filter(Boolean);
 
     // If order not found in store or is voided, return empty (might need backend fetch)
     if (!order || order.order_status === "void") {
@@ -232,10 +241,7 @@ const useTableData = (table: FloorPlanObject) => {
         isMerged: isMerged,
         primaryTableId: table.id,
         displayName: isMerged
-          ? `${table.name} + ${groupTables
-              .filter((t) => t.id !== table.id)
-              .map((t) => t.name)
-              .join(", ")}`
+          ? `${table.name} + ${mergedNames.join(", ")}`
           : table.name,
         status: status,
         guestCount: table.session?.party_size || 0,
@@ -291,10 +297,7 @@ const useTableData = (table: FloorPlanObject) => {
       isMerged: isMerged,
       primaryTableId: table.id,
       displayName: isMerged
-        ? `${table.name} + ${groupTables
-            .filter((t) => t.id !== table.id)
-            .map((t) => t.name)
-            .join(", ")}`
+        ? `${table.name} + ${mergedNames.join(", ")}`
         : table.name,
       status: status,
       guestCount: order.guest_count || session?.party_size || 0,
@@ -313,7 +316,7 @@ const useTableData = (table: FloorPlanObject) => {
     table,
     session,
     resolvedOrder,
-    tablesById,
+    mergedNames,
     orderTotals,
     getEmployeeByStaffId,
   ]);

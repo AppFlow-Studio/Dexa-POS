@@ -12,6 +12,7 @@
 
 import { queryClient } from "@/contexts/TanstackProvider";
 import { getDeviceId } from "@/lib/deviceId";
+import { sanitizeModifierRowsForRpc } from "@/lib/modifierRpc";
 import {
     buildKitchenSendQueueParams,
     clearKitchenSendInFlight,
@@ -865,23 +866,7 @@ async function executeQueuedOperation(
         // hard-casts to uuid, so those rows would dead-letter forever. Strip
         // any value that isn't a valid UUID — group/item ids are nullable on
         // the server schema, name + price columns carry the real data.
-        const UUID_RE =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const sanitized = Array.isArray(modifiers)
-          ? modifiers.map((m: any) => ({
-              ...m,
-              modifier_group_id:
-                typeof m?.modifier_group_id === "string" &&
-                UUID_RE.test(m.modifier_group_id)
-                  ? m.modifier_group_id
-                  : null,
-              modifier_item_id:
-                typeof m?.modifier_item_id === "string" &&
-                UUID_RE.test(m.modifier_item_id)
-                  ? m.modifier_item_id
-                  : null,
-            }))
-          : modifiers;
+        const sanitized = sanitizeModifierRowsForRpc(modifiers);
 
         const { error } = await OrderService.replaceOrderItemModifiers(
           _supabaseClient,

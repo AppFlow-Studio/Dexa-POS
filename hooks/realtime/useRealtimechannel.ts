@@ -1,6 +1,7 @@
 // hooks/useRealtimeChannel.ts
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import * as Sentry from '@sentry/react-native';
 import { registerResumeTask } from '@/lib/lifecycle/appLifecycleCoordinator';
 import {
   KEY_RT_CHANNEL_DISCONNECT,
@@ -27,6 +28,10 @@ interface UseRealtimeChannelOptions<T> {
   onMessage: (event: RealtimeEventType, payload: T) => void;
   onStatusChange?: (status: ChannelStatus) => void;
   enabled?: boolean;
+  /**
+   * Attempts after which a "still retrying" warning breadcrumb is emitted.
+   * Reconnection itself never stops (capped 60 s backoff with jitter).
+   */
   maxReconnectAttempts?: number;
   reconnectDelay?: number;
 }
@@ -38,6 +43,47 @@ interface UseRealtimeChannelReturn {
 }
 
 const MAX_BACKOFF_MS = 60_000; // Cap exponential backoff at 60 seconds
+// Longest any subscribe/reconnect path waits on the token callback. The token
+// cache itself bounds a Clerk mint to 10 s; this is the belt to that suspender
+// so a stuck auth can never pin a (re)subscribe.
+const SET_AUTH_TIMEOUT_MS = 10_000;
+
+/**
+ * `realtime.setAuth()` re-reads the client's accessToken callback and pushes a
+ * changed token to every joined channel. Bounded + never throws: a slow or
+ * failing mint must not block the (re)subscribe that follows it — the join
+ * simply carries the last token realtime-js holds.
+ */
+async function setAuthBounded(
+  supabaseClient: SupabaseClient,
+  context: string,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    await Promise.race([
+      supabaseClient.realtime.setAuth(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, SET_AUTH_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    console.error(`[Realtime] setAuth failed (${context}):`, error);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function channelBreadcrumb(
+  message: string,
+  level: 'info' | 'warning',
+  data: Record<string, unknown>,
+): void {
+  try {
+    Sentry.addBreadcrumb({ category: 'realtime.channel', level, message, data });
+  } catch {
+    /* telemetry must never break the channel */
+  }
+}
 
 export function useRealtimeChannel<T>({
   supabaseClient,
@@ -108,6 +154,24 @@ export function useRealtimeChannel<T>({
           disconnectedSinceRef.current = null;
         }
       }
+      // Production-visible trail of every transition (console.log is stripped
+      // from preview/production builds, so breadcrumbs are the only positive
+      // signal that a channel came back).
+      if (prevState !== nextState) {
+        channelBreadcrumb(
+          `${topic} ${prevState}→${nextState}`,
+          nextState === 'SUBSCRIBED' ? 'info' : 'warning',
+          {
+            topic,
+            attempts: reconnectAttemptsRef.current,
+            error: updates.lastError?.message ?? null,
+            disconnectedMs:
+              disconnectedSinceRef.current !== null
+                ? Date.now() - disconnectedSinceRef.current
+                : null,
+          },
+        );
+      }
     }
 
     setStatus(prev => {
@@ -118,7 +182,7 @@ export function useRealtimeChannel<T>({
       onStatusChangeRef.current?.(newStatus);
       return newStatus;
     });
-  }, []);
+  }, [topic]);
 
   // Core subscription logic
   const subscribe = useCallback(() => {
@@ -135,8 +199,8 @@ export function useRealtimeChannel<T>({
       }
       isIntentionalCloseRef.current = false;
 
-      // Set auth token for Realtime Authorization
-      await supabaseClient.realtime.setAuth();
+      // Set auth token for Realtime Authorization (bounded — see setAuthBounded)
+      await setAuthBounded(supabaseClient, 'subscribe');
       if (
         attempt !== subscriptionAttemptRef.current ||
         !shouldBeConnectedRef.current
@@ -225,28 +289,36 @@ export function useRealtimeChannel<T>({
   // Keep subscribeRef in sync for AppState effect
   subscribeRef.current = subscribe;
 
-  // Reconnection logic with exponential backoff (capped at 60s)
+  // Reconnection logic: exponential backoff with ±50% jitter, capped at 60s,
+  // and it NEVER gives up. The old cap (15/20 attempts ≈ 11–19 min) left the
+  // channel permanently dark until a NetInfo transition, a foreground or a
+  // remount — a KDS that lost its socket during a long Wi-Fi blip without a
+  // NetInfo edge stayed blind. `maxReconnectAttempts` now only marks when the
+  // "still retrying" warning is emitted. Jitter from attempt 1 keeps a fleet
+  // from re-joining in lock-step after a Supabase-side blip.
   const handleReconnect = useCallback(() => {
-    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-      console.warn(`[Realtime] Max reconnect attempts reached for ${topic}`);
-      updateStatus({
-        state: 'CHANNEL_ERROR',
-        lastError: new Error('Max reconnection attempts reached'),
-      });
-      return;
-    }
-
     // Clear any existing timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
 
-    // Calculate delay with exponential backoff, capped at MAX_BACKOFF_MS
-    const delay = Math.min(
-      reconnectDelay * Math.pow(2, reconnectAttemptsRef.current),
+    const attempt = reconnectAttemptsRef.current;
+    const base = Math.min(
+      reconnectDelay * Math.pow(2, Math.min(attempt, 10)),
       MAX_BACKOFF_MS,
     );
+    const delay = Math.round(base * (0.5 + Math.random()));
     reconnectAttemptsRef.current += 1;
+
+    if (reconnectAttemptsRef.current === maxReconnectAttempts) {
+      console.warn(
+        `[Realtime] ${topic}: ${maxReconnectAttempts} reconnect attempts, still retrying (≤${MAX_BACKOFF_MS / 1000}s apart)`,
+      );
+      channelBreadcrumb('reconnect_budget_exhausted_still_retrying', 'warning', {
+        topic,
+        attempts: reconnectAttemptsRef.current,
+      });
+    }
 
     updateStatus({
       reconnectAttempts: reconnectAttemptsRef.current,
@@ -261,12 +333,8 @@ export function useRealtimeChannel<T>({
         await supabaseClient.removeChannel(channelRef.current);
         channelRef.current = null;
       }
-      // Refresh auth token before re-subscribing
-      try {
-        await supabaseClient.realtime.setAuth();
-      } catch (error) {
-        console.error('[Realtime] Failed to refresh auth token on reconnect:', error);
-      }
+      // Refresh auth token before re-subscribing (bounded, never throws)
+      await setAuthBounded(supabaseClient, 'reconnect');
       // Re-subscribe
       subscribeRef.current();
     }, delay);
@@ -329,17 +397,12 @@ export function useRealtimeChannel<T>({
   useEffect(() => {
     if (!enabled || status.state !== 'SUBSCRIBED') return;
 
-    const refreshInterval = setInterval(async () => {
-      try {
-        await supabaseClient.realtime.setAuth();
-      } catch (error) {
-        console.error('[Realtime] Failed to refresh auth token:', error);
-        handleReconnect();
-      }
+    const refreshInterval = setInterval(() => {
+      void setAuthBounded(supabaseClient, 'interval');
     }, 10 * 60 * 1000);
 
     return () => clearInterval(refreshInterval);
-  }, [enabled, status.state, supabaseClient, handleReconnect]);
+  }, [enabled, status.state, supabaseClient]);
 
   // Network state awareness: reconnect when network restores
   useEffect(() => {
@@ -404,11 +467,7 @@ export function useRealtimeChannel<T>({
           // so the immediate bucket doesn't report settled while the socket is
           // still re-authenticating.
           if (__DEV__) console.log(`[Realtime] App foregrounded, ${topic} still SUBSCRIBED, refreshing auth`);
-          try {
-            await supabaseClient.realtime.setAuth();
-          } catch (error) {
-            console.error(`[Realtime] Failed to refresh auth for ${topic} on foreground:`, error);
-          }
+          await setAuthBounded(supabaseClient, 'foreground');
         }
       },
     });

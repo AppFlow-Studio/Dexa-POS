@@ -37,6 +37,7 @@ import {
   resumeAtomLoopbackProbing,
 } from "@/services/terminals/atomLoopbackDetector";
 import { atomBringPosToForeground } from "@/native/AtomBridge";
+import { ensureOrderReadyForPayment } from "@/services/localFirst/paymentSyncGate";
 import { getSharedCodePayService } from "@/services/terminals/codepay-service";
 import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
@@ -1315,7 +1316,19 @@ const CardPaymentView = () => {
     setStatus("ready");
   };
 
-  const handleChargeCard = () => {
+  const chargeGateRef = useRef(false);
+  const handleChargeCard = async () => {
+    if (chargeGateRef.current) return;
+    chargeGateRef.current = true;
+    try {
+      // Never charge for items the server rejected — the payment could not
+      // be recorded against them (see paymentSyncGate).
+      if (!(await ensureOrderReadyForPayment(activeOrder?.db_order_id, "card"))) {
+        return;
+      }
+    } finally {
+      chargeGateRef.current = false;
+    }
     updateTip(tipAmount, selectedTipPreset);
     setStatus("processing");
     showProcessing("card", tipAmount);

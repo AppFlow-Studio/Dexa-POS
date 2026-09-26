@@ -51,6 +51,32 @@ unresolved in front of the operator**. Code never deletes, discards or evicts it
 - [x] Tests: `__tests__/cardPaymentNeverLost.test.ts` (14).
 - [ ] Device run on staging (script in plan: block the drain, card pay, try to void → blocked; restore → lands).
 
+## Incident 2 — 2026-09-25, Charcoal Gardenia (S1 C20Pro, Castles)
+
+`ORD-20260925-S1-0011` (`0cc9a7f2…`): the tablet and receipt show $108.48 paid (Visa ••9726, ref 626822170867). Prod shows $98.33 with 4 items, no `order_payments` row, and a void at 23:18 UTC.
+
+**What happened:** the Vanilla Shake + custom modifier "Add espresso" never synced. The local-first `flattenModifiersForRpc` sent the custom modifier's sentinel ids, `add_order_item_v5` failed its uuid cast (22P02), and the op was parked `failed`. The payment op then blocked on `item_not_synced`, and the void discarded it, as in Incident 1.
+
+**Since local-first went on** (2026-09-24 ~19:00 UTC), no add that carried a custom modifier reached the server at Charcoal.
+
+**Voided orders with $0 recorded to match against the Castles batch:**
+
+| Order | Date | Total |
+|---|---|---|
+| S1-0008 | 9/25 | $49.74 |
+| S1-0018 | 9/20 | $39.59 |
+| S1-0019 | 9/19 | $104.30 |
+| S1-0009 | 9/14 | $227.11 |
+
+Hotfix (branch `fix/lf-custom-modifier-lost-items`):
+- [x] `lib/modifierRpc.ts` `sanitizeModifierRowsForRpc`, used by the flatten, both drain handlers and the legacy `replace_modifiers`.
+- [x] `requeueFailedOps` heals `add_item`/`replace_modifiers` ops parked on `invalid input syntax for type uuid`, with no attempt ceiling. Sentry `poisoned_op_healed`.
+- [x] `markRejected` reports to Sentry (`op_rejected`); prod has no Dev Flags screen.
+- [x] Pre-charge gate `services/localFirst/paymentSyncGate.ts` for card and cash: block when the order has failed outbox ops, requeue them, show a toast, report to Sentry.
+- [x] Drain: 25s per-op deadline (a timeout becomes a retry), and a nudge that arrives mid-drain schedules a rerun.
+- [x] Tests: `__tests__/db/customModifierLostItem.test.ts` (8), `__tests__/flattenModifiersForRpc.test.ts` (3).
+- [ ] Prod: apply `20260925130000_void_order_block_captured_cards.sql`, then publish the OTA with `--environment production`.
+
 ## Wave 2 — `process_payment` on the SQLite outbox (`EXPO_PUBLIC_LOCAL_WRITES_PAYMENTS`)
 
 - [ ] `local_payments` table (additive, SCHEMA_VERSION 14), `OutboxOp += process_payment`
