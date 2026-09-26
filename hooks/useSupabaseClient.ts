@@ -28,79 +28,16 @@ const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
 // expiry so the server never closes a private channel on an expired token.
 // This hook only wires Clerk's getToken into it and owns the singleton client.
 // ---------------------------------------------------------------------------
-// Must stay above the 25s Realtime heartbeat (lib/realtimeConfig.ts).
-const REFRESH_MARGIN_MS = 30_000;
+export { clearSupabaseTokenCache, getCachedTokenExpMs };
 
-// Optional Clerk JWT template for Supabase (plan Phase 6.3). The ~60s session
-// token rotates every ~30s with the margin above, and each rotation re-auths
-// every Realtime channel (an authorization query per private channel). A
-// template with a 5-minute lifetime rotates every ~4.5 min instead. The
-// template must be registered in Supabase's Clerk third-party auth and carry
-// the claims the database reads: role = "authenticated", sub, org.id, email.
-// Unset (default): the session token, exactly as before.
+// Optional Clerk JWT template for Supabase. The ~60s session token makes the
+// cache re-mint (and Realtime re-auth every private channel) about twice a
+// minute; a template with a 5-minute lifetime rotates every ~4.5 min instead.
+// The template must be registered in Supabase's Clerk third-party auth and
+// carry the claims the database reads: role = "authenticated", sub, org.id,
+// email. Unset (default): the session token, exactly as before.
 const CLERK_SUPABASE_JWT_TEMPLATE =
   process.env.EXPO_PUBLIC_CLERK_SUPABASE_JWT_TEMPLATE || undefined;
-const GET_TOKEN_OPTIONS = CLERK_SUPABASE_JWT_TEMPLATE
-  ? { template: CLERK_SUPABASE_JWT_TEMPLATE }
-  : undefined;
-let cachedToken: string | null = null;
-let cachedTokenExpMs = 0;
-// Coalesce concurrent refreshes so a burst of parallel requests triggers one
-// Clerk call, not N.
-let inFlightTokenFetch: Promise<string | null> | null = null;
-
-function decodeJwtExpMs(token: string): number {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return 0;
-    // base64url → base64
-    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const json = globalThis.atob
-      ? globalThis.atob(b64)
-      : Buffer.from(b64, "base64").toString("binary");
-    const exp = JSON.parse(json)?.exp;
-    return typeof exp === "number" ? exp * 1000 : 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function getCachedAccessToken(): Promise<string | null> {
-  const now = Date.now();
-  if (cachedToken && now < cachedTokenExpMs - REFRESH_MARGIN_MS) {
-    return cachedToken;
-  }
-  if (inFlightTokenFetch) return inFlightTokenFetch;
-
-  inFlightTokenFetch = (async () => {
-    try {
-      const fresh = (await getTokenRef.current?.()) ?? null;
-      if (fresh) {
-        cachedToken = fresh;
-        // If exp can't be decoded, treat as immediately stale (exp=0) so we
-        // never pin a token we can't reason about — falls back to per-call
-        // fetch, i.e. the old behavior, only for undecodable tokens.
-        cachedTokenExpMs = decodeJwtExpMs(fresh);
-      } else {
-        // getToken returned null (signed out / no session) — drop any stale
-        // cached token so we don't keep handing out a dead JWT post-sign-out.
-        cachedToken = null;
-        cachedTokenExpMs = 0;
-      }
-      return fresh;
-    } finally {
-      inFlightTokenFetch = null;
-    }
-  })();
-  return inFlightTokenFetch;
-}
-
-/** Clear the cached JWT (e.g. on sign-out) so the next call fetches fresh. */
-export function clearSupabaseTokenCache(): void {
-  cachedToken = null;
-  cachedTokenExpMs = 0;
-  inFlightTokenFetch = null;
-}
 
 // Single shared client for the entire app lifetime. One WebSocket connection
 // to Supabase Realtime, shared across all 66+ call sites.
@@ -187,12 +124,24 @@ export function useSupabaseClient(): SupabaseClient {
   getTokenStable.current = getToken;
 
   useEffect(() => {
-    getTokenRef.current = () => getTokenStable.current(GET_TOKEN_OPTIONS);
+    setClerkGetToken((options?: ClerkGetTokenOptions) =>
+      getTokenStable.current(
+        CLERK_SUPABASE_JWT_TEMPLATE
+          ? { ...options, template: CLERK_SUPABASE_JWT_TEMPLATE }
+          : options,
+      ),
+    );
   }, []);
 
   // Set immediately on first render too (before useEffect fires)
-  if (!getTokenRef.current) {
-    getTokenRef.current = () => getTokenStable.current(GET_TOKEN_OPTIONS);
+  if (!hasClerkGetToken()) {
+    setClerkGetToken((options?: ClerkGetTokenOptions) =>
+      getTokenStable.current(
+        CLERK_SUPABASE_JWT_TEMPLATE
+          ? { ...options, template: CLERK_SUPABASE_JWT_TEMPLATE }
+          : options,
+      ),
+    );
   }
 
   return getSharedClient();

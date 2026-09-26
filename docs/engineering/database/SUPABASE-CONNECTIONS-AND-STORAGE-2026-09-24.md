@@ -125,7 +125,7 @@ The connection count stays capped because the pools are fixed size. What runs ou
 ## Fix plan
 
 **Ground rules**
-- **Migration home:** DB changes go in the canonical root, `DexaPOS-Website/supabase/migrations/`. KDS-shared migrations, and migrations that replace a body whose latest version lives in the POS root, are mirrored into `Dexa-POS/supabase/migrations/` with the same filename. Rollbacks go in `DexaPOS-Website/supabase/migrations/rollback/`.
+- **Migration home:** DB changes go in the canonical root, `DexaPOS-Website/supabase/migrations/`, and only there: the two copies first mirrored into `Dexa-POS/supabase/migrations/` were removed after the Website files were renumbered to `20260927…` and corrected, so the copies no longer matched. Rollbacks go in `DexaPOS-Website/supabase/migrations/rollback/`.
 - **Rollout:** apply every DB change on staging (`dfwqakoyittmrwbqvxgw`) first, soak it for 24 h including a service period, then apply it on production (`hifouuofcaytijrkbvcy`).
 - **Regenerate types:** regenerate `database.types.ts` in both repos after the migrations are applied.
 - **Record results:** each step's verification result goes in the Results section.
@@ -134,12 +134,12 @@ The connection count stays capped because the pools are fixed size. What runs ou
 
 | File | Phase | Mirrored in Dexa-POS | Rollback |
 | --- | --- | --- | --- |
-| `20260925120000_remove_kds_board_snapshots.sql` | 2 | Yes, byte-identical | `rollback/20260925120000_remove_kds_board_snapshots_rollback.sql` |
-| `20260925121000_connection_hardening.sql` | 3.1, 3.2, 3.4 | No | `rollback/20260925121000_connection_hardening_rollback.sql` |
-| `20260925121500_order_number_xact_lock.sql` | 3.3 | Yes, byte-identical | `rollback/20260925121500_order_number_xact_lock_rollback.sql` |
-| `20260925122000_storefront_push_and_realtime_access.sql` | 5.2, 5.4 | No | `rollback/20260925122000_storefront_push_and_realtime_access_rollback.sql` |
-| `20260925123000_table_session_broadcast_fields.sql` | 6.2 | No | `rollback/20260925123000_table_session_broadcast_fields_rollback.sql` |
-| `20260925124000_realtime_publication_empty.sql` | 5.6 | No | `rollback/20260925124000_realtime_publication_empty_rollback.sql` |
+| `20260927120000_remove_kds_board_snapshots.sql` | 2 | No (copy removed) | `rollback/20260927120000_remove_kds_board_snapshots_rollback.sql` |
+| `20260927121000_connection_hardening.sql` | 3.1, 3.2, 3.4 | No | `rollback/20260927121000_connection_hardening_rollback.sql` |
+| `20260927121500_order_number_xact_lock.sql` | 3.3 | No (copy removed) | `rollback/20260927121500_order_number_xact_lock_rollback.sql` |
+| `20260927122000_storefront_push_and_realtime_access.sql` | 5.2, 5.4 | No | `rollback/20260927122000_storefront_push_and_realtime_access_rollback.sql` |
+| `20260927123000_table_session_broadcast_fields.sql` | 6.2 | No | `rollback/20260927123000_table_session_broadcast_fields_rollback.sql` |
+| `20260927124000_realtime_publication_empty.sql` | 5.6 | No | `rollback/20260927124000_realtime_publication_empty_rollback.sql` |
 
 ### Phase 1: Immediate relief (dashboard only) — PENDING
 
@@ -165,7 +165,7 @@ Needs someone with dashboard access; there is no code for it.
 - [x] `app/manage/actions/kds-mirror.ts`: removed `hqGetKdsBoardSnapshots`, `hqGetKdsBoardSnapshot` and the two snapshot interfaces.
 - [x] `KdsMirrorControls.tsx`: the comment that referred to the replay scrubber is updated.
 
-**2B. Migration `20260925120000_remove_kds_board_snapshots.sql`** (one transaction, `lock_timeout` 3 s)
+**2B. Migration `20260927120000_remove_kds_board_snapshots.sql`** (one transaction, `lock_timeout` 3 s)
 - [x] Unschedules `drain-kds-board-snapshot-queue` and `kds-board-snapshot-purge`.
 - [x] Drops `trg_kds_board_snapshot_arrival_insert/_update` on `order_items` (and the superseded `_after_fire_*` triggers and functions, if present), then `kds_board_snapshot_at_commit()`.
 - [x] `CREATE OR REPLACE bulk_update_order_item_status_v2`: the body of `20260922120000` with only the snapshot block removed (checked with `diff`). The `ORDER BY id FOR UPDATE` lock, the 2 s `lock_timeout` and the orders `UPDATE`/touch split are unchanged. Grants are re-issued and the COMMENT rewritten. This runs **before** the capture functions are dropped: PL/pgSQL doesn't track dependencies, so the other order would make every ready/served bump fail.
@@ -178,13 +178,13 @@ Needs someone with dashboard access; there is no code for it.
 - [ ] Staging, two-display store: send to kitchen, bump a ticket, then bump the second course of the same order. Both displays update and the order status is right.
 - [ ] Staging: the HQ KDS mirror page loads the live board, send ledger and device truth.
 
-**Rollback:** `rollback/20260925120000_remove_kds_board_snapshots_rollback.sql` re-runs `20260827150000`, `20260827170000` and `20260922120000` in one transaction (in that order; 922 must be last). Snapshot history is gone by decision.
+**Rollback:** `rollback/20260927120000_remove_kds_board_snapshots_rollback.sql` re-runs `20260827150000`, `20260827170000` and `20260922120000` in one transaction (in that order; 922 must be last). Snapshot history is gone by decision.
 
 ### Phase 3: Database hardening — CODE DONE
 
-Split into two migrations: 3.3 replaces function bodies whose latest version lives only in the POS root, so it is mirrored there; the rest is not.
+Split into two migrations: 3.3 replaces function bodies whose latest version lives only in the POS root; the rest does not. Both live in the Website root only.
 
-**3.1 One per-minute dispatcher** (`20260925121000_connection_hardening.sql`)
+**3.1 One per-minute dispatcher** (`20260927121000_connection_hardening.sql`)
 - [x] `public.run_frequent_jobs()` (`SECURITY DEFINER`, `search_path` pinned, function-level `lock_timeout` 3 s). Each job runs in its own `BEGIN … EXCEPTION WHEN OTHERS THEN RAISE WARNING` block:
   - every minute: `poke_orderout_status_relay()`, `poke_orderout_delivery_dispatch()`, `expire_stale_pending_online_orders()`
   - `minute % 2 = 0`: `mark_stale_stations_offline()`
@@ -195,7 +195,7 @@ Split into two migrations: 3.3 replaces function bodies whose latest version liv
 - A failing inner job does not mark the cron run failed; look for `run_frequent_jobs: <job> failed` warnings in the Postgres logs.
 - **Result:** cron connections drop from about 11,600 a day to about 1,500 (with Phase 2). No more pile-ups at minute and quarter-hour marks.
 - **Verify:** for 24 h, `cron.job_run_details` shows one `frequent-jobs` run per minute, each under 2 s, and the OrderOut and delivery queues still drain.
-- **Rollback:** `rollback/20260925121000_connection_hardening_rollback.sql` re-schedules the 7 jobs with their original commands (only the `cron.schedule` calls; re-running the old migrations would regress `restore_expired_item_snoozes`).
+- **Rollback:** `rollback/20260927121000_connection_hardening_rollback.sql` re-schedules the 7 jobs with their original commands (only the `cron.schedule` calls; re-running the old migrations would regress `restore_expired_item_snoozes`).
 
 **3.2 Retention**
 - [x] `public.purge_operational_logs(p_batch_size => 10000, p_max_batches => 500, p_strip_since => NULL)`, scheduled nightly as `purge-operational-logs` at `20 3 * * *` with the command `CALL public.purge_operational_logs()`.
@@ -207,7 +207,7 @@ Split into two migrations: 3.3 replaces function bodies whose latest version liv
 - [x] `supabase/functions/valor-webhook/index.ts`: the unsigned `ignored` path now logs the event name in `detail` and no body; `invalid_signature` keeps its `detail` and drops the body. The verified `ignored` path (unrecognised recurring event) and every verified path still store the body.
 - [ ] After the backfill, run `VACUUM FULL` off-hours (runbook step 6). It can't run in a migration.
 
-**3.3 Order-number lock** (`20260925121500_order_number_xact_lock.sql`, mirrored in Dexa-POS)
+**3.3 Order-number lock** (`20260927121500_order_number_xact_lock.sql`)
 - [x] `CREATE OR REPLACE` of both functions from the latest bodies (`Dexa-POS/supabase/migrations/20260629130000`, which is what staging runs). Naming, location-local date, bootstrap and number format are unchanged.
   - Fast path: if `to_regclass(<sequence>)` finds the day's sequence, `nextval` with no lock and no subtransaction.
   - Slow path: `pg_advisory_xact_lock`, an MVCC re-check of `pg_class` (the syscache can still hold the fast path's negative lookup), `CREATE SEQUENCE IF NOT EXISTS`, registry insert `ON CONFLICT DO NOTHING`.
@@ -216,7 +216,7 @@ Split into two migrations: 3.3 replaces function bodies whose latest version liv
   - Backfills registry rows for existing `ord_seq_%` sequences, parsing both naming schemes in use.
 - **Verify:** on staging, create 20 orders at once from 4 stations through a server path that generates the number (`create_order_v4` without `p_order_number`, or `process_online_order`); the POS normally sends its own number, so tapping in the app doesn't exercise this. Numbers are unique and sequential per sequence, and the idle-backend advisory lock query in the Appendix returns nothing afterwards.
 
-**3.4 Station change push** (`20260925121000_connection_hardening.sql`)
+**3.4 Station change push** (`20260927121000_connection_hardening.sql`)
 - [x] `trg_stations_notify_updated`: `AFTER UPDATE OF` the columns the POS acts on (`is_active`, `deactivated_at`, `location_id`, `station_type`, `station_name`, `station_number`, `view_scope`, the five `can_*` flags, `current_receipt_printer_id`, `kiosk_profile_id`), with a `WHEN` clause that requires a real change. Heartbeats, `is_online` flips and device-capability writes never broadcast.
 - [x] `trg_stations_notify_deleted`: a separate `AFTER DELETE` trigger (a `DELETE` trigger's `WHEN` can't reference `NEW`).
 - [x] `trg_payment_terminals_notify_station`: the station's terminal lives in `payment_terminals.station_id`, not on `stations`. It nudges on insert, delete, and changes to assignment or connection config, and ignores the health and counter columns written every ~90 s.
@@ -267,7 +267,7 @@ Split into two migrations: 3.3 replaces function bodies whose latest version liv
 - [x] Deleted `useReceiptTemplateRealtime.ts`; the list refetches on window focus.
 - [x] `OrderStatusWatcher.tsx`: removed the `postgres_changes` binding.
 
-**5.2 Push order status to storefront visitors** (`20260925122000_storefront_push_and_realtime_access.sql`)
+**5.2 Push order status to storefront visitors** (`20260927122000_storefront_push_and_realtime_access.sql`)
 - [x] Trigger `trg_orders_broadcast_online_status`: `AFTER UPDATE OF status ON orders WHEN (old.status is distinct from new.status and new.order_source <> 'pos')` sends `{orderId, status}` as `status_changed` on the public `order-update:{id}`, the same topic and payload as the Website's REST emitters.
 - [x] `broadcast_order_changes`: the `qr-session:{token}` send is public (`private = false`). The body is `20260816130000` verbatim apart from that flag, and a guard aborts the migration if the live body isn't that version.
 - [x] `OrderTrackingPage`: the QR fallback poll never runs faster than 30 s, whatever `poll_interval_seconds` the RPC returns (still 5).
@@ -285,17 +285,17 @@ Split into two migrations: 3.3 replaces function bodies whose latest version liv
 **5.5 Dashboard floor poll**
 - [x] `useFloorPlanStatus`: 5 s → 30 s, `refetchIntervalInBackground: false`, and it subscribes to the private `floor-plan-{locationId}` topic (sent by the `table_session_events` trigger) to refetch on every session change. `RuntimeTablesView` passes the location.
 
-**5.6 Turn off Postgres Changes** (`20260925124000_realtime_publication_empty.sql`)
+**5.6 Turn off Postgres Changes** (`20260927124000_realtime_publication_empty.sql`)
 - [x] Drops every table in `supabase_realtime`, printing each as a NOTICE. Nothing in the POS app, the CFD build, the Website or the edge functions uses `postgres_changes` any more. Database broadcasts use Realtime's own messages publication, so they keep working.
 - [ ] Apply after the Website release is live.
 - **Verify:** `select count(*) from realtime.subscription;` is 0 and `realtime_connect` drops by about 6 connections.
-- **Rollback:** `rollback/20260925124000_realtime_publication_empty_rollback.sql` re-adds the tables the tracked migrations had added; add any others the forward NOTICEs listed.
+- **Rollback:** `rollback/20260927124000_realtime_publication_empty_rollback.sql` re-adds the tables the tracked migrations had added; add any others the forward NOTICEs listed.
 
 ### Phase 6: Scale readiness (before passing ~300 devices)
 
 - [ ] **6.1** Before 400 concurrent devices, turn the Realtime spend cap off or move to Team. Pro with the cap on allows 500 connections, 500 joins/s and 500 messages/s. Billing decision; no code.
 - [x] **6.2** Apply floor broadcasts to the store directly, behind `EXPO_PUBLIC_FLOOR_BROADCAST_APPLY=1` (off by default).
-  - The broadcast lacked two fields the RPC path relies on: `is_active` (the RPC only shows active sessions) and `server_staff_id`. `20260925123000_table_session_broadcast_fields.sql` adds them; nothing else in the payload changes.
+  - The broadcast lacked two fields the RPC path relies on: `is_active` (the RPC only shows active sessions) and `server_staff_id`. `20260927123000_table_session_broadcast_fields.sql` adds them; nothing else in the payload changes.
   - `lib/floor/applySessionBroadcast.ts` (pure, 9 tests) applies the same rules as the RPC refresh: an inactive or `cleaning` session shows on no table, a same-session local-only status is never overwritten, a session cleared locally within the TTL stays cleared, fields the broadcast doesn't carry survive.
   - `useFloorPlanStore.applySessionBroadcastPayload` ignores out-of-order broadcasts per session and patches only the changed tables. `DELETE`s, assignment and session-event signals, or a payload without `is_active` (database not migrated yet) fall back to the existing reconcile. The heartbeat, catch-up and fallback poll still converge.
 - [x] **6.3** Code: `EXPO_PUBLIC_CLERK_SUPABASE_JWT_TEMPLATE` makes the POS request that Clerk JWT template for Supabase; unset keeps the session token. `REFRESH_MARGIN_MS` stays 30 s, above the 25 s heartbeat.
@@ -312,17 +312,17 @@ Staging first, the whole sequence; soak 24 h including a service; then productio
    - `select policyname, roles, cmd, qual from pg_policies where schemaname = 'realtime';` (these policies exist only on the live databases; worth committing as a migration later)
    - `select obj_description('public.generate_order_number(uuid,uuid)'::regprocedure, 'pg_proc');` (should mention "location local date")
 2. **Phase 1** dashboard settings (1.1 on both; 1.2 on production).
-3. **Deploy the Website** from `db/connections-and-storage`. This must happen before `20260925120000`, which drops the RPCs the old HQ replay called; an old build would only show an error there.
+3. **Deploy the Website** from `db/connections-and-storage`. This must happen before `20260927120000`, which drops the RPCs the old HQ replay called; an old build would only show an error there.
 4. **Deploy `valor-webhook`**: `supabase functions deploy valor-webhook --project-ref <ref>`.
-5. **Apply the migrations** in timestamp order: `20260925120000` → `20260925121000` → `20260925121500` → `20260925122000` → `20260925123000` → `20260925124000`. Each is idempotent, and all but the last run in their own transaction. On `55P03` (lock timeout) just re-run. Keep the NOTICE output of `121000` and `124000`: it is the rollback record.
+5. **Apply the migrations** in timestamp order: `20260927120000` → `20260927121000` → `20260927121500` → `20260927122000` → `20260927123000` → `20260927124000`. Each is idempotent, and all but the last run in their own transaction. On `55P03` (lock timeout) just re-run. Keep the NOTICE output of `121000` and `124000`: it is the rollback record.
 6. **Storage reclaim**, off-hours at a quiet US time (not 7 PM local, Valor's auto-batch time):
    - `CALL public.purge_operational_logs(p_strip_since => '-infinity');` from the SQL editor (not inside a transaction).
    - `SET lock_timeout = '5s'; VACUUM FULL public.valor_webhook_events;` It takes an exclusive lock and the webhook's inserts wait; on Micro it can take minutes. Run it on `webhook_dead_letter_queue` only if `pg_stat_user_tables.n_dead_tup` shows the purge freed a real share.
 7. **Leaked order-number locks:** run the idle-backend advisory lock query (Appendix). Any rows are session locks left by the old code; `pg_terminate_backend(pid)` them off-peak (PostgREST reconnects).
 8. **Regenerate `database.types.ts`** in both repos. This drops the snapshot tables and RPCs from the types and adds the new functions; expect unrelated drift too, since the current Website files predate `20260922120000`.
-9. **POS release** (build or OTA) once `20260925121000` is live on that environment, so `station_updated` nudges exist when the 30 s station refresh goes away.
+9. **POS release** (build or OTA) once `20260927121000` is live on that environment, so `station_updated` nudges exist when the 30 s station refresh goes away.
 10. **Verify** each phase with its Verify list, and fill in Results.
-11. **Phase 6:** set `EXPO_PUBLIC_FLOOR_BROADCAST_APPLY=1` for a pilot store's build after `20260925123000` is live; the 6.3 Clerk template; the 6.1 spend cap; the 6.4 load test.
+11. **Phase 6:** set `EXPO_PUBLIC_FLOOR_BROADCAST_APPLY=1` for a pilot store's build after `20260927123000` is live; the 6.3 Clerk template; the 6.1 spend cap; the 6.4 load test.
 
 ## Timeline and owners
 

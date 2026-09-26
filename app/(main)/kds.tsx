@@ -2748,9 +2748,6 @@ const KitchenDisplayScreen = () => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
     const schedulePoll = () => {
-      // No poll needed when realtime is healthy and no display filter —
-      // broadcasts cover all updates. Only poll when offline or display-filtered.
-      if (isRealtimeConnectedRef.current && !hasDisplayFilter) return;
       // Jittered so a fleet of displays that lost Realtime together doesn't
       // poll get_kds_tickets_v3 in lockstep.
       const interval =
@@ -2778,7 +2775,7 @@ const KitchenDisplayScreen = () => {
     prevRealtimeConnectedRef.current = isRealtimeConnected;
     if (isRealtimeConnected && wasDisconnected && isReady && locationId) {
       const timer = setTimeout(
-        () => backgroundFetchTickets(locationId),
+        () => backgroundFetchTickets(locationId, "reconnect"),
         jitterMs(5_000),
       );
       return () => clearTimeout(timer);

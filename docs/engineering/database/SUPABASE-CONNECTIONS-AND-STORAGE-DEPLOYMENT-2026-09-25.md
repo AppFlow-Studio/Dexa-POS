@@ -17,12 +17,12 @@ Apply from `supabase/migrations/` in this order: staging first, production after
 
 | # | File | What it does | Notes |
 | --- | --- | --- | --- |
-| 1 | `20260925120000_remove_kds_board_snapshots.sql` | Removes the KDS board snapshot feature: 2 tables, 7 functions, 2 triggers, 2 cron jobs. Replaces `bulk_update_order_item_status_v2` without the snapshot call. | Deploy the Website first. Run off-hours: brief lock on `order_items`. |
-| 2 | `20260925121000_connection_hardening.sql` | `frequent-jobs` cron dispatcher replacing 7 jobs; nightly `purge-operational-logs` retention; `station_updated` push triggers on `stations` and `payment_terminals`. | Keep the NOTICE output: it records the old cron commands for rollback. |
-| 3 | `20260925121500_order_number_xact_lock.sql` | Order-number functions lock only when creating the day's sequence, with a transaction-scoped lock. Backfills the sequence registry. | |
-| 4 | `20260925122000_storefront_push_and_realtime_access.sql` | Order status push to storefront visitors for non-POS orders; `qr-session` broadcasts become public; `realtime.messages` policy for location members and Dexa HQ. | Run off-hours: adds a trigger on `orders`. Stops by design if `broadcast_order_changes` isn't the `20260816130000` version. |
-| 5 | `20260925123000_table_session_broadcast_fields.sql` | Adds `is_active` and `server_staff_id` to the `table_sessions` broadcast payload. | Needed before turning on `EXPO_PUBLIC_FLOOR_BROADCAST_APPLY`. |
-| 6 | `20260925124000_realtime_publication_empty.sql` | Empties the `supabase_realtime` publication, which turns off Postgres Changes. | Last, after the new Website is live. Keep the NOTICE output: it lists the tables removed. |
+| 1 | `20260927120000_remove_kds_board_snapshots.sql` | Removes the KDS board snapshot feature: 2 tables, 7 functions, 2 triggers, 2 cron jobs. Replaces `bulk_update_order_item_status_v2` without the snapshot call. | Deploy the Website first. Run off-hours: brief lock on `order_items`. |
+| 2 | `20260927121000_connection_hardening.sql` | `frequent-jobs` cron dispatcher replacing 7 jobs; nightly `purge-operational-logs` retention; `station_updated` push triggers on `stations` and `payment_terminals`. | Keep the NOTICE output: it records the old cron commands for rollback. |
+| 3 | `20260927121500_order_number_xact_lock.sql` | Order-number functions lock only when creating the day's sequence, with a transaction-scoped lock. Backfills the sequence registry. | |
+| 4 | `20260927122000_storefront_push_and_realtime_access.sql` | Order status push to storefront visitors for non-POS orders; `qr-session` broadcasts become public; `realtime.messages` policy for location members and Dexa HQ. | Run off-hours: adds a trigger on `orders`. Stops by design if `broadcast_order_changes` isn't the `20260816130000` version. |
+| 5 | `20260927123000_table_session_broadcast_fields.sql` | Adds `is_active` and `server_staff_id` to the `table_sessions` broadcast payload. | Needed before turning on `EXPO_PUBLIC_FLOOR_BROADCAST_APPLY`. |
+| 6 | `20260927124000_realtime_publication_empty.sql` | Empties the `supabase_realtime` publication, which turns off Postgres Changes. | Last, after the new Website is live. Keep the NOTICE output: it lists the tables removed. |
 
 - All six are safe to re-run. If one fails with `55P03` (lock timeout), re-run it.
 - `supabase db push` applies them in this order in one go. That is fine once the Website is deployed.
@@ -44,10 +44,7 @@ None. No new Supabase secrets or Vault entries either.
 
 ### Migrations
 
-Nothing to apply from this repo. These two files are byte-identical copies of Website migrations 1 and 3, kept so both migration folders agree:
-
-- `supabase/migrations/20260925120000_remove_kds_board_snapshots.sql`
-- `supabase/migrations/20260925121500_order_number_xact_lock.sql`
+Nothing to apply from this repo, and no copies are kept here: the six migrations live in the Website repo only.
 
 ### Edge functions
 

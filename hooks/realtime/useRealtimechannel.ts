@@ -328,16 +328,6 @@ export function useRealtimeChannel<T>({
   // "still retrying" warning is emitted. Jitter from attempt 1 keeps a fleet
   // from re-joining in lock-step after a Supabase-side blip.
   const handleReconnect = useCallback(() => {
-    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-      console.warn(`[Realtime] Max reconnect attempts reached for ${topic}`);
-      updateStatus({
-        state: 'CHANNEL_ERROR',
-        lastError: new Error('Max reconnection attempts reached'),
-        retriesExhausted: true,
-      });
-      return;
-    }
-
     // Clear any existing timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -361,9 +351,12 @@ export function useRealtimeChannel<T>({
       });
     }
 
+    // `retriesExhausted` means "the budget is used up", not "stopped": the
+    // backoff keeps going. Consumers (the tables Sidebar) use it to add their
+    // own forced reconnect on top once the cheap attempts have not worked.
     updateStatus({
       reconnectAttempts: reconnectAttemptsRef.current,
-      retriesExhausted: false,
+      retriesExhausted: reconnectAttemptsRef.current >= maxReconnectAttempts,
     });
 
     if (__DEV__) console.log(`[Realtime] Reconnecting ${topic} in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);

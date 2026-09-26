@@ -127,7 +127,7 @@ EXPO_PUBLIC_SUPABASE_URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY
 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 EXPO_PUBLIC_CFD_DISABLE_LOYALTY  # 1 or "true" to bypass CFD loyalty flow entirely
-EXPO_PUBLIC_FLOOR_BROADCAST_APPLY  # "1" = apply table_sessions broadcasts to the floor store directly (off by default; needs migration 20260925123000)
+EXPO_PUBLIC_FLOOR_BROADCAST_APPLY  # "1" = apply table_sessions broadcasts to the floor store directly (off by default; needs migration 20260927123000)
 EXPO_PUBLIC_CLERK_SUPABASE_JWT_TEMPLATE  # Clerk JWT template name for Supabase tokens (5-min lifetime); unset = Clerk session token
 ```
 

@@ -67,9 +67,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     !floor.isConnected && floor.status.state === "CHANNEL_ERROR";
   const isSyncing = !floor.isConnected && !isOffline;
 
-  // Background periodic retry once the channel's own backoff has given up.
-  // While it is still retrying, a forced reconnect only restarts its sequence
-  // (another private join + access check per device), so leave it alone.
+  // Background periodic retry once the channel's own backoff has used up its
+  // attempt budget (it keeps retrying, up to 60s apart). Before that, a forced
+  // reconnect only adds another private join + access check per device, so
+  // leave it alone.
   // This handles both: internet restored AND server restored scenarios.
   const retriesExhausted = isOffline && floor.status.retriesExhausted === true;
   useEffect(() => {
