@@ -103,7 +103,11 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
-import { findQueuedAddItemRow, unsyncedItemIds } from "@/lib/db/outbox";
+import {
+  findQueuedAddItemRow,
+  unsyncedItemIds,
+  unsyncedOpCountForOrder,
+} from "@/lib/db/outbox";
 import { mintStoreOrderId } from "@/lib/localFirst/identity";
 import {
   forceSetLocalSequence,
@@ -121,7 +125,11 @@ import {
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { withDeadline } from "@/lib/network/withDeadline";
-import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
+import {
+  isValidUUID,
+  mapLocalToBackend,
+  registerLocalId,
+} from "@/lib/offlineIdRegistry";
 import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
 import {
   applyPaymentToItems,
@@ -603,6 +611,7 @@ function flushItemBindings(): void {
   // applied to useSyncStatusStore after it commits — writing another store
   // from inside a setState reducer is how you get a cascade mid-commit.
   const boundCartIds: string[] = [];
+  const boundOrderIds = new Set<string>();
 
   useOrderStore.setState((state) => {
     let nextOrders: typeof state.ordersById | null = null;
@@ -627,6 +636,8 @@ function flushItemBindings(): void {
       if (!needsBinding) continue;
 
       nextOrders = nextOrders ?? { ...state.ordersById };
+      boundOrderIds.add(orderId);
+      boundOrderIds.add(key);
       nextOrders[key] = {
         ...order,
         items: order.items.map((i) => {
@@ -662,6 +673,19 @@ function flushItemBindings(): void {
       .setSyncStatusBatch(
         boundCartIds.map((itemId) => ({ itemId, status: "synced" as const })),
       );
+  }
+
+  // A payment queued behind one of these lines sits blocked in the legacy
+  // queue (`item_not_synced` / `order_ops_pending`) and would otherwise wait
+  // for the 60s periodic tick. Nudge it now that the row exists; the block
+  // budget bounds how often this can fire for a payment that still cannot go.
+  if (boundCartIds.length > 0) {
+    const hasBlockedPayment = [...boundOrderIds].some((id) =>
+      getOperationsForOrder(id).some(
+        (op) => op.type === "process_payment" && op.status === "blocked",
+      ),
+    );
+    if (hasBlockedPayment) void processQueueNow();
   }
 }
 
@@ -2107,30 +2131,6 @@ const ensureOrderCreated = async (
 };
 
 // Helper to sync item to backend - OFFLINE-FIRST: Does NOT remove items on failure
-/** Record the local row id a cart line was written under (see addItemToBackend). */
-const bindItemRowId = (orderKey: string, cartItemId: string, rowId: string) => {
-  useOrderStore.setState((state) => {
-    const line = state.ordersById[orderKey]?.items.find(
-      (i) => i.id === cartItemId,
-    );
-    if (line && !line.item_row_id) line.item_row_id = rowId;
-  });
-};
-
-const addItemToBackend = async (
-  order: OrderProfile,
-  item: CartItem,
-  setOrderDbId: (
-    id: string,
-    dbId: string,
-    number: string,
-    display: string,
-    createdAt: string,
-  ) => void,
-  markItemFailed: (itemId: string, error: string) => void, // Changed from removeItem to markItemFailed
-  onSyncComplete?: (orderId: string) => void, // Callback after successful sync
-  options?: {
-    isMerge?: boolean; // If true, update quantity instead of creating new item
 /**
  * The server's copy of an order, plus the local lines it does not have yet.
  *
@@ -2174,6 +2174,30 @@ export function withUnsyncedLocalLines(
   };
 }
 
+/** Record the local row id a cart line was written under (see addItemToBackend). */
+const bindItemRowId = (orderKey: string, cartItemId: string, rowId: string) => {
+  useOrderStore.setState((state) => {
+    const line = state.ordersById[orderKey]?.items.find(
+      (i) => i.id === cartItemId,
+    );
+    if (line && !line.item_row_id) line.item_row_id = rowId;
+  });
+};
+
+const addItemToBackend = async (
+  order: OrderProfile,
+  item: CartItem,
+  setOrderDbId: (
+    id: string,
+    dbId: string,
+    number: string,
+    display: string,
+    createdAt: string,
+  ) => void,
+  markItemFailed: (itemId: string, error: string) => void, // Changed from removeItem to markItemFailed
+  onSyncComplete?: (orderId: string) => void, // Callback after successful sync
+  options?: {
+    isMerge?: boolean; // If true, update quantity instead of creating new item
     addedQuantity?: number; // The quantity being added (for merge operations)
   },
 ): Promise<boolean> => {
@@ -3757,21 +3781,90 @@ const syncPaymentToBackend = async (
       : null;
 
   // ========================================================================
-  // OFFLINE-FIRST: Queue payment for later sync if order not in DB yet
+  // Rebind allocations to SERVER item ids, and decide whether the server can
+  // take this payment right now.
+  // ========================================================================
+  //
+  // addPaymentToOrder maps each allocation to `db_order_item_id || cart id`
+  // from a snapshot taken BEFORE the drain's binding flush (a microtask), so
+  // re-read the line now: the binding may have landed since. A line the
+  // server does not have yet keeps its CART id — the composite merge key the
+  // queued handler resolves through `resolveItemId` once the row lands. It is
+  // never `item_row_id`: that is a uuid, and every resolver treats a uuid as
+  // already-resolved, which would send the payment ahead of the row.
+  //
+  // Charcoal Gardenia S1-0008 (2026-09-25): the online call sent a cart id as
+  // `order_item_id`, process_payment_v17 failed its uuid cast, and the queued
+  // retry then waited on an item that never synced.
+  const freshItems =
+    useOrderStore.getState().getOrder(order.id)?.items ?? order.items;
+  let hasUnsyncedAllocation = false;
+  const boundAllocations = paymentDetails.itemAllocations?.map((alloc) => {
+    const line = freshItems.find(
+      (i) =>
+        i.db_order_item_id === alloc.itemId ||
+        i.id === alloc.itemId ||
+        i.item_row_id === alloc.itemId,
+    );
+    if (line?.db_order_item_id) {
+      return { ...alloc, itemId: line.db_order_item_id };
+    }
+    // A known line without a server id → its cart id. An unknown id is
+    // trusted only when it already is a uuid.
+    const itemId = line ? line.id : alloc.itemId;
+    if (!isValidUUID(itemId)) hasUnsyncedAllocation = true;
+    return { ...alloc, itemId };
+  });
+
+  // Allocations are not the only dependency. A full-remaining or split-evenly
+  // payment carries none, and process_payment_v17 settles `p_amount = NULL`
+  // against the server's OWN remaining balance — short while this order still
+  // has items in the outbox. Any pending or parked op on the order therefore
+  // sends the payment through the queue, whose handler waits for the outbox.
+  let outboxPending = 0;
+  let outboxFailed = 0;
+  if (LOCAL_WRITES_ITEMS && order.db_order_id) {
+    const counts = await unsyncedOpCountForOrder(order.db_order_id);
+    outboxPending = counts.pending;
+    outboxFailed = counts.failed;
+  }
+  const mustQueue =
+    !order.db_order_id ||
+    hasUnsyncedAllocation ||
+    outboxPending + outboxFailed > 0;
+
+  // ========================================================================
+  // OFFLINE-FIRST: queue the payment while the server cannot take it yet
   // ========================================================================
   // TODO: ADD DEJAVOO TRANSACTION TO THE PAYMENT DETAILS OFFLINE
-  if (!order.db_order_id) {
+  if (mustQueue) {
     if (__DEV__)
       console.log(
-        "[syncPaymentToBackend] Order has no db_order_id, queueing payment for later sync",
+        `[syncPaymentToBackend] Queueing payment for order ${order.id}: db_order_id=${order.db_order_id ?? "none"} unsyncedAllocation=${hasUnsyncedAllocation} outbox=${outboxPending}p/${outboxFailed}f`,
       );
+    if (order.db_order_id) {
+      try {
+        Sentry.addBreadcrumb({
+          category: "payment_sync",
+          level: "info",
+          message: "payment_queued_outbox_pending",
+          data: {
+            order_id: order.db_order_id,
+            unsynced_allocation: hasUnsyncedAllocation,
+            outbox_pending: outboxPending,
+            outbox_failed: outboxFailed,
+            method: paymentDetails.method,
+          },
+        });
+      } catch {}
+    }
 
     const isCash = paymentDetails.method === "Cash";
     const terminalResponse = buildTerminalResponse();
 
     // Build item allocations for per-item payments (convert to backend format)
     const itemAllocations =
-      paymentDetails.itemAllocations?.map((alloc) => ({
+      boundAllocations?.map((alloc) => ({
         order_item_id: alloc.itemId,
         quantity: alloc.quantity,
         amount: alloc.amount,
@@ -3786,7 +3879,7 @@ const syncPaymentToBackend = async (
 
     // Build payment params for process_payment_v8 (will be resolved when order syncs)
     const paymentParams = {
-      p_order_id: order.id, // Will be resolved to db_order_id at sync time
+      p_order_id: order.db_order_id ?? order.id, // a local id is resolved to db_order_id at sync time
       // Canonical mapping so a queued OFFLINE in-kind payment replays as
       // 'inkind' rather than being flattened to a card sale on sync.
       p_payment_method: toDbPaymentMethod(paymentDetails.method),
@@ -3842,7 +3935,7 @@ const syncPaymentToBackend = async (
     // Build item allocations for per-item payments (convert to backend format)
     // Filter out undefined amount values to avoid JSON serialization issues
     const itemAllocationsForRpc =
-      paymentDetails.itemAllocations?.map((alloc) => ({
+      boundAllocations?.map((alloc) => ({
         order_item_id: alloc.itemId,
         quantity: alloc.quantity,
         ...(alloc.amount !== undefined && { amount: alloc.amount }),
@@ -4117,7 +4210,7 @@ const syncPaymentToBackend = async (
 
       // Build item allocations for retry
       const itemAllocationsRetry =
-        paymentDetails.itemAllocations?.map((alloc) => ({
+        boundAllocations?.map((alloc) => ({
           order_item_id: alloc.itemId,
           quantity: alloc.quantity,
           amount: alloc.amount,
@@ -17666,6 +17759,18 @@ export const useOrderStore = create<OrderState>()(
                 for (const id of preservedIds) {
                   preservedOrders[id] = state.ordersById[id];
                 }
+
+                // A preserved order the server ALSO returned (same db-id key)
+                // must keep its unsynced lines; see withUnsyncedLocalLines.
+                for (const id of preservedIds) {
+                  if (newOrders[id]) {
+                    newOrders[id] = withUnsyncedLocalLines(
+                      state.ordersById[id],
+                      newOrders[id],
+                    );
+                  }
+                }
+
                 // Server wins, preserved orders fill gaps
                 state.ordersById = { ...preservedOrders, ...newOrders } as any;
                 state.orderIds = [
@@ -17759,18 +17864,6 @@ export const useOrderStore = create<OrderState>()(
                 cash_outstanding_subtotal: 0,
                 cash_outstanding_tax: 0,
                 cash_outstanding_total: 0,
-
-                // A preserved order the server ALSO returned (same db-id key)
-                // must keep its unsynced lines; see withUnsyncedLocalLines.
-                for (const id of preservedIds) {
-                  if (newOrders[id]) {
-                    newOrders[id] = withUnsyncedLocalLines(
-                      state.ordersById[id],
-                      newOrders[id],
-                    );
-                  }
-                }
-
                 service_charge: 0,
                 cash_service_charge: 0,
                 outstanding_service_charge: 0,

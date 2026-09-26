@@ -13,6 +13,7 @@ import { onDeltaNudge } from "@/lib/db/deltaNudge";
 import {
     getOrdersMirrorState,
     isOrdersMirrorFresh,
+    itemRowToFetchedItem,
     queryLocalHistoryPage,
     queryLocalHistorySummaries,
     type SqlValue,
@@ -620,7 +621,11 @@ function _transformFetchedOrder(
   };
 }
 
-/** Rebuild a FetchedOrderData from mirror rows — payloads are verbatim server JSON. */
+/**
+ * Rebuild a FetchedOrderData from mirror rows. Order/payment payloads are
+ * verbatim server JSON; item rows go through `itemRowToFetchedItem` because a
+ * local-first row's payload is only a placeholder until the server row lands.
+ */
 function mirrorRowToFetchedOrder(
   row: Record<string, SqlValue>,
   items: Record<string, SqlValue>[],
@@ -629,7 +634,7 @@ function mirrorRowToFetchedOrder(
   const header = safeJsonObject(row.payload);
   return {
     ...header,
-    order_items: items.map((it) => safeJsonObject(it.payload)),
+    order_items: items.map(itemRowToFetchedItem),
     order_payments: payments.map((p) => safeJsonObject(p.payload)),
   } as unknown as FetchedOrderData;
 }

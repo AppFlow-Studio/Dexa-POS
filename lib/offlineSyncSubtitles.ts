@@ -225,6 +225,8 @@ export function describeBlockReason (reason: string): string {
     case 'item_not_synced':
     case 'no_local_order_id_for_item':
       return 'the item to finish syncing'
+    case 'order_ops_pending':
+      return "the order's items to reach the server"
     case 'session_not_synced':
       return 'the table session to finish syncing'
     case 'staff_id_unavailable':

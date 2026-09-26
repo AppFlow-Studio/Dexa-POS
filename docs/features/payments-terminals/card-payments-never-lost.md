@@ -77,6 +77,22 @@ Hotfix (branch `fix/lf-custom-modifier-lost-items`):
 - [x] Tests: `__tests__/db/customModifierLostItem.test.ts` (8), `__tests__/flattenModifiersForRpc.test.ts` (3).
 - [ ] Prod: apply `20260925130000_void_order_block_captured_cards.sql`, then publish the OTA with `--environment production`.
 
+## Wave 1b — S1-0008 follow-ups (same branch)
+
+`ORD-20260925-S1-0008` (prod `f5629a43…`, voided 21:48 UTC, $49.74, no payment row) is the S1-0011 bug again, plus three more it exposed. Verified against prod logs on 2026-09-25:
+
+- 19:34 / 19:36 / 21:03 / 21:16: `invalid input syntax for type uuid: "custom-modifiers"` — the item adds (fixed in Wave 1).
+- 21:04:05: `invalid input syntax for type uuid: "4ca2fa8e-…|modifiers:custom-modifiers:custom_mod_…"` — `process_payment_v17` was handed a composite cart id as an `order_item_id`. Then 21:04:10 / 21:04:14 `not fully paid (amount_due=49.74)`.
+- The tablet's Previous Orders showed the rejected lines as "Unknown Item", and Print took the POS to the error screen (the mirror row's payload was the local-first placeholder; `calculateOrderTotals` threw on `quantity: undefined`).
+
+Fixes:
+- [x] (a) `lib/db/historyQuery.ts` `itemRowToFetchedItem`: a mirror item row is rebuilt from its promoted columns plus its payload. Payload wins for synced rows; columns win for local rows (later local writes update columns only). Used by `usePreviousOrdersStore.mirrorRowToFetchedOrder` and `useOnlineOrdersByDate`.
+- [x] (b) `calculateOrderTotals` counts a non-numeric quantity as 0 (never 1: this math feeds payments). `ReceiptModal` catches a totals failure (Sentry `receipt-preview-totals`) and wraps the receipt paper in `ProductionErrorBoundary`.
+- [x] (c) `syncPaymentToBackend` rebinds allocations to `db_order_item_id` from the fresh store line, keeps the CART id (never `item_row_id`) for an unbound line, and queues instead of calling the RPC when any allocation is unbound OR the order has pending/failed outbox ops (`unsyncedOpCountForOrder`) — a full-remaining payment carries no allocations and `process_payment_v17` would settle `p_amount = NULL` against a short server balance. The queued handler blocks on `order_ops_pending` until the outbox is clear; `flushItemBindings` nudges the legacy queue when a blocked payment waits on a line that just landed. Sentry breadcrumb `payment_queued_outbox_pending`.
+- [x] (d) The drain's open-item branch now sends custom modifier rows via `replace_order_item_modifiers_v2` after `add_open_item_v5`, with `price_modifier: 0`. The entered open-item price is all-in (`OpenItemAdder` rolls modifier prices into `open_item_price`), the replace RPC reprices by row prices, and the client composer adds row prices again — a priced row is charged twice. Staging proof (rolled back): zero rows → `unit_price 14.50`, row present; a $2.50 row → `unit_price 17.00`. Transient failure retries the op; a permanent rejection keeps the item synced and reports `open_item_modifiers_rejected`.
+
+Left to the user: Castles batch check on S1 for ~5:04 PM ET 2026-09-25; the `location_id = 'undefined'` menu fetch seen in prod logs (unrelated); whether priced open-item modifiers are wanted (a pricing-model change, not done here).
+
 ## Wave 2 — `process_payment` on the SQLite outbox (`EXPO_PUBLIC_LOCAL_WRITES_PAYMENTS`)
 
 - [ ] `local_payments` table (additive, SCHEMA_VERSION 14), `OutboxOp += process_payment`

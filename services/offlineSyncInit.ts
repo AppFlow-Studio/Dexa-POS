@@ -1310,6 +1310,41 @@ async function executeQueuedOperation(
           console.log(`[OfflineSync:payment] Resolved to: ${resolvedOrderId}`);
         }
 
+        // ── Local-first: never settle ahead of the outbox. ──────────────────
+        //
+        // A full-remaining or split-evenly payment carries no allocations, and
+        // process_payment_v17 settles `p_amount = NULL` against the server's
+        // OWN remaining balance — short while this order still has items in
+        // the outbox (Charcoal Gardenia S1-0008, 2026-09-25). Allocation ids
+        // are not the only dependency, so wait for every pending or parked op
+        // on the order. A parked op holds the payment until the operator
+        // repairs the line; the block budget then dead-letters it where the
+        // Wave-1 banner surfaces it, exactly as `item_not_synced` does today.
+        if (isValidUUID(paymentParams?.p_order_id ?? "")) {
+          try {
+            const { LOCAL_WRITES_ITEMS } =
+              require("@/services/localFirst/localWrites") as typeof import("@/services/localFirst/localWrites");
+            if (LOCAL_WRITES_ITEMS) {
+              const { unsyncedOpCountForOrder } =
+                require("@/lib/db/outbox") as typeof import("@/lib/db/outbox");
+              const { pending, failed } = await unsyncedOpCountForOrder(
+                paymentParams.p_order_id,
+              );
+              if (pending + failed > 0) {
+                console.log(
+                  `[OfflineSync:payment] BLOCKED - order ${paymentParams.p_order_id} still has ${pending} pending / ${failed} failed outbox op(s)`,
+                );
+                return OpBlocked("order_ops_pending");
+              }
+            }
+          } catch (outboxErr) {
+            console.warn(
+              "[OfflineSync:payment] outbox check failed, proceeding:",
+              outboxErr,
+            );
+          }
+        }
+
         // Resolve item allocations (support per-item/split-by-item payments queued with local IDs)
         if (
           paymentParams.p_item_allocations &&

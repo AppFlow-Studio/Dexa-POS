@@ -160,3 +160,24 @@
 - Pattern: before chasing a batching bug from a timestamp, find the WRITER of that timestamp and ask (1) is it stamped per row or per batch, (2) is it re-emitted on restart, (3) does the reader take min or max. Staging can usually reproduce the signature (here: every mass cluster sat 1–2 s after a `device_login_history` row).
 - Pattern: any third-party call on the request critical path needs a deadline, not just our own RPCs. The Clerk mint sat outside the Bad-WiFi deadline umbrella and, via a single shared in-flight promise, could pin REST, the Realtime socket's own reconnect and every resubscribe path. `lib/auth/supabaseTokenCache.ts` now bounds it.
 - Memory hygiene: a memory note claimed a fix migration file existed that was never written (its apply had been blocked). Verify a remembered file with `ls` before planning around it.
+
+## A mirror row must read the same from its columns as from its payload
+
+- 2026-09-25 (Charcoal Gardenia S1-0008): Previous Orders rebuilt lines from `order_items.payload` alone. A local-first add writes only its open-item facts there, so a rejected menu item showed as "Unknown Item" with `quantity: undefined`, and the receipt preview's `Decimal.times(undefined)` took the POS to the error screen.
+- Rule: every reader of a mirror row goes through `itemRowToFetchedItem` (`lib/db/historyQuery.ts`). Payload wins for a synced row; columns win for a local row, because later local writes touch columns only. Any render-time money math tolerates a missing quantity as 0, never 1.
+
+## A payment may not run ahead of the outbox
+
+- Same incident: the online `process_payment_v17` call was handed a cart id as an `order_item_id`. But allocation ids are only half of it — a full-remaining payment carries none, and the RPC settles `p_amount = NULL` against the server's own remaining balance, which is short while items are still in the outbox.
+- Rule: `syncPaymentToBackend` queues when any allocation is unbound OR `unsyncedOpCountForOrder` is non-zero, and the queued handler blocks on `order_ops_pending`. An unbound line is addressed by its CART id; `item_row_id` is a uuid and every resolver treats a uuid as already on the server.
+
+## Open-item prices are all-in, so their modifier rows carry no price
+
+- Adding a modifier sync for open items looked like "call `replace_order_item_modifiers_v2` after the add, like the legacy path". A senior review caught that `OpenItemAdder` rolls modifier prices into `open_item_price`, the replace RPC reprices the line by the rows it inserts, and the client composer adds row prices again. Staging proof: a $2.50 row moved a $14.50 line to $17.00.
+- Rule: before mirroring a legacy call, check what the server does with the payload's prices and what the client does with the echo. For open items the rows are descriptive (`price_modifier: 0`). Priced open-item modifiers need a pricing-model change, not a second RPC call.
+
+## Verification means running the real thing, not writing Jest cases
+
+- 2026-09-25, twice in one day (S1-0011, then the S1-0008 follow-ups): I wrote Jest cases for a fix and the user said "dont unit test please do actual tests". The plan had even said "targeted Jest if the emulator is blocked" — that fallback is not what the user wants.
+- Rule: prove a fix on the systems it touches. Server paths: call the real RPC on staging inside one `DO $$ … RAISE EXCEPTION 'PROOF …' $$` block (the exception rolls back and carries the result). Client paths: run the flow on the emulator against staging and read the device log + the staging rows. Existing Jest, tsc and lint stay as a safety net; new Jest files or cases only when asked.
+
