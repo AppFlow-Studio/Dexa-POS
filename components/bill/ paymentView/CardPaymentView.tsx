@@ -1323,7 +1323,9 @@ const CardPaymentView = () => {
     try {
       // Never charge for items the server rejected — the payment could not
       // be recorded against them (see paymentSyncGate).
-      if (!(await ensureOrderReadyForPayment(activeOrder?.db_order_id, "card"))) {
+      const gate = await ensureOrderReadyForPayment(activeOrder?.db_order_id, "card");
+      if (!gate.ok) {
+        setErrorModal({ visible: true, title: gate.title, message: gate.message });
         return;
       }
     } finally {

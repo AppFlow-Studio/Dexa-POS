@@ -110,7 +110,9 @@ const CashPaymentView = () => {
     cashGateRef.current = true;
     try {
       // Never record cash against items the server rejected (paymentSyncGate).
-      if (!(await ensureOrderReadyForPayment(activeOrder?.db_order_id, "cash"))) {
+      const gate = await ensureOrderReadyForPayment(activeOrder?.db_order_id, "cash");
+      if (!gate.ok) {
+        toastService.show({ title: gate.title, message: gate.message, type: "error", duration: 8000 });
         return;
       }
     } finally {

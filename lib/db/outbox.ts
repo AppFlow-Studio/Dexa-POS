@@ -559,11 +559,21 @@ export interface CancelledOps {
  * realtime. The legacy queue had `cancelPendingByEntity` for exactly this; the
  * outbox needs its own, because it is a different queue.
  *
- * Only `status = 'pending'` ops with `attempts = 0` are cancellable. One that
- * has been ATTEMPTED may already have reached the server (a response can be
- * lost after the write commits), so its create must stand and be undone by a
- * real `remove_item` instead of quietly dropped.
+ * Cancellable: `status = 'pending'` ops with `attempts = 0`, and `failed`
+ * ops. A pending op that has been ATTEMPTED may already have reached the
+ * server (a response can be lost after the write commits), so its create must
+ * stand and be undone by a real `remove_item` instead of quietly dropped.
+ *
+ * A `failed` op is the opposite case: its last attempt was a definitive server
+ * refusal, and every RPC is idempotent on the client-minted id, so an earlier
+ * attempt that had landed would have come back as success, not a refusal.
+ * Nothing landed, so there is nothing to undo. Keeping it parked meant
+ * "remove and re-add the item" never unblocked payment: the payment gate still
+ * counted the removed line's failed add (test B, 2026-09-25).
  */
+const CANCELLABLE_OP =
+  `(status = 'failed' OR (status = 'pending' AND attempts = 0))`;
+
 export async function cancelPendingOpsForEntity(
   entityId: string,
 ): Promise<CancelledOps> {
@@ -572,14 +582,12 @@ export async function cancelPendingOpsForEntity(
   try {
     return await dbWriteMutex.runExclusive(async () => {
       const rows = await db.getAllAsync<{ op: string }>(
-        `SELECT op FROM outbox
-          WHERE entity_id = ? AND status = 'pending' AND attempts = 0`,
+        `SELECT op FROM outbox WHERE entity_id = ? AND ${CANCELLABLE_OP}`,
         [entityId],
       );
       if (rows.length === 0) return { deleted: 0, hadUnsentCreate: false };
       await db.runAsync(
-        `DELETE FROM outbox
-          WHERE entity_id = ? AND status = 'pending' AND attempts = 0`,
+        `DELETE FROM outbox WHERE entity_id = ? AND ${CANCELLABLE_OP}`,
         [entityId],
       );
       const hadUnsentCreate = rows.some(
@@ -613,10 +621,17 @@ export async function cancelPendingOpsForEntity(
  * rewrote its pending `add_item` params); the outbox had no equivalent, so
  * every edit made before the drain confirmed the row was silently discarded.
  *
- * Only `attempts = 0` ops qualify — one that has been tried may have landed
- * despite a lost response, and rewriting its payload would then mean the
- * server holds a version of the row nobody asked for. Those take a real
- * update op instead, which is what the `false` return tells the caller.
+ * Pending ops with `attempts = 0` qualify, and so do `failed` ones. A pending
+ * op that has been tried may have landed despite a lost response, and
+ * rewriting its payload would then mean the server holds a version of the row
+ * nobody asked for. Those take a real update op instead, which is what the
+ * `false` return tells the caller.
+ *
+ * A `failed` op was REFUSED by the server, so nothing landed (see
+ * `cancelPendingOpsForEntity`). Amending it is the only way an edit can repair
+ * a rejected line; before, the edit stayed on screen and the parked add kept
+ * the content the server refused (test B, 2026-09-25). The edit is new
+ * information, so the op goes back to `pending` for an immediate retry.
  */
 export async function amendPendingOpPayload(
   entityId: string,
@@ -627,9 +642,13 @@ export async function amendPendingOpPayload(
   if (!db) return false;
   try {
     return await dbWriteMutex.runExclusive(async () => {
-      const row = await db.getFirstAsync<{ id: string; payload: string }>(
-        `SELECT id, payload FROM outbox
-          WHERE entity_id = ? AND op = ? AND status = 'pending' AND attempts = 0
+      const row = await db.getFirstAsync<{
+        id: string;
+        payload: string;
+        status: string;
+      }>(
+        `SELECT id, payload, status FROM outbox
+          WHERE entity_id = ? AND op = ? AND ${CANCELLABLE_OP}
           ORDER BY created_at DESC, rowid DESC
           LIMIT 1`,
         [entityId, op],
@@ -642,15 +661,56 @@ export async function amendPendingOpPayload(
         return false;
       }
       const merged = JSON.stringify({ ...payload, ...patch });
-      await db.runAsync(`UPDATE outbox SET payload = ? WHERE id = ?`, [
-        merged,
-        row.id,
-      ]);
+      await db.runAsync(
+        `UPDATE outbox
+            SET payload = ?, status = 'pending', next_at = NULL
+          WHERE id = ?`,
+        [merged, row.id],
+      );
+      if (row.status === "failed") {
+        console.warn(
+          `[LF] edit amended rejected ${op} ${entityId.slice(0, 8)} — requeued`,
+        );
+      }
       return true;
     });
   } catch (error) {
     console.warn("[LF] amendPendingOpPayload failed:", error);
     return false;
+  }
+}
+
+/**
+ * The row id an unsynced `add_item` already created for this cart line, if
+ * any.
+ *
+ * `item_row_id` on the cart line is the in-memory record of that id, and it
+ * can go missing: a reload that rebuilds the order from the server (which has
+ * no such row yet), or an edit sheet writing back a snapshot taken before the
+ * id was bound. Without it the add path minted a SECOND row for the same line,
+ * and both reached the server once it healed: $7.08 on the server, $3.54 on
+ * the tablet (test B, 2026-09-25). The queued op carries the cart id, so it is
+ * the durable answer.
+ */
+export async function findQueuedAddItemRow(
+  orderId: string,
+  cartItemId: string,
+): Promise<string | null> {
+  const db = getReadDb();
+  if (!db) return null;
+  try {
+    const row = await db.getFirstAsync<{ entity_id: string }>(
+      `SELECT entity_id FROM outbox
+        WHERE op = 'add_item' AND order_id = ?
+          AND json_extract(payload, '$.cartItemId') = ?
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 1`,
+      [orderId, cartItemId],
+    );
+    return row?.entity_id ?? null;
+  } catch (error) {
+    console.warn("[LF] findQueuedAddItemRow failed:", error);
+    return null;
   }
 }
 

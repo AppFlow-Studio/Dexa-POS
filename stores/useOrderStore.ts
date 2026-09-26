@@ -103,7 +103,7 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
-import { unsyncedItemIds } from "@/lib/db/outbox";
+import { findQueuedAddItemRow, unsyncedItemIds } from "@/lib/db/outbox";
 import { mintStoreOrderId } from "@/lib/localFirst/identity";
 import {
   forceSetLocalSequence,
@@ -2107,6 +2107,16 @@ const ensureOrderCreated = async (
 };
 
 // Helper to sync item to backend - OFFLINE-FIRST: Does NOT remove items on failure
+/** Record the local row id a cart line was written under (see addItemToBackend). */
+const bindItemRowId = (orderKey: string, cartItemId: string, rowId: string) => {
+  useOrderStore.setState((state) => {
+    const line = state.ordersById[orderKey]?.items.find(
+      (i) => i.id === cartItemId,
+    );
+    if (line && !line.item_row_id) line.item_row_id = rowId;
+  });
+};
+
 const addItemToBackend = async (
   order: OrderProfile,
   item: CartItem,
@@ -2229,6 +2239,37 @@ const addItemToBackend = async (
       return false;
     }
 
+    // ── One cart line, one row. ────────────────────────────────────────
+    //
+    // addLocalItem mints a fresh row per call, so reaching here for a line
+    // that ALREADY has a queued add duplicated it: a Retry on a failed line,
+    // or a line whose item_row_id was lost to a reload. Both rows reached the
+    // server once it healed — $7.08 there, $3.54 on the tablet (test B,
+    // 2026-09-25). Fold the line's current content into the existing add
+    // instead; that is also what makes an edit of a rejected line land.
+    const existingRowId =
+      item.item_row_id ?? (await findQueuedAddItemRow(orderId, item.id));
+    if (existingRowId) {
+      console.log(
+        `[LF] addItem folded into existing row ${existingRowId.slice(0, 8)} — no new row`,
+      );
+      bindItemRowId(resolveOrderKey(), item.id, existingRowId);
+      const res = await editLocalItem({
+        orderId,
+        itemId: existingRowId,
+        quantity: item.quantity,
+        specialInstructions: item.customizations?.notes ?? null,
+        modifiers: flattenModifiersForRpc(item) ?? [],
+      });
+      if (!res.ok) {
+        console.error("[LF] ✗ editLocalItem (fold) failed:", res.error);
+        markItemFailed(item.id, res.error ?? "Local write failed");
+        return false;
+      }
+      onSyncComplete?.(resolveOrderKey());
+      return true;
+    }
+
     const res = await addLocalItem({
       orderId,
       locationId: selectedStore.id,
@@ -2325,13 +2366,7 @@ const addItemToBackend = async (
     // until it was dead-lettered, and the operator's change never left the
     // device.
     if (res.value?.itemId) {
-      const rowId = res.value.itemId;
-      useOrderStore.setState((state) => {
-        const currentOrder = state.ordersById[resolveOrderKey()];
-        if (!currentOrder) return;
-        const line = currentOrder.items.find((i) => i.id === item.id);
-        if (line && !line.item_row_id) line.item_row_id = rowId;
-      });
+      bindItemRowId(resolveOrderKey(), item.id, res.value.itemId);
     }
 
     // ── db_order_item_id is set by the DRAIN, not here. ────────────────
@@ -9438,7 +9473,7 @@ export const useOrderStore = create<OrderState>()(
             // scheduleValidation();
           },
 
-          updateItemInActiveOrder: (updatedItem) => {
+          updateItemInActiveOrder: (incomingItem) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
 
@@ -9458,8 +9493,24 @@ export const useOrderStore = create<OrderState>()(
             // Phase 5: Any visible order can be modified - no ownership guard needed
 
             const originalItem = order.items.find(
-              (i) => i.id === updatedItem.id,
+              (i) => i.id === incomingItem.id,
             );
+
+            // Keep the line's row identity. Edit sheets pass back a snapshot
+            // taken when they opened, which can predate the add binding
+            // item_row_id / db_order_item_id; writing it back wholesale wiped
+            // them, and the edit then had no row to land on (test B,
+            // 2026-09-25: a note edit stayed on screen only).
+            const updatedItem: CartItem = originalItem
+              ? {
+                  ...incomingItem,
+                  item_row_id:
+                    incomingItem.item_row_id ?? originalItem.item_row_id,
+                  db_order_item_id:
+                    incomingItem.db_order_item_id ??
+                    originalItem.db_order_item_id,
+                }
+              : incomingItem;
 
             // Update items
             let updatedItems = order.items.map((i) =>
@@ -10142,7 +10193,17 @@ export const useOrderStore = create<OrderState>()(
                       });
                     });
                 }
-              } else if (LOCAL_WRITES_ITEMS && updatedItem.item_row_id) {
+              } else if (
+                LOCAL_WRITES_ITEMS &&
+                // A line added before local-first still has its add in the
+                // LEGACY queue; the else-branch below amends that one.
+                !getPendingOperations().some(
+                  (op) =>
+                    op.type === "add_item" &&
+                    op.localItemId === updatedItem.id &&
+                    op.status === "pending",
+                )
+              ) {
                 // ── The edit has a row to land on. ─────────────────────────
                 //
                 // The legacy branch below rewrites a pending LEGACY `add_item`
@@ -10173,21 +10234,39 @@ export const useOrderStore = create<OrderState>()(
                     addons: updatedItem.customizations?.addOns,
                   });
 
-                void editLocalItem({
-                  orderId: order.db_order_id ?? activeOrderId,
-                  itemId: updatedItem.item_row_id,
-                  quantity: editedQuantity,
-                  specialInstructions: notesChanged
-                    ? (updatedItem.customizations?.notes ?? null)
-                    : undefined,
-                  modifiers: modsChanged
-                    ? (flattenModifiersForRpc(updatedItem) ?? [])
-                    : undefined,
-                }).then((res) => {
+                const lfOrderId = order.db_order_id ?? activeOrderId;
+                void (async () => {
+                  // item_row_id can be missing (e.g. lost to a reload); the
+                  // queued add still knows which row this line is.
+                  const rowId =
+                    updatedItem.item_row_id ??
+                    (await findQueuedAddItemRow(lfOrderId, updatedItem.id));
+                  if (!rowId) {
+                    // Never fall through to an add — that minted a second row
+                    // for the same line. Nothing queued means nothing to amend.
+                    console.warn(
+                      `[LF] edit of ${updatedItem.id.slice(0, 24)} has no local row — not synced`,
+                    );
+                    return;
+                  }
+                  if (!updatedItem.item_row_id) {
+                    bindItemRowId(activeOrderId, updatedItem.id, rowId);
+                  }
+                  const res = await editLocalItem({
+                    orderId: lfOrderId,
+                    itemId: rowId,
+                    quantity: editedQuantity,
+                    specialInstructions: notesChanged
+                      ? (updatedItem.customizations?.notes ?? null)
+                      : undefined,
+                    modifiers: modsChanged
+                      ? (flattenModifiersForRpc(updatedItem) ?? [])
+                      : undefined,
+                  });
                   if (!res.ok) {
                     console.error("[LF] ✗ editLocalItem failed:", res.error);
                   }
-                });
+                })();
               } else {
                 // Item not yet synced to backend — update the pending add_item op
                 // in the offline queue so it creates the item with the latest data

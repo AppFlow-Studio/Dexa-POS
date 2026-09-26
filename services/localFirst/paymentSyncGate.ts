@@ -16,23 +16,31 @@ import {
   requeueFailedOpsForOrder,
   unsyncedOpCountForOrder,
 } from "@/lib/db/outbox";
-import { toastService } from "@/lib/toastService";
 import { LOCAL_WRITES_ITEMS } from "@/services/localFirst/localWrites";
 import {
   nudgeDrain,
   waitForOrderSynced,
 } from "@/services/localFirst/outboxDrain";
 
+export type PaymentGateResult =
+  | { ok: true }
+  | { ok: false; title: string; message: string };
+
+/**
+ * The caller shows the block reason in its OWN UI: a toast renders beneath
+ * the payment sheet, so a toast-only block looked like a dead Charge button
+ * (found in the S1-0011 emulator run).
+ */
 export async function ensureOrderReadyForPayment(
   dbOrderId: string | null | undefined,
   method: "card" | "cash",
-): Promise<boolean> {
-  if (!LOCAL_WRITES_ITEMS || !dbOrderId) return true;
+): Promise<PaymentGateResult> {
+  if (!LOCAL_WRITES_ITEMS || !dbOrderId) return { ok: true };
 
-  if (await waitForOrderSynced(dbOrderId)) return true;
+  if (await waitForOrderSynced(dbOrderId)) return { ok: true };
 
   const { failed } = await unsyncedOpCountForOrder(dbOrderId);
-  if (failed === 0) return true;
+  if (failed === 0) return { ok: true };
 
   // Give the parked ops another go so the operator's next tap can succeed —
   // the drain sanitizes payloads at send time, so a since-fixed bug heals.
@@ -47,14 +55,12 @@ export async function ensureOrderReadyForPayment(
     });
   } catch {}
 
-  toastService.show({
+  return {
+    ok: false,
     title: "Item not saved",
     message:
-      `${failed} change(s) on this order didn't reach the server, so it can't be ` +
-      `paid yet. Retrying now — try again in a few seconds. If it keeps ` +
+      `${failed} change(s) on this order didn't reach the server, so it can't ` +
+      `be paid yet. Retrying now — try again in a few seconds. If it keeps ` +
       `failing, remove and re-add the item.`,
-    type: "error",
-    duration: 8000,
-  });
-  return false;
+  };
 }
