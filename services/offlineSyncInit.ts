@@ -505,7 +505,9 @@ export async function initializeOfflineSync(): Promise<void> {
         try {
           const { useFloorPlanStore } = require("@/stores/useFloorPlanStore");
           const floorPlanState = useFloorPlanStore.getState();
-          if (floorPlanState.selectedLocationId) {
+          // `locationId` is the store's field. This read `selectedLocationId`,
+          // which the store never had, so the refresh on reconnect never ran.
+          if (floorPlanState.locationId) {
             floorPlanState.loadFloorPlanStatus();
           }
         } catch (fpErr) {

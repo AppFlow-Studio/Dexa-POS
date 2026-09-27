@@ -534,9 +534,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
         // Load status if we have a floor plan
         if (defaultPlan?.id) {
-          await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
-          // Await prefetch so all floorplans are cached before we strip
-          // orphaned sessions below.
+          // Boot waits for the reconcile: the switch itself now returns as
+          // soon as the tables are painted, and the orphan sweep below must
+          // not run against a floor that has not been read yet.
+          await useFloorPlanStore
+            .getState()
+            .setActiveFloorPlan(defaultPlan.id, { waitForReconcile: true });
+          // Only does work where the snapshot RPC is not deployed; there it
+          // warms every plan before the sweep, as before.
           await useFloorPlanStore
             .getState()
             .prefetchFloorPlans(
@@ -545,8 +550,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Strip sessions for tables that no longer exist in ANY floorplan
-        // (e.g. after a floorplan was deleted). Safe to call now because all
-        // floorplans have been prefetched and cached.
+        // (e.g. after a floorplan was deleted). The sweep reads the plans' own
+        // geometry, which the snapshot above just delivered for every plan, so
+        // it does not depend on which plans have been cached.
         const { useTableSessionStore } =
           await import("@/stores/useTableSessionStore");
         useTableSessionStore.getState()._stripOrphanedSessions();

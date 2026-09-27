@@ -72,6 +72,11 @@ export const KEY_PERSIST_MEMO_WOULD_SKIP = internKey("persist.memo.would_skip");
 export const KEY_FLOOR_SWITCH_PAINT_MS = internKey("floor.switch_paint_ms");
 export const KEY_FLOOR_LOAD_RPC_MS = internKey("floor.load_rpc_ms");
 export const KEY_FLOOR_LOAD_APPLY_MS = internKey("floor.load_apply_ms");
+// Tap → tables committed. Near zero for a cache hit or a geometry paint; the
+// network wait only when a plan has neither (first ever load).
+export const KEY_FLOOR_SWITCH_WAIT_MS = internKey("floor.switch_wait_ms");
+// A floor read (snapshot or status) hit its deadline and last-known-good stayed.
+export const KEY_FLOOR_READ_DEADLINE = internKey("floor.read_deadline");
 
 // App lifecycle (lib/telemetry/init.ts)
 export const KEY_RESUME_SETTLE_MS = internKey("resume_settle_ms");

@@ -44,7 +44,14 @@ const SyncingScreen: React.FC = () => {
     useFloorPlanStore.getState().setActiveFloorPlanId(defaultPlan?.id || null);
 
     if (defaultPlan?.id) {
-      await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
+      // A manual sync means "read it again": wait for the reconcile, and run
+      // one even when the cache is fresh enough that a switch would skip it.
+      const path = await useFloorPlanStore
+        .getState()
+        .setActiveFloorPlan(defaultPlan.id, { waitForReconcile: true });
+      if (path === "cacheHit/fresh") {
+        await useFloorPlanStore.getState().loadFloorPlanStatus(true);
+      }
     }
   };
 
