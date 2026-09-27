@@ -78,6 +78,13 @@ export const KEY_FLOOR_SWITCH_WAIT_MS = internKey("floor.switch_wait_ms");
 // A floor read (snapshot or status) hit its deadline and last-known-good stayed.
 export const KEY_FLOOR_READ_DEADLINE = internKey("floor.read_deadline");
 
+// POS bootstrap (hooks/pos/usePosSync.ts)
+export const KEY_BOOTSTRAP_FETCH_MS = internKey("bootstrap.fetch_ms");
+// The server cancelled the bootstrap at its statement timeout (57014).
+export const KEY_BOOTSTRAP_STATEMENT_TIMEOUT = internKey(
+  "bootstrap.statement_timeout",
+);
+
 // App lifecycle (lib/telemetry/init.ts)
 export const KEY_RESUME_SETTLE_MS = internKey("resume_settle_ms");
 

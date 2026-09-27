@@ -27,6 +27,8 @@ import {
   registerResumeTask,
   registerSuspendTask,
 } from "@/lib/lifecycle/appLifecycleCoordinator";
+import { connectionQuality } from "@/lib/network/connectionQuality";
+import { withJitter } from "@/lib/network/jitter";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import {
   getBucketKeyCount,
@@ -1027,9 +1029,20 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     if (isSyncFetching || syncFetchStatus === "paused") return;
 
     const attempt = menuRecoveryAttemptRef.current;
-    // 10s, 20s, 40s, then every 60s. Cheap enough to run all shift, slow enough
-    // not to hammer a struggling backend.
-    const delay = Math.min(10_000 * 2 ** attempt, 60_000);
+    // 10s, 20s, 40s, then every 60s: for a station with NOTHING to sell from,
+    // on a connection that works.
+    //
+    // This loop watches the query, and the query is empty whenever the app
+    // restarted and booted from its offline snapshot. Each attempt here also
+    // re-enters the query's own retry budget. On 2026-09-25 staff restarted
+    // frozen tablets, which put every one of them in this loop against a
+    // database that was already timing out. So a station that has a menu on
+    // screen, or is in slow mode, asks every 3 to 5 minutes instead.
+    const calm =
+      connectionQuality.isSlow() || useMenuStore.getState().menus.length > 0;
+    const delay = calm
+      ? withJitter(4 * 60_000, 0.25)
+      : Math.min(10_000 * 2 ** attempt, 60_000);
     const timer = setTimeout(() => {
       menuRecoveryAttemptRef.current = attempt + 1;
       console.warn(

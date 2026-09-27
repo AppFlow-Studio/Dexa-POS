@@ -150,6 +150,100 @@ The 16:00 row is the point: the alert would have fired about 100 minutes before 
 tipped over at 17:40. The query still has to be saved in the dashboard and wired to an alert;
 that cannot be done from the repository.
 
+## Wave 2B — the client stops amplifying a slow database
+
+Built. None of it depends on a server change.
+
+- [x] `lib/network/bootstrapRetryPolicy.ts`: classification by code, then the retry rule
+- [x] `usePosSync`: a station with a menu on screen retries at most once and never on a statement
+      timeout; an empty menu grid keeps its 4 retries; delays are jittered
+- [x] A statement timeout (57014) is reported to connection quality and, once per five minutes,
+      to Sentry (`event: pos_bootstrap_timeout`)
+- [x] "Menu on screen" reads the menu store as well as the query cache, so a station that booted
+      from its offline snapshot is not treated as a first load
+- [x] `useMenuVersionWatch`: refetch spread over 0 to 90 s, held while the station is in slow mode,
+      and the seen version only advances when the refetch worked
+- [x] `PosSyncProvider` recovery loop: every 3 to 5 minutes when a menu is on screen or the
+      station is slow; 10/20/40/60 s only for an empty grid on a working connection
+- [x] Settings → "Check for menu changes" compares like with like
+- [ ] Device acceptance: force slow mode, edit a menu item on the website, the station logs
+      `deferring` and makes no bootstrap call until slow mode clears
+- [ ] Calling the cached RPC: waits for the decision in Wave 2A
+
+What the numbers say, for the incident's shape (17 stations with a menu, the bootstrap timing out):
+
+| | Before | After |
+| --- | --- | --- |
+| Attempts per station per menu edit | 5 | 1 |
+| Attempts per edit, 17 stations | 85 | 17 |
+| Spread of those attempts | the same second | 0 to 90 s |
+
+Facts checked while building:
+
+- The failed bootstrap calls in the incident were HTTP 500, all 98 of them, not 504. The policy
+  classifies by Postgres code first, so the status does not matter.
+- The statement timeout is 8 s on production and 15 s on staging.
+- The probe token and the envelope `version` are different strings. Staging:
+  `…390337-362-7cefc89f…` against `…390337-362-channels-v3-station-scopes-7cefc89f…`. The manual
+  check compared the v1 token to the envelope version, so it could never report "up to date".
+
+Conflict to expect: `origin/category-schedueling` (menu scheduling, not merged) edits
+`usePosSync.ts`, `useMenuVersionWatch.ts` and `PosSyncProvider.tsx` too.
+
+## Wave 2A — the server cache: NOT applied, needs a decision
+
+The plan's migration must not be applied as written.
+
+- It creates `get_pos_bootstrap_v3(uuid, boolean)`. That name is taken, on staging **and on
+  production**, by the menu scheduling feature: `get_pos_bootstrap_v3(uuid)`,
+  `get_pos_menu_version_v3(uuid)` and `get_pos_schedule_map_v1(uuid)`, from
+  `20260924120000_pos_schedules_v3.sql`.
+- Its overload guard drops every `get_pos_bootstrap_v3` whose arguments are not `uuid, boolean`.
+  It would have deleted the scheduling RPC.
+- Its authorization gate was written for a call that builds the payload. On a cache hit nothing
+  else would re-check the caller, so the gate has to fail closed by itself.
+
+Nothing was applied to staging or production.
+
+### Proposal
+
+`proposals/pos_bootstrap_snapshot_cache.proposal.sql`, with its rollback beside it. Same design
+as the plan (one build per catalog version, try-lock, previous body served while a build runs),
+with three changes:
+
+1. Its own name: `get_pos_bootstrap_cached_v1(p_location_id, p_envelope, p_force)`.
+2. It serves the envelope generation the caller asks for, `'v2'` or `'v3'`, each keyed by the probe
+   that generation polls. A client given the other generation's `version` would refetch forever.
+3. The authorization gate fails closed by itself.
+
+Proven on staging inside one transaction that was rolled back (2026-09-26, location `8835e749…`,
+as the emulator's user). Afterwards the table and both functions were confirmed absent.
+
+| Check | Result |
+| --- | --- |
+| Direct `get_pos_bootstrap_v2`, what stations call today | 184 ms |
+| Cached, first call | 152 ms, `hit: false` |
+| Cached, second call | 4.1 ms, `hit: true` |
+| Payload against the direct call, volatile keys removed | identical |
+| `version` against the direct call | identical |
+| After a menu item edit | miss, then hit |
+| `p_force` | miss |
+| A baked-in timed snooze has expired | miss |
+| `'v3'` envelope | 193 ms cold, 5 ms warm, `version` is the v3 token, menus carry `schedules` |
+| Unknown envelope | rejected, 22023 |
+| Another merchant's user, row already cached | denied, 42501 |
+| `anon` | denied, 42501 |
+| `authenticated` reads the table directly | denied, 42501 |
+| Stored payload | 65 KB per envelope (lz4) |
+| `get_pos_bootstrap_v3(uuid)` after the run | still there |
+
+Not proven: two callers at once (the try-lock, the stale body, the 2 s wait). One transaction
+cannot contend with itself; it needs two sessions.
+
+Decisions needed before it can be applied: the name, whether to serve both envelope generations
+from one function, and who moves the file into the website repository (with a timestamp after
+the latest one there).
+
 ## Known windows, unchanged by this work
 
 - A caller that awaits `loadFloorPlanStatus()` without `force` can share a read that started
