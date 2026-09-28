@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isKioskCheckoutHeld } from "./checkoutGuard";
+import {
+  getKioskCheckoutReleasedAt,
+  isKioskCheckoutHeld,
+} from "./checkoutGuard";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 
 /**
@@ -46,7 +49,16 @@ export function useKioskIdleTimer({
         setShowWarning(false);
         return;
       }
-      const elapsedSeconds = (Date.now() - lastActivityRef.current) / 1000;
+      // A checkout that just ended counts as activity. Returning from CodePay
+      // Register releases the guard before this interval ticks again (JS
+      // timers are paused while Register is in front), so without this the
+      // whole time spent paying would count as idle and reset the kiosk with
+      // no warning.
+      const lastActive = Math.max(
+        lastActivityRef.current,
+        getKioskCheckoutReleasedAt(),
+      );
+      const elapsedSeconds = (Date.now() - lastActive) / 1000;
 
       // Threshold to warn depends on whether there's an order to protect: an
       // active cart warns sooner. The grace/countdown window before the reset

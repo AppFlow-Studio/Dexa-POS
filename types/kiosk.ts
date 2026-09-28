@@ -1,8 +1,14 @@
 import type { Database } from "@/database.types";
 
-/** Raw kiosk_profiles row as stored in Supabase. */
+/**
+ * Raw kiosk_profiles row as stored in Supabase. `payment_window_seconds` is
+ * newer than the generated types (and absent before its migration lands), so
+ * it's widened here as optional.
+ */
 export type KioskProfileRow =
-  Database["public"]["Tables"]["kiosk_profiles"]["Row"];
+  Database["public"]["Tables"]["kiosk_profiles"]["Row"] & {
+    payment_window_seconds?: number | null;
+  };
 
 export type KioskTemplateId = "template_a" | "template_b" | "template_c";
 export type KioskOrientation = "vertical" | "horizontal";
@@ -47,6 +53,12 @@ export interface KioskConfig {
   orientation: KioskOrientation;
   idleTimeoutSeconds: number;
   cartResetTimeoutSeconds: number;
+  /**
+   * CodePay kiosks: seconds CodePay Register keeps the card screen open before
+   * the kiosk asks "Need more time?". null = legacy 120s window, no prompt
+   * (also the remote kill switch).
+   */
+  paymentWindowSeconds: number | null;
   welcomeMessage: string;
   pickupNumberPrefix: string;
 
@@ -93,6 +105,7 @@ export const DEFAULT_KIOSK_CONFIG: Omit<
   orientation: "vertical",
   idleTimeoutSeconds: 60,
   cartResetTimeoutSeconds: 30,
+  paymentWindowSeconds: null,
   welcomeMessage: "Tap to order",
   pickupNumberPrefix: "",
   autoPrintReceipt: false,
@@ -112,6 +125,12 @@ function asTemplateId(value: string): KioskTemplateId {
   return value === "template_b" || value === "template_c"
     ? value
     : "template_a";
+}
+
+/** Mirrors the column CHECK (45–180s); anything else means "legacy / off". */
+function asPaymentWindowSeconds(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isInteger(value)) return null;
+  return value >= 45 && value <= 180 ? value : null;
 }
 
 function asOrientation(value: string): KioskOrientation {
@@ -160,6 +179,7 @@ export function normalizeKioskProfile(row: KioskProfileRow): KioskConfig {
     orientation: asOrientation(row.orientation),
     idleTimeoutSeconds: row.idle_timeout_seconds,
     cartResetTimeoutSeconds: row.cart_reset_timeout_seconds,
+    paymentWindowSeconds: asPaymentWindowSeconds(row.payment_window_seconds),
     welcomeMessage: row.welcome_message ?? "Tap to order",
     pickupNumberPrefix: row.pickup_number_prefix ?? "",
 
