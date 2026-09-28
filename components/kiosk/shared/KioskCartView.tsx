@@ -26,8 +26,8 @@ import {
   ShoppingCart,
   Trash2,
 } from "@/lib/icons";
+import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import {
-  Image,
   ScrollView,
   Text,
   useWindowDimensions,
@@ -426,10 +426,10 @@ function CartLineRow({
         }}
       >
         {imageSource ? (
-          <Image
+          // Decoded at the thumbnail's size — see KioskMenuItem.
+          <OptimizedListImage
             source={imageSource}
             style={{ width: "100%", height: "100%" }}
-            resizeMode="cover"
           />
         ) : (
           <PlaceholderIcon

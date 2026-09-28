@@ -17,9 +17,10 @@ import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
+import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import type { KioskConfig } from "@/types/kiosk";
 import React, { useMemo } from "react";
-import { Image, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -101,10 +102,14 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
           takes back, instead of the card holding an empty line. */}
       <View style={{ flex: 1, width: "100%" }}>
         {resolvedImageSource ? (
-          <Image
+          // expo-image decodes at the card's size. React Native's Image on
+          // Android decodes a remote photo at its uploaded size — a phone
+          // photo is tens of MB of bitmap behind this card. recyclingKey
+          // blanks a recycled cell instead of flashing the previous photo.
+          <OptimizedListImage
             source={resolvedImageSource}
             style={{ width: "100%", height: "100%" }}
-            resizeMode="cover"
+            recyclingKey={item.id}
           />
         ) : (
           <View

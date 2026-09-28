@@ -181,3 +181,8 @@
 - 2026-09-25, twice in one day (S1-0011, then the S1-0008 follow-ups): I wrote Jest cases for a fix and the user said "dont unit test please do actual tests". The plan had even said "targeted Jest if the emulator is blocked" — that fallback is not what the user wants.
 - Rule: prove a fix on the systems it touches. Server paths: call the real RPC on staging inside one `DO $$ … RAISE EXCEPTION 'PROOF …' $$` block (the exception rolls back and carries the result). Client paths: run the flow on the emulator against staging and read the device log + the staging rows. Existing Jest, tsc and lint stay as a safety net; new Jest files or cases only when asked.
 
+
+## Device specs in a perf request are a bar to clear, not tiers to build
+
+- 2026-09-28 (kiosk performance): asked to make the kiosk "fast and light on all devices from low end 2gb ram devices to 4gb", I started a RAM-based lite/standard device class with a Kiosk Settings override. The user stopped it: the 2 GB and 4 GB figures were reference points, and the kiosk has to work well on every device.
+- Rule: make each optimization unconditional — cheaper animations, lighter images, less background work for everyone. No RAM-based modes, device classes or per-device performance switches unless explicitly asked for.
