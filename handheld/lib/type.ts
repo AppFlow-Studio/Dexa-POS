@@ -68,4 +68,6 @@ export const type = StyleSheet.create({
   successNote: { fontSize: 15, lineHeight: 20 },
   /** `.lbl` — 15/500 centred section label ("Send a receipt"). */
   lbl: { fontSize: 15, fontWeight: "500", lineHeight: 20 },
+  /** `.amt-in .n` — 44/700 at -.03em, a typed amount over a keypad. */
+  amount: { fontSize: 44, fontWeight: "700", lineHeight: 52, letterSpacing: -1.32, fontVariant: ["tabular-nums"] },
 });

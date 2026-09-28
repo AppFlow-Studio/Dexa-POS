@@ -3,29 +3,28 @@ import { toastService } from "@/lib/toastService";
 import { useOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
-import { CreditCard } from "lucide-react-native";
+import { Banknote, Columns2, CreditCard } from "lucide-react-native";
 import React, { useCallback } from "react";
 import { Text, View } from "react-native";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { useCheckActions } from "../components/check/useCheckActions";
 import { checkTitle } from "../lib/checks";
 import { formatCurrency } from "../lib/format";
-import { payBlockedReason } from "../lib/payments";
+import { BALANCE_EPSILON, payBlockedReason } from "../lib/payments";
 import { metrics } from "../lib/tokens";
 import { type } from "../lib/type";
 import { Button, PageHeader } from "../primitives";
 import { MethodRow } from "../screens/pay/MethodRow";
 
 /**
- * Screen 6 — Take payment.
+ * Screen 6 — Take payment: Card, Split check and Cash over a balance-due
+ * hero, as the artifact draws it.
  *
- * The artifact draws three rows (Card, Split check, Cash) over a balance-due
- * hero. Wave 4a renders **Card only**: cash is out of Wave 4 entirely (the
- * drawer story for a pocketed device is unsettled) and split is Wave 4b.
- * The hero's "$182.37 if paid in cash" line goes with cash — a dual-pricing
- * line has nothing to offer when the device cannot take cash, and with dual
- * pricing off it would duplicate the card total anyway.
- * See `docs/features/handheld/wave4-plan.md`.
+ * Card is wired (Wave 4a). Split and Cash are Wave 4b screens built ahead of
+ * their logic — every action on them lands in `screens/pay/unwired.ts`. The
+ * hero's "if paid in cash" line shows only when dual pricing makes cash
+ * cheaper; with it off the line would repeat the card total.
+ * See `docs/features/handheld/wave4b-plan.md`.
  */
 export default function PayPage({ orderId }: { orderId: string }) {
   const router = useRouter();
@@ -40,18 +39,25 @@ export default function PayPage({ orderId }: { orderId: string }) {
   // deliberately conservative and reports 0 for every unknown, which would
   // flash "$0.00" at a guest the moment the network hiccups.
   const due = totals?.amountDue ?? order?.amount_due ?? 0;
+  const cashDue = totals?.cashAmountDue ?? due;
+  const cashLine = cashDue < due - BALANCE_EPSILON ? `${formatCurrency(cashDue)} if paid in cash` : null;
   const guests = order?.guest_count ? `${order.guest_count} guests` : null;
   const subtitle = [order ? checkTitle(order) : null, guests].filter(Boolean).join(" · ");
 
-  const toTip = useCallback(() => {
-    const s = useOrderStore.getState();
-    const why = payBlockedReason(s.ordersById[orderId], s.currentStationId);
-    if (why) {
-      toastService.show({ title: "Payment blocked", message: why, type: "warning" });
-      return;
-    }
-    router.push({ pathname: "/handheld/pay/tip/[orderId]", params: { orderId } });
-  }, [orderId, router]);
+  // Re-asserted at tap time, like CheckFooter: the check can change hands
+  // between render and tap.
+  const go = useCallback(
+    (pathname: "/handheld/pay/tip/[orderId]" | "/handheld/pay/split/[orderId]" | "/handheld/pay/cash/[orderId]") => {
+      const s = useOrderStore.getState();
+      const why = payBlockedReason(s.ordersById[orderId], s.currentStationId);
+      if (why) {
+        toastService.show({ title: "Payment blocked", message: why, type: "warning" });
+        return;
+      }
+      router.push({ pathname, params: { orderId } });
+    },
+    [orderId, router],
+  );
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.screen }}>
@@ -64,6 +70,11 @@ export default function PayPage({ orderId }: { orderId: string }) {
         <Text className="mt-1.5" style={[type.hero, { color: colors.heading }]} numberOfLines={1} adjustsFontSizeToFit>
           {formatCurrency(due)}
         </Text>
+        {cashLine ? (
+          <Text className="mt-2" style={[type.heroNote, { color: colors.muted }]} numberOfLines={1}>
+            {cashLine}
+          </Text>
+        ) : null}
       </View>
 
       {/* `.grow` — the artifact pushes the options into the thumb zone. */}
@@ -76,8 +87,24 @@ export default function PayPage({ orderId }: { orderId: string }) {
           detail="Tip, then tap on this device"
           primary
           disabled={blocked !== null}
-          onPress={toTip}
+          onPress={() => go("/handheld/pay/tip/[orderId]")}
           icon={<CreditCard size={26} color={blocked ? colors.muted : colors.onSolid} />}
+        />
+        <MethodRow
+          testID="handheld-pay-split"
+          title="Split check"
+          detail="Evenly, by seat or by item"
+          disabled={blocked !== null}
+          onPress={() => go("/handheld/pay/split/[orderId]")}
+          icon={<Columns2 size={26} color={blocked ? colors.muted : colors.heading} />}
+        />
+        <MethodRow
+          testID="handheld-pay-cash"
+          title="Cash"
+          detail="Count it and give change"
+          disabled={blocked !== null}
+          onPress={() => go("/handheld/pay/cash/[orderId]")}
+          icon={<Banknote size={26} color={blocked ? colors.muted : colors.heading} />}
         />
       </View>
 

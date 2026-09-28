@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { ChevronRight } from "lucide-react-native";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
-import { metrics, tint } from "../../lib/tokens";
+import { metrics } from "../../lib/tokens";
 import { type } from "../../lib/type";
 
 /**
@@ -54,11 +54,8 @@ export function MethodRow({
       style={{
         minHeight: metrics.optionRow,
         borderRadius: metrics.optionRadius,
-        backgroundColor: disabled
-          ? colors.panel
-          : primary
-            ? colors.teal
-            : colors.card,
+        // `.op` is the panel colour, `.op.pri` the accent.
+        backgroundColor: primary && !disabled ? colors.teal : colors.panel,
         paddingLeft: metrics.px,
         paddingRight: 18,
         gap: metrics.gap + 2,
@@ -70,7 +67,8 @@ export function MethodRow({
           width: metrics.optionTile,
           height: metrics.optionTile,
           borderRadius: metrics.optionTileRadius,
-          backgroundColor: primary && !disabled ? "rgba(12,15,26,0.12)" : tint.accentSoft,
+          // `.op .ti` steps up to the card colour; `.op.pri .ti` is a dark wash.
+          backgroundColor: primary && !disabled ? "rgba(12,15,26,0.12)" : colors.card,
         }}
       >
         {icon}

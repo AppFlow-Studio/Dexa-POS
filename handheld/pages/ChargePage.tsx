@@ -1,22 +1,20 @@
 import { colors } from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useRouter } from "expo-router";
 import { AlertTriangle, Nfc } from "lucide-react-native";
-import React, { useCallback } from "react";
+import React from "react";
 import { Text, View } from "react-native";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { checkTitle } from "../lib/checks";
 import { formatCurrency } from "../lib/format";
 import { chargeTotal, payableBalance } from "../lib/payments";
-import { tableIdOf } from "../lib/sendCourse";
-import { tableTitle } from "../lib/tableName";
 import { metrics } from "../lib/tokens";
 import { type } from "../lib/type";
 import { StickyActionBar } from "../primitives";
 import { ChargeMessage } from "../screens/pay/ChargeMessage";
-import { describeCard, SuccessView } from "../screens/pay/SuccessView";
+import { DoneScreen } from "../screens/pay/DoneScreen";
+import { describeCard } from "../screens/pay/SuccessView";
 import { useCharge } from "../screens/pay/useCharge";
-import { useCloseTable } from "../screens/pay/useCloseTable";
+import { useLeavePay } from "../screens/pay/useLeavePay";
+import { useTableLabel } from "../screens/pay/useTableLabel";
 
 /**
  * Screens 8 and 9 — tap to pay, then close the table.
@@ -26,45 +24,18 @@ import { useCloseTable } from "../screens/pay/useCloseTable";
  * draws screen 8's header the same way (`.bar-t.pl`, no `.ib`).
  */
 export default function ChargePage({ orderId, tip }: { orderId: string; tip: number }) {
-  const router = useRouter();
   const order = useOrderStore((s) => s.ordersById[orderId] ?? null);
   const { phase, charge, retry } = useCharge(orderId, tip);
-  const close = useCloseTable(orderId);
 
   const balance = payableBalance(order);
   const total = chargeTotal(balance, tip);
   const table = useTableLabel(orderId);
-
-  // The pay flow pushed three screens over the check (pay → tip → charge), so
-  // a single back() would land on the tip screen. Unwind the whole flow.
-  const leave = useCallback(() => {
-    if (router.canDismiss()) router.dismissAll();
-    else router.back();
-  }, [router]);
-
-  const finish = useCallback(async () => {
-    await close.close();
-    leave();
-  }, [close, leave]);
+  const leave = useLeavePay();
 
   // Screen 9.
   if (phase.kind === "done") {
     return (
-      <View className="flex-1" style={{ backgroundColor: colors.screen }}>
-        <SuccessView amount={phase.amount} tip={phase.tip} card={describeCard(phase.response)} />
-        <View className="flex-1" />
-        <StickyActionBar
-          column
-          actions={[
-            {
-              label: table ? `Close ${table.toLowerCase()}` : "Done",
-              onPress: () => void finish(),
-              disabled: close.busy,
-            },
-          ]}
-          hint={table ? `${table} frees up` : undefined}
-        />
-      </View>
+      <DoneScreen orderId={orderId} amount={phase.amount} tip={phase.tip} line={describeCard(phase.response)} />
     );
   }
 
@@ -156,22 +127,6 @@ export default function ChargePage({ orderId, tip }: { orderId: string; tip: num
       />
     </View>
   );
-}
-
-/**
- * "Table 12" for a check that sits on a table, else null — a takeout check
- * has nothing to close, so screen 9's button becomes a plain "Done".
- */
-function useTableLabel(orderId: string): string | null {
-  const tableId = useOrderStore((s) => {
-    const order = s.ordersById[orderId];
-    return order ? tableIdOf(order) : null;
-  });
-  return useFloorPlanStore((s) => {
-    if (!tableId) return null;
-    const name = s.tables.find((t) => t.id === tableId)?.name;
-    return name ? tableTitle(name, []) : null;
-  });
 }
 
 /** The artifact's `.bar` with `.bar-t.pl`: a title and a line, no back button. */

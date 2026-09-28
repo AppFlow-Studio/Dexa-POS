@@ -44,6 +44,11 @@ export default function HandheldLayout() {
           <Stack.Screen name="pay/[orderId]" />
           <Stack.Screen name="pay/tip/[orderId]" />
           <Stack.Screen name="pay/charge/[orderId]" />
+          <Stack.Screen name="pay/split/[orderId]" />
+          <Stack.Screen name="pay/cash/[orderId]" />
+          <Stack.Screen name="merge/[orderId]" />
+          <Stack.Screen name="payments/[orderId]" />
+          <Stack.Screen name="refund/[orderId]" />
         </Stack>
       </HandheldFrame>
     </Suspense>

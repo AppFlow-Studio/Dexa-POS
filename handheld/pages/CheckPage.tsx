@@ -43,6 +43,11 @@ function OpenCheck({ title, subtitle, orderId }: { title: string; subtitle?: str
   const readOnly = useIsReadOnly(orderId);
   const actions = useCheckActions(orderId, useCallback(() => router.back(), [router]));
   const items = useItemActions(orderId);
+  const hasPayments = useOrderStore((s) => (s.ordersById[orderId]?.payments?.length ?? 0) > 0);
+  const pushFromSheet = (pathname: "/handheld/payments/[orderId]" | "/handheld/merge/[orderId]") => {
+    actions.close();
+    router.push({ pathname, params: { orderId } });
+  };
   const addItems = useCallback(
     () => router.push({ pathname: "/handheld/menu/[orderId]", params: { orderId } }),
     [router, orderId],
@@ -78,6 +83,8 @@ function OpenCheck({ title, subtitle, orderId }: { title: string; subtitle?: str
         onPrintCheck={actions.printCheck}
         onPrintKitchen={actions.printKitchenTicket}
         onVoid={() => actions.request("void")}
+        onPayments={hasPayments ? () => pushFromSheet("/handheld/payments/[orderId]") : undefined}
+        onMerge={() => pushFromSheet("/handheld/merge/[orderId]")}
       />
       {actions.sheet === "discount" ? <DiscountSheet orderId={orderId} onClose={actions.close} /> : null}
       {actions.sheet === "note" ? <NoteSheet orderId={orderId} onSave={actions.saveNote} onClose={actions.close} /> : null}

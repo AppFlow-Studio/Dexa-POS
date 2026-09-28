@@ -33,11 +33,7 @@ export function describeCard(response?: Record<string, unknown>): string {
 
 /**
  * Screen 9's `.okh` header — the success mark, the charged amount, and the
- * two muted lines under it.
- *
- * The artifact also draws a 2x2 "Send a receipt" grid here. That is Wave 4b
- * (text and email have no handheld path yet, and print has to be pinned to
- * the built-in printer or it routes to the register's).
+ * two muted lines under it. `DoneScreen` puts the receipt grid under it.
  */
 export function SuccessView({ amount, tip, card }: { amount: number; tip: number; card: string }) {
   return (

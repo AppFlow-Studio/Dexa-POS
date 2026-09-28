@@ -10,15 +10,18 @@ export function CustomerField({
   onChange,
   placeholder,
   keyboardType,
+  onSheet = false,
 }: {
   label: string;
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
   keyboardType?: TextInputProps["keyboardType"];
+  /** Inside a sheet the panel colour is the background, so the field steps up to the card colour. */
+  onSheet?: boolean;
 }) {
   return (
-    <View className="mx-4 justify-center px-5" style={{ minHeight: 64, borderRadius: 18, backgroundColor: colors.panel }}>
+    <View className="mx-4 justify-center px-5" style={{ minHeight: 64, borderRadius: 18, backgroundColor: onSheet ? colors.card : colors.panel }}>
       <Text style={[type.nav, { color: colors.label }]}>{label}</Text>
       <TextInput
         value={value}

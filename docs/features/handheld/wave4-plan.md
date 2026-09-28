@@ -166,7 +166,7 @@ Pages / screens (`handheld/`):
 
 Register-side (two lines, both gated on station type):
 
-- [ ] `contexts/RegisterRuntime.tsx` — `FixedUiScaleProvider scale={1}` around `<PaymentBottomSheet />` for handheld
+- [x] `contexts/RegisterRuntime.tsx` — `FixedUiScaleProvider scale={1}` around `<PaymentBottomSheet />` for handheld
 - [x] `app/_layout.tsx` — narrowed `if (isHandheld) return;` to **payments only**: the blanket gate is gone and the same early return now sits immediately before the refund scan, so a handheld recovers a crashed card charge but does not hydrate a refund store nothing renders.
 
 ## Traps
@@ -245,6 +245,8 @@ Each one cost an agent a read; none are hypothetical.
 - [ ] Device pass on 360 dp, font scale 1.3
 
 ## Out of scope (Wave 4b and later)
+
+Wave 4b's UI is built, unwired — see `wave4b-plan.md`.
 
 Cash in any form (business blocker); split check and merge; the screen 9
 receipt grid — text, email and the built-in printer; refunds and tip
