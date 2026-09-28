@@ -22,7 +22,8 @@ export function shouldPrintSignatureBlock(data: ReceiptTemplateData): boolean {
 }
 
 export interface SignatureBlockLines {
-  /** "X" then a hyphen rule to the full width (no box-drawing chars). */
+  /** "X" then a hyphen rule to the full width (no box-drawing chars). ESC/POS
+   *  only: the IR renderer draws a divider instead (see ReceiptDocumentTemplate). */
   rule: string;
   caption: string;
   /** Disclaimer pre-wrapped to the width so the printer never soft-wraps. */

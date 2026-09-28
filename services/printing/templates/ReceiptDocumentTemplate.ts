@@ -811,11 +811,15 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
 
   // ── H2. Cardholder signature (merchant copy, card tender, opt-in) ─────
   // Sits right under the tender lines. Blank signing space is line feeds,
-  // not padding; the X leads the rule per card-slip convention.
+  // not padding. The rule is a divider, not a hyphen string: this document is
+  // built at w=32, and only dividers are drawn at the printer's real width
+  // (Star Skia line, Landi addDividingLine), so a text rule stopped short. The
+  // X sits just above the line's left end, per card-slip convention.
   if (shouldPrintSignatureBlock(validated)) {
     const sig = buildSignatureBlockLines(validated, w);
     nodes.push({ type: "feed", lines: SIGNATURE_BLANK_LINES });
-    nodes.push({ type: "text_line", content: sig.rule });
+    nodes.push({ type: "text_line", content: "X" });
+    nodes.push({ type: "divider", style: "solid", lineWidth: w });
     nodes.push({ type: "text_line", content: sig.caption, align: "center" });
     nodes.push({ type: "empty_line" });
     for (const line of sig.disclaimer) {

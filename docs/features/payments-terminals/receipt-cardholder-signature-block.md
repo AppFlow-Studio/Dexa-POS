@@ -9,7 +9,8 @@ A per-location toggle on the Sale Receipt template. When on, the **merchant copy
 
 ```
 (3 blank lines)
-X ------------------------------
+X
+________________________________   <- full-width divider (Star / Landi / Dejavoo)
       Cardholder Signature
 
  I agree to pay the above total
@@ -17,6 +18,7 @@ X ------------------------------
            agreement.
 ```
 
+- The rule is a `divider` node on the IR path so it spans the real paper width; a hyphen string built at the template's fixed w=32 only covered about half the paper on 80mm. ESC/POS keeps the `X ----` text rule (it builds at the printer's real `maxCharsPerLine`).
 - Customer copies and cash-only receipts never print it. A split card+cash receipt prints it once.
 - Per-payment split receipts: only the card payer's slip prints it.
 - While the toggle is on, card sales always print a merchant copy, even with "Print Merchant Copy" off (`resolveSaleReceiptCopies` in `PrinterService.ts`). Cash sales keep the configured copies.
