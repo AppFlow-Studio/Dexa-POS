@@ -68,18 +68,48 @@ Every gate reads `isHandheldStationType(selectedStation?.station_type)`.
 | Item | Decision | Where |
 | --- | --- | --- |
 | Floor-plan geometry | Keep the single `getFloorSnapshot` + `setActiveFloorPlan(default)`: that call is what populates `useFloorPlanStore.tables`, which the Tables list reads, and the ticket forbids a new query. Skip `prefetchFloorPlans` (every other plan), `_stripOrphanedSessions` (depends on that prefetch) and waitlist/reservations. | `contexts/PosSyncProvider.tsx` `syncFloorPlans` |
-| Star printer discovery | Skip LAN discovery; keep the health check (feeds the printer list). | `contexts/PosSyncProvider.tsx` |
+| Star printer discovery + health check | Skip both (health check dropped 2026-09-28). The check opened a TCP connection to every Star printer every 2 min — radio wake-ups, and a probe that can collide with a register mid-print. Its only reader is PrintRouter's receipt fallback, which without it treats Star printers as "unknown" and picks the built-in printer first — the handheld's intended target. An explicit station receipt printer and kitchen routing are unaffected. | `contexts/PosSyncProvider.tsx` |
 | CFD / second screen | No CFD server; handheld gets the same no-op context as CFD client mode — via `CFDServerProvider enabled={false}`, never by swapping the provider element: a swap at the moment a handheld station is chosen remounted the root Stack and dropped the navigation to pin-login. | `contexts/CFDProvider.tsx` |
-| Payment + refund journal check on launch | Skip. Nothing to recover until handheld takes payments; the payment ticket must lift this. | `app/_layout.tsx` boot task |
+| Payment + refund journal check on launch | Payment check runs (Wave 4a takes cards); refund scan skipped. | `app/_layout.tsx` boot task |
 | Five-minute staff refresh | Interval removed; the `pos.employees-refresh` resume task (foreground) keeps the same 5-minute staleness window. | `contexts/PosSyncProvider.tsx` |
 | Landscape lock | Handheld locks PORTRAIT_UP from the root layout's orientation effect — the root never remounts on a theme toggle, whereas a lock owned inside the handheld tree flipped the device every time `<ThemeProvider key=…>` remounted. Native lock removal is Temur's Wave 0. | `app/_layout.tsx` |
 | Immersive system bars | Hidden on the handheld too, like the register (changed 2026-09-21: the artifact draws the status bar and gesture pill, but a phone with a 3-button nav bar lost 48dp to it). `HandheldFrame` no longer mounts a `StatusBar` — a second one would re-show the bar. | `app/_layout.tsx` |
 | Realtime, card-reader detection, heartbeat, outbox, printer list | Kept, untouched. | — |
 
-Not on the ticket's list and therefore untouched: `isPOSMode` in the root
-layout still mounts `SearchBottomSheet`, `CustomerSheet` and the modal hosts
-for handheld. Candidate for the next boot-diet pass if the 3 s target is
-missed.
+### Performance pass (2026-09-28)
+
+Target: 2 GB devices. Station-type gates only — one code path for every
+device, never RAM tiers.
+
+| Item | Decision | Where |
+| --- | --- | --- |
+| Menu-management warm-up | Skipped: six `standalone` requests for a screen the handheld does not have. | `contexts/PosSyncProvider.tsx` |
+| Kiosk profile | Query disabled (it fetched and polled `kiosk_profiles` every 3 min on every non-kiosk station). | `hooks/kiosk/useKioskProfile.ts` `enabled`, both layouts |
+| Online-order sounds | `KDSSoundService` not created: no drawer, and it pre-loads a native audio player per sound. | `app/(main)/_layout.tsx` |
+| Order broadcast fan-out | Handheld handler feeds the order store only — no Previous Orders / KDS merge per broadcast, no sound. Local-mirror write kept (register data policy). | `app/(main)/_layout.tsx` `handleOrderChangeHandheld` |
+| Online-order payments prefetch | Skipped on broadcasts: one request per online-order change, for a drawer the handheld lacks. | `hooks/realtime/useOrdersRealtime.ts` |
+| Register sheets at the root | `SearchBottomSheet` and `CustomerSheet` no longer mounted (each subscribed to its store and the active order for the whole session). | `app/_layout.tsx` `mountsRegisterSheets` |
+| Navigation re-render | The handheld tree is one memoized element, so the main layout's per-navigation re-render (`usePathname`) no longer re-renders the handheld navigator and every mounted page. | `app/(main)/_layout.tsx` `handheldTree` |
+| Realtime context | Value memoized (all stations): consumers — each page's connection banner — re-render only when a channel changes. | `contexts/LocationRealtimeProvider.tsx` |
+| Checks list + tab badge | One pass over the orders per `ordersById` change, shared; the same object comes back when the lists and badge did not change, so a broadcast that edits a listed order re-renders neither. | `screens/checks/useChecks.ts` `checksIndex` |
+| Minute clock | One timer aligned to :00 for every page instead of one unaligned interval per page. | `hooks/useMinuteTick.ts` |
+| Battery | Timed read (5 min; 1 min at ≤ 20 %) replacing expo-battery's hook, which on Android never updated past the first read. | `hooks/useLowBattery.ts` |
+
+Kept on purpose: heartbeat every 60 s (admin presence reads it), menu 86
+reconcile every 60 s and version watch every 5 min (correctness), ATOM probe
+every 30 s (card availability), TanStack's refetch-on-focus / reconnect stay
+off (already the default here).
+
+Measure on a P30 before changing (each has a recorded risk):
+
+- `freezeOnBlur` on the handheld Stack — would stop hidden pages (Tables
+  under an open check) re-rendering on broadcasts. `enableFreeze` is off
+  app-wide after a measured 30 MB-per-visit native leak under `<Slot>`
+  (`lib/screenConfig.ts`); the handheld's native Stack is a different case,
+  but check `dumpsys meminfo` across 20 push/pops first.
+- Metro `inlineRequires` — Expo defaults it off, so register modules the
+  handheld never mounts are still evaluated at boot. App-wide change to module
+  init order; profile boot on the P30 before and after.
 
 ## Data sources (no new Supabase queries)
 

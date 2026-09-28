@@ -143,7 +143,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   );
   const isKDS = selectedStation?.station_type === "kds";
   // Handheld boot diet (docs/features/handheld/README.md): a handheld is a
-  // register for every gate below except the three marked `isHandheld`.
+  // register for every gate below except the ones marked `isHandheld`.
   const isHandheld = isHandheldStationType(selectedStation?.station_type);
   // The station kind the menu mirror writes as. Memoized so it is a stable
   // effect dependency rather than a new string on every render.
@@ -430,12 +430,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isKDS]);
 
-  // Star printer health check + background discovery lifecycle. Handheld keeps
-  // the health check (it feeds the printer list) but skips LAN discovery.
+  // Star printer health check + background discovery lifecycle. Handheld
+  // skips both. The health check opens a TCP connection to every Star printer
+  // at the location every 2 minutes — radio wake-ups on a pocketed device, and
+  // a probe that can collide with a register mid-print. Its only reader is
+  // PrintRouter's receipt fallback, which without it treats Star printers as
+  // "unknown" and picks the device's built-in printer first — the handheld's
+  // intended target. An explicit station receipt printer is unaffected, and
+  // kitchen routing never reads reachability.
   useEffect(() => {
-    if (selectedStore?.id && !isKDS) {
+    if (selectedStore?.id && !isKDS && !isHandheld) {
       startStarPrinterHealthCheck(selectedStore.id);
-      if (!isHandheld) startStarPrinterDiscoveryService();
+      startStarPrinterDiscoveryService();
     }
     return () => {
       stopStarPrinterHealthCheck();
@@ -769,8 +775,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // management wait on the network after every app restart. Instead we warm the
   // cache in the background once the POS is interactive — off the critical
   // path, but ready by the time anyone taps into Menu.
+  //
+  // Handheld skips it: six requests for a screen it does not have.
   useEffect(() => {
-    if (isKDS) return;
+    if (isKDS || isHandheld) return;
     const merchantId = selectedStore?.merchant_id;
     const locationId = selectedStore?.id;
     if (!supabase || !merchantId || !locationId) return;
@@ -791,6 +799,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     return () => handle.cancel();
   }, [
     isKDS,
+    isHandheld,
     supabase,
     selectedStore?.merchant_id,
     selectedStore?.id,

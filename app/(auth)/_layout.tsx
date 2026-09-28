@@ -2,6 +2,7 @@ import MerchantBrandingPanel from "@/components/auth/MerchantBrandingPanel";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
 import { images } from "@/lib/image";
+import { isHandheldStationType } from "@/lib/stationType";
 import { colors, spinnerColor } from "@/lib/theme";
 import { computeAuthUiScale, FixedUiScaleProvider, isCompactViewport } from "@/lib/uiScale";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -26,7 +27,10 @@ export default function AuthLayout() {
 
   // Lock to the kiosk's configured orientation while still on the auth/PIN
   // screens, so the device rotates before the customer-facing UI appears.
-  const { config: kioskConfig } = useKioskProfile();
+  // A handheld never shows the kiosk: no profile fetch, no poll.
+  const { config: kioskConfig } = useKioskProfile({
+    enabled: !isHandheldStationType(selectedStation?.station_type),
+  });
   useKioskOrientation(kioskConfig?.orientation, isKiosk);
 
   // Show loading indicator while Clerk is loading

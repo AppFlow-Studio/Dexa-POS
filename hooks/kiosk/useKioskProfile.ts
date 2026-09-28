@@ -24,8 +24,11 @@ export const kioskProfileQueryKeys = {
  *
  * Results are mirrored into useKioskProfileStore (persisted to MMKV) so the
  * kiosk can boot instantly/offline from the last known config.
+ *
+ * `enabled: false` skips the fetch and the poll — a handheld station never
+ * shows the kiosk, and would otherwise poll kiosk_profiles all shift.
  */
-export function useKioskProfile() {
+export function useKioskProfile({ enabled = true }: { enabled?: boolean } = {}) {
   const supabase = useSupabaseClient();
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const locationId = useStoreSettingsStore((s) => s.selectedStore?.id ?? null);
@@ -42,7 +45,7 @@ export function useKioskProfile() {
 
   const query = useQuery({
     queryKey: kioskProfileQueryKeys.forStation(stationId, kioskProfileId),
-    enabled: !!stationId && !!locationId,
+    enabled: enabled && !!stationId && !!locationId,
     staleTime: KIOSK_PROFILE_POLL_MS,
     refetchInterval: KIOSK_PROFILE_POLL_MS,
     queryFn: async (): Promise<KioskProfileRow | null> => {

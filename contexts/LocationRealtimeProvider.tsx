@@ -2,7 +2,7 @@
 // Centralized provider for all location-scoped realtime subscriptions
 
 import { useFloorRealtime } from '@/hooks/realtime/useFloorRealtime';
-import { createContext, ReactNode, useCallback, useContext } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useMemo } from 'react';
 // import { useWaitlistRealtime } from '@/hooks/useWaitlistRealtime';
 // import { useOrdersRealtime } from '@/hooks/useOrdersRealtime';
 import { useOrdersRealtime } from '@/hooks/realtime/useOrdersRealtime';
@@ -123,58 +123,79 @@ export function LocationRealtimeProvider({
     onPaymentChange: callbacks?.onPaymentChange,
   });
 
+  // Destructured so the callbacks and the memo below depend on stable pieces.
+  // The hooks return a fresh object every render; `reconnect` / `disconnect`
+  // are stable callbacks and `connectionStatus` only changes with the channel.
+  const {
+    connectionStatus: floorStatus,
+    isConnected: floorConnected,
+    isReconnecting: floorReconnecting,
+    reconnect: reconnectFloor,
+    disconnect: disconnectFloor,
+  } = floorRealtime;
+  const {
+    connectionStatus: ordersStatus,
+    isConnected: ordersConnected,
+    isReconnecting: ordersReconnecting,
+    reconnect: reconnectOrders,
+    disconnect: disconnectOrders,
+  } = ordersRealtime;
+
   // Reconnect all channels
   const reconnectAll = useCallback(() => {
     if (__DEV__) console.log('[LocationRealtime] Reconnecting all channels...');
-    floorRealtime.reconnect();
+    reconnectFloor();
     // waitlistRealtime.reconnect();
-    ordersRealtime.reconnect();
-  }, [floorRealtime, ordersRealtime]);
+    reconnectOrders();
+  }, [reconnectFloor, reconnectOrders]);
 
   // Disconnect all channels
   const disconnectAll = useCallback(() => {
     if (__DEV__) console.log('[LocationRealtime] Disconnecting all channels...');
-    floorRealtime.disconnect();
+    disconnectFloor();
     // waitlistRealtime.disconnect();
-    ordersRealtime.disconnect();
-  }, [floorRealtime, ordersRealtime]);
+    disconnectOrders();
+  }, [disconnectFloor, disconnectOrders]);
 
-  // Aggregate status
-  const allConnected =
-    floorRealtime.isConnected  && 
-    // waitlistRealtime.isConnected &&
-    ordersRealtime.isConnected;
-
-  const isReconnecting =
-    floorRealtime.isReconnecting || 
-    // waitlistRealtime.isReconnecting ||
-    ordersRealtime.isReconnecting;
-
-  const value: LocationRealtimeContextValue = {
-    floor: {
-      status: floorRealtime.connectionStatus,
-      isConnected: floorRealtime.isConnected,
-      isReconnecting: floorRealtime.isReconnecting,
-      reconnect: floorRealtime.reconnect,
-    },
-    // waitlist: {
-    //   status: waitlistRealtime.connectionStatus,
-    //   isConnected: waitlistRealtime.isConnected,
-    //   isReconnecting: waitlistRealtime.isReconnecting,
-    //   reconnect: waitlistRealtime.reconnect,
-    // },
-    orders: {
-      status: ordersRealtime.connectionStatus,
-      isConnected: ordersRealtime.isConnected,
-      isReconnecting: ordersRealtime.isReconnecting,
-      reconnect: ordersRealtime.reconnect,
-    },
-    reconnectAll,
-    disconnectAll,
-    allConnected,
-    isReconnecting,
-    locationId,
-  };
+  // Memoized: a new value object every render re-rendered every consumer —
+  // each handheld page's connection banner, the recovery bridges — whenever
+  // the provider's parent re-rendered (the main layout does on every
+  // navigation), not only when a channel actually changed.
+  const value = useMemo<LocationRealtimeContextValue>(
+    () => ({
+      floor: {
+        status: floorStatus,
+        isConnected: floorConnected,
+        isReconnecting: floorReconnecting,
+        reconnect: reconnectFloor,
+      },
+      // waitlist: { ...waitlistRealtime },
+      orders: {
+        status: ordersStatus,
+        isConnected: ordersConnected,
+        isReconnecting: ordersReconnecting,
+        reconnect: reconnectOrders,
+      },
+      reconnectAll,
+      disconnectAll,
+      allConnected: floorConnected && ordersConnected,
+      isReconnecting: floorReconnecting || ordersReconnecting,
+      locationId,
+    }),
+    [
+      floorStatus,
+      floorConnected,
+      floorReconnecting,
+      reconnectFloor,
+      ordersStatus,
+      ordersConnected,
+      ordersReconnecting,
+      reconnectOrders,
+      reconnectAll,
+      disconnectAll,
+      locationId,
+    ],
+  );
 
   return (
     <LocationRealtimeContext.Provider value={value}>

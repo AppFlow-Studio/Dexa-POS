@@ -601,6 +601,10 @@ export default Sentry.wrap(function RootLayout() {
   const isCFDMode = useStoreSettingsStore((s) => s.isCFDMode);
   const hasSelectedStation = useStoreSettingsStore((s) => !!s.selectedStation);
   const isPOSMode = hasSelectedStation && !isKDS && !isKiosk && !isCFDMode;
+  // The register's search and customer sheets are mounted for the whole
+  // session (each subscribes to its store and the active order). A handheld
+  // has its own search and customer fields and never opens either.
+  const mountsRegisterSheets = isPOSMode && !isHandheld;
   const isPinModalOpen = usePinOverrideStore((s) => s.isPinModalOpen);
   const isNoPrinterModalVisible = useNoPrinterModalStore((s) => s.visible);
   const isCustomizationOpen = useCustomizationStore((s) => s.isOpen);
@@ -1112,7 +1116,7 @@ export default Sentry.wrap(function RootLayout() {
                                       <Stack.Screen name="(profiles-and-timeclock)" />
                                     </Stack>
                                     <PortalHost />
-                                    {isPOSMode && <SearchBottomSheet />}
+                                    {mountsRegisterSheets && <SearchBottomSheet />}
                                     {isPOSMode && isCustomizationOpen && (
                                       <ItemCustomizationDialog />
                                     )}
@@ -1125,7 +1129,7 @@ export default Sentry.wrap(function RootLayout() {
                                     {isPOSMode && isPinModalOpen && (
                                       <ManagerPinModal />
                                     )}
-                                    {isPOSMode && <CustomerSheet />}
+                                    {mountsRegisterSheets && <CustomerSheet />}
                                     {isPOSMode && isNoPrinterModalVisible && (
                                       <NoPrinterModal />
                                     )}

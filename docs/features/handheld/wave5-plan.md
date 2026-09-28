@@ -24,7 +24,7 @@ payment logic is involved).
 - [x] `hooks/useConnectionWatcher.ts` — the grace timers; once a card is up it follows the network immediately
 - [x] `components/OfflineBanner.tsx` — reads the store; adds the "Reconnecting" card (tap → `reconnectAll`)
 - [x] `lib/battery.ts` — steps, `shouldPrompt`, `estimateMinutesLeft`
-- [x] `hooks/useLowBattery.ts` — expo-battery `useBatteryLevel` / `useBatteryState` (Android's battery-changed broadcast, no polling); samples reset on charge
+- [x] `hooks/useLowBattery.ts` — a timed read (`getBatteryLevelAsync` + `getBatteryStateAsync`): every 5 min, every 1 min at ≤ 20 % unplugged; samples reset on charge. **Corrected 2026-09-28:** the first version used expo-battery's `useBatteryLevel`, whose Android listener only fires on ACTION_BATTERY_LOW / OKAY (~15 % / 20 %) — the level froze after the first read and the sheet could never open on a device started above 10 %.
 - [x] `lib/transferServer.ts` — the register's transfer for several tables, reporting moved / failed
 - [x] `screens/battery/` — `useMyOpenTables` (every floor, merged parties as one row), `TransferRows` (`.bs-row`, `.bs-to`), `ServerPickerSheet`, `LowBatterySheet`, `LowBatteryWatcher` (subscribes to sessions only while the prompt is due)
 - [x] `HandheldFrame.tsx` — mounts both watchers once, in a leaf so their updates do not re-render the frame

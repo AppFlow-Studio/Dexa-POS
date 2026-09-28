@@ -4,6 +4,8 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getOrderPaymentsQueryOptions, orderPaymentsQueryKey } from '@/hooks/orders/useOrderPayments'
 import { isOnlineOrderSource } from '@/lib/orderSource'
+import { isHandheldStationType } from '@/lib/stationType'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
   KEY_RT_HANDLER_MS,
   KEY_RT_MSG,
@@ -465,8 +467,12 @@ export function useOrdersRealtime ({
           }
 
           // Prefetch stays online-only — eagerly fetching payments for every
-          // POS broadcast would add a round trip per order mutation.
-          if (isOnlineOrderSource(orderSource)) {
+          // POS broadcast would add a round trip per order mutation. A
+          // handheld has no online-orders drawer to warm, so it skips it.
+          if (
+            isOnlineOrderSource(orderSource) &&
+            !isHandheldStationType(useStoreSettingsStore.getState().selectedStation?.station_type)
+          ) {
             void queryClient.prefetchQuery(
               getOrderPaymentsQueryOptions(supabase, orderId)
             )

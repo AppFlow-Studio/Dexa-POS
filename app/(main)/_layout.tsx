@@ -57,7 +57,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { PortalHost } from "@rn-primitives/portal";
 import { Redirect, Slot, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
     ActivityIndicator,
     InteractionManager,
@@ -102,8 +102,10 @@ export default function MainLayout() {
 
   // Lock orientation for kiosk stations; unlock when on a non-kiosk station
   // so switching station types doesn't leave the device stuck in kiosk
-  // orientation. The query is enabled/disabled implicitly by stationId.
-  const { config: kioskConfig } = useKioskProfile();
+  // orientation. The query is enabled/disabled implicitly by stationId —
+  // except on a handheld, which never shows the kiosk and would otherwise
+  // poll kiosk_profiles every 3 minutes for nothing.
+  const { config: kioskConfig } = useKioskProfile({ enabled: !isHandheld });
   useKioskOrientation(kioskConfig?.orientation, isKiosk || isKioskRoute);
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
@@ -176,8 +178,11 @@ export default function MainLayout() {
 
   const soundServiceRef = useRef<KDSSoundService | null>(null);
 
+  // Online-order sounds belong to the register's online-orders drawer. A
+  // handheld has no drawer, so it skips the service and the native audio
+  // player it pre-loads per sound.
   useEffect(() => {
-    if (isFullScreenStation) return;
+    if (isFullScreenStation || isHandheld) return;
     const service = new KDSSoundService();
     soundServiceRef.current = service;
     service.init();
@@ -185,7 +190,7 @@ export default function MainLayout() {
       service.dispose();
       soundServiceRef.current = null;
     };
-  }, [isFullScreenStation]);
+  }, [isFullScreenStation, isHandheld]);
 
   const notifConfig = useLocationConfigStore((s) => s.config.notifications);
   useEffect(() => {
@@ -313,11 +318,61 @@ export default function MainLayout() {
     }
   }, []);
 
+  // Handheld: the order store is the only consumer of an order broadcast.
+  // The register also merges each one into Previous Orders and the KDS store
+  // and plays online-order sounds — screens a handheld does not have — so on
+  // a busy floor this saves two merge passes per broadcast. The local-mirror
+  // write stays: a handheld keeps the register's data policy
+  // (lib/db/policy.ts).
+  const handleOrderChangeHandheld = useCallback((payload: OrderPayload) => {
+    const broadcastPayload = payload as unknown as OrderBroadcastPayload;
+    // Before the store handles it: the store closes the mutation window.
+    const suppressedEcho = shouldSuppressOwnEchoBroadcast(broadcastPayload);
+    nudgeDeltaSync("order-broadcast");
+    const t0 = performance.now();
+    useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
+    recordSpan(KEY_FANOUT_ORDER_STORE_MS, performance.now() - t0);
+    noteBroadcastFanoutEnd();
+
+    if (!suppressedEcho && broadcastPayload.operation !== "DELETE") {
+      const order = broadcastPayload.data?.order;
+      const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+      if (order && locationId) {
+        void applyOrdersFromRealtimeIfNew(
+          [order as unknown as Record<string, unknown>],
+          "pos",
+          locationId,
+        );
+      }
+    }
+  }, []);
+
   const handlePaymentChange = useCallback((payload: PaymentPayload) => {
     if (__DEV__) {
       console.log("[MainLayout] Payment changed:", payload);
     }
   }, []);
+
+  // The handheld tree as one memoized element. This layout re-renders on
+  // every navigation (usePathname) — on a handheld that is every page push —
+  // and an identical element lets React skip the whole handheld subtree
+  // instead of re-rendering its navigator and every mounted page each time.
+  const storeId = selectedStore?.id ?? null;
+  const handheldTree = useMemo(
+    () =>
+      isHandheld && storeId ? (
+        <RegisterRuntime
+          locationId={storeId}
+          callbacks={{
+            onOrderChange: handleOrderChangeHandheld,
+            onPaymentChange: handlePaymentChange,
+          }}
+        >
+          <Slot />
+        </RegisterRuntime>
+      ) : null,
+    [isHandheld, storeId, handleOrderChangeHandheld, handlePaymentChange],
+  );
 
   if (!selectedStore || !selectedStore?.id) {
     return <Redirect href="/login" />;
@@ -400,19 +455,7 @@ export default function MainLayout() {
   // Handheld: same runtime as the register, none of the tablet chrome. The
   // route file (handheld.tsx) lazy-loads HandheldRoot so the tablet cold
   // start never evaluates the handheld bundle.
-  if (isHandheld) {
-    return (
-      <RegisterRuntime
-        locationId={selectedStore.id}
-        callbacks={{
-          onOrderChange: handleOrderChange,
-          onPaymentChange: handlePaymentChange,
-        }}
-      >
-        <Slot />
-      </RegisterRuntime>
-    );
-  }
+  if (isHandheld) return handheldTree;
 
   return (
     <RegisterRuntime

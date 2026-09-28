@@ -1,11 +1,10 @@
-import type { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React from "react";
 import { View } from "react-native";
 import { TabBar } from "./components/TabBar";
-import { checkNeedsYou, isOpenCheck } from "./lib/checks";
 import { useHandheldTab } from "./lib/tabStore";
 import { ChecksScreen } from "./screens/checks/ChecksScreen";
+import { checksIndex } from "./screens/checks/useChecks";
 import { MeScreen } from "./screens/me/MeScreen";
 import { TablesScreen } from "./screens/tables/TablesScreen";
 import type { HandheldTab } from "./types";
@@ -21,18 +20,11 @@ function ActiveTab({ tab }: { tab: HandheldTab }) {
   }
 }
 
-/** Open checks the kitchen has marked ready — a number, so the shell only re-renders when it changes. */
-function selectNeedsYou(s: { ordersById: Record<string, OrderProfile> }): number {
-  let n = 0;
-  for (const order of Object.values(s.ordersById)) {
-    if (isOpenCheck(order) && checkNeedsYou(order)) n++;
-  }
-  return n;
-}
-
 /** The Checks tab badge. */
 function useTabBadges(): Partial<Record<HandheldTab, number>> {
-  const needsYou = useOrderStore(selectNeedsYou);
+  // Shares the Checks tab's single pass over the orders (checksIndex): no
+  // second scan of every order on each store update.
+  const needsYou = useOrderStore((s) => checksIndex(s.ordersById).needsYou);
   return needsYou > 0 ? { checks: needsYou } : {};
 }
 
