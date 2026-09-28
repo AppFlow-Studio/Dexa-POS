@@ -163,9 +163,15 @@ export function KioskItemGrid({
 
   // Category switch: back to the top, and replay the entrance. Both used to
   // fall out of remounting the list on `resetKey`; doing them explicitly is
-  // what lets the recycle pool survive the switch.
+  // what lets the recycle pool survive the switch. Not on mount: the grid's
+  // first appearance is carried by the screen's own fade (or happens hidden,
+  // behind the order-type screen), and a second animation on top of it is
+  // work on the frame that most needs to be quick.
   const enter = useSharedValue(1);
+  const lastResetKey = useRef(resetKey);
   useEffect(() => {
+    if (lastResetKey.current === resetKey) return;
+    lastResetKey.current = resetKey;
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
     enter.value = 0;
     enter.value = withTiming(1, {
