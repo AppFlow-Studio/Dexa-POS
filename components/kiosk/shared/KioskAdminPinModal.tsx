@@ -1,4 +1,7 @@
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { syncEmployees } from "@/services/employeeSyncService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { MerchantRole } from "@/lib/types";
 import { Delete, Lock, X } from "@/lib/icons";
 import { useEffect, useState } from "react";
@@ -32,6 +35,7 @@ export function KioskAdminPinModal({
 }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const supabase = useSupabaseClient();
 
   useEffect(() => {
     if (visible) {
@@ -39,6 +43,16 @@ export function KioskAdminPinModal({
       setError(null);
     }
   }, [visible]);
+
+  // A kiosk skips the POS's 5-minute staff resync (PosSyncProvider), so PINs
+  // are refreshed here, when a manager actually needs one. The check below
+  // reads the local list, so it still works offline; a slow sync just means
+  // the list from the last one.
+  useEffect(() => {
+    if (!visible) return;
+    const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+    if (locationId) syncEmployees(supabase, locationId).catch(() => {});
+  }, [visible, supabase]);
 
   useEffect(() => {
     if (pin.length !== PIN_LENGTH) return;

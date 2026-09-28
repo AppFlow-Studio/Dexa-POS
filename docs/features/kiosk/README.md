@@ -255,8 +255,11 @@ in for the first frame, but the window is not the grid pane — beside a categor
 rail it over-estimates the width by a third — so every card painted once at the
 wrong size and then jumped. On the top-image cards that was a barely-visible
 reflow; on the feature row the row height and photo size are derived from that
-width, so the whole row resized as it settled. One blank frame is cheaper, and the entrance cascade covers
-it. Don't reintroduce a window-based estimate. `KioskPressable` is the standard
+width, so the whole row resized as it settled. One blank frame is cheaper, and
+nobody sees it: the grid is normally built hidden behind the order-type screen
+(see Performance), and otherwise the screen's own fade covers it. The grid's
+fade-and-lift runs on category switches only, not on mount. Don't reintroduce a
+window-based estimate. `KioskPressable` is the standard
 tappable surface (UI-thread scale+opacity press feedback).
 `KioskScreenTransition` takes a `direction` (`forward` / `up` / `fade`)
 describing how a screen relates to the one it replaces.
@@ -483,3 +486,18 @@ as the safety net for an item whose stock changes while a customer is on it.
 `isItemOrderable` fails **open** — an item whose groups can't be resolved (menu
 still hydrating) stays visible. Hiding a sellable item over a loading gap is
 worse than showing one the detail screen will handle.
+
+## Performance
+
+What makes the kiosk fast on low-memory hardware, what was deliberately left
+alone, and what still needs a device check: [`performance.md`](performance.md).
+Two rules come out of it:
+
+- **The ordering screen is built behind the order-type screen**
+  (`useKioskOrderTypeStep`), hidden with opacity so the grid can measure and
+  load while the customer chooses. A new template must do the same, or the
+  Dine In / Takeaway tap goes back to mounting the whole menu in one frame.
+- **Kiosk-only gates sit beside the KDS ones** (`isKiosk` in
+  `PosSyncProvider`, the kiosk branch of `app/(main)/_layout.tsx`). Before
+  turning something off on a kiosk, check it against checkout — the kiosk
+  still builds, pays and prints its own order through the POS order store.

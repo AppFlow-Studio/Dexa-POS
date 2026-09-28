@@ -19,13 +19,8 @@ import type { KioskItemSource } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { Check, ChevronLeft, Minus, Plus } from "@/lib/icons";
 import { useCallback, useMemo, useState } from "react";
-import {
-  Image,
-  ScrollView,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import OptimizedListImage from "@/components/ui/OptimizedListImage";
+import { ScrollView, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -195,10 +190,11 @@ export function KioskItemDetail({
       }}
     >
       {imageSource ? (
-        <Image
+        // Decoded at the photo's size — see KioskMenuItem.
+        <OptimizedListImage
           source={imageSource}
           style={{ width: "100%", height: "100%" }}
-          resizeMode="cover"
+          priority="high"
         />
       ) : (
         <PlaceholderIcon
