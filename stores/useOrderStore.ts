@@ -4974,8 +4974,11 @@ interface OrderState {
   ) => string;
   deleteOrder: (orderId: string) => void;
   clearCart: () => void;
-  /** Returns false when refused (read-only, or card money still on the order). */
-  voidOrder: (orderId: string) => boolean;
+  /**
+   * Returns false when refused (read-only, or card money still on the order).
+   * `opts.reason` is stored as the void reason (defaults to "Order voided").
+   */
+  voidOrder: (orderId: string, opts?: { reason?: string }) => boolean;
 
   // Payment void action - reverts payment and restores items to unpaid
   voidPayment: (orderId: string, paymentId: string) => Promise<boolean>;
@@ -15454,13 +15457,14 @@ export const useOrderStore = create<OrderState>()(
               type: "success",
             });
           },
-          voidOrder: (orderId: string) => {
+          voidOrder: (orderId: string, opts?: { reason?: string }) => {
             if (!_checkCartEditable(get(), orderId)) return false;
             // Voiding never refunds a card, and process_payment refuses void
             // orders — so a void here would strand the charge with no record.
             if (!guardOrderVoid(orderId)) return false;
             const { archiveOrder, ordersById } = get();
             const order = ordersById[orderId];
+            const voidReason = opts?.reason?.trim() || "Order voided";
 
             // 1. Update the order's status locally
             set((state) => {
@@ -15471,7 +15475,7 @@ export const useOrderStore = create<OrderState>()(
               o.items = o.items.map((item) => ({
                 ...item,
                 is_voided: true,
-                void_reason: "Order voided",
+                void_reason: voidReason,
               }));
 
               if (state.activeOrderId === orderId) {
@@ -15494,7 +15498,7 @@ export const useOrderStore = create<OrderState>()(
               OrderService.voidOrder(
                 supabase,
                 order.db_order_id,
-                "Order voided",
+                voidReason,
               )
                 .then(({ error }) => {
                   if (error) {
@@ -15508,6 +15512,17 @@ export const useOrderStore = create<OrderState>()(
                       return;
                     }
                     console.error("[useOrderStore.voidOrder] DB error:", error);
+                    // The local void is about to roll back, so the order is
+                    // live again on this device but may look voided elsewhere.
+                    Sentry.captureMessage("order.void.backend_failed", {
+                      level: "warning",
+                      tags: { area: "order-void" },
+                      extra: {
+                        dbOrderId: order.db_order_id,
+                        reason: voidReason,
+                        error: error.message,
+                      },
+                    });
                     if (isCardPaymentVoidRefusal(error)) {
                       toastService.show({
                         title: "Can't void — card payment on this order",
@@ -19700,6 +19715,38 @@ useStoreSettingsStore.subscribe((state) => {
         remoteOrdersEnabled: false,
       });
       console.log("[OrderStore] Station context cleared");
+    }
+  } else if (selectedStation) {
+    // Same station, edited on the dashboard: the station_updated nudge
+    // refreshes selectedStation, so carry name / view_scope / capability
+    // changes into the order store too.
+    const current = useOrderStore.getState().currentStation;
+    if (
+      current &&
+      current.id === selectedStation.id &&
+      (current.station_name !== selectedStation.station_name ||
+        current.view_scope !== selectedStation.view_scope ||
+        current.can_create_orders !== selectedStation.can_create_orders ||
+        current.can_process_payments !== selectedStation.can_process_payments ||
+        current.can_void_orders !== selectedStation.can_void_orders ||
+        current.can_apply_discounts !== selectedStation.can_apply_discounts ||
+        current.can_update_kitchen_status !==
+          selectedStation.can_update_kitchen_status)
+    ) {
+      const viewScopeChanged = current.view_scope !== selectedStation.view_scope;
+      useOrderStore.getState().setCurrentStation({
+        ...current,
+        station_name: selectedStation.station_name,
+        view_scope: selectedStation.view_scope,
+        can_create_orders: selectedStation.can_create_orders,
+        can_process_payments: selectedStation.can_process_payments,
+        can_void_orders: selectedStation.can_void_orders,
+        can_apply_discounts: selectedStation.can_apply_discounts,
+        can_update_kitchen_status: selectedStation.can_update_kitchen_status,
+      });
+      if (viewScopeChanged) {
+        void useOrderStore.getState().fetchVisibleOrders();
+      }
     }
   }
 });

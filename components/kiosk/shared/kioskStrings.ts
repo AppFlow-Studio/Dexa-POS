@@ -34,4 +34,15 @@ export const kioskStrings = {
   addItem: (name: string) => `Add ${name}`,
   scrollCategoriesLeft: "Scroll categories left",
   scrollCategoriesRight: "Scroll categories right",
+
+  /** CodePay payment window lapsed with no card read — "Need more time?". */
+  moreTimeTitle: "Need more time?",
+  moreTimeBody: (seconds: number) =>
+    `Tap below to try your card again. Otherwise this order will be cancelled in ${seconds}s.`,
+  moreTimeConfirm: "Yes, I need more time",
+  moreTimeCancel: "Cancel order",
+  /** Shown for the instant between the order being cancelled and Home. */
+  paymentTimedOut: "Your order was cancelled.",
+  /** Outcome unknown / window lapsed — confirming with the payment host. */
+  verifyingPayment: "Checking your payment…",
 } as const;

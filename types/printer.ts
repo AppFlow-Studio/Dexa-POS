@@ -327,7 +327,9 @@ export interface ReceiptTemplateData {
 
   // Copy label printed at the bottom of the receipt
   copyLabel?: string;  // e.g. "Customer Copy" | "Merchant Copy"
-  copyType?: "merchant" | "customer"; // Which copy this job is, independent of the label
+  // Which copy this job is. Drives the cardholder signature block (merchant
+  // copy only); the label above is display text and is not checked.
+  copyType?: "merchant" | "customer";
 
   // Split-receipt scoping (only set for per-portion split receipts; ignored
   // on the combined-receipt path so existing receipts are byte-identical).
@@ -372,7 +374,7 @@ export interface ReceiptPaymentData {
   originalTipAmount?: number; // Original tip before adjustment (for audit display)
   amountTendered?: number;   // Cash amount customer handed over
   changeGiven?: number;      // Change returned to customer
-  isCard?: boolean;          // Card tender (not gift card / house account)
+  isCard?: boolean;          // Card tender (from the raw method, not the display label)
 }
 
 export interface KitchenTicketData {

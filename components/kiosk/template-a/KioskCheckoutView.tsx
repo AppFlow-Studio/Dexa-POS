@@ -6,11 +6,13 @@ import {
   type KioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
 import { isKioskHandheld } from "@/components/kiosk/shared/kioskLayout";
+import { KioskPaymentTimeoutModal } from "@/components/kiosk/shared/KioskPaymentTimeoutModal";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
 import {
   kioskFontPx,
   kioskPx,
 } from "@/components/kiosk/shared/KioskScaleProvider";
+import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import {
   useKioskCheckout,
   type KioskCheckoutTotals,
@@ -59,8 +61,17 @@ export function KioskCheckoutView({
   const scale = useKioskUiScale();
   const t = useKioskTheme(config);
   const clearCart = useKioskCartStore((state) => state.clear);
-  const { status, error, totals, assistanceRef, computeTotals, payOrder, cancelCharge } =
-    useKioskCheckout();
+  const {
+    status,
+    error,
+    totals,
+    assistanceRef,
+    computeTotals,
+    payOrder,
+    cancelCharge,
+    moreTimeSecondsLeft,
+    respondMoreTime,
+  } = useKioskCheckout();
 
   // The active processor decides whether the card read can be cancelled from the
   // kiosk: Castles/Valor/Dejavoo support a cancel-before-card, ATOM does not (no
@@ -110,6 +121,14 @@ export function KioskCheckoutView({
       setStep("processing");
     }
   };
+
+  // The customer let the "Need more time?" prompt lapse (or cancelled it): the
+  // order is already voided, so reset the whole kiosk session to its start
+  // screen rather than dropping them back into the cart.
+  useEffect(() => {
+    if (status === "timed_out") onDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   // If tipping is disabled, pay as soon as totals are ready — but ONLY after the
   // customer step is done (step advances to "processing"), never on mount.
@@ -174,6 +193,44 @@ export function KioskCheckoutView({
   // ---- CANCELLED (confirmed — no charge; order voided) ----
   if (status === "cancelled") {
     return <CancelledScreen config={config} onDone={handleBack} />;
+  }
+
+  // ---- NEED MORE TIME? (card window lapsed, no charge) ----
+  // CodePay Register has closed its card screen; the order is still open.
+  if (status === "more_time") {
+    return (
+      <StatusLayout
+        theme={t}
+        scale={scale}
+        overlay={
+          <KioskPaymentTimeoutModal
+            config={config}
+            secondsLeft={moreTimeSecondsLeft}
+            onMoreTime={() => respondMoreTime("more_time")}
+            onCancel={() => respondMoreTime("cancel")}
+          />
+        }
+      >
+        <TapCardScreen config={config} scale={scale} />
+      </StatusLayout>
+    );
+  }
+
+  // ---- TIMED OUT (order voided; the effect above returns to the start) ----
+  if (status === "timed_out") {
+    return (
+      <StatusLayout theme={t} scale={scale}>
+        <Text
+          style={{
+            fontSize: kioskPx(20, scale),
+            ...kioskFont(t, "bold"),
+            color: t.text,
+          }}
+        >
+          {kioskStrings.paymentTimedOut}
+        </Text>
+      </StatusLayout>
+    );
   }
 
   // ---- PROCESSING / ERROR ----
@@ -288,6 +345,22 @@ export function KioskCheckoutView({
           scale={scale}
           onCancel={canCancelCharge ? handleCancelCharge : undefined}
         />
+      ) : status === "verifying" ? (
+        <>
+          <ActivityIndicator size="large" color={t.primary} />
+          <Text
+            style={{
+              fontSize: kioskPx(20, scale),
+              ...kioskFont(t, "bold"),
+              color: t.text,
+            }}
+          >
+            {kioskStrings.verifyingPayment}
+          </Text>
+          <Text style={{ fontSize: kioskPx(15, scale), color: muted }}>
+            Please don&apos;t leave this screen.
+          </Text>
+        </>
       ) : (
         <>
           <ActivityIndicator size="large" color={t.primary} />

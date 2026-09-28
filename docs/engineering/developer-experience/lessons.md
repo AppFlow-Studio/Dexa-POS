@@ -181,6 +181,12 @@
 - 2026-09-25, twice in one day (S1-0011, then the S1-0008 follow-ups): I wrote Jest cases for a fix and the user said "dont unit test please do actual tests". The plan had even said "targeted Jest if the emulator is blocked" — that fallback is not what the user wants.
 - Rule: prove a fix on the systems it touches. Server paths: call the real RPC on staging inside one `DO $$ … RAISE EXCEPTION 'PROOF …' $$` block (the exception rolls back and carries the result). Client paths: run the flow on the emulator against staging and read the device log + the staging rows. Existing Jest, tsc and lint stay as a safety net; new Jest files or cases only when asked.
 
+## Diagnoses: answer the question asked, and a fix plan contains fixes
+
+- Supabase connection saturation (2026-09-24). Asked "are 4 Realtime subscriptions per device the cause?", I answered with a scaling table and a snapshot-removal essay; the user said "u are not helping". Asked for a full plan, I opened it with a measurement phase and "only if the numbers show…" steps; the user said "forget about phase 0 we need real solutions".
+- Rule: when the question is yes/no, the first line is the yes/no and the one-sentence mechanism. Everything else comes after, and only if it changes what they do.
+- Rule: a fix plan is a list of fixes. Fold verification into each step instead of putting a measurement phase in front. If a fix is safe whatever the measurement would show (returning a pool to its default, retention, idempotent `CREATE OR REPLACE`), make it unconditional.
+- Useful fact that came out of it: Supabase Realtime subscriptions do not map to Postgres connections. Realtime holds a fixed pool per project (Micro default 9: 1 broadcast, 2 authorization, 6 Postgres Changes that only start while a `postgres_changes` subscription exists). Device count moves PostgREST load and Realtime quota, not the connection count.
 
 ## Device specs in a perf request are a bar to clear, not tiers to build
 

@@ -47,10 +47,14 @@ export interface ReceiptTemplateConfig {
   showVoidReason: boolean
   showApprovedBy: boolean
   showBreakDetails: boolean
-  // Card sales always get a merchant copy for the cardholder to sign. No DB
-  // column yet, so unset on every mapped template.
-  printSignatureLine?: boolean
+  // Sale receipt only: cardholder signature block on the merchant copy of
+  // card payments. Blank disclaimer falls back to DEFAULT_SIGNATURE_DISCLAIMER.
+  printSignatureLine: boolean
+  signatureLineDisclaimer: string | null
 }
+
+export const DEFAULT_SIGNATURE_DISCLAIMER =
+  'I agree to pay the above total according to my card issuer agreement.'
 
 // ============================================================================
 // DEFAULT (all flags true so existing behavior is preserved)
@@ -84,7 +88,9 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplateConfig = {
   modifierStyle: 'inverted',
   showVoidReason: true,
   showApprovedBy: true,
-  showBreakDetails: true
+  showBreakDetails: true,
+  printSignatureLine: false,
+  signatureLineDisclaimer: null
 }
 
 // ============================================================================
@@ -133,7 +139,9 @@ export function receiptTemplateConfigToRow (
     modifier_style: config.modifierStyle,
     show_void_reason: config.showVoidReason,
     show_approved_by: config.showApprovedBy,
-    show_break_details: config.showBreakDetails
+    show_break_details: config.showBreakDetails,
+    print_signature_line: config.printSignatureLine,
+    signature_line_disclaimer: config.signatureLineDisclaimer
   }
 
   // Only include id if it's a real UUID (not "default")
@@ -175,6 +183,8 @@ export function receiptTemplateRowToConfig (
     modifierStyle: (row.modifier_style as ModifierStyle) ?? 'inverted',
     showVoidReason: (row as any).show_void_reason ?? true,
     showApprovedBy: (row as any).show_approved_by ?? true,
-    showBreakDetails: (row as any).show_break_details ?? true
+    showBreakDetails: (row as any).show_break_details ?? true,
+    printSignatureLine: row.print_signature_line ?? false,
+    signatureLineDisclaimer: row.signature_line_disclaimer ?? null
   }
 }

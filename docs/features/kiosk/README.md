@@ -487,6 +487,71 @@ as the safety net for an item whose stock changes while a customer is on it.
 still hydrating) stays visible. Hiding a sellable item over a loading gap is
 worse than showing one the detail screen will handle.
 
+## Payment window & "Need more time?" (CodePay kiosks)
+
+A CodePay kiosk's card screen is CodePay Register, which runs in front of Dexa.
+Dexa can't time it (JS timers pause) or draw over it, so the window is
+Register's own order expiry, set per kiosk profile:
+`kiosk_profiles.payment_window_seconds` (45–180, NULL = legacy 120 s, no
+prompt). Profiles are polled about every 3 min and applied when idle, which
+makes the column the canary switch and the rollback switch.
+
+When the window lapses with no card read, the kiosk asks "Need more time?"
+(`KioskPaymentTimeoutModal`, 30 s countdown):
+- **Yes** relaunches the card screen for the same order, at most 3 times.
+- **Cancel order**, or no answer, voids the order ("Kiosk: payment not completed
+  in time") and returns to the attract screen.
+
+Unknown results ask the CodePay host before any staff lock. Rules, telemetry
+and the credentials runbook are in
+[`../codepay/README.md`](../codepay/README.md#kiosk-payment-window--host-status-lookup-2026-09-28).
+
+Kiosk voids now carry a reason instead of "Order voided":
+- card declined — <msg>
+- payment cancelled by customer
+- order could not be confirmed
+- payment not completed in time
+
+A void the store refuses after a charge attempt holds the kiosk
+(`void_blocked`) instead of moving on.
+
+### Staff unlock runbook ("Please see a staff member")
+1. On the attract screen, tap the corner 5 times → enter the manager PIN →
+   Diagnostics.
+2. "Payment review required" shows the order id. Check that order and the
+   CodePay terminal / portal for a charge before doing anything:
+   - **Charged:** record the payment or refund it, and hand the customer their
+     order.
+   - **Not charged:** void the draft order.
+3. Tap **Reconciled – unlock kiosk** (`KioskDiagnosticsScreen.tsx`). This only
+   unlocks checkout. It never charges, refunds or changes payment records.
+
+### Checklist
+- [x] Void reason + result plumbing (`useOrderStore.voidOrder(id, {reason})`, `void_blocked` hold).
+- [x] Idle timer counts from the last checkout release (time inside Register isn't idleness).
+- [x] `kiosk_profiles.payment_window_seconds` migration (website repo; staging first, prod by user).
+- [x] Register window + no-card-read expiry classification; `000` before `RESULT_CANCELED`; foreground gate after a watchdog.
+- [x] Attempt loop + "Need more time?" modal; persisted review marker cleared during the prompt.
+- [x] Host status lookup (edge function + client) with prior-attempt check before relaunch.
+- [x] Sentry telemetry (`kiosk.payment.window`, `kiosk.codepay.cloud_lookup`, assistance `cause`).
+- [ ] Wave 0 hardware spike: does Register return by itself at `expires`? Minimum `expires`? A tap at 55 s?
+- [ ] Probe the live CodePay Cloud API (`scripts/codepay-cloud-probe.ts`); settle `trans_status 9`.
+- [ ] Staging device tests (plan Waves 1 and 3), then the Deli Kiosk 8 canary via a cloned profile.
+
+### Review
+- **Verified without hardware:**
+  - `_shared/codepayCloud.ts` against a local fake gateway: 10/10 cases,
+    including the ref-mismatch hard stop (a bug the run caught), and CodePay's
+    documented canonical signing string verified 14/14.
+  - `CodePayService` resolution rules: 13 scenarios.
+  - The kiosk prompt loop: 9 scenarios, run through throwaway jest harnesses
+    (not committed).
+  - `tsc` is clean.
+  - The full jest suite is green except one pre-existing failure, a
+    source-regex test on `syncOrderFromDatabase` formatting.
+- **Not yet verified:** real Register expiry behaviour and the live Cloud API
+  (see the unchecked items above).
+
 ## Performance
 
 What makes the kiosk fast on low-memory hardware, what was deliberately left

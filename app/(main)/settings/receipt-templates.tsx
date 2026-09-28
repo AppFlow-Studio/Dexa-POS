@@ -7,6 +7,7 @@ import { useReceiptTemplateStore } from '@/stores/useReceiptTemplateStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
   DEFAULT_RECEIPT_TEMPLATE,
+  DEFAULT_SIGNATURE_DISCLAIMER,
   ModifierStyle,
   ReceiptTemplateConfig
 } from '@/types/receipt-template'
@@ -1365,6 +1366,39 @@ function renderReceiptSection (
           <Text style={{ color: '#6b7280', fontSize: s(8), marginTop: s(1) }}>
             Visa ending in 4242
           </Text>
+          {config.printSignatureLine ? (
+            <View style={{ marginTop: s(18) }}>
+              <Text style={{ color: '#111827', fontSize: s(9) }}>
+                X ________________________
+              </Text>
+              <Text
+                style={{ color: '#111827', textAlign: 'center', fontSize: s(9) }}
+              >
+                Cardholder Signature
+              </Text>
+              <Text
+                style={{
+                  color: '#6b7280',
+                  textAlign: 'center',
+                  fontSize: s(8),
+                  marginTop: s(4)
+                }}
+              >
+                {config.signatureLineDisclaimer?.trim() ||
+                  DEFAULT_SIGNATURE_DISCLAIMER}
+              </Text>
+              <Text
+                style={{
+                  color: '#9ca3af',
+                  textAlign: 'center',
+                  fontSize: s(7),
+                  marginTop: s(2)
+                }}
+              >
+                (merchant copy, card payments only)
+              </Text>
+            </View>
+          ) : null}
         </View>
       )
     case 'footer':
@@ -3393,6 +3427,29 @@ function ReceiptSettings ({
           value={config.showCustomerPhone}
           onToggle={v => updateField('showCustomerPhone', v)}
         />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title='Card Payments'
+        subtitle='Cardholder signature on the merchant copy'
+        defaultOpen
+      >
+        <ToggleRow
+          label='Print Cardholder Signature Line'
+          subtitle="Prints on the merchant's copy for card payments. Does not print on cash sales or customer copies. Card sales always print a merchant copy while this is on."
+          value={config.printSignatureLine}
+          onToggle={v => updateField('printSignatureLine', v)}
+        />
+        {config.printSignatureLine ? (
+          <TextRow
+            label='Signature Disclaimer (optional)'
+            value={config.signatureLineDisclaimer ?? ''}
+            onChangeText={v =>
+              updateField('signatureLineDisclaimer', v || null)
+            }
+            placeholder={DEFAULT_SIGNATURE_DISCLAIMER}
+          />
+        ) : null}
       </CollapsibleSection>
       {/* 
       <CollapsibleSection title="Extras" subtitle="Barcodes and QR codes" defaultOpen={false}>
