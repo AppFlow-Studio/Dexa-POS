@@ -37,7 +37,18 @@ export interface CodePayCloudLookup {
   trans_amount?: string;
   paid_amount?: string;
   auth_no?: string;
+  /** Masked PAN, e.g. "41004003****4735". */
   card_no?: string;
+  /** RRN. */
+  ref_no?: string;
+  /** "1" swipe / "2" chip / "3" contactless / "4" manual. */
+  entry_mode?: string;
+  /** e.g. "Visa", "MasterCard". */
+  pay_method_id?: string;
+  terminal_sn?: string;
+  /** Host decline detail for a failed sale, e.g. "TS-D2012" / "Insufficient Funds". */
+  error_code?: string;
+  error_msg?: string;
   trans_time?: string;
   code?: string;
   msg?: string;

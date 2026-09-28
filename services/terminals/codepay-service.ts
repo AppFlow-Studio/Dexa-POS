@@ -359,6 +359,10 @@ export class CodePayService {
       paid_amount: r.paid_amount,
       auth_code: r.auth_no,
       card_no: r.card_no,
+      ref_no: r.ref_no,
+      entry_mode: r.entry_mode,
+      pay_method_id: r.pay_method_id,
+      terminal_sn: r.terminal_sn,
       trans_end_time: r.trans_time,
       merchant_no: r.merchant_no,
       recovered_via: "cloud_lookup",
@@ -377,6 +381,7 @@ export class CodePayService {
       terminalResponse,
       transNo: r.trans_no,
       merchantOrderNo: referenceId,
+      rrn: r.ref_no,
       recoveredVia: "cloud_lookup",
     };
   }
