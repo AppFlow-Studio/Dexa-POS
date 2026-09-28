@@ -85,6 +85,13 @@ export const CODEPAY_TRANS_STATUS = {
 } as const;
 
 /**
+ * trans_status values that mean a card was read / the sale is live or done
+ * (0 paying, 2 approved, 4 captured, 9 pre-paid). A result carrying one of
+ * these is never classified as a no-card-read expiry.
+ */
+export const CODEPAY_LIVE_TRANS_STATUSES: readonly number[] = [0, 2, 4, 9];
+
+/**
  * biz_data.entry_mode — card entry method (numeric string per api-structure):
  *   1 = Magnetic stripe swipe, 2 = Contact chip, 3 = Contactless, 4 = Manual.
  */
@@ -137,6 +144,14 @@ export interface CodePaySaleParams {
   onScreenTip?: boolean;
   /** Show the on-terminal signature screen (default true). */
   onScreenSignature?: boolean;
+  /**
+   * Register order expiry in seconds (default CODEPAY_DEFAULT_EXPIRES_SEC).
+   * When set, the native watchdog becomes expiresSec + 60s, and a non-approved
+   * result that arrives at the deadline with no card read is classified as
+   * `expired` (customer didn't finish in time) rather than a decline. Kiosks
+   * pass their payment window; the POS register leaves it unset.
+   */
+  expiresSec?: number;
   /** 0–3: control receipt printing on the terminal. */
   receiptPrintMode?: number;
   /** Card-present by default. */
@@ -267,6 +282,12 @@ export interface CodePayTxnResult {
    */
   indeterminate?: boolean;
   /**
+   * Why the outcome is unknown: the native watchdog fired, the result was
+   * unreadable, the host still reports the sale in progress, or the host's
+   * approval didn't match this sale.
+   */
+  indeterminateCause?: "watchdog" | "unreadable" | "cloud_pending" | "cloud_mismatch";
+  /**
    * true when the cardholder cancelled on the terminal (RESULT_CANCELED, no
    * card read, no charge) — a clean, retryable abort, not a decline.
    */
@@ -277,6 +298,31 @@ export interface CodePayTxnResult {
   terminalResponse?: Record<string, unknown>;
   error?: string;
   errorCode?: string;
+  /**
+   * true when a Cloud status lookup (or two, after a watchdog) confirmed the
+   * host never charged this sale. Always paired with `expired`.
+   */
+  noChargeConfirmed?: boolean;
+  /** How an unknown sale was resolved to success, if it was. */
+  recoveredVia?: "cloud_lookup" | "device_query";
+  /**
+   * The host says an attempt Register reported as not completed was actually
+   * approved (found via the prior-attempt check before a relaunch).
+   */
+  contradictedRegister?: boolean;
+  /** Cloud status lookups made for this sale, for telemetry. */
+  cloudLookups?: { ref: string; status: string; reason?: string; latencyMs?: number }[];
+  /**
+   * true when the sale ran out its Register window (`expiresSec`) with no card
+   * read — the customer didn't finish in time. No money moved; the kiosk asks
+   * "Need more time?" instead of treating it as a decline. Only ever set when
+   * the caller passed `expiresSec`.
+   */
+  expired?: boolean;
+  /** How long the Register activity was up for this op (monotonic ms). */
+  elapsedMs?: number;
+  /** Raw Android activity result code, for telemetry. */
+  resultCode?: number;
   /** CodePay trans_no — the id to reference for refund/void/tip/query. */
   transNo?: string;
   /** merchant_order_no we sent (referenced refund/void key). */
@@ -323,6 +369,31 @@ export const CODEPAY_TERMINAL_DISPLAY_NAME = "CodePay (on-terminal)";
  * "may have charged" sale that almost never charged.
  */
 export const CODEPAY_SALE_TIMEOUT_MS = (CODEPAY_DEFAULT_EXPIRES_SEC + 60) * 1000;
+
+/** Watchdog margin past the Register expiry (see CODEPAY_SALE_TIMEOUT_MS). */
+export const CODEPAY_WATCHDOG_MARGIN_SEC = 60;
+
+/** Native watchdog for a sale handed `expiresSec` (expiry + margin). */
+export function codepaySaleTimeoutMs(expiresSec: number): number {
+  return (expiresSec + CODEPAY_WATCHDOG_MARGIN_SEC) * 1000;
+}
+
+/**
+ * A non-approved sale result arriving within this much of the Register expiry
+ * counts as "the window ran out" (subject to the no-card-read checks).
+ */
+export const CODEPAY_EXPIRY_GRACE_MS = 3_000;
+
+/**
+ * Kill switch for the kiosk's Cloud status lookup (edge function
+ * `codepay-transaction-status`). The edge function's CODEPAY_CLOUD_CONFIG
+ * secret is the remote switch; this one needs an OTA + restart.
+ */
+export const CODEPAY_CLOUD_LOOKUP_ENABLED = true;
+/** Total time a kiosk spends asking the host before falling back / holding. */
+export const CODEPAY_LOOKUP_BUDGET_MS = 20_000;
+/** Gap between lookups (and the minimum gap between two "no charge" answers). */
+export const CODEPAY_LOOKUP_RETRY_MS = 5_000;
 /** Non-card ops (query / batch close / referenced refund). */
 export const CODEPAY_QUERY_TIMEOUT_MS = 30_000;
 /** Hard ceiling for the interactive "Test Connection" spinner. */

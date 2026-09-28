@@ -25,6 +25,9 @@ export type KioskChargeOutcome =
   | { kind: "success" }
   /** Confirmed cancel with no capture — void the half-built order, show cancelled. */
   | { kind: "cancelled" }
+  /** Payment window ran out with no card read (confirmed no charge) — offer
+   *  "Need more time?" before voiding. */
+  | { kind: "timed_out" }
   /** May have captured (indeterminate / unconfirmable Castles cancel) — do NOT
    *  void or re-charge; route the customer to a staff member. */
   | { kind: "verify"; message: string }
@@ -38,6 +41,10 @@ export interface ResolveKioskChargeOutcomeArgs {
   indeterminate?: boolean;
   /** Decline / error / indeterminate message from the terminal. */
   message?: string;
+  /** Payment window ran out with no card read (CodePay kiosk expiry). */
+  timedOut?: boolean;
+  /** The cardholder cancelled on the terminal itself (confirmed no charge). */
+  aborted?: boolean;
   /** The customer pressed Back to cancel during the card read. */
   userCancelled: boolean;
   /** terminal_type running the sale (from the charge handle). */
@@ -52,7 +59,8 @@ export interface ResolveKioskChargeOutcomeArgs {
 export function resolveKioskChargeOutcome(
   args: ResolveKioskChargeOutcomeArgs,
 ): KioskChargeOutcome {
-  const { ok, indeterminate, message, userCancelled, terminalType } = args;
+  const { ok, indeterminate, timedOut, aborted, message, userCancelled, terminalType } =
+    args;
 
   // Approved card wins outright — record it and confirm the order, regardless of
   // a late Back press (the cancel raced the approval and lost).
@@ -63,6 +71,9 @@ export function resolveKioskChargeOutcome(
     return { kind: "verify", message: message ?? KIOSK_VERIFY_STAFF_MESSAGE };
   }
 
+  // The window ran out and the terminal confirmed no card was read.
+  if (timedOut) return { kind: "timed_out" };
+
   // Castles cancels by closing the shared sale socket, so a not-ok after a Back
   // can't be trusted to mean "no charge" — treat as unconfirmed, hand off to
   // staff rather than void a possibly-charged order.
@@ -71,8 +82,10 @@ export function resolveKioskChargeOutcome(
   }
 
   // Customer Back on a separate-channel processor (Valor/Dejavoo) — the not-ok
-  // sale result is authoritative, so this is a confirmed cancellation.
-  if (userCancelled) {
+  // sale result is authoritative, so this is a confirmed cancellation. Same for
+  // a cancel pressed on the terminal itself (CodePay Register), which the
+  // terminal reports as its own no-charge result.
+  if (userCancelled || aborted) {
     return { kind: "cancelled" };
   }
 

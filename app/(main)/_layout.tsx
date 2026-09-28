@@ -336,6 +336,26 @@ export default function MainLayout() {
     }
   }, []);
 
+  // Kiosk: the only order that matters is this station's own — the one
+  // checkout is building or paying. Everything else in the location (other
+  // stations, online orders, kitchen status) is dropped here, before it costs
+  // the kiosk an order-store merge, a previous-orders merge, a KDS merge and a
+  // local-mirror pull while a customer is tapping. An order the store already
+  // tracks still goes through, so a DELETE or re-key of our own order lands.
+  const handleOrderChangeKiosk = useCallback((payload: OrderPayload) => {
+    const broadcastPayload = payload as unknown as OrderBroadcastPayload;
+    const order = broadcastPayload.data?.order;
+    if (!order) return;
+    const orderStore = useOrderStore.getState();
+    const isOwnOrder =
+      order.station_id ===
+        useStoreSettingsStore.getState().selectedStation?.id ||
+      !!orderStore.dbOrderIdIndex[order.id] ||
+      !!orderStore.ordersById[order.id];
+    if (!isOwnOrder) return;
+    orderStore._handleOrderBroadcast(broadcastPayload);
+  }, []);
+
   const handlePaymentChange = useCallback((payload: PaymentPayload) => {
     if (__DEV__) {
       console.log("[MainLayout] Payment changed:", payload);
@@ -365,7 +385,7 @@ export default function MainLayout() {
         maxReconnectAttempts={20}
         // Table names come from the ticket (get_kds_tickets_v3 table_name) and
         // the persisted floor store, never from the floor channel.
-        floorEnabled={false}
+        floor={false}
         callbacks={{
           onOrderChange: handleOrderChangeKDS,
           onPaymentChange: handlePaymentChange,
@@ -407,9 +427,11 @@ export default function MainLayout() {
     return (
       <LocationRealtimeProvider
         locationId={selectedStore?.id}
-        floorEnabled={false}
+        // Only a real kiosk station narrows its feed; a POS station that
+        // opens the kiosk route keeps the full one.
+        floor={!isKiosk}
         callbacks={{
-          onOrderChange: handleOrderChange,
+          onOrderChange: isKiosk ? handleOrderChangeKiosk : handleOrderChange,
           onPaymentChange: handlePaymentChange,
         }}
       >

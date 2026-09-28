@@ -3,8 +3,11 @@
 Dexa-POS runs **on** a CodePay Android terminal and drives payments by launching
 the pre-installed **CodePay Register** app via an Android Intent
 (`com.codepay.transaction.call`, `startActivityForResult` → `onActivityResult`).
-No cloud REST, no RSA signing, no TCP/WebSocket — pure same-device app-to-app.
+Sales, refunds and batch-out are pure same-device app-to-app (no TCP/WebSocket).
 This is the ATOM-class on-device pattern (see `services/terminals/atom-service.ts`).
+The one cloud call is the kiosk's **host status lookup** (RSA2-signed Cloud API,
+server-side in the `codepay-transaction-status` edge function) — see
+"Kiosk payment window & host status lookup" below.
 
 ## Intent contract
 
@@ -101,10 +104,10 @@ settlement needs a DB row. So on-device CodePay now creates one itself, keyed on
 
 ## Settlement: backend RPCs — APPLIED TO STAGING (2026-09-15)
 
-CodePay settles on the terminal (topic `ecrhub.pay.batch.close`). Like Valor it
-is **manual batch-out only** (BatchoutPanel) — deliberately excluded from the
-unattended auto-settle scheduler to avoid a double-cut against a host/terminal
-auto-batch. `CODEPAY_BATCHOUT_ENABLED` is now **ON** (RPCs live on staging).
+CodePay settles on the terminal (topic `ecrhub.pay.batch.close`), from the
+BatchoutPanel and from the auto-settle scheduler (`autoSettlementScheduler.ts`
+includes CodePay; backend parity in `20260917120000_codepay_auto_settle_support.sql`).
+`CODEPAY_BATCHOUT_ENABLED` is **ON**.
 
 **Backend migrations authored in the website repo, applied + verified on STAGING
 (`dfwqakoyittmrwbqvxgw`); PROD is the user's manual deploy:**
@@ -177,3 +180,110 @@ Fix (JS only, OTA-able):
 - Kiosk: a bridge rejection (Register never launched) is a clean failure, not
   a `payorder_exception` hold.
 - Unlock dialog names the active processor instead of hardcoded "Valor".
+
+## Kiosk payment window & host status lookup (2026-09-28)
+
+Why: kiosk sales whose Register result came back unknown locked the kiosk for
+staff (Deli Kiosk 8: 44 min on 9/25, 6.7 h on 9/26), and a customer who walked
+away held the card screen for 120 s. Plan:
+`~/.claude/plans/lets-look-into-this-glittery-swan.md`.
+
+**Payment window (kiosks only).** `kiosk_profiles.payment_window_seconds`
+(45–180, NULL = legacy 120 s with no prompt) becomes the Register sale
+`expires`. Dexa cannot time this itself: JS timers pause while Register is in
+front, and Dexa can't draw over it. The watchdog for a windowed sale is
+`expires + 60 s`. The kiosk passes `on_screen_signature: false`.
+
+**"Expired" classification** (`CodePayService._interpret`). Applies only when
+the caller passed `expiresSec`, and only when every condition holds:
+- The result arrived within 3 s of the deadline (monotonic clock).
+- The result is non-000 or `RESULT_CANCELED`.
+- There's no sign a card was read: no `trans_no` / `auth_code` / `card_no`,
+  `trans_status ∉ {0,2,4,9}`, and no `paid_amount`.
+
+A `000` always wins, **checked before `RESULT_CANCELED`**. Log line:
+`[CodePayService] sale result … canceled, elapsedMs`. Record Register's real
+expiry code here once observed.
+
+**"Need more time?"** (`useKioskCheckout.payOrder` attempt loop):
+1. A confirmed no-charge expiry clears the *persisted* review marker (a crash
+   during the prompt doesn't reboot into a lock) but keeps the in-memory hold.
+2. The kiosk shows `KioskPaymentTimeoutModal` with a 30 s countdown.
+3. **Yes** relaunches Register on the same order with a new `CP_` ref and passes
+   the previous ref as `priorReferenceId`. The host is asked about the previous
+   ref first, and a late approval is recorded instead of charging again.
+4. **Cancel order**, the countdown running out, or a 4th lapse (max 3 prompts)
+   voids the order ("Kiosk: payment not completed in time") and returns to the
+   attract screen.
+5. A refused void holds the kiosk (`void_blocked`).
+
+**Host status lookup** (`services/terminals/codepayStatusLookup.ts` → edge
+function `codepay-transaction-status` → `_shared/codepayCloud.ts`):
+- **Endpoints.** Cloud `/api/payments/recall` (by `merchant_order_no`) gives the
+  verdict. `/api/entry/orderquery` (`method order.query`) supplies amounts, and
+  must agree before a recall "not found" counts.
+- **Status mapping.**
+  - `trans_status` 2 or 4 → `approved`
+  - 1 or 3 → `failed`
+  - **0 or 9 → `pending` (never "no charge")**
+  - M010 / "can't find" → `not_found`
+  - an identity mismatch or a bad signature → `unavailable`, with no second
+    opinion
+- **After a watchdog.** Wait for `AppState` → active (Register closed), then
+  require **two** not-charged answers ≥ 5 s apart. Still pending at the 20 s
+  budget → hold (`cloud_pending`).
+- **An approval must match amounts** (`order_amount` = base, `tip_amount`,
+  `paid/trans_amount` = total). A mismatch → hold (`cloud_mismatch`). The
+  payment is recorded via a synthesized `codepay_transaction` with
+  `recoveredVia: "cloud_lookup"`. Card last-4 isn't available from the host.
+- **Fallback.** Unconfigured or unreachable → the old on-device `_recoverSale`
+  query. After a watchdog, if that also fails → the staff hold (last resort).
+- **Kill switches.** Unset the `CODEPAY_CLOUD_CONFIG` secret (remote), or set
+  `CODEPAY_CLOUD_LOOKUP_ENABLED` (OTA).
+
+**Telemetry (Sentry).**
+- `kiosk.payment.window`: outcome `expired|more_time|cancel|countdown|cap`, with
+  attempt, referenceId, elapsedMs and raw codes.
+- `kiosk.codepay.cloud_lookup`: outcome
+  `recovered_via_cloud|no_charge_confirmed|hold|cloud_contradicts_register|…`,
+  with the lookup trail.
+- `kiosk.payment.assistance`: now tagged `cause`, with referenceId / elapsedMs.
+- `order.void.backend_failed`.
+- `kiosk.order.void_refused`.
+
+**Cloud credentials runbook (keys never go through chat).**
+1. **Generate our own key pair.** CodePay confirmed (2026-09-28) that the
+   integrator generates it (docs: guides/api-secure). The private key never
+   leaves this machine:
+   `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out codepay_pk.pem`
+   (PKCS8, which is what the edge function's WebCrypto needs; CodePay's
+   "PKCS1 for non-Java" note is about their SDK containers, and the signature
+   is identical), then
+   `openssl pkey -in codepay_pk.pem -pubout -out codepay_pub.pem`.
+2. **Upload the public key.** PayPilot → Settings → Payment Apps → select the
+   app → **API security** tab → auth type **RSA signature** → paste into
+   **RSA Public Key** → **Submit**. Paste the single-line body first
+   (`grep -v '^-' codepay_pub.pem | tr -d '\n'`); if it's rejected, paste the
+   full PEM. The app's PAID is the Cloud `app_id`. CodePay's Cloud example
+   uses the same `wz…` format as our ECR app id `wz1f2e3295adc70112`, so it's
+   likely the same app; the probe confirms it. Still needed from CodePay: the
+   Cloud **API endpoint URL** (the docs only say `https://xxx.codepay.us`) and,
+   optionally, their platform public key for response-signature checks.
+3. In the website repo, run
+   `node --experimental-strip-types scripts/codepay-cloud-probe.ts --gateway … --app-id … --merchant-no … --key codepay_pk.pem [--gateway-key …] --ref <known approved CP_ ref> --ref <random CP_ ref> --trans-no <gap trans_no> --env-out codepay-cloud.env --location <location uuid>`.
+   It prints recall/orderquery replies (full vs minimal envelope, signed?) and
+   the function's verdict, then writes a base64 `CODEPAY_CLOUD_CONFIG` env file
+   (mode 600).
+4. `supabase secrets set --env-file codepay-cloud.env` (staging first), then
+   delete the env file.
+
+**Open — confirm with the probe / on hardware before trusting in prod:**
+- Does Register return by itself at `expires` (the Wave 0 spike)?
+- What does `trans_status 9` mean for an expired ECR sale? If it means
+  "created, never paid", remap 9 → `failed` in `_shared/codepayCloud.ts`
+  (server-only, no OTA). Until then every lapsed window whose host reports 9 is
+  held.
+- Which recall envelope does CodePay accept?
+- The exact not-found code.
+- Whether responses are signed.
+

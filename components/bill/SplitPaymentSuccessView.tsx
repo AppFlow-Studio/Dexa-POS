@@ -1,7 +1,9 @@
 import { colors } from '@/lib/theme'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { ArrowRight, Check } from '@/lib/icons'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { ArrowRight, Check, Printer } from '@/lib/icons'
+import { usePrintPaymentReceipt } from '@/hooks/orders/usePrintPaymentReceipt'
+import { useState } from 'react'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated'
 import { iosOnly } from '@/lib/safeAnimations'
 
@@ -9,6 +11,18 @@ const SplitPaymentSuccessView = () => {
   const splits = usePaymentStore(s => s.splits)
   const activeSplitId = usePaymentStore(s => s.activeSplitId)
   const moveToNextSplit = usePaymentStore(s => s.moveToNextSplit)
+  const lastPaidPaymentId = usePaymentStore(s => s.lastPaidPaymentId)
+  const { printPayment, isPrinting } = usePrintPaymentReceipt()
+  // Keyed by payment id so the "Printed" state never carries over to the next guest.
+  const [printedPaymentId, setPrintedPaymentId] = useState<string | null>(null)
+  const hasPrinted = !!lastPaidPaymentId && printedPaymentId === lastPaidPaymentId
+
+  const handlePrint = async () => {
+    if (!lastPaidPaymentId || isPrinting) return
+    if (await printPayment(lastPaidPaymentId)) {
+      setPrintedPaymentId(lastPaidPaymentId)
+    }
+  }
 
   const justPaidSplit = splits.find(s => s.id === activeSplitId)
   const nextSplit = splits.find(s => s.status === 'pending')
@@ -99,6 +113,45 @@ const SplitPaymentSuccessView = () => {
             {nextSplit.customerName}
           </Text>
         </Animated.View>
+      )}
+
+      {/* Print this guest's receipt — scoped to the payment just taken */}
+      {lastPaidPaymentId && (
+        <TouchableOpacity
+          onPress={handlePrint}
+          disabled={isPrinting}
+          style={{
+            width: '100%',
+            paddingVertical: 12,
+            marginBottom: 10,
+            backgroundColor: colors.card,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            opacity: isPrinting ? 0.6 : 1
+          }}
+        >
+          {isPrinting ? (
+            <ActivityIndicator size='small' color={colors.label} />
+          ) : hasPrinted ? (
+            <Check size={16} color={colors.success} />
+          ) : (
+            <Printer size={16} color={colors.label} />
+          )}
+          <Text
+            style={{ color: colors.heading, fontWeight: '700', fontSize: 14 }}
+          >
+            {isPrinting
+              ? 'Printing...'
+              : hasPrinted
+              ? 'Receipt Printed — Print Again'
+              : `Print ${justPaidSplit?.customerName ?? 'Guest'}'s Receipt`}
+          </Text>
+        </TouchableOpacity>
       )}
 
       {/* Action Button */}

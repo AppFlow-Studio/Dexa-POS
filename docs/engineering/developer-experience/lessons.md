@@ -187,3 +187,8 @@
 - Rule: when the question is yes/no, the first line is the yes/no and the one-sentence mechanism. Everything else comes after, and only if it changes what they do.
 - Rule: a fix plan is a list of fixes. Fold verification into each step instead of putting a measurement phase in front. If a fix is safe whatever the measurement would show (returning a pool to its default, retention, idempotent `CREATE OR REPLACE`), make it unconditional.
 - Useful fact that came out of it: Supabase Realtime subscriptions do not map to Postgres connections. Realtime holds a fixed pool per project (Micro default 9: 1 broadcast, 2 authorization, 6 Postgres Changes that only start while a `postgres_changes` subscription exists). Device count moves PostgREST load and Realtime quota, not the connection count.
+
+## Device specs in a perf request are a bar to clear, not tiers to build
+
+- 2026-09-28 (kiosk performance): asked to make the kiosk "fast and light on all devices from low end 2gb ram devices to 4gb", I started a RAM-based lite/standard device class with a Kiosk Settings override. The user stopped it: the 2 GB and 4 GB figures were reference points, and the kiosk has to work well on every device.
+- Rule: make each optimization unconditional — cheaper animations, lighter images, less background work for everyone. No RAM-based modes, device classes or per-device performance switches unless explicitly asked for.

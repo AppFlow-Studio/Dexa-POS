@@ -744,14 +744,16 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
   // Initialize CFD controller
   useEffect(() => {
-    // Check prerequisites. A KDS never drives a customer display, so it must
-    // not run the CFD server (TCP listener + mDNS advert + foreground service).
+    // Check prerequisites. A KDS never drives a customer display, and a kiosk
+    // is the customer's own screen, so neither may run the CFD server (TCP
+    // listener + mDNS advert + foreground service).
     if (
       !selectedStation?.id ||
       !selectedStore?.id ||
       !selectedStore?.name ||
       !selectedStation?.station_name ||
-      selectedStation?.station_type === 'kds'
+      selectedStation?.station_type === 'kds' ||
+      selectedStation?.station_type === 'self_service'
     ) {
       setServerStatus('disabled')
       setPairingData(null)

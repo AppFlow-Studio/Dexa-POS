@@ -416,6 +416,34 @@ function blockItemlessReceipt (order: OrderProfile, context: string): boolean {
   return true
 }
 
+interface SaleReceiptCopy {
+  label: 'Merchant Copy' | 'Customer Copy'
+  type: 'merchant' | 'customer'
+}
+
+/**
+ * Copies to print for a sale receipt, per the location's merchant/customer
+ * copy settings (customer copy when both are off). With the template's
+ * signature line on, a receipt carrying a card payment always gets a merchant
+ * copy: that is the copy the cardholder signs.
+ */
+function resolveSaleReceiptCopies (data: ReceiptTemplateData): SaleReceiptCopy[] {
+  const { printMerchantCopy, printCustomerCopy } =
+    useLocationConfigStore.getState().config.printing
+  const needsSignatureCopy =
+    data.templateConfig?.printSignatureLine === true &&
+    data.payments.some(p => p.isCard)
+
+  const copies: SaleReceiptCopy[] = []
+  if (printMerchantCopy || needsSignatureCopy) {
+    copies.push({ label: 'Merchant Copy', type: 'merchant' })
+  }
+  if (printCustomerCopy || !printMerchantCopy) {
+    copies.push({ label: 'Customer Copy', type: 'customer' })
+  }
+  return copies
+}
+
 export const PrinterService = {
   /**
    * Print a receipt for a completed order.
@@ -434,21 +462,15 @@ export const PrinterService = {
     }
     if (blockItemlessReceipt(order, 'printReceipt')) return false
 
-    const { printMerchantCopy, printCustomerCopy } =
-      useLocationConfigStore.getState().config.printing
-
-    // Build copy labels to print. Fallback to customer copy if both are off.
-    const copies: string[] = []
-    if (printMerchantCopy) copies.push('Merchant Copy')
-    if (printCustomerCopy) copies.push('Customer Copy')
-    if (copies.length === 0) copies.push('Customer Copy')
-
     const baseData = buildReceiptTemplateData(order, location, printer)
+    const copies = resolveSaleReceiptCopies(baseData)
 
-    for (const label of copies) {
+    for (const copy of copies) {
       const templateData: ReceiptTemplateData = {
         ...baseData,
-        copyLabel: copies.length > 1 ? label : baseData.copyLabel ?? label
+        copyLabel:
+          copies.length > 1 ? copy.label : baseData.copyLabel ?? copy.label,
+        copyType: copy.type
       }
       const job = createJobForPrinter(
         printer,
@@ -484,22 +506,17 @@ export const PrinterService = {
     }
     if (blockItemlessReceipt(order, 'printSplitPaymentReceipt')) return false
 
-    const { printMerchantCopy, printCustomerCopy } =
-      useLocationConfigStore.getState().config.printing
-
-    const copies: string[] = []
-    if (printMerchantCopy) copies.push('Merchant Copy')
-    if (printCustomerCopy) copies.push('Customer Copy')
-    if (copies.length === 0) copies.push('Customer Copy')
-
     const baseData = buildReceiptTemplateData(order, location, printer, {
       scopeToPayment: payment
     })
+    const copies = resolveSaleReceiptCopies(baseData)
 
-    for (const label of copies) {
+    for (const copy of copies) {
       const templateData: ReceiptTemplateData = {
         ...baseData,
-        copyLabel: copies.length > 1 ? label : baseData.copyLabel ?? label
+        copyLabel:
+          copies.length > 1 ? copy.label : baseData.copyLabel ?? copy.label,
+        copyType: copy.type
       }
       const job = createJobForPrinter(
         printer,
@@ -1631,8 +1648,19 @@ function mapPaymentToReceiptData (p: OrderProfilePayment): ReceiptPaymentData {
         ? p.original_tip_amount
         : undefined,
     amountTendered: p.amountTendered ?? td?.amountTendered,
-    changeGiven: p.changeGiven ?? td?.changeGiven
+    changeGiven: p.changeGiven ?? td?.changeGiven,
+    isCard: isCardTender(p.method)
   }
+}
+
+/**
+ * Card tender from the raw method. Local payments use 'Card'; backend-synced
+ * rows can carry 'card', 'card_spinapi', 'credit_card', 'Credit Card' or
+ * 'Debit Card'. Gift cards and house accounts are not card tenders.
+ */
+function isCardTender (method: string | undefined): boolean {
+  const m = (method ?? '').toLowerCase()
+  return m.startsWith('card') || m.includes('credit') || m.includes('debit')
 }
 
 // Fail-open receipt-integrity switch. When true, a reconcile mismatch throws and
@@ -2236,6 +2264,12 @@ export function buildReceiptTemplateData (
       // redundant under the "Items Paid" header.
       const payer = sp.transactionDetails?.splitLabel
       splitPayerName = payer && payer !== 'Selected Items' ? payer : undefined
+    } else if (path === 'split-custom-amount' && !sp.splitInfo) {
+      // Custom-amount payments carry no splitInfo, so the "of N" fallback is
+      // the payment count at print time — a mid-bill portion read "Split 1 of
+      // 1". Number the payment without claiming a total.
+      splitLabel = `Payment #${portionIndex}`
+      splitPayerName = sp.transactionDetails?.splitLabel
     } else {
       splitLabel = `Split ${portionIndex} of ${totalPortions}`
       splitPayerName = sp.transactionDetails?.splitLabel
@@ -2344,10 +2378,9 @@ export function buildReceiptTemplateData (
     payments,
     amountPaid: displayAmountPaid,
     amountDue: displayAmountDue,
-    footerMessage:
-      template.footerText ??
-      printer.receiptFooter ??
-      'Thank you for your purchase!',
+    // Merchant-configured footer only; the ESC/POS path supplies its own
+    // default when this is undefined.
+    footerMessage: template.footerText ?? printer.receiptFooter ?? undefined,
     headerMessage: template.headerText ?? undefined,
     maxCharsPerLine: printer.graphicsOnly
       ? // ? Math.min(printer.maxCharsPerLine, 32)

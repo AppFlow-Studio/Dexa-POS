@@ -235,7 +235,7 @@ Split into two migrations: 3.3 replaces function bodies whose latest version liv
 - **Result:** 6 RPCs per minute per device drops to about 2.4. Station deactivation, permission, printer, kiosk-profile and terminal edits arrive within seconds. A billing suspension through `apply_subscription_access_state` deactivates the stations, so it also arrives within seconds; only billing denials that don't deactivate stations wait for the 5-minute refresh.
 
 **4.2 Kiosks and KDS skip the tables channel**
-- [x] `contexts/LocationRealtimeProvider.tsx`: new `floorEnabled` prop; `allConnected` and `isReconnecting` ignore a floor channel that is off by design. Set to `false` for KDS and kiosk in `app/(main)/_layout.tsx`.
+- [x] `contexts/LocationRealtimeProvider.tsx`: `floor` prop (the name `staging` already uses for it); `allConnected` and `isReconnecting` ignore a floor channel that is off by design. `false` for KDS and for a kiosk station in `app/(main)/_layout.tsx`; a POS station that opens the kiosk route keeps the floor channel.
 - [x] Kiosk also skips `syncFloorPlans` (tax rates and receipt templates still load), `useTableSessionInit` and the `pos.floor-status-converge` resume task.
 - [x] KDS table names checked: tickets carry `table_name` (the raw `table_number` from `get_kds_tickets_v3`), and `resolveKdsTableName` looks UUIDs up in the persisted floor store. The floor channel never filled that store on a KDS: `syncFloorPlans` is already skipped there, and `loadFloorPlanStatus` needs an `activeFloorPlanId` that only `syncFloorPlans` sets. Marking a session served from the KDS uses the ticket's `session_id`, which `get_kds_tickets_v3` returns.
 

@@ -36,7 +36,7 @@ Read this before optimizing — two common assumptions are wrong.
 | `React.lazy(() => import("…"))` inside `<Suspense>` for screens or heavy components rendered from a layout, panel, or overlay | a static import | `components/profile/MyProfilePanel.tsx` (PTO, Requests), `components/charts/LazyGiftedCharts.tsx` |
 | `AppRegistry.registerComponent(name, () => require("./X").default)` for surfaces native mounts on demand | requiring the component at module scope | `components/cfd-builtin/registerCFDBuiltinDisplay.ts` |
 | `require()` inside the function that needs a rarely used, heavy module, with `// eslint-disable-next-line @typescript-eslint/no-require-imports` | a top-level import | `maybeAutoPrintKdsTicket` in `stores/useKDSStore.ts` |
-| Gate station-specific work on station type | running it on every device | `useKioskProfile` and the terminal health check are off on KDS |
+| Gate station-specific work on station type | running it on every device | `useKioskProfile` and the terminal health check are off on KDS; the order workspace, floor, CFD server and other stations' broadcasts are off on kiosks ([kiosk performance](../../features/kiosk/performance.md)) |
 | Real data, or an empty state (`—`, an icon placeholder) | mock or demo data in app code | see [Removed mock data](#removed-mock-data-2026-09-23) |
 | Keep `assets/` to files the app references | leaving unused images (each one ships in the APK) | |
 

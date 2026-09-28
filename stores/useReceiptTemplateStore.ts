@@ -36,6 +36,17 @@ interface ReceiptTemplateStoreState {
   cacheLogoBase64: (logoUrl: string) => Promise<void>;
 }
 
+/** PostgREST "column not in schema cache" for the signature-line columns. */
+function isMissingSignatureColumnError(error: {
+  code?: string;
+  message?: string;
+}): boolean {
+  return (
+    error.code === "PGRST204" &&
+    /print_signature_line|signature_line_disclaimer/.test(error.message ?? "")
+  );
+}
+
 export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
   persist(
     (set, get) => ({
@@ -170,11 +181,37 @@ export const useReceiptTemplateStore = create<ReceiptTemplateStoreState>()(
           };
           const row = receiptTemplateConfigToRow(configToSave);
 
-          const { data, error } = await supabase
-            .from("receipt_templates")
-            .upsert(row, { onConflict: "id" })
-            .select()
-            .single();
+          const upsert = (r: typeof row) =>
+            supabase
+              .from("receipt_templates")
+              .upsert(r, { onConflict: "id" })
+              .select()
+              .single();
+
+          let { data, error } = await upsert(row);
+
+          // Signature-line columns ship with migration 20260927130000. On a
+          // database that doesn't have them yet, save everything else as long
+          // as the merchant hasn't turned the signature line on.
+          if (error && isMissingSignatureColumnError(error)) {
+            if (
+              configToSave.printSignatureLine ||
+              configToSave.signatureLineDisclaimer
+            ) {
+              set({ isSaving: false });
+              return {
+                success: false,
+                error:
+                  "The cardholder signature line isn't available for this location yet.",
+              };
+            }
+            const {
+              print_signature_line: _sig,
+              signature_line_disclaimer: _disc,
+              ...legacyRow
+            } = row;
+            ({ data, error } = await upsert(legacyRow));
+          }
 
           if (error) {
             console.error("[ReceiptTemplateStore] Save failed:", error);
