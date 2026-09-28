@@ -7,6 +7,7 @@ import { useTableSummary } from "../hooks/useTableSummary";
 import { formatElapsed } from "../lib/format";
 import { tableStatusLabel } from "../lib/tableStatus";
 import type { TableSummary } from "../lib/tableSummary";
+import { hasTableAction, TableActionBar } from "../screens/tables/TableActionBar";
 import { CheckPage } from "./CheckPage";
 
 function guestsLabel(n: number | null): string {
@@ -37,7 +38,10 @@ function useHydrateOrder(orderDbId: string | null, loaded: boolean) {
   }, [orderDbId, loaded]);
 }
 
-/** Screen 5: a table's check. Route: /handheld/table/[id]. */
+/**
+ * Screen 5: a table's check. Route: /handheld/table/[id]. A paid or
+ * cleaning table swaps the check footer for the floor plan's close actions.
+ */
 export default function TablePage({ tableId }: { tableId: string }) {
   const now = useMinuteTick();
   const { summary, serverName } = useTableSummary(tableId, now);
@@ -55,9 +59,16 @@ export default function TablePage({ tableId }: { tableId: string }) {
       subtitle={subtitle(summary, serverName)}
       orderId={order?.id ?? null}
       emptyText={
-        summary.minutes === null
-          ? "No one is seated here."
-          : "Opening this table's check…"
+        summary.status === "cleaning"
+          ? "This table is waiting to be cleaned."
+          : summary.minutes === null
+            ? "No one is seated here."
+            : "Opening this table's check…"
+      }
+      footer={
+        hasTableAction(summary.status) ? (
+          <TableActionBar tableId={tableId} title={summary.title} status={summary.status} />
+        ) : undefined
       }
     />
   );

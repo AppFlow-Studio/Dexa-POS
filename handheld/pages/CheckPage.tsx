@@ -37,7 +37,17 @@ function useActiveCheck(orderId: string) {
  * (the register's rule) until "Take over" claims it: no more button, no
  * "Add items", no Send.
  */
-function OpenCheck({ title, subtitle, orderId }: { title: string; subtitle?: string; orderId: string }) {
+function OpenCheck({
+  title,
+  subtitle,
+  orderId,
+  footer,
+}: {
+  title: string;
+  subtitle?: string;
+  orderId: string;
+  footer?: React.ReactNode;
+}) {
   const router = useRouter();
   const sc = useActiveCheck(orderId);
   const readOnly = useIsReadOnly(orderId);
@@ -72,7 +82,7 @@ function OpenCheck({ title, subtitle, orderId }: { title: string; subtitle?: str
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }}>
         <CheckBody orderId={orderId} onAddItems={readOnly ? undefined : addItems} onPressItem={readOnly ? undefined : items.open} />
       </ScrollView>
-      {readOnly ? null : <CheckFooter orderId={orderId} />}
+      {footer ?? (readOnly ? null : <CheckFooter orderId={orderId} />)}
       <MoreSheet
         visible={actions.sheet === "more"}
         title={title}
@@ -99,24 +109,27 @@ function OpenCheck({ title, subtitle, orderId }: { title: string; subtitle?: str
 /**
  * The pushed check page shared by tables and orders: `.bar` header with the
  * "more" button, the offline card, course cards, totals and the Send footer.
- * Without an order it explains why (Wave 3 adds "Start a check" here).
+ * Without an order it explains why. `footer` replaces the Pay / Send footer —
+ * the table page puts "Close table" / "Mark clean" there.
  */
 export function CheckPage({
   title,
   subtitle,
   orderId,
   emptyText,
+  footer,
 }: {
   title: string;
   subtitle?: string;
   orderId: string | null;
   emptyText: string;
+  footer?: React.ReactNode;
 }) {
   const router = useRouter();
   return (
     <View className="flex-1" style={{ backgroundColor: colors.screen }}>
       {orderId ? (
-        <OpenCheck title={title} subtitle={subtitle} orderId={orderId} />
+        <OpenCheck title={title} subtitle={subtitle} orderId={orderId} footer={footer} />
       ) : (
         <>
           <PageHeader title={title} subtitle={subtitle} onBack={() => router.back()} />
@@ -124,6 +137,8 @@ export function CheckPage({
           <Text className="px-5 pt-2" style={[type.sheetDesc, { color: colors.label }]}>
             {emptyText}
           </Text>
+          <View className="flex-1" />
+          {footer}
         </>
       )}
     </View>

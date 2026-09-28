@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import React, { useCallback } from "react";
 import { ScrollView, View } from "react-native";
 import { StickyActionBar } from "../../primitives";
@@ -10,7 +11,9 @@ import { useTableLabel } from "./useTableLabel";
 
 /**
  * Screen 9 — the payment went through: the success header, "Send a
- * receipt", then "Close table N" (or "Done" for a check with no table).
+ * receipt", then "Close table N" (or "Done" for a check with no table). The
+ * hint under it follows the location's auto-clear setting, since that
+ * decides whether the table frees up or goes to cleaning (useCloseTable).
  * Card and cash both end here; `line` is what differs ("Approved · Visa
  * ending 4412" / "Cash · $2.60 change").
  */
@@ -27,6 +30,7 @@ export function DoneScreen({
 }) {
   const close = useCloseTable(orderId);
   const table = useTableLabel(orderId);
+  const autoClear = useLocationConfigStore((s) => s.config.dining.autoClearTableOnPayment === true);
   const leave = useLeavePay();
 
   const finish = useCallback(async () => {
@@ -50,7 +54,7 @@ export function DoneScreen({
             disabled: close.busy,
           },
         ]}
-        hint={table ? `${table} frees up` : undefined}
+        hint={table ? (autoClear ? `${table} frees up` : `${table} moves to cleaning`) : undefined}
       />
     </View>
   );

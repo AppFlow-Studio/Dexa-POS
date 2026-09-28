@@ -9,6 +9,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useCallback, useRef, useState } from "react";
 import { chargeTotal, payBlockedReason, payableBalance } from "../../lib/payments";
 import { sendToKitchen, unsentItems } from "../../lib/sendCourse";
+import { isFullyPaid, markTablePaid } from "../../lib/tableClose";
 
 export type ChargePhase =
   /** Screen 8, before the reader opens. */
@@ -131,6 +132,11 @@ export function useCharge(orderId: string, tip: number) {
       // after the record so a declined card never sends food, and uses the
       // handheld's own send so it cannot race `CheckFooter`'s.
       await fireKitchenIfUnsent(orderId);
+
+      // The table reads "Paid" everywhere, as after a register payment. After
+      // the kitchen fire: `paid` does not accept SEND_TO_KITCHEN.
+      const paidOrder = useOrderStore.getState().ordersById[orderId];
+      if (isFullyPaid(paidOrder)) await markTablePaid(paidOrder);
 
       setPhase({ kind: "done", amount: total, tip, response: result.terminalResponse });
     } catch (e) {

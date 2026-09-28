@@ -64,6 +64,25 @@ report which: `setting-disabled`, `no-session`, `siblings-due`, and
 `unpaid-items` (an items-level guard that outranks a cached `amount_due`,
 `:52-75`).
 
+### Closing without auto-clear (added 2026-09-28)
+
+A location with `autoClearTableOnPayment` off still closes its tables from
+the handheld, the register's manual way (`lib/tableClose.ts`):
+
+- After a full card payment the table is moved to **paid** (`FULL_PAYMENT`),
+  as the register's `order:paid` subscriber does. The handheld records with
+  `addPaymentToOrder` directly, which emits no `order:paid`, so until this a
+  handheld-paid table still read "ordered" on the tablet floor plan. It runs
+  after the kitchen fire: `paid` does not accept `SEND_TO_KITCHEN`.
+- Screen 9's "Close table": `setting-disabled` now falls back to the floor
+  plan's "Close Table" (`CLEAR_TABLE` → archive → **cleaning**) instead of
+  sending the server to the tablet. The hint says "moves to cleaning" there.
+  The other three refusals still refuse. Never both closes: finalize returns
+  `setting-disabled` before it touches anything (trap 10).
+- The table page gives a paid table "Close table" and a cleaning table
+  "Mark clean" (`finishCleaning`), the two TableContextSheet actions, in
+  place of the check footer.
+
 ### Cash — why it is out, and what it would have cost
 
 Recorded so the decision does not get re-litigated from scratch:
@@ -159,7 +178,7 @@ Pages / screens (`handheld/`):
 - [x] `pages/ChargePage.tsx` — screen 8 (`.msg` + 112 dp `.orb`, "Open card reader") then screen 9 (`.okh` hero, "Close table N"), plus the declined / verify / unrecorded states
 - [x] `screens/pay/ChargeMessage.tsx`, `screens/pay/SuccessView.tsx` — not in the plan: the `.msg`/`.orb` block and the `.okh` header, split out of `ChargePage` for the ~120-line rule. `SuccessView` also carries `describeCard`, a best-effort read of the terminal response for the artifact's "Approved · Visa ending 4412" line that degrades to a bare "Approved" rather than printing something wrong.
 - [x] `screens/pay/useCharge.ts` — the charge → record → send-if-unsent sequence. **The two amounts are not the same number**: `chargeActiveTerminal.amount` is the grand total INCLUDING tip, `addPaymentToOrder.amount` is the balance EXCLUDING it with `tipAmount` passed alongside (`usePaymentStore.ts:1386-1391`). Passing the tipped total to the recorder would over-record every tip.
-- [x] `screens/pay/useCloseTable.ts` — `finalizeDineInPaymentClear`, surfacing all four refusal reasons; copy says the table frees up, not "moves to cleaning"
+- [x] `screens/pay/useCloseTable.ts` — `finalizeDineInPaymentClear`; with auto-clear off, the register's manual close instead (see "Closing without auto-clear")
 - [x] `lib/payments.ts` — the guard + derivation layer: `open()`'s two gates, tip presets, `chargeTotal`. Terminal availability stayed out of it — that needs `useActiveProcessor` / `useAtomTerminalStore`, so it belongs in a hook, not this pure module.
 - [x] `components/check/CheckFooter.tsx` — Pay action added, tonal + `fit` as `.btn.tonal.fit`; its own string-returning selector (an object selector re-renders the footer on every broadcast), re-asserted at tap time
 - [x] `lib/tokens.ts` / `lib/type.ts` — `optionRow 84`, `optionTile 52`, `tipCard 116`, `orb 112`, `successDot 84`, `receiptCard 92` and the `hero` / `tipPercent` / `successAmount` type ramp, with the artifact's em letter-spacing converted to dp
@@ -224,12 +243,10 @@ Each one cost an agent a read; none are hypothetical.
     handheld lists tables it never seated, and session hydration is a separate
     path from the order list. Every close action returns `success:false` when
     `sessions[tableId]` is missing (`useTableSessionStore.ts:626-632`).
-12. **`cleaning` has no handheld vocabulary** — `lib/tableStatus.ts` has a
-    label and a sort rank for it but omits it from `IN_USE_STATUSES` and has
-    no `tintKey` case (it falls through to `neutral`), and nothing in
-    `handheld/` calls `finishCleaning`. Downgraded: the chosen close path
-    frees the session outright, so Wave 4a produces no cleaning tables. It
-    returns the moment anyone routes the close through `CLEAR_TABLE`.
+12. **`cleaning` tables** — resolved 2026-09-28. With auto-clear off the
+    handheld now produces them (`CLEAR_TABLE`), and the table page's "Mark
+    clean" finishes them. The tile stays neutral (`tintKey` has no cleaning
+    case), and the row reads "Cleaning".
 
 ## Verify
 
@@ -240,7 +257,9 @@ Each one cost an agent a read; none are hypothetical.
 - [ ] Cancelling in the ATOM app (DEV008) and letting it time out (DEV009) both land back on screen 6 with the check unchanged and no journal left behind
 - [ ] Killing the app mid-authorization, then relaunching, surfaces the recovery sheet legibly (not at 0.6 scale)
 - [ ] A card payment taken offline shows as queued, survives a relaunch, and drains on reconnect
-- [ ] Close table reports what actually happened — cleared, `setting-disabled`, or `siblings-due` — and never claims a clear it did not get
+- [ ] Close table reports what actually happened — freed (auto-clear on), closed to cleaning (off), or `siblings-due` — and never claims a clear it did not get
+- [ ] A handheld-paid table reads "Paid" on the tablet floor plan before it is closed
+- [ ] Auto-clear off: Close table → the table shows Cleaning on both devices → Mark clean → Available
 - [ ] The same check paid from the handheld shows identically on the tablet: amount, tip, method, and the table's state
 - [ ] Device pass on 360 dp, font scale 1.3
 
@@ -252,6 +271,4 @@ Cash in any form (business blocker); split check and merge; the screen 9
 receipt grid — text, email and the built-in printer; refunds and tip
 adjustment from the handheld; Valor VP550 as a payment or print target;
 low-battery transfer and Wi-Fi roaming (Wave 5, built — `wave5-plan.md`); the `atom` branch in
-`markAsCharged` (register work). `finishCleaning` from the handheld tables
-list is no longer needed for Wave 4a, since the close path frees the session
-rather than sending the table to cleaning.
+`markAsCharged` (register work).
