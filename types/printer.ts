@@ -381,6 +381,7 @@ export interface KitchenTicketData {
   orderNumber: string;
   orderType: string;
   tableName?: string;
+  customerName?: string; // Order's customer (kiosk/online/POS-entered name)
   serverName?: string;
   timestamp: string;
   fullTimestamp?: string;
