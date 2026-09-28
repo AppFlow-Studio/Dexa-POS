@@ -119,3 +119,9 @@
 - Rule: before a research phase, write one or two lines saying what must be verified and why it blocks the code. When a verification lands, say what it resolved and start writing; read the rest just-in-time against the file being edited. Batch the reads: one wide sweep beats four narrow rounds, and the second batch should already be edits.
 - Corollary for this codebase: the "how does a menu change reach the device" question has one answer and it is now written down (`docs/features/menu-management/per-station-menu-scope.md`, "Change signal"). Read that before touching bootstrap or version RPCs instead of re-deriving it from `useMenuVersionWatch` and `PosSyncProvider`.
 - A new `menu_bootstrap`-adjacent field needs a **new table**, not a column: the local schema's additive-upgrade mechanism only re-runs `CREATE ... IF NOT EXISTS`, so a column would force a drop-and-rebuild of every tablet's mirror. `menu_station_scopes` is the pattern.
+
+## SQL fixes ship as a new migration, never as an edit to an applied one
+
+- I fixed the `create_order_v4` collision handler by editing `create_order_v4.sql` in place. That file has already been applied, so the edit reaches no database. Staging and prod would still run the old body, and the repo would describe a function that doesn't exist anywhere.
+- Rule: put the change in a new timestamped file (`YYYYMMDDHHMMSS_<what>.sql`) that `CREATE OR REPLACE`s the function with the full body. Say which file it overrides and give the rollback (re-running the previous file) in the header.
+- Related trap: a `GET STACKED DIAGNOSTICS ... CONSTRAINT_NAME` check has to list **every** unique guard on those columns. `orders` has both `orders_order_number_merchant_key` and `idx_unique_order_number_per_merchant`, and Postgres reports whichever it checks first.
