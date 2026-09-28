@@ -28,7 +28,7 @@ import {
   Menu,
   Star,
   TrendingUp,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useMemo, useRef, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

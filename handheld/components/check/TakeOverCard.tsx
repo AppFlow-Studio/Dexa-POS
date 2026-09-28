@@ -2,7 +2,7 @@ import { isOrderReadOnly } from "@/lib/orderAccessControl";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Lock } from "lucide-react-native";
+import { Lock } from "@/lib/icons";
 import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { tint } from "../../lib/tokens";

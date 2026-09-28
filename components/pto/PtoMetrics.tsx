@@ -3,19 +3,17 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { usePtoStore } from "@/stores/usePtoStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import {
-  differenceInHours,
-  isFuture,
-  isToday,
-  parseISO,
-  startOfDay,
-} from "date-fns";
+import { differenceInHours } from "date-fns/differenceInHours";
+import { isFuture } from "date-fns/isFuture";
+import { isToday } from "date-fns/isToday";
+import { parseISO } from "date-fns/parseISO";
+import { startOfDay } from "date-fns/startOfDay";
 import {
   AlertCircle,
   CheckCircle2,
   Clock,
   TrendingUp,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useMemo } from "react";
 import { View } from "react-native";
 

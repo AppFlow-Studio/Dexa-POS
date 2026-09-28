@@ -1384,7 +1384,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             return;
           }
 
-          // Merge sessions into existing tables, preserving geometry
+          // Merge sessions into existing tables, preserving geometry.
+          //
+          // Runs on every floor broadcast (~every 1.5s on a busy floor). A
+          // table whose session is value-equal keeps its OBJECT IDENTITY, the
+          // same T2a rule as loadFloorPlanStatus — otherwise every table is new
+          // on every reconcile and the whole Tables screen, sidebar list and
+          // context sheet re-render with it.
+          const withSession = (
+            table: FloorPlanObject,
+            session: FloorPlanObject["session"],
+          ): FloorPlanObject =>
+            shallowValueEqual(table.session, session, 3)
+              ? table
+              : { ...table, session };
+
           const mergedTables = currentTables.map((table) => {
             const incomingSession = sessionByTableId[table.id];
 
@@ -1396,21 +1410,52 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               incomingSession &&
               currentSession.id === incomingSession.id
             ) {
-              return { ...table, session: currentSession };
+              return withSession(table, currentSession);
             }
 
             // Drop an incoming session that was CLEAR'd locally within TTL —
             // see wasRecentlyCleared() comment for context. Treat as "no session".
             if (incomingSession && wasRecentlyCleared(incomingSession.id)) {
-              return { ...table, session: undefined };
+              return withSession(table, undefined);
             }
 
-            return {
-              ...table,
-              session:
-                incomingSession !== undefined ? incomingSession : table.session,
-            };
+            return withSession(
+              table,
+              incomingSession !== undefined ? incomingSession : table.session,
+            );
           });
+
+          const unchanged = mergedTables.every(
+            (t, i) => t === currentTables[i],
+          );
+          if (unchanged) {
+            // Nothing to paint — `tables` keeps its identity. Freshness still
+            // moves (loadFloorPlanStatusIfStale reads lastSyncAt), exactly as
+            // loadFloorPlanStatus does on an unchanged snapshot. Other paths
+            // (_syncToFloorPlanStore) update `tables` without the cache, so
+            // re-point the cache at the live array.
+            const now = new Date().toISOString();
+            const cached = get().floorPlanCache[floorPlanId];
+            set({
+              lastSyncAt: now,
+              error: null,
+              floorPlanCache: {
+                ...get().floorPlanCache,
+                [floorPlanId]: {
+                  tables: currentTables,
+                  sections: cached?.sections ?? get().sections,
+                  sectionsById: cached?.sectionsById ?? get().sectionsById,
+                  lastSyncAt: now,
+                },
+              },
+            });
+            // The session store still gets the authoritative snapshot — its
+            // SYNC keeps identity for unchanged sessions.
+            getTableSessionStore()
+              .getState()
+              ._patchSessionsFromTables(mergedTables, { clearMissing: true });
+            return;
+          }
 
           set({
             tables: mergedTables,

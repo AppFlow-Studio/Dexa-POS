@@ -9,7 +9,7 @@ import { colors } from '@/lib/theme'
 import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { formatCurrency } from '@/utils/currency'
-import { DollarSign } from 'lucide-react-native'
+import { DollarSign } from '@/lib/icons'
 import React, { useEffect } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

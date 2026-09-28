@@ -3,7 +3,7 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { FlashList, type ListRenderItem } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
-import { Search, X } from "lucide-react-native";
+import { Search, X } from "@/lib/icons";
 import React, { useCallback, useMemo, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import { EmptyState } from "../../components/EmptyState";

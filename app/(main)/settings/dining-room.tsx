@@ -13,7 +13,7 @@ import {
   Map,
   Plus,
   Settings2
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import { useEffect, useMemo, useRef } from 'react'
 import {
   ScrollView,

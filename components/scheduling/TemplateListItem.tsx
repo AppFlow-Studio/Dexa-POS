@@ -6,8 +6,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { colors } from "@/lib/theme";
 import { ScheduleTemplate } from "@/lib/types";
-import { differenceInDays } from "date-fns";
-import { Check, Copy, MoreVertical, Pencil, Trash2 } from "lucide-react-native";
+import { differenceInDays } from "date-fns/differenceInDays";
+import { Check, Copy, MoreVertical, Pencil, Trash2 } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

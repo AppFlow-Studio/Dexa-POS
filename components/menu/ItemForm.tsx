@@ -17,7 +17,6 @@ import {
     MENU_ITEM_PLACEHOLDER_ICON_OPTIONS,
     type MenuItemPlaceholderIconKey,
 } from "@/lib/menuItemPlaceholderIcon";
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -37,7 +36,7 @@ import {
     Search,
     Trash2,
     X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -325,9 +324,6 @@ const ItemForm: React.FC<ItemFormProps> = ({
     if (formData.imageBase64)
       return { uri: `data:image/jpeg;base64,${formData.imageBase64}` };
     if (formData.image) {
-      if (MENU_IMAGE_MAP[formData.image as keyof typeof MENU_IMAGE_MAP]) {
-        return MENU_IMAGE_MAP[formData.image as keyof typeof MENU_IMAGE_MAP];
-      }
       return { uri: formData.image };
     }
     return undefined;

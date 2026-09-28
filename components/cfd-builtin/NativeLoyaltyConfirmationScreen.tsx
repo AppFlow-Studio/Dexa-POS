@@ -1,7 +1,7 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext.base";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { Check, Gift } from "lucide-react-native";
+import { Check, Gift } from "@/lib/icons";
 import { useMemo } from "react";
 import { StyleSheet } from "react-native";
 import Animated, {

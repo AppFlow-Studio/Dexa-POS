@@ -2,14 +2,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { colors } from "@/lib/theme";
 import { Shift } from "@/lib/types";
-import { format, parseISO, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
+import { formatDistanceToNow } from "date-fns/formatDistanceToNow";
 import {
   ArrowRightLeft,
   CheckCircle2,
   Clock,
   MapPin,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 

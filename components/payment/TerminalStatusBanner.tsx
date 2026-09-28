@@ -1,7 +1,7 @@
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import type { TerminalStatusReason } from '@/hooks/useTerminalStatus'
-import { AlertCircle, AlertTriangle, RefreshCcw } from 'lucide-react-native'
+import { AlertCircle, AlertTriangle, RefreshCcw } from '@/lib/icons'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
 

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useOrderStore, withUnsyncedLocalLines } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { resolveBusinessDayConfig } from "@/stores/usePreviousOrdersStore";
@@ -25,7 +25,12 @@ import { queryClient } from "@/contexts/TanstackProvider";
 // don't want a 30MB+ response triggering OOM in okhttp's response materialization.
 const ACTIVE_ORDERS_HARD_LIMIT = 200;
 
-function resolveBusinessDayStartUtc(): string | null {
+/**
+ * UTC start of the location's current business day (location timezone +
+ * rollover hour), or null before the store's config is known. The floor for
+ * every "active orders" load — POS workspace and the KDS online-orders drawer.
+ */
+export function resolveBusinessDayStartUtc(): string | null {
   const config = resolveBusinessDayConfig();
   if (!config) return null;
   try {
@@ -231,6 +236,13 @@ function hydrateWorkspace(
       serverMap[key] = order;
     }
     serverIds.push(key);
+  }
+
+  // Keep a preserved order's unsynced lines when the server also returned it.
+  for (const id of preservedIds) {
+    if (serverMap[id]) {
+      serverMap[id] = withUnsyncedLocalLines(preserved[id], serverMap[id]);
+    }
   }
 
   let newOrdersById: Record<string, OrderProfile> = { ...preserved, ...serverMap };

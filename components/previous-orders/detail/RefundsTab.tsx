@@ -5,7 +5,7 @@ import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { PrinterService } from '@/services/printing/PrinterService'
 import { RefundReceiptService } from '@/services/refundReceiptService'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { Printer } from 'lucide-react-native'
+import { Printer } from '@/lib/icons'
 import React, { useMemo, useState } from 'react'
 import {
   ActivityIndicator,

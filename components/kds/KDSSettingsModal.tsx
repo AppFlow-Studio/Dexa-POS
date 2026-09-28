@@ -19,7 +19,7 @@ import {
     Printer,
     Settings,
     X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useCallback, useEffect, useState } from "react";
 import {
     Dimensions,

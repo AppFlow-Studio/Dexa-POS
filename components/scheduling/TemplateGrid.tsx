@@ -2,15 +2,13 @@ import { useDropZoneContext } from "@/contexts/DropZoneContext";
 import { colors } from "@/lib/theme";
 import { TemplateShift } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
-import {
-  addDays,
-  differenceInMinutes,
-  format,
-  getDay,
-  isValid,
-  parseISO,
-} from "date-fns";
-import { Plus } from "lucide-react-native";
+import { addDays } from "date-fns/addDays";
+import { differenceInMinutes } from "date-fns/differenceInMinutes";
+import { format } from "date-fns/format";
+import { getDay } from "date-fns/getDay";
+import { isValid } from "date-fns/isValid";
+import { parseISO } from "date-fns/parseISO";
+import { Plus } from "@/lib/icons";
 import React, { useEffect, useRef } from "react";
 import {
   findNodeHandle,

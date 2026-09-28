@@ -3,7 +3,7 @@ import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
-import { Clock, LogOut } from "lucide-react-native";
+import { Clock, LogOut } from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Dialog, DialogContent } from "../ui/dialog";

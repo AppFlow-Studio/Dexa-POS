@@ -5,7 +5,7 @@ import { useUiScale } from '@/lib/uiScale'
 import { OrderProfile } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { formatOrderStatus, formatPaymentStatus } from '@/utils/orderStatusHelpers'
-import { CheckCircle2, ChevronRight, Eye, Printer } from 'lucide-react-native'
+import { CheckCircle2, ChevronRight, Eye, Printer } from '@/lib/icons'
 import React, { useMemo } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

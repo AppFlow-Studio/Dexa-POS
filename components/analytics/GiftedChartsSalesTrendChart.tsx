@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
-import { format } from "date-fns";
+import { format } from "date-fns/format";
 import { JSX } from "react";
 import { Dimensions, Text, View } from "react-native";
 import { LineChart } from "@/components/charts/LazyGiftedCharts";

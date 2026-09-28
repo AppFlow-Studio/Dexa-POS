@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { ShoppingBag, Truck, Utensils, type LucideIcon } from "lucide-react-native";
+import { ShoppingBag, Truck, Utensils, type LucideIcon } from "@/lib/icons";
 import React, { useCallback } from "react";
 import {
   checkTitle,

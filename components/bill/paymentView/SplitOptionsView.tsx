@@ -13,7 +13,7 @@ import {
   Receipt,
   Split,
   Users
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React from 'react'
 import {
   ScrollView,

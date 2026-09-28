@@ -751,13 +751,15 @@ function CFDServerProvider ({
 
   // Initialize CFD controller
   useEffect(() => {
-    // Check prerequisites
+    // Check prerequisites. A KDS never drives a customer display, so it must
+    // not run the CFD server (TCP listener + mDNS advert + foreground service).
     if (
       !enabled ||
       !selectedStation?.id ||
       !selectedStore?.id ||
       !selectedStore?.name ||
-      !selectedStation?.station_name
+      !selectedStation?.station_name ||
+      selectedStation?.station_type === 'kds'
     ) {
       setServerStatus('disabled')
       setPairingData(null)
@@ -1073,7 +1075,8 @@ function CFDServerProvider ({
     selectedStation?.id,
     selectedStore?.id,
     selectedStore?.name,
-    selectedStation?.station_name
+    selectedStation?.station_name,
+    selectedStation?.station_type
     // organizationLogoUrl removed — handled by the branding effect below
   ])
 

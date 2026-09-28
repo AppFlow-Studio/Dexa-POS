@@ -1,7 +1,7 @@
 import { colors } from '@/lib/theme';
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal } from 'react-native';
-import { Check, ChevronUp, ChevronDown } from 'lucide-react-native';
+import { Check, ChevronUp, ChevronDown } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 export type SortOption = 'time' | 'name' | 'guests' | 'total';

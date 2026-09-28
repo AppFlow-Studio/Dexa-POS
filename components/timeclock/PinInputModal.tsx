@@ -1,6 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import React, { useState } from 'react'
+import { usePinEntry } from '@/hooks/usePinEntry'
+import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -9,7 +10,7 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated'
 import PinDisplay from '../auth/PinDisplay'
-import PinNumpad, { NumpadInput } from '../auth/PinNumpad'
+import PinNumpad from '../auth/PinNumpad'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
 
 interface PinInputModalProps {
@@ -32,27 +33,11 @@ const PinInputModal: React.FC<PinInputModalProps> = ({
 }) => {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
-  const [pin, setPin] = useState('')
+  // No auto-submit: a modal that shows a Confirm button waits for it.
+  const { pin, setPin, onKeyPress } = usePinEntry({ length: 4 })
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0)
-
-  const handleKeyPress = (input: NumpadInput) => {
-    if (typeof input === 'number') {
-      if (pin.length < 4) {
-        setPin(pin + input.toString())
-      }
-    } else {
-      switch (input) {
-        case 'backspace':
-          setPin(pin.slice(0, -1))
-          break
-        case 'clear':
-          setPin('')
-          break
-      }
-    }
-  }
 
   const handleConfirm = () => {
     if (pin.length < 4) {
@@ -111,7 +96,7 @@ const PinInputModal: React.FC<PinInputModalProps> = ({
             </Text>
           )}
           <PinDisplay pinLength={pin.length} maxLength={4} />
-          <PinNumpad onKeyPress={handleKeyPress} />
+          <PinNumpad onKeyPress={onKeyPress} />
           <View className='flex-row gap-3 mt-4'>
             <TouchableOpacity
               onPress={handleCancel}

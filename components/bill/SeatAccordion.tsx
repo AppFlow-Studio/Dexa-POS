@@ -8,7 +8,7 @@ import Animated, {
   LinearTransition,
 } from "react-native-reanimated";
 import { iosOnly } from "@/lib/safeAnimations";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight } from "@/lib/icons";
 import BillItem from "./BillItem";
 
 // --- Types ---

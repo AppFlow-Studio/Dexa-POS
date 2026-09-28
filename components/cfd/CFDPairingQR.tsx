@@ -1,7 +1,7 @@
 // src/components/cfd/CFDPairingQR.tsx
 import { useCFD } from "@/hooks/useCFD";
 import { useUiScale } from "@/lib/uiScale";
-import { X } from "lucide-react-native";
+import { X } from "@/lib/icons";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg"; // npm install react-native-qrcode-svg react-native-svg

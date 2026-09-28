@@ -2,7 +2,7 @@ import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { Clock, UserCheck } from 'lucide-react-native'
+import { Clock, UserCheck } from '@/lib/icons'
 import { ScrollView, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 

@@ -13,7 +13,7 @@ import PanelSheet, {
   PanelSheetTextInput as BottomSheetTextInput
 } from '@/components/ui/PanelSheet'
 import { BottomSheetMethods } from '@/components/ui/bottomSheet'
-import { Check, Tag, X } from 'lucide-react-native'
+import { Check, Tag, X } from '@/lib/icons'
 import React, { forwardRef, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View, useWindowDimensions } from 'react-native'
 

@@ -1,5 +1,7 @@
 import { Shift } from "@/lib/types";
-import { format, parse, parseISO } from "date-fns";
+import { format } from "date-fns/format";
+import { parse } from "date-fns/parse";
+import { parseISO } from "date-fns/parseISO";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

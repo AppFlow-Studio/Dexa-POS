@@ -16,7 +16,7 @@
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore';
 import { getSharedCastlesService } from '@/services/terminals/castles-service';
 import { colors } from '@/lib/theme';
-import { WifiOff } from 'lucide-react-native';
+import { WifiOff } from '@/lib/icons';
 import React from 'react';
 import { Text, TouchableOpacity } from 'react-native';
 

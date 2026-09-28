@@ -14,7 +14,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import BottomSheet from "@/components/ui/bottomSheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Maximize2, Minus, Plus, Redo2, Undo2 } from "lucide-react-native";
+import { Maximize2, Minus, Plus, Redo2, Undo2 } from "@/lib/icons";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,

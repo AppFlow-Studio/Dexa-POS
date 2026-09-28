@@ -4,7 +4,7 @@ import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { DailySummary } from '@/stores/useEndOfDayStore'
 import { useQuery } from '@tanstack/react-query'
-import { Check, Clock } from 'lucide-react-native'
+import { Check, Clock } from '@/lib/icons'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import { useUiScale } from '@/lib/uiScale'
 

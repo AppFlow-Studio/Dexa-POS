@@ -1,7 +1,7 @@
 import DiscardChangesModal from '@/components/ui/DiscardChangesModal'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { X } from 'lucide-react-native'
+import { X } from '@/lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,

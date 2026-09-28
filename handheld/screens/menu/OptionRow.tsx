@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import type { ModifierOption } from "@/lib/types";
-import { Check } from "lucide-react-native";
+import { Check } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { formatCurrency } from "../../lib/format";

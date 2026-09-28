@@ -3,7 +3,7 @@ import { replaceRoute } from "@/lib/rootNavigation";
 import { colors, spinnerColor } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { format } from "date-fns";
+import { format } from "date-fns/format";
 import { router, useLocalSearchParams } from "expo-router";
 import { DateTime } from "luxon";
 import {
@@ -14,7 +14,7 @@ import {
     MoonStar,
     RefreshCw,
     Users,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,

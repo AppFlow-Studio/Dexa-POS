@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { Delete } from "lucide-react-native";
+import { Delete } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { tint } from "../lib/tokens";

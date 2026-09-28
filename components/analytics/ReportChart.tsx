@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { format } from "date-fns";
+import { format } from "date-fns/format";
 import React from "react";
 import { Dimensions, Text, View } from "react-native";
 import { BarChart, LineChart } from "@/components/charts/LazyGiftedCharts";

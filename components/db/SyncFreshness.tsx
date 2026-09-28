@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react-native";
+import { RefreshCw } from "@/lib/icons";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 

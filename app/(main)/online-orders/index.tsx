@@ -10,7 +10,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { usePendingOnlineOrderCount } from "@/stores/selectors/orderSelectors";
 import { Link } from "expo-router";
-import { Table } from "lucide-react-native";
+import { Table } from "@/lib/icons";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 

@@ -11,7 +11,7 @@ import {
   Plus,
   Settings2,
   Sliders,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {

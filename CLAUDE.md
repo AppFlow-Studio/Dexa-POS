@@ -144,6 +144,10 @@ Implementation: `contexts/CFDProvider.tsx`, gated by `cfdLoyaltyDisabled` near l
 ## Key Conventions
 
 - KDS mode skips POS-only initialization (timeclock, PTO, draft cleanup, print queue) — gated by `isKDS` checks in `_layout.tsx`
+- Icons: import from `@/lib/icons`, never the `lucide-react-native` root (lint error). New icons need one line in `lib/icons/index.ts` — see `docs/engineering/architecture/icons.md`
+- date-fns: import per function (`import { format } from "date-fns/format"`); the package root is a lint error
+- Startup cost: in production only `_layout` files (and everything they import statically) run before the first frame; dev builds load every route, so never measure cold start on one. Lazy-load screens or heavy components rendered from layouts/panels (`React.lazy`). Rules and tools (`scripts/perf/`): `docs/engineering/performance/startup-and-bundle.md`
+- No mock or demo data in app code — use real data or an empty state
 - Supabase RPC functions (with versioned naming like `process_payment_v8`) are the primary backend API
 - Real-time sync uses Supabase broadcast channels per location
 - `useOrderStore.syncOrderFromBackendComplete(orderId)` expects the **local store key**, not `db_order_id`

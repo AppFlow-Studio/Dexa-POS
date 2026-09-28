@@ -12,7 +12,7 @@ import {
   Truck,
   User,
   Utensils,
-} from "lucide-react-native";
+} from "@/lib/icons";
 
 interface DetailsPanelProps {
   order: OrderProfile;

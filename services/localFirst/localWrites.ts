@@ -36,6 +36,7 @@ import {
 import { getDeviceId } from "@/lib/deviceId";
 import { generateLocalOrderNumbers } from "@/lib/localOrderSequence";
 import { markSessionUnsynced } from "@/lib/localFirst/unsyncedSessions";
+import { nudgeDrain } from "@/services/localFirst/outboxDrain";
 import { v4 as uuidv4 } from "uuid";
 
 import type {
@@ -949,6 +950,10 @@ export async function editLocalItem(
       const res = await commitLocalWrite(rowUpdates, []);
       if (!res.ok) return { ok: false, error: res.error };
     }
+    // An amended REJECTED add is back to pending — push the edited version now
+    // rather than on the next interval (commitLocalWrite only nudges when it
+    // runs, and a modifiers-only edit has no row update to commit).
+    nudgeDrain();
     return { ok: true, value: { amended: true } };
   }
 

@@ -41,7 +41,7 @@ import {
   ShieldCheck,
   Unlock,
   X
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useState } from 'react'
 import {
   ActivityIndicator,

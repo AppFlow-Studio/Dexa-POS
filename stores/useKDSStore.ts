@@ -1,3 +1,4 @@
+import type { KdsArrivalSource } from "@/services/kds/kdsDeviceTruth";
 import type {
     BroadcastOrderData,
     BroadcastOrderItemData,
@@ -17,12 +18,18 @@ import {
   type FailedBump,
 } from "@/lib/kds/bumpFailure";
 import { isRecallExpired } from "@/lib/kdsAutomation";
+import { createPendingWrites } from "@/lib/pendingWrites";
 import { DEADLINES } from "@/lib/network/deadlines";
 import type { RpcResult } from "@/lib/network/rpcVersionFallback";
 import { rpcWithVersionFallback } from "@/lib/network/rpcVersionFallback";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { normalizePlatform } from "@/lib/platformAliases";
-import { createLazyPersistStorage, getJSON, setJSON } from "@/lib/storage";
+import {
+  createLazyPersistStorage,
+  createStablePartialize,
+  getJSON,
+  setJSON,
+} from "@/lib/storage";
 import { OrderService } from "@/services/orderService";
 import {
     KDSDisplayConfig,
@@ -37,6 +44,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 import { useOrderStore } from "./useOrderStore";
+import { useSettingsStore } from "./useSettingsStore";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
 import { useTableSessionStore } from "./useTableSessionStore";
 
@@ -46,6 +54,22 @@ let _supabaseClient: SupabaseClient | null = null;
 export const setKDSSupabaseClient = (client: SupabaseClient | null) => {
   _supabaseClient = client;
 };
+
+/** kds_displays column behind each display setting editable from the app. */
+const DISPLAY_COLUMNS = {
+  fontScale: "font_scale",
+  columns: "columns",
+  showServerName: "show_server_name",
+  soundOnNewOrder: "sound_on_new_order",
+  soundConfig: "sound_config",
+} as const satisfies Partial<Record<keyof KDSDisplayConfig, string>>;
+
+export type KDSDisplayPatch = Partial<
+  Pick<KDSDisplayConfig, keyof typeof DISPLAY_COLUMNS>
+>;
+
+/** Display edits a fetchKDSDisplay read must not overwrite (scope: display id). */
+const _displayWrites = createPendingWrites();
 
 const getClient = () => {
   if (!_supabaseClient) {
@@ -71,6 +95,17 @@ function resolveKdsTableName(rawTableNumber?: string | null): string | null {
   const tableName = table?.name?.trim();
   return tableName || null;
 }
+
+type PersistedKDSKey =
+  | "_ticketsById"
+  | "doneTickets"
+  | "doneCount"
+  | "kdsDisplayId"
+  | "routingMode"
+  | "cachedRules"
+  | "kdsDisplayConfig"
+  | "prepStations"
+  | "enrichedRules";
 
 interface KDSState {
   tickets: KDSTicket[];
@@ -102,6 +137,12 @@ interface KDSState {
 
   // Last fetched location (for error recovery refetches)
   _lastLocationId: string | null;
+  /**
+   * Delivery path of the most recent write to `tickets`. Read by the KDS
+   * screen's arrival effect so kds_device_events can tell a broadcast from a
+   * poll, a reconnect, a resume, or a rehydrated (already-present) board.
+   */
+  _lastTicketSource: KdsArrivalSource;
 
   // Bulk mode
   bulkMode: boolean;
@@ -124,8 +165,23 @@ interface KDSState {
 
   // Actions
   fetchKDSDisplay: (stationId: string) => Promise<void>;
-  fetchTickets: (locationId: string) => Promise<void>;
-  _backgroundFetchTickets: (locationId: string) => Promise<void>;
+  /**
+   * Save display settings: applied to the store at once, written to
+   * kds_displays, reverted if the write fails. Resolves whether it saved.
+   */
+  updateKDSDisplay: (
+    displayId: string,
+    patch: KDSDisplayPatch,
+  ) => Promise<boolean>;
+  /** `source` = what put the tickets on the board; recorded on device-truth `arrived` events. */
+  fetchTickets: (
+    locationId: string,
+    source?: Extract<KdsArrivalSource, "mount" | "manual">,
+  ) => Promise<void>;
+  _backgroundFetchTickets: (
+    locationId: string,
+    source?: Extract<KdsArrivalSource, "poll" | "reconnect" | "resume" | "broadcast">,
+  ) => Promise<void>;
   _fetchTicketsForOrder: (
     locationId: string,
     orderId: string,
@@ -139,7 +195,11 @@ interface KDSState {
   _processOrderBroadcast: (payload: OrderBroadcastPayload) => void;
   nowEpochMs: number;
   incrementTimerTick: () => void;
-  scheduleRefetch: (locationId: string, immediate?: boolean) => void;
+  scheduleRefetch: (
+    locationId: string,
+    immediate?: boolean,
+    source?: "broadcast",
+  ) => void;
   _scheduleOrderRefetch: (
     locationId: string,
     orderId: string,
@@ -503,6 +563,71 @@ const _recalledCycleTicketIds = new Set<string>();
 const _recalledTicketAt = new Map<string, number>();
 const RECALLED_TICKET_TTL = 4 * 60 * 60 * 1000; // 4h — far past any live ticket
 
+// ─── KDS auto-print dedup ─────────────────────────────────────────────────
+// Ticket IDs already sent to the physical printer this session. Guards against
+// the same freshly-arrived ticket printing twice (the broadcast path and the
+// polling background-fetch can both flag it as new), and against ticket_id
+// churn. In-memory ONLY (unlike the recalled set): a fresh boot re-establishes
+// the board via fetchTickets, which fires NO new-ticket callback, so active
+// tickets present at boot are never reprinted after a restart — persistence
+// would add nothing. TTL-culled alongside recalls so it can't grow unbounded.
+const _printedTicketIds = new Set<string>();
+const _printedTicketAt = new Map<string, number>();
+const PRINTED_TICKET_TTL = 4 * 60 * 60 * 1000; // 4h — far past any live ticket
+
+function cullExpiredPrints(now: number): void {
+  if (_printedTicketAt.size === 0) return;
+  for (const [ticketId, at] of _printedTicketAt) {
+    if (now - at > PRINTED_TICKET_TTL) {
+      _printedTicketAt.delete(ticketId);
+      _printedTicketIds.delete(ticketId);
+    }
+  }
+}
+
+/** Forget a ticket's print so a later re-arrival (recall) prints it again. */
+function clearTicketPrinted(ticketId: string): void {
+  _printedTicketAt.delete(ticketId);
+  _printedTicketIds.delete(ticketId);
+}
+
+/**
+ * Physically print a newly-arrived KDS ticket, at most once per ticket_id.
+ * Gated to KDS stations that opted in (device-local flag) and claimed a
+ * printer — a no-op everywhere else, including POS stations that keep this
+ * store warm and must never print. Fire-and-forget; the print queue handles
+ * retries/offline.
+ */
+function maybeAutoPrintKdsTicket(ticket: KDSTicket): void {
+  if (_printedTicketIds.has(ticket.ticket_id)) return;
+
+  const settings = useStoreSettingsStore.getState();
+  const station = settings.selectedStation;
+  if (!station || station.station_type !== "kds") return;
+  if (!useSettingsStore.getState().kdsAutoPrintEnabled) return;
+  if (!station.current_receipt_printer_id) return;
+
+  const location = settings.selectedStore;
+  if (!location) return;
+
+  // Mark before dispatch (optimistic): the gates above already guarantee a
+  // claimed printer, so the enqueue will happen; a queued job that later fails
+  // to drain is retried by the print queue, not re-enqueued here.
+  _printedTicketIds.add(ticket.ticket_id);
+  _printedTicketAt.set(ticket.ticket_id, Date.now());
+
+  try {
+    const {
+      PrinterService,
+    } = require("@/services/printing/PrinterService");
+    void PrinterService.printKdsTicket(ticket, location).catch((e: unknown) =>
+      console.warn("[KDS AutoPrint] print failed:", e),
+    );
+  } catch (e) {
+    console.warn("[KDS AutoPrint] dispatch failed:", e);
+  }
+}
+
 /** Track order item IDs whose void/refund notice has been acknowledged locally.
  *  Persisted to MMKV so acknowledgements survive app restarts when there is no
  *  kdsDisplayId for server-side filtering. */
@@ -569,6 +694,8 @@ function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
 
   // Evict long-stale recalls (4h TTL) so unfinished recalls don't accumulate.
   cullExpiredRecalls(now);
+  // Same TTL sweep for the auto-print dedup set.
+  cullExpiredPrints(now);
 
   // Some bulk-done flows can regenerate ticket IDs from broadcast/refetch before
   // backend state fully settles. Keep those tickets hidden if all incoming items
@@ -1523,6 +1650,7 @@ export const useKDSStore = create<KDSState>()(
       prepStations: {},
       enrichedRules: [],
       _lastLocationId: null,
+      _lastTicketSource: "rehydrate",
 
       // New-order callback
       _onNewOrderCallback: null,
@@ -1545,6 +1673,7 @@ export const useKDSStore = create<KDSState>()(
       fetchKDSDisplay: async (stationId: string) => {
         const client = getClient();
         if (!client) return;
+        const readStartedAt = _displayWrites.beginRead();
 
         try {
           // Query kds_displays by station_id (1:1 FK). Deadline-wrapped so a
@@ -1687,6 +1816,12 @@ export const useKDSStore = create<KDSState>()(
             showServerName: display.show_server_name ?? null,
             fontScale: display.font_scale ?? null,
             showAllItems: display.show_all_items ?? null,
+            // Edits this read may predate win, so a setting doesn't flip back
+            // while (or just after) its save goes through.
+            ...(_displayWrites.overlay(
+              display.id,
+              readStartedAt,
+            ) as KDSDisplayPatch),
           };
 
           set({
@@ -1710,8 +1845,56 @@ export const useKDSStore = create<KDSState>()(
         }
       },
 
+      updateKDSDisplay: async (displayId, patch) => {
+        const client = getClient();
+        if (!client) return false;
+        const fields = Object.keys(patch) as (keyof KDSDisplayPatch)[];
+        const setLocal = (values: KDSDisplayPatch) => {
+          const st = get();
+          if (st.kdsDisplayId === displayId && st.kdsDisplayConfig) {
+            set({ kdsDisplayConfig: { ...st.kdsDisplayConfig, ...values } });
+          }
+        };
+
+        const current = get().kdsDisplayConfig;
+        const previous: KDSDisplayPatch =
+          get().kdsDisplayId === displayId && current
+            ? Object.fromEntries(fields.map((f) => [f, current[f]]))
+            : {};
+        const writeIds = fields.map((f) =>
+          _displayWrites.record(displayId, f, patch[f]),
+        );
+        setLocal(patch);
+
+        let saved = false;
+        try {
+          const { error } = await client
+            .from("kds_displays")
+            .update(
+              Object.fromEntries(
+                fields.map((f) => [DISPLAY_COLUMNS[f], patch[f]]),
+              ) as any,
+            )
+            .eq("id", displayId);
+          if (error) console.error("[KDSStore] updateKDSDisplay error:", error);
+          else saved = true;
+        } catch (err) {
+          console.error("[KDSStore] updateKDSDisplay exception:", err);
+        }
+
+        const revert: KDSDisplayPatch = {};
+        fields.forEach((f, i) => {
+          if (saved) _displayWrites.confirm(displayId, f, writeIds[i]);
+          // A newer edit to the field supersedes this one; leave it be.
+          else if (_displayWrites.drop(displayId, f, writeIds[i]) && f in previous)
+            (revert as Record<string, unknown>)[f] = previous[f];
+        });
+        if (Object.keys(revert).length > 0) setLocal(revert);
+        return saved;
+      },
+
       // ─── Fetch Tickets ────────────────────────────────────────────
-      fetchTickets: async (locationId: string) => {
+      fetchTickets: async (locationId: string, source = "manual") => {
         const client = getClient();
         if (!client) return;
 
@@ -1883,6 +2066,7 @@ export const useKDSStore = create<KDSState>()(
             doneTickets: nextDoneTickets,
             doneCount: nextDoneTickets.length,
             ...bucketed,
+            _lastTicketSource: source,
             _hasHydrated: true,
             isInitialLoading: false,
             isFetching: false,
@@ -1899,7 +2083,7 @@ export const useKDSStore = create<KDSState>()(
 
       // Background fetch — only sets isFetching, never isInitialLoading.
       // Used by scheduleRefetch and polling to avoid skeleton flashes.
-      _backgroundFetchTickets: async (locationId: string) => {
+      _backgroundFetchTickets: async (locationId: string, source = "poll") => {
         // In-flight guard: skip if another background fetch is running
         if (_fetchInFlight) return;
         _fetchInFlight = true;
@@ -2187,6 +2371,7 @@ export const useKDSStore = create<KDSState>()(
             doneTickets: nextDoneTickets,
             doneCount: nextDoneTickets.length,
             ...bucketed,
+            _lastTicketSource: source,
             _hasHydrated: true,
             isFetching: false,
           });
@@ -2199,25 +2384,24 @@ export const useKDSStore = create<KDSState>()(
           // during a realtime gap, and reconnect-fetch after a Wi-Fi blip.
           // The sound service's 1500ms cooldown collapses rapid bursts to one chime.
           if (wasHydrated) {
-            const cb = get()._onNewOrderCallback;
-            if (cb) {
-              const prevTicketIds = new Set(
-                currentTickets.map((t) => t.ticket_id),
-              );
-              const newTickets = merged.filter(
-                (t) => !prevTicketIds.has(t.ticket_id),
-              );
-              if (newTickets.length > 0) {
-                console.log("[KDS Sound] merge-diff new tickets", {
-                  count: newTickets.length,
-                  ticketIds: newTickets.map((t) => t.ticket_id),
-                  orderIds: Array.from(
-                    new Set(newTickets.map((t) => t.db_order_id)),
-                  ),
-                });
-                for (const t of newTickets) {
-                  cb(t.order_source ?? null);
-                }
+            const prevTicketIds = new Set(
+              currentTickets.map((t) => t.ticket_id),
+            );
+            const newTickets = merged.filter(
+              (t) => !prevTicketIds.has(t.ticket_id),
+            );
+            if (newTickets.length > 0) {
+              const cb = get()._onNewOrderCallback;
+              console.log("[KDS Sound] merge-diff new tickets", {
+                count: newTickets.length,
+                ticketIds: newTickets.map((t) => t.ticket_id),
+                orderIds: Array.from(
+                  new Set(newTickets.map((t) => t.db_order_id)),
+                ),
+              });
+              for (const t of newTickets) {
+                if (cb) cb(t.order_source ?? null);
+                maybeAutoPrintKdsTicket(t);
               }
             }
           }
@@ -2967,20 +3151,19 @@ export const useKDSStore = create<KDSState>()(
         // order that already has other tickets on the board (separate prep
         // station, later course) still rings the kitchen — diff is at
         // ticket_id, not order_id. Cooldown collapses bursts to one chime.
-        const cb = get()._onNewOrderCallback;
-        if (cb) {
-          const trulyNew = stabilizedNewTickets.filter(
-            (t) => !orderTids?.has(t.ticket_id),
-          );
-          if (trulyNew.length > 0) {
-            console.log("[KDS Sound] broadcast new tickets", {
-              orderId: order.id,
-              count: trulyNew.length,
-              ticketIds: trulyNew.map((t) => t.ticket_id),
-            });
-            for (const t of trulyNew) {
-              cb(t.order_source ?? order.order_source ?? null);
-            }
+        const trulyNew = stabilizedNewTickets.filter(
+          (t) => !orderTids?.has(t.ticket_id),
+        );
+        if (trulyNew.length > 0) {
+          const cb = get()._onNewOrderCallback;
+          console.log("[KDS Sound] broadcast new tickets", {
+            orderId: order.id,
+            count: trulyNew.length,
+            ticketIds: trulyNew.map((t) => t.ticket_id),
+          });
+          for (const t of trulyNew) {
+            if (cb) cb(t.order_source ?? order.order_source ?? null);
+            maybeAutoPrintKdsTicket(t);
           }
         }
       },
@@ -2992,11 +3175,11 @@ export const useKDSStore = create<KDSState>()(
         }));
       },
 
-      scheduleRefetch: (locationId: string, immediate?: boolean) => {
+      scheduleRefetch: (locationId: string, immediate?: boolean, source?: "broadcast") => {
         if (_refetchTimeout) clearTimeout(_refetchTimeout);
         _refetchTimeout = setTimeout(
           () => {
-            get()._backgroundFetchTickets(locationId);
+            get()._backgroundFetchTickets(locationId, source);
           },
           immediate ? 300 : 1500,
         );
@@ -3041,7 +3224,7 @@ export const useKDSStore = create<KDSState>()(
         // This path patches a board; it cannot build one. Before first hydration
         // there is nothing to splice into, so defer to the full read.
         if (!get()._hasHydrated) {
-          get().scheduleRefetch(locationId, true);
+          get().scheduleRefetch(locationId, true, "broadcast");
           return;
         }
 
@@ -3090,7 +3273,7 @@ export const useKDSStore = create<KDSState>()(
           );
 
           if (usedFallback) {
-            get().scheduleRefetch(locationId, true);
+            get().scheduleRefetch(locationId, true, "broadcast");
             return;
           }
 
@@ -3103,7 +3286,7 @@ export const useKDSStore = create<KDSState>()(
             // (app/(main)/kds.tsx arms no timer while realtime is connected), so
             // dropping this refresh silently would leave the order stale until the
             // next broadcast for it.
-            get().scheduleRefetch(locationId);
+            get().scheduleRefetch(locationId, false, "broadcast");
             return;
           }
 
@@ -3240,36 +3423,36 @@ export const useKDSStore = create<KDSState>()(
             doneTickets: nextDoneTickets,
             doneCount: nextDoneTickets.length,
             ...bucketed,
+            _lastTicketSource: "broadcast",
           });
 
           // Chime for tickets that appeared for this order — a later course fired,
           // or this station's first sight of the order. Diff is scoped to the
           // order, so it cannot ring for unrelated tickets that a concurrent board
           // fetch happened to add.
-          const cb = get()._onNewOrderCallback;
-          if (cb) {
-            const prevTicketIds = new Set(
-              currentTickets.map((t) => t.ticket_id),
-            );
-            const newTickets = merged.filter(
-              (t) =>
-                t.db_order_id === orderId && !prevTicketIds.has(t.ticket_id),
-            );
-            if (newTickets.length > 0) {
-              console.log("[KDS Sound] order-scoped new tickets", {
-                orderId,
-                count: newTickets.length,
-                ticketIds: newTickets.map((t) => t.ticket_id),
-              });
-              for (const t of newTickets) {
-                cb(t.order_source ?? null);
-              }
+          const prevTicketIds = new Set(
+            currentTickets.map((t) => t.ticket_id),
+          );
+          const newTickets = merged.filter(
+            (t) =>
+              t.db_order_id === orderId && !prevTicketIds.has(t.ticket_id),
+          );
+          if (newTickets.length > 0) {
+            const cb = get()._onNewOrderCallback;
+            console.log("[KDS Sound] order-scoped new tickets", {
+              orderId,
+              count: newTickets.length,
+              ticketIds: newTickets.map((t) => t.ticket_id),
+            });
+            for (const t of newTickets) {
+              if (cb) cb(t.order_source ?? null);
+              maybeAutoPrintKdsTicket(t);
             }
           }
         } catch (err) {
           if (_orderFetchSeq.get(orderId) !== mySeq) return;
           console.error("[KDSStore] _fetchTicketsForOrder exception:", err);
-          get().scheduleRefetch(locationId);
+          get().scheduleRefetch(locationId, false, "broadcast");
         }
       },
 
@@ -3317,6 +3500,11 @@ export const useKDSStore = create<KDSState>()(
 
         // Optimistic: reset all items, ticket to recall status, mark as recalled
         addRecalledTicketId(ticketId);
+        // A recall means "make it again" — reprint the physical ticket (no-op
+        // unless this KDS auto-prints). Clear the print guard first so the
+        // reprint isn't deduped away.
+        clearTicketPrinted(ticketId);
+        maybeAutoPrintKdsTicket(ticket);
         const recallableSet = new Set(recallableItemIds);
         const updatedTickets = tickets.map((t) =>
           t.ticket_id === ticketId
@@ -3865,6 +4053,11 @@ export const useKDSStore = create<KDSState>()(
 
         // Move from done → active tickets with workflow-aware status
         addRecalledTicketId(ticketId);
+        // A recall means "make it again" — reprint the physical ticket (no-op
+        // unless this KDS auto-prints). Clear the print guard first so the
+        // reprint isn't deduped away.
+        clearTicketPrinted(ticketId);
+        maybeAutoPrintKdsTicket(ticket);
         const recallableSet = new Set(recallableItemIds);
         const recalledAtIso = new Date().toISOString();
         const recalledAtEpoch = Date.now();
@@ -4442,24 +4635,29 @@ export const useKDSStore = create<KDSState>()(
       storage: createLazyPersistStorage(),
       version: 1,
       migrate: (persistedState) => persistedState as any,
-      partialize: (state) => ({
-        // Only persist _ticketsById — ticketsByStatus/tickets/counts are derived on rehydrate.
-        // This avoids serializing 3 copies of the same ticket data on every bump.
-        _ticketsById: state._ticketsById,
-        doneTickets: state.doneTickets,
-        doneCount: state.doneCount,
-        // Persist display config so KDS knows its routing rules offline
-        kdsDisplayId: state.kdsDisplayId,
-        routingMode: state.routingMode,
-        cachedRules: state.cachedRules,
-        kdsDisplayConfig: state.kdsDisplayConfig,
-        prepStations: state.prepStations,
-        enrichedRules: state.enrichedRules,
-      }),
+      // Only persist _ticketsById — ticketsByStatus/tickets/counts are derived on rehydrate.
+      // This avoids serializing 3 copies of the same ticket data on every bump.
+      // Display config is persisted so KDS knows its routing rules offline.
+      // Stable partialize: the 1Hz incrementTimerTick (and every fetch-flag
+      // set) would otherwise re-stringify the whole ticket map each second.
+      partialize: createStablePartialize<KDSState, PersistedKDSKey>([
+        "_ticketsById",
+        "doneTickets",
+        "doneCount",
+        "kdsDisplayId",
+        "routingMode",
+        "cachedRules",
+        "kdsDisplayConfig",
+        "prepStations",
+        "enrichedRules",
+      ]),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state._hasHydrated = true;
           state.isInitialLoading = false;
+          // Tickets restored from MMKV were already on this board: their
+          // device-truth `arrived` (if any) must be labelled a re-emission.
+          state._lastTicketSource = "rehydrate";
           // Rebuild tickets array + indexes + buckets from persisted _ticketsById
           const byId = state._ticketsById ?? {};
           const tickets = Object.values(byId);

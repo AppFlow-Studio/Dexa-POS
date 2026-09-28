@@ -20,6 +20,7 @@ import {
   deriveRemedy,
   deriveSubtitle,
   deriveTitle,
+  isPaymentOp,
   isRetryable,
   ORDER_BOUND_OPS
 } from '@/lib/offlineSyncSubtitles'
@@ -31,7 +32,7 @@ import {
 } from '@/services/offlineSyncService'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { AlertTriangle } from 'lucide-react-native'
+import { AlertTriangle } from '@/lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
@@ -209,6 +210,10 @@ const OrderSyncBanner: React.FC = () => {
                   Retry
                 </Text>
               </TouchableOpacity>
+            ) : isPaymentOp(op) ? (
+              // No Dismiss for money: the charge is real. The remedy line says
+              // what to do (refund on the terminal or re-record it).
+              null
             ) : (
               <TouchableOpacity
                 onPress={() => handleDismiss(op.id)}

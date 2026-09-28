@@ -3,7 +3,7 @@ import BottomSheet, {
   BottomSheetView,
 } from "@/components/ui/bottomSheet";
 import { colors } from "@/lib/theme";
-import { Clock, X } from "lucide-react-native";
+import { Clock, X } from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme } from "@/lib/theme";

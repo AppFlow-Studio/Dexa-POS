@@ -19,7 +19,7 @@ import {
     LogOut,
     Pause,
     User,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";

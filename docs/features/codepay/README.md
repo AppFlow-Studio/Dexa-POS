@@ -155,3 +155,25 @@ if the first finalize call fails after a confirmed close.
 5. Confirm `getDeviceSerial()` returns a real serial on the CodePay ROM (privileged)
    vs falls back to `ANDROIDID-…` (check the provisioned row's `serial_number`),
    then confirm auto-provision created exactly one row and batch-out runs off it.
+
+## Kiosk "Please see a staff member" lockups (fixed 2026-09-25)
+
+Bread & Butter Deli Kiosk 8 / 10 kept locking on "Payment is being verified".
+Prod orders S15-0034, S15-0036, S14-0031 stuck `draft/pending`; S15-0036 hit the
+assistance screen exactly ~120s after the charge started.
+
+Root cause: the native watchdog (`CODEPAY_SALE_TIMEOUT_MS`) and the Register
+order expiry (`CODEPAY_DEFAULT_EXPIRES_SEC`) were both 120s. A slow customer let
+our watchdog win → `indeterminate` → kiosk payment hold (`checkoutGuard`). The
+real Register result arriving later was dropped by the bridge.
+
+Fix (JS only, OTA-able):
+- Watchdog = expiry + 60s, so Register's own timeout returns a definitive result.
+- `processSale` auto-queries (`ecrhub.pay.query` by `merchant_order_no`) on an
+  indeterminate result; ONLY a confirmed completed sale (status 2, same order no,
+  sale type, same amount) recovers to success. Anything else keeps the hold —
+  "no charge" is never inferred from a lookup (query not-found semantics are
+  still unverified on live hardware).
+- Kiosk: a bridge rejection (Register never launched) is a clean failure, not
+  a `payorder_exception` hold.
+- Unlock dialog names the active processor instead of hardcoded "Valor".

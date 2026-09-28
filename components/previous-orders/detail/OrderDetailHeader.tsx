@@ -10,7 +10,7 @@ import {
   ShoppingBag,
   Truck,
   Utensils
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

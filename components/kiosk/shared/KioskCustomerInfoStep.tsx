@@ -1,4 +1,12 @@
+import {
+  isKioskHandheld,
+  KIOSK_HANDHELD_SHORT_EDGE,
+} from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFont,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { formatUsPhone, normalizeUsPhoneDigits } from "@/lib/phone";
 import { useKioskUiScale } from "@/lib/uiScale";
@@ -7,7 +15,7 @@ import { findOrCreateCustomerByPhone } from "@/services/loyalty/loyaltyService";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ChevronLeft, Delete } from "lucide-react-native";
+import { ChevronLeft, Delete } from "@/lib/icons";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -47,6 +55,7 @@ export function KioskCustomerInfoStep({
   onBack: () => void;
 }) {
   const s = useKioskUiScale();
+  const t = useKioskTheme(config);
   const supabase = useSupabaseClient();
   const setCustomer = useKioskCartStore((st) => st.setCustomer);
   const { width: winWidth, height: winHeight } = useWindowDimensions();
@@ -58,8 +67,13 @@ export function KioskCustomerInfoStep({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const muted = `${config.textColor}99`;
-  const faint = `${config.textColor}12`;
+  const muted = t.textMuted;
+  const faint = t.outline;
+  // On a narrow screen (a portrait phone) the centred heading spans the full
+  // width and would run under the floating Back chevron, so the content starts
+  // below it. Wider panels centre it clear of the corner.
+  const narrow = winWidth < KIOSK_HANDHELD_SHORT_EDGE;
+  const backClearance = kioskPx(76, s);
 
   const pressDigit = useCallback((d: string) => {
     setError(null);
@@ -142,7 +156,7 @@ export function KioskCustomerInfoStep({
         backgroundColor: faint,
       }}
     >
-      <ChevronLeft size={kioskPx(26, s)} color={config.textColor} />
+      <ChevronLeft size={kioskPx(26, s)} color={t.text} />
     </Pressable>
   );
 
@@ -163,7 +177,7 @@ export function KioskCustomerInfoStep({
     // whatever the panel size, everything stays reachable.
     const lift = winWidth > winHeight;
     return (
-      <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+      <View className="flex-1" style={{ backgroundColor: t.page }}>
         <BackButton onPress={() => setSub("phone")} />
         <ScrollView
           style={{ flex: 1 }}
@@ -173,8 +187,10 @@ export function KioskCustomerInfoStep({
             flexGrow: 1,
             alignItems: "center",
             justifyContent: lift ? "flex-start" : "center",
-            // Clears the absolutely-positioned back chevron when top-anchored.
-            paddingTop: lift ? kioskPx(76, s) : 0,
+            // Clears the absolutely-positioned back chevron when top-anchored,
+            // or whenever the screen is narrow enough for the heading to reach
+            // under it.
+            paddingTop: lift || narrow ? backClearance : 0,
             paddingBottom: kioskPx(28, s),
             paddingHorizontal: kioskPx(40, s),
             gap: kioskPx(lift ? 14 : 24, s),
@@ -183,8 +199,8 @@ export function KioskCustomerInfoStep({
           <Text
             style={{
               fontSize: kioskPx(lift ? 26 : 32, s),
-              fontWeight: "800",
-              color: config.textColor,
+              ...kioskFont(t, "bold"),
+              color: t.text,
               textAlign: "center",
             }}
           >
@@ -206,7 +222,7 @@ export function KioskCustomerInfoStep({
               width: "100%",
               maxWidth: kioskPx(460, s),
               fontSize: kioskPx(24, s),
-              color: config.textColor,
+              color: t.text,
               backgroundColor: faint,
               borderRadius: kioskPx(16, s),
               paddingHorizontal: kioskPx(20, s),
@@ -228,12 +244,12 @@ export function KioskCustomerInfoStep({
               justifyContent: "center",
               backgroundColor:
                 !nameValid || loading
-                  ? `${config.primaryColor}40`
-                  : config.primaryColor,
+                  ? `${t.primary}40`
+                  : t.primary,
             }}
           >
-            {loading && <ActivityIndicator size="small" color="#FFFFFF" />}
-            <Text style={{ color: "#FFFFFF", fontSize: kioskPx(19, s), fontWeight: "800" }}>
+            {loading && <ActivityIndicator size="small" color={t.onPrimary} />}
+            <Text style={{ color: t.onPrimary, fontSize: kioskPx(19, s), ...kioskFont(t, "bold") }}>
               Continue
             </Text>
           </Pressable>
@@ -244,116 +260,165 @@ export function KioskCustomerInfoStep({
 
   // ── PHONE ENTRY ──
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"];
-  return (
-    <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
-      <BackButton onPress={onBack} />
-      <View
-        className="flex-1 items-center justify-center px-8"
-        style={{ gap: kioskPx(18, s) }}
+  // Heading, number, four keypad rows and Continue stack to ~560dp at the phone
+  // scale; a landscape phone has ~360. There the keypad moves beside the
+  // prompt instead of under it. The ScrollView is the backstop either way.
+  const splitKeypad =
+    winWidth > winHeight && isKioskHandheld(winWidth, winHeight);
+
+  const prompt = (
+    <>
+      <Text
+        style={{
+          fontSize: kioskPx(32, s),
+          ...kioskFont(t, "bold"),
+          color: t.text,
+          textAlign: "center",
+        }}
       >
-        <Text
-          style={{
-            fontSize: kioskPx(32, s),
-            fontWeight: "800",
-            color: config.textColor,
-            textAlign: "center",
-          }}
-        >
-          Enter your phone number
-        </Text>
-        <Text style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}>
-          {"We'll text your receipt and order updates."}
-        </Text>
+        Enter your phone number
+      </Text>
+      <Text style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}>
+        {"We'll text your receipt and order updates."}
+      </Text>
 
-        {/* Number display */}
-        <Text
-          style={{
-            fontSize: kioskPx(40, s),
-            fontWeight: "900",
-            letterSpacing: 1,
-            color: digits ? config.textColor : `${config.textColor}40`,
-            marginVertical: kioskPx(6, s),
-          }}
-        >
-          {digits ? formatUsPhone(digits) : "(___) ___-____"}
+      {/* Number display */}
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+        style={{
+          fontSize: kioskPx(40, s),
+          ...kioskFont(t, "bold"),
+          letterSpacing: 1,
+          color: digits ? t.text : t.textFaint,
+          marginVertical: kioskPx(6, s),
+        }}
+      >
+        {digits ? formatUsPhone(digits) : "(___) ___-____"}
+      </Text>
+
+      {error ? (
+        <Text style={{ fontSize: kioskPx(15, s), color: "#dc2626", textAlign: "center" }}>
+          {error}
         </Text>
+      ) : null}
+    </>
+  );
 
-        {error ? (
-          <Text style={{ fontSize: kioskPx(15, s), color: "#dc2626", textAlign: "center" }}>
-            {error}
-          </Text>
-        ) : null}
-
-        {/* Keypad */}
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            width: kioskPx(300, s),
-            justifyContent: "space-between",
-            rowGap: kioskPx(12, s),
-          }}
-        >
-          {keys.map((k, i) => {
-            if (k === "") return <View key={i} style={{ width: kioskPx(88, s) }} />;
-            const isBack = k === "back";
-            return (
-              <Pressable
-                key={i}
-                onPress={() => (isBack ? backspace() : pressDigit(k))}
-                disabled={loading}
+  const keypad = (
+    <View
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+        width: kioskPx(300, s),
+        justifyContent: "space-between",
+        rowGap: kioskPx(12, s),
+      }}
+    >
+      {keys.map((k, i) => {
+        if (k === "") return <View key={i} style={{ width: kioskPx(88, s) }} />;
+        const isBack = k === "back";
+        return (
+          <Pressable
+            key={i}
+            onPress={() => (isBack ? backspace() : pressDigit(k))}
+            disabled={loading}
+            style={{
+              width: kioskPx(88, s),
+              height: kioskPx(72, s),
+              borderRadius: kioskPx(18, s),
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: faint,
+            }}
+          >
+            {isBack ? (
+              <Delete size={kioskPx(26, s)} color={t.text} />
+            ) : (
+              <Text
                 style={{
-                  width: kioskPx(88, s),
-                  height: kioskPx(72, s),
-                  borderRadius: kioskPx(18, s),
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: faint,
+                  fontSize: kioskPx(28, s),
+                  ...kioskFont(t, "bold"),
+                  color: t.text,
                 }}
               >
-                {isBack ? (
-                  <Delete size={kioskPx(26, s)} color={config.textColor} />
-                ) : (
-                  <Text
-                    style={{
-                      fontSize: kioskPx(28, s),
-                      fontWeight: "700",
-                      color: config.textColor,
-                    }}
-                  >
-                    {k}
-                  </Text>
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
+                {k}
+              </Text>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 
-        {/* Continue */}
-        <Pressable
-          disabled={!phoneValid || loading}
-          onPress={submitPhone}
-          style={{
-            flexDirection: "row",
-            gap: kioskPx(10, s),
-            width: kioskPx(300, s),
-            height: kioskPx(64, s),
-            borderRadius: kioskPx(18, s),
-            alignItems: "center",
-            justifyContent: "center",
-            marginTop: kioskPx(6, s),
-            backgroundColor:
-              !phoneValid || loading
-                ? `${config.primaryColor}40`
-                : config.primaryColor,
-          }}
-        >
-          {loading && <ActivityIndicator size="small" color="#FFFFFF" />}
-          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(19, s), fontWeight: "800" }}>
-            Continue
-          </Text>
-        </Pressable>
-      </View>
+  const continueButton = (
+    <Pressable
+      disabled={!phoneValid || loading}
+      onPress={submitPhone}
+      style={{
+        flexDirection: "row",
+        gap: kioskPx(10, s),
+        width: kioskPx(300, s),
+        height: kioskPx(64, s),
+        borderRadius: kioskPx(18, s),
+        alignItems: "center",
+        justifyContent: "center",
+        marginTop: kioskPx(6, s),
+        backgroundColor:
+          !phoneValid || loading
+            ? `${t.primary}40`
+            : t.primary,
+      }}
+    >
+      {loading && <ActivityIndicator size="small" color={t.onPrimary} />}
+      <Text style={{ color: t.onPrimary, fontSize: kioskPx(19, s), ...kioskFont(t, "bold") }}>
+        Continue
+      </Text>
+    </Pressable>
+  );
+
+  return (
+    <View className="flex-1" style={{ backgroundColor: t.page }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          flexGrow: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: kioskPx(32, s),
+          paddingTop: narrow ? backClearance : kioskPx(24, s),
+          paddingBottom: kioskPx(24, s),
+        }}
+      >
+        {splitKeypad ? (
+          <View
+            style={{
+              // Stretch, or the prompt column's `flex: 1` has no width to
+              // take — the scroller centres its children.
+              alignSelf: "stretch",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: kioskPx(40, s),
+            }}
+          >
+            <View style={{ flex: 1, alignItems: "center", gap: kioskPx(18, s) }}>
+              {prompt}
+              {continueButton}
+            </View>
+            {keypad}
+          </View>
+        ) : (
+          <View style={{ alignItems: "center", gap: kioskPx(18, s) }}>
+            {prompt}
+            {keypad}
+            {continueButton}
+          </View>
+        )}
+      </ScrollView>
+      {/* After the scroller, so it paints — and takes taps — above it. */}
+      <BackButton onPress={onBack} />
     </View>
   );
 }

@@ -1,7 +1,7 @@
 import { INKIND_LABEL, isInKindMethod } from '@/lib/paymentMethod'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
-import { CreditCard, DollarSign, HandCoins, X } from 'lucide-react-native'
+import { CreditCard, DollarSign, HandCoins, X } from '@/lib/icons'
 import React, { useMemo } from 'react'
 import { Text, View } from 'react-native'
 

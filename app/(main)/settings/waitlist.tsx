@@ -17,7 +17,7 @@ import {
   Plus,
   Users,
   X
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useEffect, useMemo, useRef } from 'react'
 import {
   ScrollView,

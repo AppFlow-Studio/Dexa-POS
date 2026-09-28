@@ -3,7 +3,7 @@ import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { Check, Gift, UtensilsCrossed } from 'lucide-react-native'
+import { Check, Gift, UtensilsCrossed } from '@/lib/icons'
 import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Animated, {

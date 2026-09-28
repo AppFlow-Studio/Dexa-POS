@@ -3,7 +3,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { useSignIn } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import { useRouter } from "expo-router";
-import { Eye, EyeOff } from "lucide-react-native";
+import { Eye, EyeOff } from "@/lib/icons";
 import { useState } from "react";
 import {
   ActivityIndicator,

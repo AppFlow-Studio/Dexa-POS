@@ -63,35 +63,90 @@ function normalizeSource(orderSource: string | null): ConfigKey {
   return "default";
 }
 
+// ─── Shared players ───────────────────────────────────────────────
+// Each expo-audio player is a full ExoPlayer on Android (its own playback,
+// loader and codec threads plus an AudioTrack). Services used to preload all
+// four presets per instance, and the KDS board, settings screens and POS
+// layout each own one, so a tablet carried 8+ idle players. Instead, every
+// service shares one player per preset, created on first need and released
+// when the last service disposes.
+type Preset = Exclude<SoundPreset, "none">;
+const sharedPlayers = new Map<Preset, AudioPlayer>();
+let sharedUsers = 0;
+let audioModeReady: Promise<void> | null = null;
+
+function ensureAudioMode(): Promise<void> {
+  // Kitchen environments: ring even on silent, survive brief backgrounding,
+  // and don't get ducked or paused by other apps' audio sessions.
+  audioModeReady ??= setAudioModeAsync({
+    playsInSilentMode: true,
+    shouldPlayInBackground: true,
+    interruptionMode: "mixWithOthers",
+    interruptionModeAndroid: "duckOthers",
+  }).catch((err) => {
+    audioModeReady = null; // let the next init retry
+    throw err;
+  });
+  return audioModeReady;
+}
+
+function getSharedPlayer(preset: Preset): AudioPlayer {
+  let player = sharedPlayers.get(preset);
+  if (!player) {
+    player = createAudioPlayer(SOUND_ASSETS[preset]);
+    sharedPlayers.set(preset, player);
+  }
+  return player;
+}
+
+function releaseSharedPlayers(): void {
+  for (const player of sharedPlayers.values()) {
+    try {
+      player.release();
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+  sharedPlayers.clear();
+}
+
 // ─── Service ──────────────────────────────────────────────────────
 class KDSSoundService {
-  private players = new Map<Exclude<SoundPreset, "none">, AudioPlayer>();
   private config: KDSSoundConfig = { ...DEFAULT_SOUND_CONFIG };
   private lastPlayTime = 0;
   private readonly COOLDOWN_MS = 1500;
   private initialized = false;
+  // Set once a caller configures this service for new-order playback. Preview-
+  // only services (settings screens) never do, so they create players on demand.
+  private configured = false;
+  // Bumped by dispose(), so an init() still awaiting the audio mode can tell
+  // it was cancelled; a later init() starts a fresh generation.
+  private generation = 0;
 
   async init(): Promise<void> {
     if (this.initialized) return;
+    const generation = ++this.generation;
 
     try {
-      // Kitchen environments: ring even on silent, survive brief backgrounding,
-      // and don't get ducked or paused by other apps' audio sessions.
-      await setAudioModeAsync({
-        playsInSilentMode: true,
-        shouldPlayInBackground: true,
-        interruptionMode: "mixWithOthers",
-        interruptionModeAndroid: "duckOthers",
-      });
-
-      // Pre-load all sound players
-      for (const [preset, asset] of Object.entries(SOUND_ASSETS)) {
-        const player = createAudioPlayer(asset);
-        this.players.set(preset as Exclude<SoundPreset, "none">, player);
-      }
+      await ensureAudioMode();
+      if (generation !== this.generation || this.initialized) return;
+      sharedUsers++;
       this.initialized = true;
+      this.warmConfiguredPresets();
     } catch (err) {
       console.error("[KDSSoundService] init failed:", err);
+    }
+  }
+
+  /**
+   * Create players ahead of time only for presets this config can actually
+   * play, so the first new-order sound isn't delayed by a load.
+   */
+  private warmConfiguredPresets(): void {
+    if (!this.initialized || !this.configured || !this.config.enabled) return;
+    const { pos, online, kiosk, third_party } = this.config;
+    for (const preset of [pos, online, kiosk, third_party, this.config.default]) {
+      if (preset !== "none") getSharedPlayer(preset);
     }
   }
 
@@ -117,10 +172,9 @@ class KDSSoundService {
 
   private _playPreset(preset: SoundPreset): void {
     if (preset === "none") return;
-    const player = this.players.get(preset);
-    if (!player) return;
 
     try {
+      const player = getSharedPlayer(preset);
       player.seekTo(0);
       player.play();
     } catch (err) {
@@ -131,24 +185,24 @@ class KDSSoundService {
   /** Update the full config */
   updateConfig(config: Partial<KDSSoundConfig>): void {
     this.config = { ...this.config, ...config };
+    this.configured = true;
+    this.warmConfiguredPresets();
   }
 
   /** Toggle master enable/disable */
   setEnabled(enabled: boolean): void {
     this.config.enabled = enabled;
+    this.configured = true;
+    this.warmConfiguredPresets();
   }
 
-  /** Dispose all audio players */
+  /** Release this service; the shared players go when the last one does */
   dispose(): void {
-    for (const player of this.players.values()) {
-      try {
-        player.release();
-      } catch {
-        // ignore cleanup errors
-      }
-    }
-    this.players.clear();
+    this.generation++;
+    if (!this.initialized) return;
     this.initialized = false;
+    sharedUsers = Math.max(0, sharedUsers - 1);
+    if (sharedUsers === 0) releaseSharedPlayers();
   }
 }
 

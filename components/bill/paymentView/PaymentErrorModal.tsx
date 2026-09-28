@@ -1,6 +1,6 @@
 import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
-import { AlertTriangle } from "lucide-react-native";
+import { AlertTriangle } from "@/lib/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Modal, Text, TouchableOpacity, View } from "react-native";
 
@@ -40,6 +40,11 @@ export function PaymentErrorModal({
           return prev - 1;
         });
       }, 1000);
+    } else {
+      // Re-arm while hidden. Left at 0, the auto-dismiss effect below saw the
+      // stale 0 on the next open (before setCountdown landed) and closed the
+      // modal instantly: every error after the first in a mount just flashed.
+      setCountdown(countdownSeconds);
     }
     return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
   }, [visible, countdownSeconds, progressAnim]);

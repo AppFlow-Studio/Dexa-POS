@@ -6,7 +6,7 @@ import {
   useFloorPlanStore,
 } from "@/stores/useFloorPlanStore";
 import { Href, useRouter } from "expo-router";
-import { Edit2, LayoutGrid, Plus, Trash2 } from "lucide-react-native";
+import { Edit2, LayoutGrid, Plus, Trash2 } from "@/lib/icons";
 import { useEffect, useState } from "react";
 import {
   FlatList,

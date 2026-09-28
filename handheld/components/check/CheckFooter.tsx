@@ -3,7 +3,7 @@ import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Send } from "lucide-react-native";
+import { Send } from "@/lib/icons";
 import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { payBlockedReason } from "../../lib/payments";

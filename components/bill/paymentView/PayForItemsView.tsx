@@ -1,5 +1,6 @@
 import { useUiScale } from '@/lib/uiScale'
 import { useRefreshActiveOrder } from '@/hooks/pos/useRefreshActiveOrder'
+import { usePrintPaymentReceipt } from '@/hooks/orders/usePrintPaymentReceipt'
 import { payableQuantity } from '@/lib/payableQuantity'
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
@@ -19,7 +20,7 @@ import {
   FileText,
   Minus,
   Plus
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
@@ -212,6 +213,7 @@ const PayForItemsView: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false)
 
   const payments = activeOrder?.payments || []
+  const { printPayment, isPrinting: isPrintingPayment } = usePrintPaymentReceipt()
 
   const collectedAmount = payments.reduce(
     (sum, p) => sum + p.amount + (p.tip_amount || 0) - ((p as any).refundedAmount || 0), 0
@@ -418,7 +420,18 @@ const PayForItemsView: React.FC = () => {
               {payments.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: s(24) }}><Text style={{ color: colors.muted, fontSize: s(12) }}>No payments yet</Text></View>
               ) : (
-                payments.map((payment, index) => <PaymentRow key={payment.id || index} payment={payment} index={index} />)
+                payments.map((payment, index) => (
+                  <PaymentRow
+                    key={payment.id || index}
+                    payment={payment}
+                    index={index}
+                    onPrint={
+                      payment.id && !payment.isVoided && !isPrintingPayment
+                        ? () => { printPayment(payment.id) }
+                        : undefined
+                    }
+                  />
+                ))
               )}
             </ScrollView>
             {selectedItems.size > 0 && (

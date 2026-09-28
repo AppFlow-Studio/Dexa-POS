@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { ShoppingBag, Truck, Utensils, type LucideIcon } from "lucide-react-native";
+import { ShoppingBag, Truck, Utensils, type LucideIcon } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { type } from "../../lib/type";

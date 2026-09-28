@@ -1,6 +1,6 @@
 import { Progress } from "@/components/ui/progress";
 import { colors } from "@/lib/theme";
-import { DollarSign, TrendingUp } from "lucide-react-native";
+import { DollarSign, TrendingUp } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 

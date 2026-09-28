@@ -7,7 +7,7 @@ import {
   Mail,
   MessageSquare,
   Smartphone,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import React, { useState } from "react";

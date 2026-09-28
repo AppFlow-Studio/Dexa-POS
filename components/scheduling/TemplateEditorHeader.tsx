@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { ScheduleTemplate } from "@/lib/types";
-import { ChevronDown } from "lucide-react-native";
+import { ChevronDown } from "@/lib/icons";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

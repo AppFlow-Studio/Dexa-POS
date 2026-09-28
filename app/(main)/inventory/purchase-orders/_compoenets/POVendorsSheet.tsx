@@ -6,7 +6,7 @@ import BottomSheet, {
   BottomSheetSectionList,
   BottomSheetTextInput,
 } from "@/components/ui/bottomSheet";
-import { Building2, Search } from "lucide-react-native";
+import { Building2, Search } from "@/lib/icons";
 import { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

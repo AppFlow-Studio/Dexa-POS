@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import type { ProviderKey } from "@/lib/previousOrdersFilters";
-import { Home, Globe } from "lucide-react-native";
+import { Home, Globe } from "@/lib/icons";
 import React from "react";
 import { Image, ImageSourcePropType, View } from "react-native";
 

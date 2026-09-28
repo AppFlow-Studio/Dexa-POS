@@ -18,7 +18,7 @@ import {
     Plus,
     Printer,
     Trash2,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useMemo } from "react";
 import {
     Modal,

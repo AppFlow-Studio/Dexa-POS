@@ -20,7 +20,7 @@ import {
 } from '@/lib/menuItemPlaceholderIcon'
 import { formatSnoozeCountdown } from '@/lib/snoozeDurations'
 import type { MenuItemType } from '@/lib/types'
-import { Ban, Eye, EyeOff, Pencil } from 'lucide-react-native'
+import { Ban, Eye, EyeOff, Pencil } from '@/lib/icons'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

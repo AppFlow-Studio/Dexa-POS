@@ -1,4 +1,4 @@
-import { Merge, Percent, Printer, Receipt, StickyNote, Trash2, Wallet } from "lucide-react-native";
+import { Merge, Percent, Printer, Receipt, StickyNote, Trash2, Wallet } from "@/lib/icons";
 import React from "react";
 import { View } from "react-native";
 import { BottomSheet } from "../../primitives";

@@ -1,3 +1,4 @@
+import { useKioskDialog } from "@/components/kiosk/shared/KioskDialog";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { toastService } from "@/lib/toastService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -6,12 +7,11 @@ import { useAuth } from "@clerk/clerk-expo";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { Film, ImagePlus, Plus, RefreshCw, Trash2, X } from "lucide-react-native";
+import { Film, ImagePlus, Plus, RefreshCw, Trash2, X } from "@/lib/icons";
 import { Video as VideoCompressor } from "react-native-compressor";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -187,6 +187,8 @@ export function KioskAssetsManager({
   const supabase = useSupabaseClient();
   const { getToken } = useAuth();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  // Staff dialogs in the Settings look, never a native alert.
+  const { show: showDialog, dialog } = useKioskDialog();
 
   const [logo, setLogo] = useState<string | null>(config.logoUrl);
   const [groups, setGroups] = useState<Record<GroupKey, string[]>>({
@@ -227,7 +229,7 @@ export function KioskAssetsManager({
   ): Promise<string | null> => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert(
+      showDialog(
         "Permission needed",
         "Allow photo access to add kiosk images.",
       );
@@ -377,7 +379,7 @@ export function KioskAssetsManager({
   const pickVideo = async (): Promise<string | null> => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo access to add kiosk videos.");
+      showDialog("Permission needed", "Allow photo access to add kiosk videos.");
       return null;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -505,7 +507,7 @@ export function KioskAssetsManager({
       const detail = describeError(err);
       // Log for adb/Sentry, and show the FULL message in an alert (toasts truncate).
       console.error(`[kiosk-video] ${stage} failed:`, err);
-      Alert.alert(`Video ${stage} failed`, detail);
+      showDialog(`Video ${stage} failed`, detail);
       toastService.show({
         title: `Video ${stage} failed`,
         message: detail,
@@ -533,6 +535,7 @@ export function KioskAssetsManager({
 
   return (
     <View style={{ gap: 18 }}>
+      {dialog}
       {/* Logo */}
       <View>
         <Text className="text-xs font-semibold text-gray-500 mb-0.5">Logo</Text>

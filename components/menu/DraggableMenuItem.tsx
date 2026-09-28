@@ -13,7 +13,7 @@ import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import * as Haptics from "expo-haptics";
-import { Ban, GripVertical } from "lucide-react-native";
+import { Ban, GripVertical } from "@/lib/icons";
 import React, { useMemo } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";

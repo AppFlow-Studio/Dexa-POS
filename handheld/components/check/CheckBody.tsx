@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import type { CartItem, OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Plus } from "lucide-react-native";
+import { Plus } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { orderKind } from "../../lib/checks";

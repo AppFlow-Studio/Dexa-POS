@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { SidebarNavigationItem } from "@/lib/sidebar-data";
 import { Href, Link } from "expo-router";
-import { ChevronDown } from "lucide-react-native";
+import { ChevronDown } from "@/lib/icons";
 import React, { useEffect, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import SidebarLink from "./SidebarLink";

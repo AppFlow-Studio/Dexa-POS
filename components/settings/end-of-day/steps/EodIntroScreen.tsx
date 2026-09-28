@@ -1,6 +1,6 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { CheckCircle2 } from 'lucide-react-native'
+import { CheckCircle2 } from '@/lib/icons'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 interface EodIntroScreenProps {

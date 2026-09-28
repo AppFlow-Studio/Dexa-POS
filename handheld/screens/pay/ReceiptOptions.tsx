@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Ban, type LucideIcon, Mail, MessageSquare, Printer } from "lucide-react-native";
+import { Ban, type LucideIcon, Mail, MessageSquare, Printer } from "@/lib/icons";
 import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { checkTitle } from "../../lib/checks";

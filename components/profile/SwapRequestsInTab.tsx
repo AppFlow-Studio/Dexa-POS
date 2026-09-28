@@ -1,9 +1,10 @@
 import { Shift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
 import { colors } from "@/lib/theme";
-import { ArrowRightLeft, Clock, MapPin } from "lucide-react-native";
+import { ArrowRightLeft, Clock, MapPin } from "@/lib/icons";
 import { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

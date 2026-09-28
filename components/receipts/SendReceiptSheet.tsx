@@ -7,7 +7,7 @@ import {
   sendReceipt,
   type SendReceiptDeliveryMethod,
 } from "@/services/messaging/sendReceiptService";
-import { Mail, MessageSquare, X } from "lucide-react-native";
+import { Mail, MessageSquare, X } from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,

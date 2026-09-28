@@ -572,7 +572,7 @@ export interface UserProfile {
   email: string;
   phone: string;
   pin: string;
-  profileImageUrl?: string; // e.g., 'tom_hardy.png'
+  profileImageUrl?: string;
 }
 
 export interface Shift {

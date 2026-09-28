@@ -12,7 +12,7 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { Trash2 } from "lucide-react-native";
+import { Trash2 } from "@/lib/icons";
 import React, { useEffect, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

@@ -1,7 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
-import { ArrowRight, Users, X } from 'lucide-react-native'
+import { ArrowRight, Users, X } from '@/lib/icons'
 import React, { useMemo } from 'react'
 import { FlatList, Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
 

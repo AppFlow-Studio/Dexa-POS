@@ -1,7 +1,7 @@
 // components/analytics/KpiTooltip.tsx
 
 import { colors } from "@/lib/theme";
-import { HelpCircle, X } from 'lucide-react-native';
+import { HelpCircle, X } from '@/lib/icons';
 import React, { useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 

@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { Lock, type LucideIcon } from "lucide-react-native";
+import { Lock, type LucideIcon } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { tint } from "../../lib/tokens";

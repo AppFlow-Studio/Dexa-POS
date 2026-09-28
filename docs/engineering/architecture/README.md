@@ -3,6 +3,11 @@
 Cross-cutting state management, store organization, navigation gestures, and
 POS architecture references belong here.
 
+## Conventions
+
+- [`icons.md`](icons.md) — import icons from `@/lib/icons` (never the
+  `lucide-react-native` root); how to add, remove, and mock an icon.
+
 ## Local-first / SQLite
 
 - [`local-first-orders-seating.md`](local-first-orders-seating.md) — **plan of record** for

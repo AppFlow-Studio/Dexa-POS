@@ -5,7 +5,7 @@ import * as Sentry from "@sentry/react-native";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { signInWithGoogleNative } from "@/services/auth/googleNativeSignIn";
-import { Eye, EyeOff } from "lucide-react-native";
+import { Eye, EyeOff } from "@/lib/icons";
 import { type RefObject, useRef, useState } from "react";
 import {
     ActivityIndicator,

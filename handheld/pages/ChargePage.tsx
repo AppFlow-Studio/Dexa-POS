@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { AlertTriangle, Nfc } from "lucide-react-native";
+import { AlertTriangle, Nfc } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 import { checkTitle } from "../lib/checks";

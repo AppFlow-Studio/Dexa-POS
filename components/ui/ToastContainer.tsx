@@ -1,39 +1,40 @@
-import { computeAuthUiScale, FixedUiScaleProvider, isCompactViewport } from "@/lib/uiScale";
 import type { ToastProps } from "@/stores/useToastStore";
+import { useIsKiosk, useKioskUiScale, useUiScale } from "@/lib/uiScale";
 import React from "react";
 import { useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import CustomToast from "./CustomToast";
+import { toastLayout } from "./toastLayout";
 
 interface ToastContainerProps {
   toasts: ToastProps[];
 }
 
-/**
- * Top-right stack on a landscape tablet. On a phone or portrait kiosk the
- * fixed 380dp card would hang off the left edge and the root scale (0.6 on
- * a phone) would shrink its text, so there the toasts span the width and
- * read at the same pinned scale the auth screens use.
- */
 const ToastContainer: React.FC<ToastContainerProps> = ({ toasts }) => {
-  const { width, height } = useWindowDimensions();
-  const compact = isCompactViewport(width, height);
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const posScale = useUiScale();
+  const kioskScale = useKioskUiScale();
+  // The toast layer sits at the app root, outside KioskScaleProvider, so on a
+  // kiosk it would otherwise take the POS scale - which isn't orientation-aware
+  // and puts a 1080x1920 panel below 1.0.
+  const scale = useIsKiosk() ? kioskScale : posScale;
+  const layout = toastLayout(width, scale, insets.top);
+
   return (
     <View
       style={{
         position: "absolute",
-        top: compact ? 12 : 50,
-        right: 16,
-        left: compact ? 16 : undefined,
-        alignItems: compact ? "stretch" : "flex-end",
+        top: layout.top,
+        right: layout.margin,
+        alignItems: "flex-end",
         zIndex: 9999,
       }}
       pointerEvents="box-none"
     >
-      <FixedUiScaleProvider scale={compact ? computeAuthUiScale(width, height) : null} fill={false} pointerEvents="box-none">
-        {toasts.map((toast) => (
-          <CustomToast key={toast.id} {...toast} compact={compact} />
-        ))}
-      </FixedUiScaleProvider>
+      {toasts.map((toast) => (
+        <CustomToast key={toast.id} {...toast} layout={layout} />
+      ))}
     </View>
   );
 };

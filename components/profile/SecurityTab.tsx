@@ -1,7 +1,7 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { Mail, Phone, Shield } from "lucide-react-native";
+import { Mail, Phone, Shield } from "@/lib/icons";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
 

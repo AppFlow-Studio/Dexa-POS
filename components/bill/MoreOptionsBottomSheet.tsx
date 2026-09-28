@@ -4,6 +4,7 @@ import PanelSheet, {
 } from "@/components/ui/PanelSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { useToast } from "@/contexts/ToastContext";
+import { usePinEntry } from "@/hooks/usePinEntry";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { bottomSheetTheme, colors } from "@/lib/theme";
@@ -15,7 +16,8 @@ import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { guardOrderVoid, useOrderStore } from "@/stores/useOrderStore";
+import { getUnrefundedCardCharges } from "@/lib/paymentGuards";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -30,7 +32,7 @@ import {
     Tag,
     Trash2,
     User,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, {
     forwardRef,
     memo,
@@ -160,7 +162,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   // See `OrderNotesInput` and `commitOrderNote`.
   const orderNotesDraftRef = useRef("");
   const [showManagerPin, setShowManagerPin] = useState(false);
-  const [managerPin, setManagerPin] = useState("");
+  // No auto-submit: a modal that shows a Confirm button waits for it.
+  const {
+    pin: managerPin,
+    setPin: setManagerPin,
+    onKeyPress: onManagerPinKey,
+  } = usePinEntry({ length: 4 });
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [isVoidPromptFromClearCart, setVoidPromptFromClearCart] =
@@ -371,6 +378,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const handleVoidOrderClick = () => {
+    if (activeOrderId && !guardOrderVoid(activeOrderId)) return;
     closeAndThen(() => {
       setVoidPromptFromClearCart(false);
       setVoidConfirmOpen(true);
@@ -378,6 +386,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const onConfirmVoid = async () => {
+    if (activeOrderId && !guardOrderVoid(activeOrderId)) {
+      setVoidConfirmOpen(false);
+      setVoidPromptFromClearCart(false);
+      return;
+    }
     if (activeOrderId && activeOrder) {
       // Dispatch VOID_ORDER — the effect handles inventory deduction + void
       const sessionStore = useTableSessionStore.getState();
@@ -419,14 +432,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }
   };
 
-  const handleManagerPinSubmit = async () => {
+  const handleManagerPinSubmit = async (entered: string = managerPin) => {
     // Verify PIN against actual employee database
     const MANAGER_ROLES: MerchantRole[] = [
       "merchant.manager",
       "merchant.admin",
       "merchant.owner",
     ];
-    const employee = useEmployeeStore.getState().findEmployeeByPin(managerPin);
+    const employee = useEmployeeStore.getState().findEmployeeByPin(entered);
     const isManager = employee && MANAGER_ROLES.includes(employee.role);
 
     if (isManager) {
@@ -619,8 +632,16 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   // Wave 2.2: gate void on cross-station ownership too — the server-side
   // guard for void is tracked in Wave 2.3.2; the UI gate makes the locked
   // state visible.
+  // Card money still on the order blocks the void: voiding never refunds a
+  // card, and process_payment refuses void orders, so the charge would be
+  // stranded with no record. Journals are re-checked on tap (guardOrderVoid).
+  const unrefundedCardCharges = useMemo(
+    () => getUnrefundedCardCharges(activeOrder?.payments),
+    [activeOrder?.payments],
+  );
   const canVoid =
     !isReadOnlyForStation &&
+    unrefundedCardCharges.length === 0 &&
     ((activeOrder &&
       activeOrder.items?.length > 0 &&
       activeOrder.paid_status !== "Paid") ||
@@ -1386,7 +1407,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
                 {isReadOnlyForStation
                   ? "Owned by another station"
-                  : "This action cannot be undone"}
+                  : unrefundedCardCharges.length > 0
+                    ? "Refund card payments first"
+                    : "This action cannot be undone"}
               </Text>
             </View>
             <ChevronRight size={14} color={colors.muted} />
@@ -1474,20 +1497,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               Enter Manager PIN to enable tax exemption
             </Text>
             <PinDisplay pinLength={managerPin.length} maxLength={4} />
-            <PinNumpad
-              onKeyPress={(input) => {
-                if (typeof input === "number") {
-                  if (managerPin.length < 4)
-                    setManagerPin(managerPin + input.toString());
-                } else if (input === "clear") {
-                  setManagerPin("");
-                } else if (input === "backspace") {
-                  setManagerPin(managerPin.slice(0, -1));
-                }
-              }}
-            />
+            <PinNumpad onKeyPress={onManagerPinKey} />
             <TouchableOpacity
-              onPress={handleManagerPinSubmit}
+              onPress={() => handleManagerPinSubmit()}
               style={{
                 marginTop: 16,
                 paddingVertical: 10,

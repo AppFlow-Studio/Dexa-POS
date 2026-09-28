@@ -2,7 +2,7 @@
 import { useCFDDisplayField } from "@/contexts/CFDDisplayDataContext.base";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { Delete, Gift } from "lucide-react-native";
+import { Delete, Gift } from "@/lib/icons";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,

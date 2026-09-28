@@ -25,7 +25,7 @@ import {
   Users,
   X,
   Zap
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,

@@ -1,4 +1,3 @@
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { ImageSourcePropType } from "react-native";
 
 function isValidHttpOrHttpsUrl(s: string): boolean {
@@ -18,7 +17,7 @@ function isDataImageUrl(s: string): boolean {
 
 /**
  * Resolves menu item `image` string to a React Native Image source, or undefined if unusable.
- * Supports http(s) URLs, data:image/* URIs, legacy raw base64 blobs, and MENU_IMAGE_MAP keys.
+ * Supports http(s) URLs, data:image/* URIs, file:// paths, and legacy raw base64 blobs.
  */
 export function resolveMenuItemImageSource(
   image: string | undefined,
@@ -44,6 +43,5 @@ export function resolveMenuItemImageSource(
     return { uri: `data:image/jpeg;base64,${trimmed}` };
   }
 
-  const asset = MENU_IMAGE_MAP[trimmed as keyof typeof MENU_IMAGE_MAP];
-  return asset ?? undefined;
+  return undefined;
 }

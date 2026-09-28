@@ -7,7 +7,7 @@ import PanelSheet, {
   PanelSheetTextInput as BottomSheetTextInput
 } from '@/components/ui/PanelSheet'
 import { BottomSheetMethods } from '@/components/ui/bottomSheet'
-import { Receipt, X } from 'lucide-react-native'
+import { Receipt, X } from '@/lib/icons'
 import React, { forwardRef, useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

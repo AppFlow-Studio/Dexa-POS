@@ -2,7 +2,13 @@
 // This file will contain pure functions for business logic and validation.
 
 import { PTORequest, SchedulePeriod, ScheduleTemplate, Shift, TemplateShift, WeeklySchedule } from "./types";
-import { addDays, areIntervalsOverlapping, isWithinInterval, parseISO, startOfDay, getDay, isValid } from "date-fns";
+import { addDays } from "date-fns/addDays";
+import { areIntervalsOverlapping } from "date-fns/areIntervalsOverlapping";
+import { isWithinInterval } from "date-fns/isWithinInterval";
+import { parseISO } from "date-fns/parseISO";
+import { startOfDay } from "date-fns/startOfDay";
+import { getDay } from "date-fns/getDay";
+import { isValid } from "date-fns/isValid";
 
 /**
  * Validates a PTO request based on business rules.

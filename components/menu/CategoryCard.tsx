@@ -2,7 +2,7 @@ import { colors } from '@/lib/theme'
 import { MenuItemType } from '@/lib/types'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useUiScale } from '@/lib/uiScale'
-import { Pencil } from 'lucide-react-native'
+import { Pencil } from '@/lib/icons'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

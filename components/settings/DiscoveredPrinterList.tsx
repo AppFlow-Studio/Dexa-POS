@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Wifi,
   XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
@@ -34,6 +34,12 @@ export interface DiscoveredPrinterListProps {
   onRefresh: () => void;
   onProvision: (printer: DiscoveredStarPrinter, role: "receipt" | "kitchen" | "both") => void;
   onTest: (ip: string) => void;
+  /**
+   * Which "Add as …" buttons to show. Defaults to all three. Callers where a
+   * single role is meaningful (e.g. a KDS, which only drives kitchen tickets)
+   * pass a subset to hide the options that don't apply.
+   */
+  provisionRoles?: Array<"receipt" | "kitchen" | "both">;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +98,7 @@ export function DiscoveredPrinterList({
   onRefresh,
   onProvision,
   onTest,
+  provisionRoles = ["receipt", "kitchen", "both"],
 }: DiscoveredPrinterListProps) {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -250,59 +257,69 @@ export function DiscoveredPrinterList({
               </TouchableOpacity>
 
               {/* Add as Receipt */}
-              <TouchableOpacity
-                onPress={() => onProvision(dp, "receipt")}
-                disabled={isProvisioningThis}
-                style={{
-                  flex: 1,
-                  paddingVertical: s(8),
-                  borderRadius: s(8),
-                  alignItems: "center",
-                  backgroundColor: isProvisioningThis ? colors.border : colors.teal + "15",
-                  borderWidth: 1,
-                  borderColor: isProvisioningThis ? colors.border : colors.teal + "40",
-                }}
-              >
-                {isProvisioningThis ? (
-                  <ActivityIndicator size="small" color={colors.teal} />
-                ) : (
-                  <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}>Add as Receipt</Text>
-                )}
-              </TouchableOpacity>
+              {provisionRoles.includes("receipt") && (
+                <TouchableOpacity
+                  onPress={() => onProvision(dp, "receipt")}
+                  disabled={isProvisioningThis}
+                  style={{
+                    flex: 1,
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    backgroundColor: isProvisioningThis ? colors.border : colors.teal + "15",
+                    borderWidth: 1,
+                    borderColor: isProvisioningThis ? colors.border : colors.teal + "40",
+                  }}
+                >
+                  {isProvisioningThis ? (
+                    <ActivityIndicator size="small" color={colors.teal} />
+                  ) : (
+                    <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}>Add as Receipt</Text>
+                  )}
+                </TouchableOpacity>
+              )}
 
               {/* Add as Kitchen */}
-              <TouchableOpacity
-                onPress={() => onProvision(dp, "kitchen")}
-                disabled={isProvisioningThis}
-                style={{
-                  flex: 1,
-                  paddingVertical: s(8),
-                  borderRadius: s(8),
-                  alignItems: "center",
-                  backgroundColor: isProvisioningThis ? colors.border : "#f97316" + "15",
-                  borderWidth: 1,
-                  borderColor: isProvisioningThis ? colors.border : "#f97316" + "40",
-                }}
-              >
-                <Text style={{ fontSize: s(11), fontWeight: "600", color: isProvisioningThis ? colors.muted : "#f97316" }}>Add as Kitchen</Text>
-              </TouchableOpacity>
+              {provisionRoles.includes("kitchen") && (
+                <TouchableOpacity
+                  onPress={() => onProvision(dp, "kitchen")}
+                  disabled={isProvisioningThis}
+                  style={{
+                    flex: 1,
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    backgroundColor: isProvisioningThis ? colors.border : "#f97316" + "15",
+                    borderWidth: 1,
+                    borderColor: isProvisioningThis ? colors.border : "#f97316" + "40",
+                  }}
+                >
+                  {isProvisioningThis ? (
+                    <ActivityIndicator size="small" color="#f97316" />
+                  ) : (
+                    <Text style={{ fontSize: s(11), fontWeight: "600", color: isProvisioningThis ? colors.muted : "#f97316" }}>Add as Kitchen</Text>
+                  )}
+                </TouchableOpacity>
+              )}
 
               {/* Add as Both */}
-              <TouchableOpacity
-                onPress={() => onProvision(dp, "both")}
-                disabled={isProvisioningThis}
-                style={{
-                  flex: 1,
-                  paddingVertical: s(8),
-                  borderRadius: s(8),
-                  alignItems: "center",
-                  backgroundColor: isProvisioningThis ? colors.border : "#8b5cf6" + "15",
-                  borderWidth: 1,
-                  borderColor: isProvisioningThis ? colors.border : "#8b5cf6" + "40",
-                }}
-              >
-                <Text style={{ fontSize: s(11), fontWeight: "600", color: isProvisioningThis ? colors.muted : "#8b5cf6" }}>Add as Both</Text>
-              </TouchableOpacity>
+              {provisionRoles.includes("both") && (
+                <TouchableOpacity
+                  onPress={() => onProvision(dp, "both")}
+                  disabled={isProvisioningThis}
+                  style={{
+                    flex: 1,
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    backgroundColor: isProvisioningThis ? colors.border : "#8b5cf6" + "15",
+                    borderWidth: 1,
+                    borderColor: isProvisioningThis ? colors.border : "#8b5cf6" + "40",
+                  }}
+                >
+                  <Text style={{ fontSize: s(11), fontWeight: "600", color: isProvisioningThis ? colors.muted : "#8b5cf6" }}>Add as Both</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         );

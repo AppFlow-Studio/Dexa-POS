@@ -16,7 +16,7 @@ import {
   useScheduleTemplateStore,
 } from "@/stores/useScheduleTemplateStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Search } from "lucide-react-native";
+import { Search } from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,

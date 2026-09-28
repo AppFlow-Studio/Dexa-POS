@@ -1,5 +1,5 @@
 import { colors } from '@/lib/theme';
-import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
+import { Calendar, ChevronLeft, ChevronRight, X } from '@/lib/icons';
 import React, { useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 

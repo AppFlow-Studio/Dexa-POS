@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { colors } from "@/lib/theme";
-import { format } from "date-fns";
-import { Plus } from "lucide-react-native";
+import { format } from "date-fns/format";
+import { Plus } from "@/lib/icons";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";

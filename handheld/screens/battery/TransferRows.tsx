@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { ChevronRight } from "lucide-react-native";
+import { ChevronRight } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { Avatar } from "../../components/Avatar";

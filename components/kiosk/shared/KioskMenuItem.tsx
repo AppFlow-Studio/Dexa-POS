@@ -2,37 +2,50 @@ import {
   kioskCardMetrics,
   type KioskCardMetrics,
 } from "@/components/kiosk/shared/kioskCardMetrics";
+import {
+  kioskFont,
+  kioskMotion,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+  type KioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
-import { kioskCardSurface } from "@/components/kiosk/shared/kioskSurface";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
+import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ShoppingCart, SlidersHorizontal } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  withTiming,
 } from "react-native-reanimated";
 
 /**
- * Kiosk menu card — image on top, then name, description, price and (when the
- * item is customizable) an "Options" pill.
+ * Kiosk menu card - photograph, then name, description and price.
  *
- * Every size on the card comes from `kioskCardMetrics(cardWidth)`, where
- * `cardWidth` is measured by the parent grid. That's what makes the card
- * responsive to *both* screen size and the manager's items-per-row setting: at
- * 2 columns it reads as a large hero tile, at 4 it tightens up and drops the
- * description rather than shrinking everything into illegibility.
+ * The photograph is the product and is treated as such: it bleeds to three
+ * edges with no border cutting it, it meets the copy on a clean edge, and it
+ * is the card's one flexible block (see `cardHeight`). The card itself is a
+ * flat surface a step off the page, with no outline and no shadow - one fill,
+ * one radius, nothing drawn that does not carry information.
+ *
+ * Every size comes from `kioskCardMetrics(cardWidth)`, where `cardWidth` is
+ * measured by the parent grid, and every type size it returns is a step on the
+ * shared scale. That is what makes the card responsive to both screen size and
+ * the manager's items-per-row setting without the type drifting to a different
+ * arbitrary value at every column count.
  *
  * Kiosk-native (not the POS MenuItem): themed entirely from `config`, no
  * clock-in wall, no useOrderStore / useModifierSidebarStore coupling. Tapping
- * calls `onPress(item)`; the template decides whether to open item detail or
- * add straight to the kiosk cart.
+ * calls `onPress(item)`, which opens the item's popup — there is no separate
+ * add control on the card. Every item goes through the popup, so one tap means
+ * one thing everywhere on the grid.
  */
 interface KioskMenuItemProps {
   item: MenuItemType;
@@ -51,12 +64,12 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
   maxCardHeight,
   onPress,
 }) => {
+  const t = useKioskTheme(config);
   const m = useMemo(
     () => kioskCardMetrics(cardWidth, maxCardHeight),
     [cardWidth, maxCardHeight],
   );
   const isDisabled = item.availability === false;
-  const hasModifiers = !!item.modifierGroupIds?.length;
   const qtyInCart = useKioskItemQuantity(item.id);
   const inCart = qtyInCart > 0;
 
@@ -70,28 +83,23 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
     [item],
   );
 
-  const accent = config.accentColor;
-  const surface = useMemo(
-    () => kioskCardSurface(config.backgroundColor),
-    [config.backgroundColor],
-  );
-
   return (
     <KioskPressable
       disabled={isDisabled}
-      pressedScale={0.955}
+      pressedScale={0.98}
       onPress={() => onPress(item)}
       style={{
         flex: 1,
         borderRadius: m.radius,
         overflow: "hidden",
-        borderWidth: 1,
-        backgroundColor: surface,
-        borderColor: `${accent}33`,
-        opacity: isDisabled ? 0.45 : 1,
+        backgroundColor: t.surface,
+        opacity: isDisabled ? 0.55 : 1,
       }}
     >
-      <View style={{ height: m.imageHeight, width: "100%" }}>
+      {/* The photo is the flexible block. Whatever the copy does not use - a
+          one-line name where two were budgeted, a missing description - it
+          takes back, instead of the card holding an empty line. */}
+      <View style={{ flex: 1, width: "100%" }}>
         {resolvedImageSource ? (
           <Image
             source={resolvedImageSource}
@@ -105,47 +113,20 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
               height: "100%",
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: `${accent}10`,
+              backgroundColor: t.sunken,
             }}
           >
-            <PlaceholderIcon
-              color={`${config.textColor}55`}
-              size={m.placeholderSize}
-            />
+            <PlaceholderIcon color={t.textFaint} size={m.placeholderSize} />
           </View>
         )}
 
-        {inCart && <InCartBadge qty={qtyInCart} accent={accent} m={m} />}
+        {inCart && !isDisabled ? <InCartBadge qty={qtyInCart} t={t} m={m} /> : null}
 
-        {isDisabled && (
-          <View
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              paddingVertical: m.padV * 0.6,
-              alignItems: "center",
-              backgroundColor: "rgba(0,0,0,0.55)",
-            }}
-          >
-            <Text
-              style={{
-                color: "#FFFFFF",
-                fontSize: m.descSize,
-                fontWeight: "700",
-                letterSpacing: 0.5,
-              }}
-            >
-              Unavailable
-            </Text>
-          </View>
-        )}
+        {isDisabled ? <SoldOutVeil t={t} m={m} /> : null}
       </View>
 
       <View
         style={{
-          flex: 1,
           paddingHorizontal: m.padH,
           paddingTop: m.padV,
           // Rounded, because `cardHeight` sums this exact value.
@@ -154,76 +135,51 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
         }}
       >
         <Text
+          numberOfLines={m.nameLines}
           style={{
             fontSize: m.nameSize,
             lineHeight: m.nameLineHeight,
-            height: m.nameBlockHeight,
-            fontWeight: "700",
-            color: config.textColor,
+            letterSpacing: kioskTracking(m.nameSize),
+            color: t.text,
+            ...kioskFont(t, "bold"),
           }}
-          numberOfLines={2}
         >
           {item.name}
         </Text>
 
         {m.showDescription && (
           <Text
+            numberOfLines={m.descLines}
             style={{
               fontSize: m.descSize,
               lineHeight: m.descLineHeight,
-              height: m.descBlockHeight,
-              color: `${config.textColor}99`,
+              color: t.textMuted,
+              ...kioskFont(t, "regular"),
             }}
-            numberOfLines={m.descLines}
           >
             {item.description ?? ""}
           </Text>
         )}
 
-        {/* Fixed height — `cardHeight` is a sum of the card's blocks, and an
-            intrinsically-sized price row would make that sum a guess. */}
+        {/* Fixed height, because `cardHeight` sums this exact value and an
+            intrinsically-sized row would make that sum a guess. */}
         <View
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: m.gap,
+            justifyContent: "center",
             height: m.priceRowHeight,
-            marginTop: "auto",
           }}
         >
           <Text
             style={{
               fontSize: m.priceSize,
-              fontWeight: "800",
-              color: config.textColor,
+              letterSpacing: kioskTracking(m.priceSize),
+              color: t.text,
+              fontVariant: ["tabular-nums"],
+              ...kioskFont(t, "bold"),
             }}
           >
             ${item.price?.toFixed(2)}
           </Text>
-
-          {hasModifiers && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: m.gap * 0.6,
-              }}
-            >
-              <SlidersHorizontal size={m.optionsIconSize} color={accent} />
-              {m.showOptionsLabel && (
-                <Text
-                  style={{
-                    fontSize: m.optionsTextSize,
-                    fontWeight: "600",
-                    color: accent,
-                  }}
-                >
-                  Options
-                </Text>
-              )}
-            </View>
-          )}
         </View>
       </View>
     </KioskPressable>
@@ -231,24 +187,30 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
 };
 
 /**
- * "N in cart" pill. Springs on every quantity change so adding a second of the
- * same item is visible from standing distance without the customer having to
- * re-read the number.
+ * "N in cart" mark. A plain count on the photograph's corner, which is all the
+ * information there is - the cart glyph that used to sit beside it repeated
+ * what the header already says and made the mark twice the size.
+ *
+ * It ticks on every quantity change so adding a second of the same item is
+ * visible from standing distance without the customer re-reading the number.
  */
 function InCartBadge({
   qty,
-  accent,
+  t,
   m,
 }: {
   qty: number;
-  accent: string;
+  t: KioskTheme;
   m: KioskCardMetrics;
 }) {
   const pop = useSharedValue(1);
 
   React.useEffect(() => {
-    pop.value = 1.28;
-    pop.value = withSpring(1, { damping: 9, stiffness: 260, mass: 0.5 });
+    pop.value = 1.12;
+    pop.value = withTiming(1, {
+      duration: kioskMotion.base,
+      easing: kioskMotion.easing,
+    });
   }, [qty, pop]);
 
   const style = useAnimatedStyle(() => ({
@@ -260,35 +222,64 @@ function InCartBadge({
       style={[
         {
           position: "absolute",
-          top: m.padV * 0.7,
-          left: m.padH * 0.6,
-          paddingHorizontal: m.padH * 0.5,
-          paddingVertical: m.padV * 0.32,
-          borderRadius: 999,
-          flexDirection: "row",
+          top: m.padV * 0.8,
+          left: m.padH * 0.7,
+          minWidth: m.badgeTextSize * 1.9,
+          paddingHorizontal: m.padH * 0.35,
+          paddingVertical: m.padV * 0.22,
+          borderRadius: kioskRadius.xs,
           alignItems: "center",
           justifyContent: "center",
-          gap: m.gap * 0.6,
-          backgroundColor: accent,
+          backgroundColor: t.primary,
         },
         style,
       ]}
     >
-      <ShoppingCart
-        size={m.badgeIconSize}
-        color="#FFFFFF"
-        strokeWidth={2.75}
-      />
       <Text
         style={{
-          color: "#FFFFFF",
-          fontWeight: "800",
+          color: t.onPrimary,
           fontSize: m.badgeTextSize,
+          fontVariant: ["tabular-nums"],
+          ...kioskFont(t, "bold"),
         }}
       >
         {qty}
       </Text>
     </Animated.View>
+  );
+}
+
+/**
+ * 86'd state. The whole photograph goes under a veil with one small label
+ * across it, rather than a black bar pinned to its foot - the item is
+ * unavailable, not annotated.
+ */
+function SoldOutVeil({ t, m }: { t: KioskTheme; m: KioskCardMetrics }) {
+  return (
+    <View
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "rgba(12,12,14,0.42)",
+      }}
+    >
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontSize: m.descSize,
+          letterSpacing: 1.4,
+          textTransform: "uppercase",
+          ...kioskFont(t, "bold"),
+        }}
+      >
+        {kioskStrings.soldOut}
+      </Text>
+    </View>
   );
 }
 
@@ -304,6 +295,7 @@ export default React.memo(KioskMenuItem, (prev, next) => {
     prev.maxCardHeight === next.maxCardHeight &&
     prev.config.accentColor === next.config.accentColor &&
     prev.config.backgroundColor === next.config.backgroundColor &&
+    prev.config.primaryColor === next.config.primaryColor &&
     prev.config.textColor === next.config.textColor &&
     prev.onPress === next.onPress
   );

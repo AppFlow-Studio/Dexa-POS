@@ -21,7 +21,7 @@ import {
   Play,
   Smartphone,
   Truck
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 

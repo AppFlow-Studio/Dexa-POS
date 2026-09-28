@@ -22,7 +22,7 @@ import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { FlashList } from "@shopify/flash-list";
-import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
+import { ArrowLeft, Check, Minus, Plus, X } from "@/lib/icons";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
@@ -2342,7 +2342,11 @@ const ModifierScreenContent = () => {
           className="px-4 pb-3 border-t"
           style={{ borderColor: colors.border }}
         >
+          {/* Keyed per open: NotesInput's hasUserTypedRef ignores outside
+              updates once typed in, so a surviving instance kept the previous
+              item's notes on the next item. */}
           <NotesInput
+            key={sessionId ?? "none"}
             initialValue={state.notes}
             isReadOnly={isReadOnly}
             onChange={handleNotesChange}

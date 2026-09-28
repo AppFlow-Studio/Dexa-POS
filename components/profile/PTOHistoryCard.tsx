@@ -1,7 +1,8 @@
 import { colors } from "@/lib/theme";
 import { PTORequest } from "@/lib/types";
-import { format, parseISO } from "date-fns";
-import { AlertCircle, CheckCircle2, XCircle } from "lucide-react-native";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
+import { AlertCircle, CheckCircle2, XCircle } from "@/lib/icons";
 import { Text, View, TouchableOpacity } from "react-native";
 
 interface PTOHistoryCardProps {

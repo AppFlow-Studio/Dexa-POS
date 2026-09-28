@@ -1,10 +1,11 @@
 import { useToast } from "@/contexts/ToastContext";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { colors } from "@/lib/theme";
 import { AddOn, CartItem, ItemSize } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Minus, Plus } from "lucide-react-native";
+import { Minus, Plus } from "@/lib/icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
@@ -158,6 +159,8 @@ const ItemCustomizationDialog: React.FC = () => {
 
   if (!isOpen || !menuItem) return null;
 
+  const headerImage = resolveMenuItemImageSource(menuItem.image);
+
   return (
     <Teleport hostName="root">
       <Dialog open={isOpen} onOpenChange={close}>
@@ -167,10 +170,9 @@ const ItemCustomizationDialog: React.FC = () => {
           >
             {/* Dark Header */}
             <View className="p-6 rounded-t-2xl flex-row items-center gap-4">
-              <Image
-                source={require("@/assets/images/classic_burger.png")}
-                className="w-24 h-24 rounded-lg"
-              />
+              {headerImage ? (
+                <Image source={headerImage} className="w-24 h-24 rounded-lg" />
+              ) : null}
               <View className="flex-1">
                 <DialogTitle className="text-heading text-2xl font-bold">
                   {menuItem.name}

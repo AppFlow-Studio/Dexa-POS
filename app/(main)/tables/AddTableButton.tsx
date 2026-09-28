@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react-native";
+import { Plus } from "@/lib/icons";
 import React from "react";
 import { TouchableOpacity, View } from "react-native";
 

@@ -1,6 +1,6 @@
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
-import { ArrowLeft, ArrowRight } from 'lucide-react-native'
+import { ArrowLeft, ArrowRight } from '@/lib/icons'
 import React from 'react'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 

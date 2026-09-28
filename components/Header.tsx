@@ -15,7 +15,7 @@ import {
   usePathname,
   useRouter,
 } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft } from "@/lib/icons";
 import React, { useCallback, useMemo, useSyncExternalStore } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { NetworkStatusBadge } from "./NetworkStatusBadge";
@@ -68,7 +68,6 @@ const Header = () => {
   }, [globalParams.vendorId, instantVendorId]);
 
   const showBackButton =
-    pathname === "/open-shifts" ||
     pathname === "/pto" ||
     pathname === "/requests" ||
     pathname == "/menu" ||
@@ -113,7 +112,6 @@ const Header = () => {
     if (pathname === "/loyalty/enroll-customer") return "Enroll Customer";
     if (pathname === "/" || pathname === "/home") return "Menu";
     if (pathname === "/host-station") return "Host Station";
-    if (pathname === "/scheduling/reports") return "Reports";
     if (pathname === "/scheduling/templates") return "Schdule Templates";
     if (pathname === "/scheduling/templates/create")
       return "Create New Template";

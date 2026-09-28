@@ -15,7 +15,7 @@ import {
     RefreshCcw,
     Repeat2,
     XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import DeliveryPlatformBadge from "./DeliveryPlatformBadge";

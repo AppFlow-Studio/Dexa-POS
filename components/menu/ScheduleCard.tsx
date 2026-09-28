@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { Menu, Schedule } from "@/lib/types";
 import { Category } from "@/stores/useMenuStore";
 import { router } from "expo-router";
-import { Settings } from "lucide-react-native";
+import { Settings } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

@@ -8,7 +8,7 @@ import PanelSheet, {
   PanelSheetScrollView as BottomSheetScrollView,
 } from "@/components/ui/PanelSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
-import { ArrowRight, CreditCard, Banknote, X } from "lucide-react-native";
+import { ArrowRight, CreditCard, Banknote, X } from "@/lib/icons";
 import React, { forwardRef, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { useUiScale } from "@/lib/uiScale";

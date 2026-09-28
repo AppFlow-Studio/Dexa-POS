@@ -3,7 +3,7 @@ import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import type { DiscountRecord } from "@/services/discountSync";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Percent } from "lucide-react-native";
+import { Percent } from "@/lib/icons";
 import React, { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { applyDiscount, eligibleDiscounts } from "../../lib/discounts";

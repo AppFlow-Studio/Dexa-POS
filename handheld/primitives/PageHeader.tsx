@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 import { metrics } from "../lib/tokens";

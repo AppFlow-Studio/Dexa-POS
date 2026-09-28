@@ -46,7 +46,7 @@ import {
   Percent,
   Split,
   Users,
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,

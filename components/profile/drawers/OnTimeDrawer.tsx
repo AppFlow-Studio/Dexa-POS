@@ -2,7 +2,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
 } from "@/components/ui/bottomSheet";
-import { CheckCircle2, Clock, XCircle } from "lucide-react-native";
+import { CheckCircle2, Clock, XCircle } from "@/lib/icons";
 import React, { forwardRef, useMemo } from "react";
 import { Text, View } from "react-native";
 import { bottomSheetTheme, colors } from "@/lib/theme";

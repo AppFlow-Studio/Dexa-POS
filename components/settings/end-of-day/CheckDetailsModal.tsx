@@ -7,7 +7,7 @@ import {
 import { Check } from "@/lib/types";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { Mail, Printer } from "lucide-react-native";
+import { Mail, Printer } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";

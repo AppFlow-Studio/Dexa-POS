@@ -1,5 +1,5 @@
 import type { CartItem } from "@/lib/types";
-import { Armchair, Layers, SlidersHorizontal, StickyNote, Trash2 } from "lucide-react-native";
+import { Armchair, Layers, SlidersHorizontal, StickyNote, Trash2 } from "@/lib/icons";
 import React from "react";
 import { View } from "react-native";
 import { formatCurrency } from "../../lib/format";

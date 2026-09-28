@@ -17,7 +17,7 @@ import {
   BottomSheetScrollView,
 } from "@/components/ui/bottomSheet";
 import { bottomSheetTheme } from "@/lib/theme";
-import { Check, UserMinus, UserPlus, Users } from "lucide-react-native";
+import { Check, UserMinus, UserPlus, Users } from "@/lib/icons";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

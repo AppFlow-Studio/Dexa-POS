@@ -8,14 +8,18 @@ import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
 import { kioskBannerHeight } from "@/components/kiosk/shared/kioskLayout";
 import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
-import { KioskSearchBar } from "@/components/kiosk/shared/KioskSearchBar";
-import { KioskSearchOverlay } from "@/components/kiosk/shared/KioskSearchOverlay";
+import { KioskSearchResults } from "@/components/kiosk/shared/KioskSearchResults";
+import type { KioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import {
   useIsStationMenuScopeEmpty,
   useVisibleMenus,
 } from "@/hooks/menu/useVisibleMenus";
 import type { Category, MenuItemType } from "@/lib/types";
+import {
+  kioskItemSourceFromKey,
+  type KioskItemSource,
+} from "@/stores/useKioskCartStore";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
   resolveKioskColumns,
@@ -23,7 +27,7 @@ import {
 } from "@/stores/useKioskDeviceSettingsStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
 
 /**
@@ -39,16 +43,20 @@ import { useWindowDimensions, View } from "react-native";
  * top banner, so the carousel instead becomes a left-hand sidebar (media
  * fills the vertical strip) with the pill bar + grid stacked to its right.
  *
- * The search bar leads the menu content in both orientations — under the banner
- * in portrait, at the top of the right column in landscape, so the media strip
- * keeps its full height — and opens KioskSearchOverlay over the whole view.
+ * The pill strip is the only chrome above the grid — search lives in the
+ * header. Two rows before the first tile is what pushed the second tile row
+ * under the fold on a short landscape panel.
  */
 export function KioskMenuViewC({
   config,
   onSelectItem,
+  search,
 }: {
   config: KioskConfig;
-  onSelectItem: (item: MenuItemType) => void;
+  /** `source` is the menu + category the item was picked from. */
+  onSelectItem: (item: MenuItemType, source?: KioskItemSource) => void;
+  /** Owned by the template shell — the header draws the field, this draws the results. */
+  search: KioskMenuSearchState;
 }) {
   const s = useKioskUiScale();
   // Kiosk channel + per-station scope are applied by the shared selector.
@@ -97,6 +105,17 @@ export function KioskMenuViewC({
 
   const items = useOrderableItems(activeCategory?.items);
 
+  // Picking a category is also a way out of a search: the results layer covers
+  // the grid, so leaving it up after a switch would show the customer the same
+  // list and no sign that anything happened.
+  const handleSelectCategory = useCallback(
+    (key: string) => {
+      search.close();
+      setActiveKey(key);
+    },
+    [search],
+  );
+
   const isVertical = config.orientation === "vertical";
   // Template C's grid is 4-wide by default (both orientations); a manager
   // override still applies.
@@ -111,42 +130,41 @@ export function KioskMenuViewC({
     <KioskMediaCarousel imageUrls={bannerImages} videoUrl={null} style={style} />
   );
 
-  const [searchOpen, setSearchOpen] = useState(false);
-
-  // Absolutely positioned, so it fills whichever root it's dropped into and is
-  // unaffected by that root's flex direction — the landscape branch is a row.
-  const searchOverlay = searchOpen ? (
-    <KioskSearchOverlay
-      config={config}
-      onClose={() => setSearchOpen(false)}
-      onSelectItem={(item) => {
-        setSearchOpen(false);
-        onSelectItem(item);
-      }}
-    />
-  ) : null;
-
   const menuContent = (
     <>
-      {/* Top of the menu content in both orientations — above the banner's
-          sibling column in landscape, under the banner in portrait — so the
-          media strip keeps its full height either way. */}
-      <KioskSearchBar config={config} onPress={() => setSearchOpen(true)} />
-
       <KioskCategoryPillBar
         config={config}
         pills={pills}
         resolvedKey={resolvedKey}
-        onSelect={setActiveKey}
+        onSelect={handleSelectCategory}
+        dimmed={search.expanded}
       />
 
-      <KioskItemGrid
-        config={config}
-        items={items}
-        numColumns={numColumns}
-        resetKey={resolvedKey}
-        onSelectItem={onSelectItem}
-      />
+      <View className="flex-1">
+        <KioskItemGrid
+          config={config}
+          items={items}
+          numColumns={numColumns}
+          resetKey={resolvedKey}
+          onSelectItem={(item) =>
+            onSelectItem(item, kioskItemSourceFromKey(resolvedKey))
+          }
+        />
+
+        {/* Results cover the grid without unmounting it, so closing search
+            restores the category and scroll offset untouched. */}
+        {search.expanded ? (
+          <KioskSearchResults
+            config={config}
+            query={search.query}
+            onClear={search.clear}
+            onSelectItem={(item, source) => {
+              search.close();
+              onSelectItem(item, source);
+            }}
+          />
+        ) : null}
+      </View>
     </>
   );
 
@@ -185,8 +203,6 @@ export function KioskMenuViewC({
         ) : null}
 
         <View className="flex-1">{menuContent}</View>
-
-        {searchOverlay}
       </View>
     );
   }
@@ -220,8 +236,6 @@ export function KioskMenuViewC({
       ) : null}
 
       {menuContent}
-
-      {searchOverlay}
     </View>
   );
 }

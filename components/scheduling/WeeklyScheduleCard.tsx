@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { WeeklySchedule } from "@/lib/types";
-import { Calendar, Pencil, Trash2 } from "lucide-react-native";
+import { Calendar, Pencil, Trash2 } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

@@ -1,13 +1,6 @@
 import ApplyTemplateBar from "@/components/scheduling/ApplyTemplateBar"; // Import ApplyTemplateBar
 import { Badge } from "@/components/ui/badge";
 import { colors } from "@/lib/theme";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import BottomSheet from "@/components/ui/bottomSheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -19,7 +12,7 @@ import {
   Sparkles,
   Users,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported
@@ -55,9 +48,14 @@ import {
   WeeklySchedule,
 } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore"; // Import template store
-import { addDays, isAfter, isBefore, startOfDay, subDays } from "date-fns";
+import { addDays } from "date-fns/addDays";
+import { isAfter } from "date-fns/isAfter";
+import { isBefore } from "date-fns/isBefore";
+import { startOfDay } from "date-fns/startOfDay";
+import { subDays } from "date-fns/subDays";
 
 const ScheduleDetail = ({
   currentSchedule,
@@ -87,6 +85,7 @@ const ScheduleDetail = ({
     applyTemplate,
   } = useScheduleStore();
   const { employees } = useEmployeeStore();
+  const locationName = useStoreSettingsStore((s) => s.selectedStore?.name);
   const {
     templates,
     actions: { updateTemplate },
@@ -322,35 +321,13 @@ const ScheduleDetail = ({
                 </View>
 
                 <View className="flex-row items-center gap-4">
-                  <Select
-                    defaultValue={{
-                      value: "location-1",
-                      label: "Downtown Location",
-                    }}
-                    className="text-white"
-                  >
-                    <SelectTrigger className="w-[180px] bg-screen border border-gray-600 rounded-lg">
-                      <SelectValue
-                        placeholder="Select a location"
-                        className="text-white"
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="bg-screen border-gray-600 rounded-lg text-white">
-                      <SelectItem
-                        value="location-1"
-                        label="Downtown Location"
-                        className="text-white"
-                      >
-                        <Text className="text-white">Downtown Location</Text>
-                      </SelectItem>
-                      <SelectItem value="location-2" label="Westside Location">
-                        Westside Location
-                      </SelectItem>
-                      <SelectItem value="location-3" label="Airport Location">
-                        Airport Location
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {locationName ? (
+                    <View className="w-[180px] px-3 py-2 bg-screen border border-gray-600 rounded-lg">
+                      <Text className="text-white" numberOfLines={1}>
+                        {locationName}
+                      </Text>
+                    </View>
+                  ) : null}
 
                   <WeekSelector
                     startDate={startDate}

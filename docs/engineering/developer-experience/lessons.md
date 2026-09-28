@@ -125,3 +125,65 @@
 - I fixed the `create_order_v4` collision handler by editing `create_order_v4.sql` in place. That file has already been applied, so the edit reaches no database. Staging and prod would still run the old body, and the repo would describe a function that doesn't exist anywhere.
 - Rule: put the change in a new timestamped file (`YYYYMMDDHHMMSS_<what>.sql`) that `CREATE OR REPLACE`s the function with the full body. Say which file it overrides and give the rollback (re-running the previous file) in the header.
 - Related trap: a `GET STACKED DIAGNOSTICS ... CONSTRAINT_NAME` check has to list **every** unique guard on those columns. `orders` has both `orders_order_number_merchant_key` and `idx_unique_order_number_per_merchant`, and Postgres reports whichever it checks first.
+
+## KDS perf investigations: read the code first; the board layout is a fixed requirement
+
+- **Do not drive the user's device mid-investigation.** A Metro reload sent to the KDS tablet for an A/B frame count dropped the app to the login screen, so the "after" number was measured on the wrong screen and was worthless, and the user had to log back in. Profiling a device someone else is using needs their go-ahead per action, and an experiment that reloads JS must first confirm the app comes back to the screen being measured. Default to reading the code; use the device only for read-only snapshots (`dumpsys meminfo`/`gfxinfo`, per-thread CPU from `/proc`), and never trigger data-mutating actions (bumps) on a shared backend without asking.
+- **Board layout is product-fixed:** tickets flow left to right across N columns (reading order runs row by row) and the whole board scrolls as one surface, never per column. Perf fixes must keep this exact layout. Don't propose per-column lists, paging, or a different ordering as the "fix".
+- **Check when a suspect was introduced before blaming it.** The lag predates `MasonryFlashList` (2026-08-27). `git log -S "<symbol>" -- <file>` dates each suspect in seconds, so a newer component can't be taken as the root cause of an older symptom.
+
+## PIN prompts: a Confirm button means wait for it
+
+- Product rule (user, 2026-09-23): any modal or screen that shows a Confirm / Verify / Sign In button must not proceed until that button is pressed, even once 4 digits are in. Auto-submit on the last digit is only for PIN prompts with no confirm button (today: `OrderPinGate`). Guarded in `__tests__/usePinEntry.test.tsx`.
+- All PinNumpad digit handling goes through `hooks/usePinEntry.ts`. Never write `if (pin.length < 4) setPin(prev => prev + d)` or `setPin(pin + d)`: under fast typing on a slow device, taps land before the next render, so the first grows the PIN past 4 (Sign In stays disabled until an invisible 5th digit is backspaced) and the second drops digits.
+- Don't give a NativeWind-wrapped `Pressable` a function style (`style={({ pressed }) => …}`): on the PIN keypad it was dropped entirely and the keys rendered unstyled. Use a plain style object; `android_ripple` gives native press feedback.
+
+## Mock data gets removed, not relocated
+
+- Product rule (user, 2026-09-23): mock/demo data does not belong in the app. When asked to take it off a hot path, delete it and the assets only it used — don't move it into a new module to keep it alive (I moved `MENU_IMAGE_MAP` into `lib/menuImageMap.ts` and was corrected). Replace each fake fallback with real data or an empty state (`—`, an icon placeholder), never another sample person or number.
+- Mock data hides under other names: `mockDiscounts`, `mockApplicants`, `// --- Mock Data ---` blocks, hardcoded "Downtown Location" pickers, and demo defaults in stores (`useSettingsStore` had fake delivery partners and a funding balance). Grep for the fake values (`John Smith`, `Tom Hardy`, `Downtown`), not only for `mock`.
+- Not everything named "mock" is fake data: the Castles/Valor mock transports are a QA tool for rehearsing terminal failures; receipt-template preview samples and `lib/db/measure.ts` fixtures are deliberate. Ask before removing tools.
+
+## Staging SQL: the target goes in the call, never in hidden CLI state
+
+- 2026-09-25: I ran `cat supabase/.temp/project-ref; supabase db query --linked --file …` as ONE command in `dexapos-website`. The ref was **prod**, so the `void_order` P0010 guard went live on prod unapproved (reverted minutes later with the user's OK; prod logs showed no void was blocked in the window).
+- Rule: apply staging SQL with the Supabase MCP `execute_sql` and an explicit `project_id: "dfwqakoyittmrwbqvxgw"`. If the CLI is ever unavoidable, check `.temp/project-ref` in a SEPARATE step, read the result, and only then apply. Printing the target in the same command as the write is not a check.
+
+## Local-first payload builders reuse the legacy sanitizers
+
+- 2026-09-25 (Charcoal Gardenia S1-0011): the local-first `flattenModifiersForRpc` sent a custom modifier's sentinel ids (`"custom-modifiers"` / `"custom_mod_…"`). Both legacy paths nulled them, but the new path didn't. `add_order_item_v5` failed its `::uuid` cast and rolled the item back. The drain parked the op as failed with no UI, and the Castles charge behind it was never recorded.
+- Rule: when a new write path replaces an old one, diff its payload builder against the old one field by field. Any id sent to an RPC that casts `::uuid` goes through `sanitizeModifierRowsForRpc` (`lib/modifierRpc.ts`), and the drain handler sanitizes again at send time so older queued payloads heal.
+- A prod POS build has no Dev Flags screen. Any failure that parks a write must report to Sentry. Otherwise the first signal is a customer holding a receipt.
+
+## Never merge items across orders by table
+
+- 2026-09-25 (Charcoal Gardenia, Table 53): the "parallel local key" merge in `syncOrderFromDatabase` matched candidates by `service_location_id`. `archiveOrder` keeps paid orders in `ordersById` for History, so every earlier party's items at that table were appended to the live check, keeping their original `db_order_item_id`s. Staff voided the ghosts, and the voids landed on the already-paid orders.
+- Rule: any merge or rescue of items between local order entries must match on order identity (`db_order_id`), never on table, session, or location. Closed orders stay in memory with their table binding, so "same table" is never "same order".
+
+## A "delivery lag" metric that is really a flush/remount timestamp
+
+- The KDS "device received" number (`get_kds_device_truth_for_order`) was `max(received_at)` over a ledger where (a) every row of a heartbeat flush shares one server timestamp and (b) every screen remount re-emitted the whole persisted board with a fresh client time. So "24 items all arrived at 21:27:12" was one flush of one remount, and a 2-day "delay" was a pickup screen that had been powered off. Six investigators and a devil's-advocate pass were needed to separate the metric artifact from four real-but-latent delivery gaps that the same data could not have distinguished.
+- Pattern: before chasing a batching bug from a timestamp, find the WRITER of that timestamp and ask (1) is it stamped per row or per batch, (2) is it re-emitted on restart, (3) does the reader take min or max. Staging can usually reproduce the signature (here: every mass cluster sat 1–2 s after a `device_login_history` row).
+- Pattern: any third-party call on the request critical path needs a deadline, not just our own RPCs. The Clerk mint sat outside the Bad-WiFi deadline umbrella and, via a single shared in-flight promise, could pin REST, the Realtime socket's own reconnect and every resubscribe path. `lib/auth/supabaseTokenCache.ts` now bounds it.
+- Memory hygiene: a memory note claimed a fix migration file existed that was never written (its apply had been blocked). Verify a remembered file with `ls` before planning around it.
+
+## A mirror row must read the same from its columns as from its payload
+
+- 2026-09-25 (Charcoal Gardenia S1-0008): Previous Orders rebuilt lines from `order_items.payload` alone. A local-first add writes only its open-item facts there, so a rejected menu item showed as "Unknown Item" with `quantity: undefined`, and the receipt preview's `Decimal.times(undefined)` took the POS to the error screen.
+- Rule: every reader of a mirror row goes through `itemRowToFetchedItem` (`lib/db/historyQuery.ts`). Payload wins for a synced row; columns win for a local row, because later local writes touch columns only. Any render-time money math tolerates a missing quantity as 0, never 1.
+
+## A payment may not run ahead of the outbox
+
+- Same incident: the online `process_payment_v17` call was handed a cart id as an `order_item_id`. But allocation ids are only half of it — a full-remaining payment carries none, and the RPC settles `p_amount = NULL` against the server's own remaining balance, which is short while items are still in the outbox.
+- Rule: `syncPaymentToBackend` queues when any allocation is unbound OR `unsyncedOpCountForOrder` is non-zero, and the queued handler blocks on `order_ops_pending`. An unbound line is addressed by its CART id; `item_row_id` is a uuid and every resolver treats a uuid as already on the server.
+
+## Open-item prices are all-in, so their modifier rows carry no price
+
+- Adding a modifier sync for open items looked like "call `replace_order_item_modifiers_v2` after the add, like the legacy path". A senior review caught that `OpenItemAdder` rolls modifier prices into `open_item_price`, the replace RPC reprices the line by the rows it inserts, and the client composer adds row prices again. Staging proof: a $2.50 row moved a $14.50 line to $17.00.
+- Rule: before mirroring a legacy call, check what the server does with the payload's prices and what the client does with the echo. For open items the rows are descriptive (`price_modifier: 0`). Priced open-item modifiers need a pricing-model change, not a second RPC call.
+
+## Verification means running the real thing, not writing Jest cases
+
+- 2026-09-25, twice in one day (S1-0011, then the S1-0008 follow-ups): I wrote Jest cases for a fix and the user said "dont unit test please do actual tests". The plan had even said "targeted Jest if the emulator is blocked" — that fallback is not what the user wants.
+- Rule: prove a fix on the systems it touches. Server paths: call the real RPC on staging inside one `DO $$ … RAISE EXCEPTION 'PROOF …' $$` block (the exception rolls back and carries the result). Client paths: run the flow on the emulator against staging and read the device log + the staging rows. Existing Jest, tsc and lint stay as a safety net; new Jest files or cases only when asked.
+

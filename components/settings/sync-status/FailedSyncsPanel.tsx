@@ -19,7 +19,7 @@ import {
   subscribeToDeadLetterChanges,
   type OfflineOperation
 } from '@/services/offlineSyncService'
-import { AlertTriangle, RefreshCw, Trash2, Wrench } from 'lucide-react-native'
+import { AlertTriangle, RefreshCw, Trash2, Wrench } from '@/lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import { FailedSyncResolutionModal } from './FailedSyncResolutionModal'

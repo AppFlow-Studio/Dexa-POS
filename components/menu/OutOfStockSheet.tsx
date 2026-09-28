@@ -14,7 +14,7 @@ import BottomSheet, {
   BottomSheetScrollView,
 } from "@/components/ui/bottomSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
-import { Ban, Check, Layers, X } from "lucide-react-native";
+import { Ban, Check, Layers, X } from "@/lib/icons";
 import React, {
   forwardRef,
   useImperativeHandle,

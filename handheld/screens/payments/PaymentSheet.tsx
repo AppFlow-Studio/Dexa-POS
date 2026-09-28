@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import type { OrderProfilePayment } from "@/lib/types";
-import { Coins, Undo2 } from "lucide-react-native";
+import { Coins, Undo2 } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 import { ActionRow } from "../../components/check/ActionRow";

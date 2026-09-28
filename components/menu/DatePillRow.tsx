@@ -7,7 +7,7 @@ import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import * as PopoverPrimitive from "@rn-primitives/popover";
 import { DateTime } from "luxon";
-import { Calendar as CalendarIcon } from "lucide-react-native";
+import { Calendar as CalendarIcon } from "@/lib/icons";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Calendar, type DateData } from "react-native-calendars";

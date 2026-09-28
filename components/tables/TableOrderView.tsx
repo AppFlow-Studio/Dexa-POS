@@ -53,7 +53,7 @@ import {
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
-import { CreditCard } from "lucide-react-native";
+import { CreditCard } from "@/lib/icons";
 import React, {
     useCallback,
     useEffect,

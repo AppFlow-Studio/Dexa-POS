@@ -1,6 +1,7 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
 import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
 import { KioskAdminPinModal } from "@/components/kiosk/shared/KioskAdminPinModal";
+import { useKioskDialog } from "@/components/kiosk/shared/KioskDialog";
 import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosticsScreen";
 import { KioskErrorBoundary } from "@/components/kiosk/shared/KioskErrorBoundary";
 import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
@@ -17,8 +18,9 @@ import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
+import { useFonts } from "expo-font";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 /**
  * Kiosk entry point.
@@ -44,24 +46,39 @@ export default function KioskScreen() {
   const clearCart = useKioskCartStore((s) => s.clear);
   const queryClient = useQueryClient();
 
+  // Inter, for the customer-facing kiosk only. The POS and KDS keep the
+  // system face; this is the one surface a member of the public reads, and the
+  // stock Android face is most of what made it look like a stock Android app.
+  // Load failure is not fatal — `useKioskTheme` falls back to weights on the
+  // system face, so the kiosk renders either way (see kioskDesign).
+  useFonts({
+    "Inter-Medium": require("@/assets/fonts/Inter-Medium.ttf"),
+    "Inter-Bold": require("@/assets/fonts/Inter-Bold.ttf"),
+  });
+
   const [showPinModal, setShowPinModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  // Start-screen stops, drawn in the kiosk's own themed dialog rather than a
+  // native alert. Only reachable from the attract screen, so `config` is set.
+  const { show: showNotice, dialog: notice } = useKioskDialog(
+    config ?? undefined,
+  );
   const handleStart = async () => {
     try {
       const stationId = useStoreSettingsStore.getState().selectedStation?.id;
       const location = useStoreSettingsStore.getState().selectedStore;
       if (!stationId || !location?.id || !location.merchant_id || isKioskCheckoutHeld(stationId)) {
-        Alert.alert("Staff assistance required", "Please ask a staff member to check this kiosk's payment status.");
+        showNotice("Staff assistance required", "Please ask a staff member to check this kiosk's payment status.");
         return;
       }
       const access = await refreshSelectedStationOperationalState(supabase);
       if (!access.valid) {
-        Alert.alert(access.failure.title, access.failure.message);
+        showNotice(access.failure.title, access.failure.message);
         return;
       }
       setIdle(false);
     } catch {
-      Alert.alert("Kiosk unavailable", "Could not verify kiosk access. Please see a staff member.");
+      showNotice("Kiosk unavailable", "Could not verify kiosk access. Please see a staff member.");
     }
   };
 
@@ -106,30 +123,36 @@ export default function KioskScreen() {
 
   // No config yet (first ever load, nothing cached). A persisted config renders
   // immediately even while the background poll refreshes.
+  // Inside KioskScaleProvider like every other kiosk screen: outside it these
+  // fell back to the POS scale, which a phone floors at 0.6 — 10px copy.
   if (!config || !effectiveConfig) {
     if (status === "error") {
       return (
-        <View className="flex-1 items-center justify-center bg-black px-8">
-          <Text className="text-white text-xl font-semibold">
-            Kiosk failed to load
-          </Text>
-          <Text className="text-gray-400 mt-2 text-center">
-            {error ?? "Unknown error"}
-          </Text>
-        </View>
+        <KioskScaleProvider>
+          <View className="flex-1 items-center justify-center bg-black px-8">
+            <Text className="text-white text-xl font-semibold text-center">
+              Kiosk failed to load
+            </Text>
+            <Text className="text-gray-400 text-base mt-2 text-center">
+              {error ?? "Unknown error"}
+            </Text>
+          </View>
+        </KioskScaleProvider>
       );
     }
     return (
-      <View className="flex-1 items-center justify-center bg-black">
-        <ActivityIndicator color="#FFFFFF" />
-        <Text className="text-gray-400 mt-3">Loading kiosk…</Text>
-      </View>
+      <KioskScaleProvider>
+        <View className="flex-1 items-center justify-center bg-black">
+          <ActivityIndicator color="#FFFFFF" />
+          <Text className="text-gray-400 text-base mt-3">Loading kiosk…</Text>
+        </View>
+      </KioskScaleProvider>
     );
   }
 
   if (showDiagnostics) {
     return (
-      <KioskScaleProvider>
+      <KioskScaleProvider minScale={1}>
         {/* Raw config, not `effectiveConfig` — this screen inspects and edits
             the profile, so it must show what the profile actually says. It
             resolves the device's own orientation override itself. */}
@@ -177,6 +200,8 @@ export default function KioskScreen() {
           />
         )}
       </KioskErrorBoundary>
+
+      {notice}
 
       {/* Manager-PIN gate opened by the secret 5-tap on the attract screen. */}
       <KioskAdminPinModal

@@ -19,12 +19,19 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var serverSocket: ServerSocket? = null
+    // The coroutine running the accept loop. Stopping the server must cancel
+    // it: closing the socket alone leaves `accept()` throwing "Socket is
+    // closed" in a hot loop forever (one leaked spinning loop per stop).
+    @Volatile private var acceptJob: Job? = null
     private var isRunning = false
     private val clients = ConcurrentHashMap<String, ClientConnection>()
 
     companion object {
         const val TAG = "TcpServer"
         const val NAME = "TcpServerModule"
+        // Pause after a transient accept failure so a persistent one can't
+        // turn the loop into a CPU spin.
+        const val ACCEPT_ERROR_BACKOFF_MS = 250L
     }
 
     override fun getName(): String = NAME
@@ -46,9 +53,13 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
             stopServerInternal()
         }
 
-        scope.launch {
+        // A start still binding from an earlier call must not outlive this one.
+        acceptJob?.cancel()
+        acceptJob = scope.launch {
+            var boundSocket: ServerSocket? = null
             try {
                 val socket = ServerSocket()
+                boundSocket = socket
                 socket.reuseAddress = true // Crucial for "Address already in use" fix
                 socket.bind(InetSocketAddress(InetAddress.getByName("0.0.0.0"), port))
 
@@ -68,15 +79,16 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
                     putInt("port", port)
                 })
 
-                // Accept loop — isActive tracks coroutine cancellation from scope.cancel()
-                while (isActive) {
+                // Accept loop — exits on cancellation (stopServerInternal / invalidate)
+                // and once the socket is closed, whoever closed it.
+                while (isActive && !socket.isClosed) {
                     try {
                         val clientSocket = socket.accept()
                         launch { handleClient(clientSocket) }  // supervised child — one crash doesn't kill the server
                     } catch (e: Exception) {
-                        if (isActive) {
-                            Log.e(TAG, "Accept error: ${e.message}")
-                        }
+                        if (!isActive || socket.isClosed) break
+                        Log.e(TAG, "Accept error: ${e.message}")
+                        delay(ACCEPT_ERROR_BACKOFF_MS)
                     }
                 }
             } catch (e: CancellationException) {
@@ -84,12 +96,19 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
             } catch (e: Exception) {
                 Log.e(TAG, "Server start error: ${e.message}")
                 promise.reject("START_FAILED", e.message)
+            } finally {
+                // Stopped, superseded by a newer start, or failed: never leave
+                // this socket bound. The live server's socket is still the
+                // module's `serverSocket`, so this can't close it.
+                if (serverSocket !== boundSocket) runCatching { boundSocket?.close() }
             }
         }
     }
 
     private fun stopServerInternal() {
         isRunning = false
+        acceptJob?.cancel()
+        acceptJob = null
         try {
             clients.values.forEach { it.close() }
             clients.clear()

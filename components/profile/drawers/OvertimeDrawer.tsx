@@ -2,7 +2,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
 } from "@/components/ui/bottomSheet";
-import { AlertTriangle } from "lucide-react-native";
+import { AlertTriangle } from "@/lib/icons";
 import React, { forwardRef, useMemo } from "react";
 import { Text, View } from "react-native";
 import { BarChart } from "@/components/charts/LazyGiftedCharts";

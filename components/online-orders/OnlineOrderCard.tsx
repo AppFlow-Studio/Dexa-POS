@@ -4,13 +4,13 @@ import CancelOnlineOrderDialog, {
 import MarkOrderReadyDialog from "@/components/online-orders/MarkOrderReadyDialog";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
-import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
+import { formatOrderTime, resolveOrderLabel } from "@/lib/onlineOrderLabel";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Href, Link } from "expo-router";
-import { Ban, Bell, Check, CheckCheck, X } from "lucide-react-native";
+import { Ban, Bell, Check, CheckCheck, X } from "@/lib/icons";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
@@ -22,18 +22,6 @@ interface OnlineOrderCardProps {
   variant: OnlineColumnVariant;
   /** Suppress the detail-screen link (KDS has no header/back for that route). */
   hideDetailsLink?: boolean;
-}
-
-function formatTime(iso: string | null): string {
-  if (!iso) return "";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return "";
-  const d = new Date(t);
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12 || 12;
-  return `${h}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
 function sourceLabel(
@@ -246,7 +234,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           Items: {itemCount}
         </Text>
         <Text style={{ fontSize: s(14), color: colors.label }}>
-          {formatTime(order.opened_at)}
+          {formatOrderTime(order.opened_at)}
         </Text>
       </View>
 

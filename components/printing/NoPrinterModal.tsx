@@ -1,6 +1,6 @@
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { colors } from "@/lib/theme";
-import { Printer, Settings, X } from "lucide-react-native";
+import { Printer, Settings, X } from "@/lib/icons";
 import React, { useCallback } from "react";
 import { Modal, Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";

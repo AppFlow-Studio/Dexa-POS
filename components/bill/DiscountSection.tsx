@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Tag, X } from "lucide-react-native";
+import { Tag, X } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

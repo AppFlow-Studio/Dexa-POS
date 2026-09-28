@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { colors } from "@/lib/theme";
-import { CheckCircle2, X } from "lucide-react-native";
+import { CheckCircle2, X } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 

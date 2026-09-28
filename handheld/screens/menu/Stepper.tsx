@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { Minus, Plus } from "lucide-react-native";
+import { Minus, Plus } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { type } from "../../lib/type";

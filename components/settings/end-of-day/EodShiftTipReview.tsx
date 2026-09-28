@@ -23,7 +23,7 @@ import {
   DollarSign,
   Users,
   X,
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,

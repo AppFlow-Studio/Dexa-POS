@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { ArrowDownCircle, ArrowRightLeft, CheckCircle2 } from "lucide-react-native";
+import { ArrowDownCircle, ArrowRightLeft, CheckCircle2 } from "@/lib/icons";
 import { Text, View } from "react-native";
 
 const ActivityItem = ({

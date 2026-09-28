@@ -3,7 +3,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePathname, useRouter } from "expo-router";
-import { Search } from "lucide-react-native";
+import { Search } from "@/lib/icons";
 import React, { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,

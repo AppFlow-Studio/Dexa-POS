@@ -1,4 +1,3 @@
-import { MOCK_MENU_ITEMS } from "@/lib/mockData";
 import { CartItem, MenuItemType } from "@/lib/types";
 import { create } from "zustand";
 
@@ -36,12 +35,13 @@ export const useCustomizationStore = create<CustomizationState>((set) => ({
       activeOrderId: orderId,
     }),
 
+  // edit/view have no menu-item lookup; the live edit/view flow is
+  // useModifierSidebarStore.
   openToEdit: (cartItem, orderId) =>
     set({
       isOpen: true,
       mode: "edit",
-      menuItem:
-        MOCK_MENU_ITEMS.find((mi) => mi.id === cartItem.menuItemId) || null,
+      menuItem: null,
       cartItem: cartItem,
       // 3. Store the activeOrderId
       activeOrderId: orderId,
@@ -51,8 +51,7 @@ export const useCustomizationStore = create<CustomizationState>((set) => ({
     set({
       isOpen: true,
       mode: "view", // Set the new mode
-      menuItem:
-        MOCK_MENU_ITEMS.find((mi) => mi.id === cartItem.menuItemId) || null,
+      menuItem: null,
       cartItem: cartItem,
       activeOrderId: null, // No order context needed for just viewing
     }),

@@ -3,7 +3,7 @@ import { toastService } from "@/lib/toastService";
 import { useOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
-import { Banknote, Columns2, CreditCard } from "lucide-react-native";
+import { Banknote, Columns2, CreditCard } from "@/lib/icons";
 import React, { useCallback } from "react";
 import { Text, View } from "react-native";
 import { OfflineBanner } from "../components/OfflineBanner";

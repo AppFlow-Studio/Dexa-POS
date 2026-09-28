@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { Calendar as CalendarIcon, X } from "lucide-react-native";
+import { Calendar as CalendarIcon, X } from "@/lib/icons";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";

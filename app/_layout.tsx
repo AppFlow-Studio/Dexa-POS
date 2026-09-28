@@ -49,10 +49,12 @@ import { useIsHandheld } from "@/lib/stationType";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
 import { UiScaleProvider } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
-import { getRawIsOnline } from "@/services/offlineSyncService";
+import {
+    getRawIsOnline,
+    hasQueuedPaymentForJournal,
+} from "@/services/offlineSyncService";
 import type { PaymentJournalEntry } from "@/services/paymentJournal";
 import {
-    failPaymentJournal,
     getIncompleteJournals,
     pruneOldJournals,
 } from "@/services/paymentJournal";
@@ -255,8 +257,10 @@ SplashScreen.setOptions({ duration: 0, fade: false });
 
 // Register CFD secondary display component for Android built-in displays.
 // Must happen at module level before native side mounts the ReactRootView.
+// Registration is lazy: the display UI itself only loads when that surface
+// starts, not on every Android device's cold start.
 if (Platform.OS === "android") {
-  require("@/components/cfd-builtin/CFDBuiltinDisplay");
+  require("@/components/cfd-builtin/registerCFDBuiltinDisplay");
 }
 
 // Initialize log collector to capture console output for remote log retrieval
@@ -851,17 +855,24 @@ export default Sentry.wrap(function RootLayout() {
                       };
                     },
                   );
+                  // No server row does NOT mean "not charged": a journal
+                  // reaches terminal_approved once the terminal has the sale,
+                  // and a payment still waiting in the offline queue has no
+                  // row either (2026-09-25: $15.13 charged, row never landed).
+                  // Never fail the journal here. If the queue still owns the
+                  // payment, let it replay (its failures surface on the order);
+                  // otherwise the operator reconciles it below.
                   if (
                     result?.data &&
                     result.data.matched === false &&
-                    !result.error
+                    !result.error &&
+                    hasQueuedPaymentForJournal(j.id)
                   ) {
-                    failPaymentJournal(j.id, "boot_precheck_no_server_row");
                     try {
                       Sentry.addBreadcrumb({
                         category: "payment_recovery",
                         level: "info",
-                        message: "payment_recovery.boot_precheck_dropped",
+                        message: "payment_recovery.boot_precheck_queue_owned",
                         data: {
                           journal_id: j.id,
                           order_db_id: j.dbOrderId,

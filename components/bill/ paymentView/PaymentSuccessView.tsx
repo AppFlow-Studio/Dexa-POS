@@ -15,10 +15,11 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { usePaymentStore } from "@/stores/usePaymentStore";
+import { claimAutoPrint, usePaymentStore } from "@/stores/usePaymentStore";
+import { usePrintPaymentReceipt } from "@/hooks/orders/usePrintPaymentReceipt";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { ArrowRight, Check, ChevronUp, Layers, Mail, MessageSquare, Printer } from "lucide-react-native";
+import { ArrowRight, Check, ChevronUp, Layers, Mail, MessageSquare, Printer } from "@/lib/icons";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
@@ -36,6 +37,8 @@ const PaymentSuccessView = () => {
   const paymentMethod = usePaymentStore((s) => s.paymentMethod);
   const completedPaymentInfo = usePaymentStore((s) => s.completedPaymentInfo);
   const activeTableId = usePaymentStore((s) => s.activeTableId);
+  const lastPaidPaymentId = usePaymentStore((s) => s.lastPaidPaymentId);
+  const { printPayment, isPrinting: isPrintingPayment } = usePrintPaymentReceipt();
   const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
   const { show } = useToast();
 
@@ -46,6 +49,7 @@ const PaymentSuccessView = () => {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
 
   const [isPrinting, setIsPrinting] = useState(false);
+  const printBusy = isPrinting || isPrintingPayment;
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
   const [splitSelectorOpen, setSplitSelectorOpen] = useState(false);
   const [receiptSheet, setReceiptSheet] = useState<{
@@ -86,9 +90,22 @@ const PaymentSuccessView = () => {
     if (!autoPrintReceipt || !activeOrderId) return;
     runAfterPaint(() => {
       const order = useOrderStore.getState().ordersById[activeOrderId];
+      if (!order || !selectedStore) return;
       const printedPerPortion =
-        !!order?.split_payment_path && autoPrintSplitReceipts;
-      if (order && selectedStore && !printedPerPortion) {
+        !!order.split_payment_path && autoPrintSplitReceipts;
+      // Mid-bill split portion (balance still due, e.g. a partial custom
+      // amount): the combined receipt would show the whole check. Print just
+      // this payment's receipt instead — unless the store already did.
+      if (order.split_payment_path && hasOrderBalanceDue(order)) {
+        const paymentId = usePaymentStore.getState().lastPaidPaymentId;
+        const payment = order.payments?.find((p) => p.id === paymentId);
+        if (!printedPerPortion && payment && claimAutoPrint(payment.id)) {
+          PrinterService.printSplitPaymentReceipt(order, payment, selectedStore)
+            .catch((e) => console.warn("[PaymentSuccessView] Auto-print payment receipt failed:", e));
+        }
+        return;
+      }
+      if (!printedPerPortion) {
         PrinterService.printReceipt(order, selectedStore)
           .catch((e) => console.warn("[PaymentSuccessView] Auto-print receipt failed:", e));
       }
@@ -512,18 +529,18 @@ const PaymentSuccessView = () => {
                     handlePrint();
                   }
                 }}
-                disabled={isPrinting}
-                style={{ width: "100%", paddingVertical: s(8), backgroundColor: colors.card, borderRadius: s(8), borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(4), opacity: isPrinting ? 0.6 : 1 }}
+                disabled={printBusy}
+                style={{ width: "100%", paddingVertical: s(8), backgroundColor: colors.card, borderRadius: s(8), borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(4), opacity: printBusy ? 0.6 : 1 }}
               >
-                {isPrinting ? (
+                {printBusy ? (
                   <ActivityIndicator size="small" color={colors.label} />
                 ) : (
                   <Printer size={s(13)} color={colors.label} />
                 )}
                 <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(11) }}>
-                  {isPrinting ? "Printing..." : "Print"}
+                  {printBusy ? "Printing..." : "Print"}
                 </Text>
-                {isSplitPaid && !isPrinting && (
+                {isSplitPaid && !printBusy && (
                   <ChevronUp size={s(12)} color={colors.label} />
                 )}
               </TouchableOpacity>
@@ -552,6 +569,9 @@ const PaymentSuccessView = () => {
                   }}
                 >
                   {[
+                    ...(lastPaidPaymentId
+                      ? [{ icon: <Printer size={s(20)} color={colors.success} />, label: "Print This Payment", onPress: () => { printPayment(lastPaidPaymentId); } }]
+                      : []),
                     { icon: <Printer size={s(20)} color={colors.label} />, label: "Print Combined Receipt", onPress: handlePrint },
                     { icon: <Layers size={s(20)} color={colors.teal} />, label: "Print Split Receipts…", onPress: () => setSplitSelectorOpen(true) },
                     { icon: <Printer size={s(20)} color={colors.teal} />, label: "Print All Split Receipts", onPress: handlePrintAllSplits },

@@ -5,8 +5,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { colors } from "@/lib/theme";
-import { addDays, eachDayOfInterval, format, parseISO } from "date-fns";
-import { Plus } from "lucide-react-native";
+import { addDays } from "date-fns/addDays";
+import { eachDayOfInterval } from "date-fns/eachDayOfInterval";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
+import { Plus } from "@/lib/icons";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";

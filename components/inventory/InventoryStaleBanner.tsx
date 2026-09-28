@@ -7,7 +7,7 @@ import { useInventoryWriteGate } from "@/hooks/inventory/useInventoryWriteGate";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { RefreshCw } from "lucide-react-native";
+import { RefreshCw } from "@/lib/icons";
 import React from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 

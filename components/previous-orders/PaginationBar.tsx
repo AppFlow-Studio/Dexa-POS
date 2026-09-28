@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import React from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 

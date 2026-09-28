@@ -37,6 +37,7 @@ import {
 import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 import {
     calculateOrderTotalsForOrder,
+    guardOrderVoid,
     useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -45,7 +46,7 @@ import {
     usePreviousOrdersStore,
 } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Search } from "lucide-react-native";
+import { Search } from "@/lib/icons";
 
 import { FlashList } from "@shopify/flash-list";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -744,6 +745,7 @@ const PreviousOrdersScreen = () => {
   const handleVoidOrder = useCallback(
     (order: OrderProfile) => {
       if (!order.db_order_id) return;
+      if (!guardOrderVoid(order.id)) return;
       voidOrderMutation.mutate({ dbOrderId: order.db_order_id });
     },
     [voidOrderMutation],

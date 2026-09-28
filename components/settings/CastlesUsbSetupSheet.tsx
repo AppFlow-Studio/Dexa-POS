@@ -37,7 +37,7 @@ import {
   Loader2,
   Usb,
   X,
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import { useEffect, useRef, useState } from 'react'
 import { Animated, Easing, Modal, Text, TouchableOpacity, View } from 'react-native'
 

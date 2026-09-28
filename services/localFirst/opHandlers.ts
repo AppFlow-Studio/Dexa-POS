@@ -26,12 +26,14 @@
  * being idempotent on the row id itself, a retry is safe twice over: the call
  * dedupes, and so does the row.
  */
+import * as Sentry from "@sentry/react-native";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getDb } from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/mutex";
 import type { ClaimedOp } from "@/lib/db/outbox";
 import { isTerminalKitchenMutationError } from "@/lib/kdsSendTraceability";
+import { sanitizeModifierRowsForRpc } from "@/lib/modifierRpc";
 import { markSessionSynced } from "@/lib/localFirst/unsyncedSessions";
 import {
   outcomeFromError,
@@ -375,7 +377,9 @@ export function makeOpHandlers(
             p_selected_size_id: p.selectedSizeId ?? null,
             p_selected_size_name: p.selectedSizeName ?? null,
             p_size_price_modifier: p.sizePriceModifier ?? 0,
-            p_modifiers: p.modifiers ?? null,
+            // Sanitized at send time too, so ops queued by an older build
+            // with a custom modifier's sentinel ids heal instead of 22P02-ing.
+            p_modifiers: sanitizeModifierRowsForRpc(p.modifiers ?? null),
             p_special_instructions: p.specialInstructions ?? null,
             p_course_number: p.courseNumber ?? 1,
             p_seat_number: p.seatNumber ?? null,
@@ -419,6 +423,64 @@ export function makeOpHandlers(
           console.warn("[LF] could not bind synced item to cart:", e);
         }
 
+        // Open items: add_open_item_v5 has no p_modifiers, so the custom
+        // modifiers ride a second call, as the legacy path did. Runs AFTER
+        // the bind above — the row exists on the server regardless of how
+        // this call goes, and a line that lies about that wedges kitchen
+        // sends and payments.
+        //
+        // Row prices are sent as 0 ON PURPOSE. OpenItemAdder rolls modifier
+        // prices into the all-in `open_item_price` that p_unit_price already
+        // carried, replace_order_item_modifiers_v2 reprices the line by the
+        // row prices it inserts (unit_price − old rows + new rows), and the
+        // client composer adds row prices on top of open_item_price again. A
+        // non-zero row price would be charged twice, on both sides. The rows
+        // are descriptive: kitchen tickets and receipts show the names.
+        //
+        // Same op id under a different op name: idempotency_keys is unique on
+        // (key, op), so a retry replays both calls safely.
+        if (
+          p.isOpenItem &&
+          Array.isArray(p.modifiers) &&
+          p.modifiers.length > 0
+        ) {
+          const rows = (
+            sanitizeModifierRowsForRpc(p.modifiers) as Record<string, unknown>[]
+          ).map((row) => ({ ...row, price_modifier: 0 }));
+          try {
+            const { error: modError } = await client.rpc(
+              "replace_order_item_modifiers_v2",
+              {
+                p_order_item_id: op.entityId,
+                p_modifiers: rows,
+                p_idempotency_key: op.id,
+              },
+            );
+            if (modError) throw modError;
+            console.log(
+              `[LF] ✓ open-item modifiers item=${op.entityId} rows=${rows.length}`,
+            );
+          } catch (modErr) {
+            const outcome = rpcError("replace_order_item_modifiers_v2", modErr);
+            // Transient: retry the whole op (the add is idempotent on its row
+            // id). Permanent: the item is on the server without its modifier
+            // names — report it rather than park a line that did sync.
+            if (outcome.kind === "retry") return outcome;
+            try {
+              Sentry.captureMessage("[LF] open-item modifiers rejected", {
+                level: "warning",
+                tags: { lf_event: "open_item_modifiers_rejected" },
+                extra: {
+                  item_id: op.entityId,
+                  order_id: p.orderId,
+                  rows: rows.length,
+                  reason: outcome.kind === "rejected" ? outcome.reason : outcome.kind,
+                },
+              });
+            } catch {}
+          }
+        }
+
         return { kind: "synced", syncVersion: data?.sync_version ?? null };
       } catch (error) {
         return rpcError(rpcName, error);
@@ -449,7 +511,7 @@ export function makeOpHandlers(
       try {
         const { error } = await client.rpc("replace_order_item_modifiers_v2", {
           p_order_item_id: p.itemId,
-          p_modifiers: p.modifiers,
+          p_modifiers: sanitizeModifierRowsForRpc(p.modifiers),
           p_idempotency_key: op.id,
         });
         if (error) return rpcError("replace_order_item_modifiers_v2", error);

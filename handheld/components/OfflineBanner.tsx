@@ -1,7 +1,7 @@
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { colors } from "@/lib/theme";
-import { RefreshCw, WifiOff } from "lucide-react-native";
+import { RefreshCw, WifiOff } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { useConnectionStore } from "../lib/connectionStore";

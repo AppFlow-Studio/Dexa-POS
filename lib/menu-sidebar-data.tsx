@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react-native";
+import type { LucideIcon } from "@/lib/icons";
 
 export interface MenuSidebarItem {
   id: string;

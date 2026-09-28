@@ -60,8 +60,14 @@ export const MAX_UI_SCALE = 1.25;
  * much higher ceiling. The baseline reference is still the Samsung tablet, so a
  * 1920×1080dp kiosk display would land at ~1.44× — the ceiling catches even
  * larger 4K screens in portrait (e.g. 3840×2160dp → ~2.88×).
+ *
+ * The floor is where phones land — every handset's raw ratio (~0.5–0.6) sits
+ * below it, so they all share one scale, the way phone apps do (dp already
+ * absorbs density). It is set where the header's 52dp controls come out at
+ * 44dp, the smallest comfortable touch target: at the old 0.7 they were 36dp
+ * with 12.6px body type, too small for a customer ordering in their hand.
  */
-export const KIOSK_MIN_UI_SCALE = 0.7;
+export const KIOSK_MIN_UI_SCALE = 0.85;
 export const KIOSK_MAX_UI_SCALE = 3.0;
 
 /**
@@ -223,6 +229,41 @@ export function FixedUiScaleProvider({
 }
 
 /**
+ * Clamp range for the KDS board. The ceiling sits well above the POS one:
+ * kitchen screens run from 10" tablets up to wall-mounted monitors read from
+ * across the line, and the operator picks the size for the cooks' distance.
+ */
+export const MIN_KDS_UI_SCALE = 0.6;
+export const MAX_KDS_UI_SCALE = 2.0;
+
+/**
+ * KDS board scale, from the display's `kds_displays.font_scale` (edited in
+ * KDS settings and in the dashboard's station editor). Like the CFD override
+ * it replaces the POS `uiScaleOverride` inside its tree rather than stacking
+ * on it, so the board and the POS settings size independently.
+ */
+const KDSScaleContext = React.createContext<number | null>(null);
+
+/**
+ * Applies a KDS scale to a subtree: to `useUiScale()` and to the
+ * `--ui-scale` variable the Tailwind utilities read. `override={null}` takes a
+ * subtree back to the normal scale (e.g. settings shown over the board).
+ */
+export function KDSScaleProvider({
+  override,
+  children,
+}: {
+  override: number | null | undefined;
+  children: React.ReactNode;
+}) {
+  return React.createElement(
+    KDSScaleContext.Provider,
+    { value: override ?? null },
+    React.createElement(UiScaleProvider, null, children),
+  );
+}
+
+/**
  * Portrait: the auth frame stacks and the toast spans the width. Landscape
  * is untouched on every device — the tablet layouts stay exactly as drawn.
  */
@@ -247,19 +288,27 @@ export function computeAuthUiScale(widthDp: number, heightDp: number): number {
  *
  * Inside a CFD screen tree (see CFDScaleProvider) the CFD's own override and
  * clamp range apply instead of the POS ones, so operators can size the
- * customer display independently of the POS UI.
+ * customer display independently of the POS UI. The KDS board works the same
+ * way through KDSScaleProvider.
  */
 export function useUiScale(): number {
   const { width, height } = useWindowDimensions();
   const posOverride = useSettingsStore((s) => s.uiScaleOverride);
   const cfdOverride = useCFDScaleOverride();
   const fixed = React.useContext(FixedUiScaleContext);
+  const kdsOverride = React.useContext(KDSScaleContext);
   const base = computeUiScale(width, height);
   if (fixed != null) return fixed;
   if (cfdOverride != null) {
     return Math.min(
       MAX_CFD_UI_SCALE,
       Math.max(MIN_CFD_UI_SCALE, base * cfdOverride),
+    );
+  }
+  if (kdsOverride != null) {
+    return Math.min(
+      MAX_KDS_UI_SCALE,
+      Math.max(MIN_KDS_UI_SCALE, base * kdsOverride),
     );
   }
   if (posOverride == null) return base;

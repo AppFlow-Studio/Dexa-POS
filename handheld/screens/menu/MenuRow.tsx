@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { Plus } from "lucide-react-native";
+import { Plus } from "@/lib/icons";
 import React, { useCallback } from "react";
 import { Pressable, Text, View } from "react-native";
 import { formatCurrency } from "../../lib/format";

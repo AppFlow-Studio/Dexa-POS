@@ -17,7 +17,7 @@ import { useReservationStore } from "@/stores/useReservationStore";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
-import { CheckCircle, Clock } from "lucide-react-native";
+import { CheckCircle, Clock } from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";

@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { X } from "lucide-react-native";
+import { X } from "@/lib/icons";
 import React, { useEffect, useRef } from "react";
 import { Animated, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { metrics, tint } from "../lib/tokens";

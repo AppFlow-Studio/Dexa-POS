@@ -7,7 +7,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { toastService } from "@/lib/toastService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Cloud, MapPin, Monitor, Power, RefreshCw } from "lucide-react-native";
+import { Cloud, MapPin, Monitor, Power, RefreshCw } from "@/lib/icons";
 import { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 

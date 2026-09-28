@@ -18,7 +18,7 @@ jest.mock('@/hooks/useNetworkStatus', () => ({
   useForceOfflineToggle: () => ({ forceOffline: false, toggleForceOffline: jest.fn() }),
 }))
 
-jest.mock('lucide-react-native', () => ({
+jest.mock('@/lib/icons', () => ({
   WifiOff: 'WifiOff',
 }))
 

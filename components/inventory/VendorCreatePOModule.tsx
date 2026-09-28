@@ -9,7 +9,7 @@ import {
     Search,
     Trash2,
     X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     KeyboardAvoidingView,

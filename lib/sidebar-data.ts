@@ -9,7 +9,7 @@ import {
   Users,
   UtensilsCrossed,
   Warehouse
-} from 'lucide-react-native'
+} from '@/lib/icons'
 // Import the Href type from Expo Router
 import { Href } from 'expo-router'
 

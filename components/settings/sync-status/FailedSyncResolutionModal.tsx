@@ -8,7 +8,7 @@ import {
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useOrder } from '@/stores/selectors/orderSelectors'
 import { useAuth } from '@clerk/clerk-expo'
-import { CheckCircle, AlertTriangle } from 'lucide-react-native'
+import { CheckCircle, AlertTriangle } from '@/lib/icons'
 import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
@@ -111,8 +111,11 @@ export function FailedSyncResolutionModal ({
         }
       }
 
-      // Probe idempotency_key against order_payments.
-      const idemKey = op.idempotencyKey
+      // Probe idempotency_key against order_payments. Payment replays send
+      // the JOURNAL's key (offlineSyncInit), not the op-level one — probing
+      // the op key reported "not found" for payments that did land.
+      const idemKey =
+        (op.params as any)?.paymentJournal?.idempotencyKey ?? op.idempotencyKey
       if (!idemKey) {
         if (!cancelled) {
           setProbe({ found: false })

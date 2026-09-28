@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import type { OrderProfilePayment } from "@/lib/types";
-import { Banknote, CreditCard } from "lucide-react-native";
+import { Banknote, CreditCard } from "@/lib/icons";
 import React, { useCallback } from "react";
 import { formatCurrency } from "../../lib/format";
 import { isSettledOut, paymentDetail, paymentTitle } from "../../lib/paymentRecords";

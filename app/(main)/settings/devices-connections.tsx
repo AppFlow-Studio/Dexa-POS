@@ -63,7 +63,7 @@ import type {
   PrinterRole
 } from '@/types/printer'
 import type { StationPaymentTerminal } from '@/types/station'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
 import {
@@ -87,7 +87,7 @@ import {
   Wifi,
   WifiOff,
   X
-} from 'lucide-react-native'
+} from '@/lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,

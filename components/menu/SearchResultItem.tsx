@@ -6,7 +6,7 @@ import { useSearchStore } from "@/stores/searchStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Plus } from "lucide-react-native";
+import { Plus } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

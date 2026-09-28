@@ -3,7 +3,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet from "@/components/ui/bottomSheet";
-import { ChefHat, Plus, Trash2 } from "lucide-react-native";
+import { ChefHat, Plus, Trash2 } from "@/lib/icons";
 import React, { useRef, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import RecipeIngredientSheet from "./RecipeIngredientSheet";

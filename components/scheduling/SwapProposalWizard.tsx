@@ -6,7 +6,8 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView,
 } from "@/components/ui/bottomSheet";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -14,7 +15,7 @@ import {
   MapPin,
   User,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,

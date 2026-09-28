@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useTableAnywhere } from "../hooks/useFloors";
-import { StickyNote } from "lucide-react-native";
+import { StickyNote } from "@/lib/icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";

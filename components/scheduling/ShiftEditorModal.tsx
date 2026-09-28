@@ -17,16 +17,14 @@ import {
 import { colors, switchTrackColors } from "@/lib/theme";
 import { Role, Shift, TemplateShift } from "@/lib/types"; // Import TemplateShift
 import BottomSheet from "@/components/ui/bottomSheet";
-import {
-  addDays,
-  differenceInMinutes,
-  format,
-  isValid,
-  parse,
-  parseISO,
-} from "date-fns"; // Import addDays
+import { addDays } from "date-fns/addDays";
+import { differenceInMinutes } from "date-fns/differenceInMinutes";
+import { format } from "date-fns/format";
+import { isValid } from "date-fns/isValid";
+import { parse } from "date-fns/parse";
+import { parseISO } from "date-fns/parseISO"; // Import addDays
 import { formatInTimeZone } from "date-fns-tz";
-import { AlertCircle, Copy } from "lucide-react-native";
+import { AlertCircle, Copy } from "@/lib/icons";
 import React, { RefObject, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,

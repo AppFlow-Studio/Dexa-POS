@@ -58,7 +58,7 @@ import {
     Power,
     Trash2,
     WifiOff,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, {
     useCallback,
     useEffect,

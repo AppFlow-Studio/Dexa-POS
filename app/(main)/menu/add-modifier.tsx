@@ -19,7 +19,7 @@ import {
     Plus,
     Save,
     Trash2
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,

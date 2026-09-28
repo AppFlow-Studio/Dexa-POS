@@ -17,7 +17,7 @@ import {
   RefreshCcw,
   RotateCcw,
   X,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useCallback, useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 

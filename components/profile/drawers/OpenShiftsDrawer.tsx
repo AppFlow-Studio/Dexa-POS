@@ -2,7 +2,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
 } from "@/components/ui/bottomSheet";
-import { Briefcase } from "lucide-react-native";
+import { Briefcase } from "@/lib/icons";
 import React, { forwardRef, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme, colors } from "@/lib/theme";
@@ -11,15 +11,13 @@ import { useToast } from "@/contexts/ToastContext";
 import { MerchantRole, Role, Shift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import {
-  addDays,
-  differenceInMinutes,
-  format,
-  isAfter,
-  isSameDay,
-  parseISO,
-  startOfDay,
-} from "date-fns";
+import { addDays } from "date-fns/addDays";
+import { differenceInMinutes } from "date-fns/differenceInMinutes";
+import { format } from "date-fns/format";
+import { isAfter } from "date-fns/isAfter";
+import { isSameDay } from "date-fns/isSameDay";
+import { parseISO } from "date-fns/parseISO";
+import { startOfDay } from "date-fns/startOfDay";
 import { formatInTimeZone } from "date-fns-tz";
 
 // Employees only carry a permission-tier MerchantRole (cashier/manager/admin/owner),

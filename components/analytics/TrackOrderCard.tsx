@@ -1,5 +1,5 @@
 import { TrackedOrder } from "@/lib/types";
-import { Pencil } from "lucide-react-native";
+import { Pencil } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

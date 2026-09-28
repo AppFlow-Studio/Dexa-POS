@@ -33,6 +33,33 @@ export interface KioskCartLine {
   quantity: number;
   modifiers: KioskCartModifierGroup[];
   notes?: string;
+  /**
+   * The menu category the item was picked from (not a modifier group). Sent as
+   * the order item's category_id — KDS routing resolves category prep-station
+   * defaults from it, so without it the item reaches no prep-station display.
+   */
+  categoryId?: string | null;
+  /** The menu the item was picked from. */
+  menuId?: string | null;
+}
+
+/** Where on the menu an item was picked from — carried onto its cart line. */
+export interface KioskItemSource {
+  menuId: string | null;
+  categoryId: string | null;
+}
+
+/** Parse the `${menuId}:${categoryId}` key the rail, pill bar and search share. */
+export function kioskItemSourceFromKey(
+  key: string | null | undefined,
+): KioskItemSource | undefined {
+  if (!key) return undefined;
+  const sep = key.indexOf(":");
+  if (sep < 0) return undefined;
+  return {
+    menuId: key.slice(0, sep) || null,
+    categoryId: key.slice(sep + 1) || null,
+  };
 }
 
 /** Per-unit card price including selected modifiers. */

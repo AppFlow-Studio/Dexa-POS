@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { colors } from "@/lib/theme";
 import { Role } from "@/lib/types"; // Assuming types will be in lib/types
 import { formatInTimeZone } from "date-fns-tz";
-import { AlertCircle, Clock, Users } from "lucide-react-native";
+import { AlertCircle, Clock, Users } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

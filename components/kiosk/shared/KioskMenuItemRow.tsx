@@ -2,7 +2,14 @@ import {
   kioskRowMetrics,
   type KioskRowMetrics,
 } from "@/components/kiosk/shared/kioskCardMetrics";
+import {
+  kioskFont,
+  kioskRadius,
+  kioskTracking,
+  useKioskTheme,
+} from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { kioskCardSurface } from "@/components/kiosk/shared/kioskSurface";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
@@ -10,7 +17,7 @@ import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ShoppingCart, SlidersHorizontal } from "lucide-react-native";
+import { ShoppingCart } from "@/lib/icons";
 import React, { useMemo } from "react";
 import { Image, Text, View } from "react-native";
 import Animated, {
@@ -31,8 +38,7 @@ import Animated, {
  * instead of ~1.9.
  *
  * Same visual language as KioskMenuItem: no cast shadow (see the shadows note
- * in docs/features/kiosk), hairline accent border, "Options" affordance, and
- * an in-cart badge that springs on change.
+ * in docs/features/kiosk) and an in-cart badge that springs on change.
  */
 interface KioskMenuItemRowProps {
   item: MenuItemType;
@@ -54,7 +60,6 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
     [cardWidth, maxCardHeight],
   );
   const isDisabled = item.availability === false;
-  const hasModifiers = !!item.modifierGroupIds?.length;
   const qtyInCart = useKioskItemQuantity(item.id);
   const inCart = qtyInCart > 0;
 
@@ -68,6 +73,7 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
     [item],
   );
 
+  const t = useKioskTheme(config);
   const accent = config.accentColor;
   const surface = useMemo(
     () => kioskCardSurface(config.backgroundColor),
@@ -86,9 +92,7 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
         gap: m.pad,
         padding: m.pad,
         borderRadius: m.radius,
-        borderWidth: 1,
         backgroundColor: surface,
-        borderColor: `${accent}33`,
         opacity: isDisabled ? 0.45 : 1,
       }}
     >
@@ -144,7 +148,7 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
                 fontWeight: "700",
               }}
             >
-              Unavailable
+              {kioskStrings.soldOut}
             </Text>
           </View>
         )}
@@ -155,8 +159,9 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
           style={{
             fontSize: m.nameSize,
             lineHeight: m.nameLineHeight,
-            fontWeight: "700",
+            letterSpacing: kioskTracking(m.nameSize),
             color: config.textColor,
+            ...kioskFont(t, "bold"),
           }}
           numberOfLines={2}
         >
@@ -168,7 +173,8 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
             style={{
               fontSize: m.descSize,
               lineHeight: m.descLineHeight,
-              color: `${config.textColor}99`,
+              color: t.textMuted,
+              ...kioskFont(t, "regular"),
             }}
             numberOfLines={m.descLines}
           >
@@ -190,33 +196,14 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
           <Text
             style={{
               fontSize: m.priceSize,
-              fontWeight: "800",
+              letterSpacing: kioskTracking(m.priceSize),
               color: config.textColor,
+              fontVariant: ["tabular-nums"],
+              ...kioskFont(t, "bold"),
             }}
           >
             ${item.price?.toFixed(2)}
           </Text>
-
-          {hasModifiers && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: m.gap * 0.6,
-              }}
-            >
-              <SlidersHorizontal size={m.optionsIconSize} color={accent} />
-              <Text
-                style={{
-                  fontSize: m.optionsTextSize,
-                  fontWeight: "600",
-                  color: accent,
-                }}
-              >
-                Options
-              </Text>
-            </View>
-          )}
         </View>
       </View>
     </KioskPressable>
@@ -252,7 +239,7 @@ function InCartBadge({
           left: m.gap,
           paddingHorizontal: m.gap,
           paddingVertical: m.gap * 0.5,
-          borderRadius: 999,
+          borderRadius: kioskRadius.xs,
           flexDirection: "row",
           alignItems: "center",
           gap: m.gap * 0.6,

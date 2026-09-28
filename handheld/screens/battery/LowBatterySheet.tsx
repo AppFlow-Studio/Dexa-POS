@@ -2,7 +2,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import type { EmployeeProfile } from "@/stores/useEmployeeStore";
-import { BatteryLow } from "lucide-react-native";
+import { BatteryLow } from "@/lib/icons";
 import React, { useState } from "react";
 import { Text, View } from "react-native";
 import { useConnectionStore } from "../../lib/connectionStore";

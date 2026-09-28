@@ -1,7 +1,8 @@
 import { colors } from "@/lib/theme";
 import { Shift } from "@/lib/types";
-import { format, parseISO } from "date-fns";
-import { Clock, UserPlus } from "lucide-react-native";
+import { format } from "date-fns/format";
+import { parseISO } from "date-fns/parseISO";
+import { Clock, UserPlus } from "@/lib/icons";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 

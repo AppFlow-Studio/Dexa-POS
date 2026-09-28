@@ -17,7 +17,7 @@ import {
 } from "react-native";
 
 import { CartItem } from "@/lib/types";
-import { Minus } from "lucide-react-native";
+import { Minus } from "@/lib/icons";
 import { ScrollView } from "react-native-gesture-handler";
 type SplitOption = "Split Evenly" | "Split by Item" | "Custom Amount";
 type PaymentType = "Card" | "Cash";

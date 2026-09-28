@@ -163,6 +163,36 @@ leaving for Settings.
 
 _Carried over from `alidika-dev-pos` during the staging merge; kept here so the planning history is not lost._
 
+## Perf Roadmap — Phase 3: Cold start, bundle & mock-data removal (code complete, 2026-09-23)
+
+Reference doc (rules, measuring, next levers): [`startup-and-bundle.md`](startup-and-bundle.md). Icons: [`../architecture/icons.md`](../architecture/icons.md).
+
+Measured with a production `expo export --platform android` (same flags before/after) and a static boot-graph walk from every `_layout` file (the only route modules expo-router evaluates at startup in production) — both now in `scripts/perf/`.
+
+- [x] G1 — `android.enableBundleCompression=false` (`android/gradle.properties`). The ~13 MB Hermes bundle is now memory-mapped from the APK instead of inflated into private RAM on every cold start (RN 0.79 default). Cost: larger APK.
+- [x] G2 — Telemetry harness default OFF (`useSettingsStore`, persist v2 migration turns it off on devices still carrying the old ON default). Stops the 50 ms long-task watcher and 30 s ring flush. Re-enable per device in Settings › General.
+- [x] G4 — Mock data and unused assets removed: `lib/mockData.ts` (4,362 lines, evaluated at boot via `useCustomizationStore`), fake Tom Hardy profile/avatar fallbacks, hardcoded discounts in the (unreachable) `DiscountOverlay`, fake shift applicants, fake analytics filter locations/employees, the fake schedule location picker, the unused mock sales generator, seven mock end-of-day cards, `EditPrinterModal`, the all-mock Scheduling Reports and Open Shifts routes, the unreachable Delivery settings screen, and dead demo state in `useSettingsStore`. `assets/` 6.4 MB → 1.6 MB (33 files, incl. the unused 1.4 MB `dexalogo.png`).
+- [x] G7 — `MyProfilePanel` lazy-loads the PTO and Requests screens (`React.lazy`), taking `react-native-calendars`, `react-native-popover-view` and their subtree off the boot path.
+- [x] G6 — Built-in CFD display registered lazily (`components/cfd-builtin/registerCFDBuiltinDisplay.ts`): the name is still registered at module scope, but the CFD client UI + `react-native-webview` load only when `SecondaryDisplayPresentation` starts the surface.
+- [x] G8 — lucide: all 405 importers now use `@/lib/icons` (217 per-icon re-exports) instead of the package root that evaluated ~1,700 icons. Jest maps the deep paths to lucide's CJS build; a Metro resolver hook avoids per-icon "not in exports" warnings. date-fns: 45 files moved to per-function subpaths (`date-fns/format`). ESLint `no-restricted-imports` blocks value imports from either package root.
+- [x] G9 — KDS: kiosk-profile query (select * + 3-min poll) disabled on KDS stations; terminal health check never starts on KDS.
+- [x] Verified: tsc 0 errors (baseline 0), ESLint 150 errors / 965 warnings (baseline 152 / 976, no new rule violations), Jest 2554/2555 — the same single pre-existing failure (`syncOrderFromDatabaseDiscountMetadata`) as baseline.
+- [ ] (User/on-device) cold start + `dumpsys meminfo` on Landi and a KDS tablet vs the previous build; built-in CFD still appears on a Landi with a customer display; PTO/Requests overlay opens.
+
+| Measure (Android production) | Before | After |
+|---|---|---|
+| Metro modules in bundle | 6,433 | 4,906 |
+| Minified JS | 15.4 MB | 13.8 MB |
+| Hermes bytecode (`--source-maps`, as the Gradle build compiles it) | 14.34 MB | 13.16 MB |
+| lucide in bundle | 1,720 modules / 539 KB | 218 modules / 57 KB |
+| Project modules evaluated before first frame | 542 | 520 |
+| npm packages evaluated before first frame | 65 | 62 (no lucide/date-fns roots, calendars, popover-view, webview) |
+
+### Phase 3 review
+- **Correction to the F6 note above:** expo-router's `sync` mode evaluates every route at boot only in **development** (`getRoutesCore` calls `loadRoute()` for all routes when `NODE_ENV === 'development'`). In production only `_layout` files load at boot; screens load on first render. The cold-start cost is what the layouts import statically — so never measure cold start on a dev-client build.
+- **Not done, on purpose:** (1) gating the CFD TCP server/mDNS/foreground service — the POS keeps no record of paired CFDs and paired tablets rediscover it via mDNS after restarts, so "only when paired" would strand already-paired displays; it needs a per-station "has customer display" setting first. (2) the floor realtime channel on KDS — `useKDSStore` resolves ticket table names from `useFloorPlanStore.tablesById` and marks tables served on bump. (3) `fetchPrinters` on KDS — KDS auto-print prints through `station.current_receipt_printer_id`, which that boot effect reconciles.
+- Remaining big levers: Metro `inlineRequires` (the 520-module boot graph), deferring hydration of stores a station type doesn't use, and the `drop_console: true` minifier setting, which also strips `console.error`/`warn` from production.
+
 ## Perf Roadmap — Phase 2: Render structural (code complete)
 
 - [x] F8 — Menu grid migrated FlatList → **FlashList 1.7.6** (`npx expo install` pinned the SDK-53 version). **Requires a native rebuild** — FlashList ships native views (`AutoLayoutView`/`CellContainer`); old dev clients throw "View config not found for AutoLayoutView". Rebuild via `npm run android` (emulator) / EAS development build (Landi).

@@ -3,7 +3,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { colors } from "@/lib/theme";
 import { FlashList } from "@shopify/flash-list";
-import { Users } from "lucide-react-native";
+import { Users } from "@/lib/icons";
 import React, { useCallback, useMemo } from "react";
 import { Text, View } from "react-native";
 

@@ -6,7 +6,7 @@ import {
   PieChart,
   Save,
   TrendingUp,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import {

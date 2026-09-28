@@ -1,8 +1,7 @@
-import { MOCK_USER_PROFILE } from "@/lib/mockData";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { colors } from "@/lib/theme";
 import { useTimeclockStore } from "@/stores/useTimeclockStore"; // 1. Import the timeclock store
-import { Clock, Timer } from "lucide-react-native";
+import { Clock, Timer, User } from "@/lib/icons";
 import React, { useEffect, useState } from "react"; // Import hooks
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
@@ -23,13 +22,11 @@ const ProfileCard = () => {
   const activeEmployee =
     employees.find((e) => e.id === activeEmployeeId) ||
     employees.find((e) => e.shiftStatus === "clocked_in");
-  const user = activeEmployee
-    ? {
-        fullName: activeEmployee.fullName,
-        employeeId: activeEmployee.id,
-        profileImageUrl: activeEmployee.profilePictureUrl,
-      }
-    : MOCK_USER_PROFILE;
+  const user = {
+    fullName: activeEmployee?.fullName ?? "—",
+    employeeId: activeEmployee?.id ?? "",
+    profileImageUrl: activeEmployee?.profilePictureUrl,
+  };
 
   // 2. Get the live timeclock state and actions from the store
   const { getSession, clockIn, clockOut } = useTimeclockStore();
@@ -110,14 +107,16 @@ const ProfileCard = () => {
 
   return (
     <View className="w-80 p-4 rounded-2xl items-center bg-surface border border-gray-700">
-      <Image
-        source={
-          user.profileImageUrl
-            ? { uri: user.profileImageUrl }
-            : require("@/assets/images/tom_hardy.jpg")
-        }
-        className="w-24 h-24 rounded-2xl"
-      />
+      {user.profileImageUrl ? (
+        <Image
+          source={{ uri: user.profileImageUrl }}
+          className="w-24 h-24 rounded-2xl"
+        />
+      ) : (
+        <View className="w-24 h-24 rounded-2xl items-center justify-center bg-panel border border-gray-700">
+          <User color={colors.label} size={40} />
+        </View>
+      )}
       <Text className="text-xl font-bold text-white mt-4">{user.fullName}</Text>
       <Text className="text-sm text-gray-400">{user.employeeId}</Text>
       {renderShiftStatus()}

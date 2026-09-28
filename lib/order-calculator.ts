@@ -214,8 +214,9 @@ export function calculateItemEffectiveCashPrice (item: CartItem): number {
  * `p_unit_price`. If that ever changes, this is the line that has to change
  * with it.
  *
- * Not a live undercharge before now only because `menuItem.addOns` is
- * populated exclusively from `lib/mockData.ts` — real Supabase menus deliver
+ * Not a live undercharge before now only because `menuItem.addOns` was
+ * populated exclusively by the old mock fixtures (since removed) — real
+ * Supabase menus deliver
  * everything through `customizations.modifiers`. It was a live TRAP: the
  * moment anything populated `addOns` from real menu data, every item carrying
  * one would have silently undercharged. `addOns` is still read by receipts,
@@ -523,8 +524,13 @@ export function calculateOrderTotals (
     const effectiveCardPrice = calculateItemEffectiveCardPrice(item)
     const effectiveCashPrice = calculateItemEffectiveCashPrice(item)
 
-    const cardSubtotal = new Decimal(effectiveCardPrice).times(item.quantity)
-    const cashSubtotal = new Decimal(effectiveCashPrice).times(item.quantity)
+    // A line with no numeric quantity (a never-synced mirror row rebuilt from a
+    // placeholder payload) counts as 0. This math feeds payments, so it must
+    // never invent units — and Decimal.times(undefined) throws, which took the
+    // receipt preview and the whole POS down (Charcoal Gardenia S1-0008).
+    const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
+    const cardSubtotal = new Decimal(effectiveCardPrice).times(quantity)
+    const cashSubtotal = new Decimal(effectiveCashPrice).times(quantity)
 
     grossCardSubtotal = grossCardSubtotal.plus(cardSubtotal)
     grossCashSubtotal = grossCashSubtotal.plus(cashSubtotal)

@@ -8,9 +8,10 @@ import {
 } from "@/components/ui/dialog";
 import { colors } from "@/lib/theme";
 import { Shift, TemplateShift } from "@/lib/types";
-import { format, parse } from "date-fns";
+import { format } from "date-fns/format";
+import { parse } from "date-fns/parse";
 import { formatInTimeZone } from "date-fns-tz";
-import { Clock, FileText, MapPin, Pencil, Trash2 } from "lucide-react-native";
+import { Clock, FileText, MapPin, Pencil, Trash2 } from "@/lib/icons";
 import React from "react";
 import { Text, View } from "react-native";
 

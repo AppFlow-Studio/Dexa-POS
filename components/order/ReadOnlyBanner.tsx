@@ -1,5 +1,5 @@
 import { colors } from '@/lib/theme'
-import { Lock, ArrowRight } from 'lucide-react-native'
+import { Lock, ArrowRight } from '@/lib/icons'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

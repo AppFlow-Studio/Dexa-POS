@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
-import { MoreVertical } from "lucide-react-native";
+import { MoreVertical } from "@/lib/icons";
 import React, { useCallback, useEffect } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { CheckBody } from "../components/check/CheckBody";

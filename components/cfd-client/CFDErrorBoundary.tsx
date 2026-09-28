@@ -8,7 +8,7 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { router } from "expo-router";
-import { AlertTriangle } from "lucide-react-native";
+import { AlertTriangle } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 

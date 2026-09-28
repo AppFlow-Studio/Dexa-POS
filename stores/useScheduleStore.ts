@@ -11,14 +11,12 @@ import {
     WeeklySchedule,
 } from "@/lib/types";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
-import {
-    addDays,
-    areIntervalsOverlapping,
-    format,
-    getDay,
-    parseISO,
-    startOfDay,
-} from "date-fns";
+import { addDays } from "date-fns/addDays";
+import { areIntervalsOverlapping } from "date-fns/areIntervalsOverlapping";
+import { format } from "date-fns/format";
+import { getDay } from "date-fns/getDay";
+import { parseISO } from "date-fns/parseISO";
+import { startOfDay } from "date-fns/startOfDay";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";

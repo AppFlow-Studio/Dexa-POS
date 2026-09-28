@@ -9,7 +9,7 @@ import { colors } from '@/lib/theme'
 import { US_DENOMINATIONS } from '@/services/cashDrawerService'
 import { DenominationCount } from '@/stores/useCashDrawerStore'
 import { formatCurrency } from '@/utils/currency'
-import { Minus, Plus } from 'lucide-react-native'
+import { Minus, Plus } from '@/lib/icons'
 import React, { useCallback, useMemo, useState } from 'react'
 import { Text, TextInput, TouchableOpacity, View } from 'react-native'
 

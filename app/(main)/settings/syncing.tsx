@@ -11,7 +11,7 @@ import { syncNow } from "@/services/offlineSyncService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, UtensilsCrossed } from "lucide-react-native";
+import { RefreshCw, UtensilsCrossed } from "@/lib/icons";
 import React, { useState } from "react";
 import {
   ActivityIndicator,

@@ -1,5 +1,7 @@
 import { Shift } from "@/lib/types";
-import { format, parse, parseISO } from "date-fns";
+import { format } from "date-fns/format";
+import { parse } from "date-fns/parse";
+import { parseISO } from "date-fns/parseISO";
 import { colors } from "@/lib/theme";
 import {
   AlertTriangle,
@@ -12,7 +14,7 @@ import {
   TrendingUp,
   Users,
   XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useState } from "react";
 import {
   GestureResponderEvent,

@@ -7,7 +7,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { colors } from '@/lib/theme'
-import { AlertTriangle, Bell, CircleX } from 'lucide-react-native'
+import { AlertTriangle, Bell, CircleX } from '@/lib/icons'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 

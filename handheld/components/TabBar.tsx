@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { LayoutGrid, Receipt, User, type LucideIcon } from "lucide-react-native";
+import { LayoutGrid, Receipt, User, type LucideIcon } from "@/lib/icons";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { metrics, tint } from "../lib/tokens";

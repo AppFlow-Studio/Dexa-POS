@@ -19,19 +19,17 @@ import {
 } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import {
-  addDays,
-  areIntervalsOverlapping,
-  differenceInMinutes,
-  format,
-  getDay,
-  isValid,
-  isWithinInterval,
-  parseISO,
-  startOfDay,
-} from "date-fns";
+import { addDays } from "date-fns/addDays";
+import { areIntervalsOverlapping } from "date-fns/areIntervalsOverlapping";
+import { differenceInMinutes } from "date-fns/differenceInMinutes";
+import { format } from "date-fns/format";
+import { getDay } from "date-fns/getDay";
+import { isValid } from "date-fns/isValid";
+import { isWithinInterval } from "date-fns/isWithinInterval";
+import { parseISO } from "date-fns/parseISO";
+import { startOfDay } from "date-fns/startOfDay";
 import { colors } from "@/lib/theme";
-import { Plus } from "lucide-react-native";
+import { Plus } from "@/lib/icons";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   findNodeHandle,

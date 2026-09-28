@@ -13,7 +13,7 @@ import {
   RefreshCcw,
   RotateCcw,
   XCircle,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 

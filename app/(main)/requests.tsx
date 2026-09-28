@@ -9,7 +9,7 @@ import {
   ArrowDownCircle,
   ArrowRightLeft,
   CheckCircle2,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";

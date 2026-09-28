@@ -10,7 +10,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { FlashList } from "@shopify/flash-list";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight } from "@/lib/icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     RefreshControl,

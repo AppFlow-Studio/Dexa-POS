@@ -6,7 +6,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { CFDPairingData } from "@/types/cfd.types";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
-import { QrCode, Wifi } from "lucide-react-native";
+import { QrCode, Wifi } from "@/lib/icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Pressable,

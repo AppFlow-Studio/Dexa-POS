@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { colors } from "@/lib/theme";
 import { ApplyMode } from "@/lib/types";
 import BottomSheet from "@/components/ui/bottomSheet";
-import { AlertTriangle, CheckCircle, ChevronDown } from "lucide-react-native";
+import { AlertTriangle, CheckCircle, ChevronDown } from "@/lib/icons";
 import React, { useRef } from "react";
 import { Text, View } from "react-native";
 import ApplyModeSheet from "./ApplyModeSheet"; // Import the new component

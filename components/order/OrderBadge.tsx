@@ -24,7 +24,7 @@ import {
     Repeat2,
     RotateCcw,
     ShoppingBag,
-} from "lucide-react-native";
+} from "@/lib/icons";
 import React, { useCallback, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";

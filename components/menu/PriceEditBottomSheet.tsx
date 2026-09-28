@@ -16,7 +16,7 @@ import BottomSheet, {
     BottomSheetTextInput,
 } from "@/components/ui/bottomSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
-import { Ban, Check, RotateCcw, Trash2, X } from "lucide-react-native";
+import { Ban, Check, RotateCcw, Trash2, X } from "@/lib/icons";
 import React, {
     forwardRef,
     useCallback,

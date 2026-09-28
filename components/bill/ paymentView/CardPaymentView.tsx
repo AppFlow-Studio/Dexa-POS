@@ -37,6 +37,7 @@ import {
   resumeAtomLoopbackProbing,
 } from "@/services/terminals/atomLoopbackDetector";
 import { atomBringPosToForeground } from "@/native/AtomBridge";
+import { ensureOrderReadyForPayment } from "@/services/localFirst/paymentSyncGate";
 import { getSharedCodePayService } from "@/services/terminals/codepay-service";
 import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
@@ -58,7 +59,7 @@ import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore"
 import { useTipAdjustStore } from "@/stores/useTipAdjustStore";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { generateRefId } from "@/types/dejavoo-spin-api";
-import { CheckCircle2, Clock, Wifi } from "lucide-react-native";
+import { CheckCircle2, Clock, Wifi } from "@/lib/icons";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -1315,7 +1316,21 @@ const CardPaymentView = () => {
     setStatus("ready");
   };
 
-  const handleChargeCard = () => {
+  const chargeGateRef = useRef(false);
+  const handleChargeCard = async () => {
+    if (chargeGateRef.current) return;
+    chargeGateRef.current = true;
+    try {
+      // Never charge for items the server rejected — the payment could not
+      // be recorded against them (see paymentSyncGate).
+      const gate = await ensureOrderReadyForPayment(activeOrder?.db_order_id, "card");
+      if (!gate.ok) {
+        setErrorModal({ visible: true, title: gate.title, message: gate.message });
+        return;
+      }
+    } finally {
+      chargeGateRef.current = false;
+    }
     updateTip(tipAmount, selectedTipPreset);
     setStatus("processing");
     showProcessing("card", tipAmount);
