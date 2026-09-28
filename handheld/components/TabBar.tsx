@@ -1,9 +1,10 @@
 import { colors } from "@/lib/theme";
 import { LayoutGrid, Receipt, User, type LucideIcon } from "@/lib/icons";
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { metrics, tint } from "../lib/tokens";
+import { metrics } from "../lib/tokens";
 import { type } from "../lib/type";
+import { PillLayer } from "../primitives";
 import type { HandheldTab } from "../types";
 
 const TABS: readonly { key: HandheldTab; label: string; Icon: LucideIcon }[] = [
@@ -41,33 +42,24 @@ function Tab({
   // No android_ripple here: a ripple is clipped to the Pressable's rectangle,
   // so on a flex-1 tab it flashed as a square. Material 3 puts the state
   // layer on the pill instead, so the pill tints while pressed.
+  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       className="flex-1 items-center gap-1"
     >
-      {({ pressed }) => (
-        <>
-          <View
-            className="items-center justify-center"
-            style={{
-              width: 64,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: active || pressed ? tint.accentSoft : "transparent",
-              opacity: pressed && !active ? 0.6 : 1,
-            }}
-          >
-            <Icon size={24} color={active ? colors.teal : colors.label} />
-            {badge ? <Badge count={badge} /> : null}
-          </View>
-          <Text style={[type.nav, { color: active ? colors.heading : colors.label }]}>
-            {label}
-          </Text>
-        </>
-      )}
+      <View className="h-8 w-16 items-center justify-center">
+        <PillLayer opacity={active ? 1 : pressed ? 0.6 : 0} />
+        <Icon size={24} color={active ? colors.teal : colors.label} />
+        {badge ? <Badge count={badge} /> : null}
+      </View>
+      <Text style={[type.nav, { color: active ? colors.heading : colors.label }]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
