@@ -251,7 +251,7 @@ Wave 4b's UI is built, unwired — see `wave4b-plan.md`.
 Cash in any form (business blocker); split check and merge; the screen 9
 receipt grid — text, email and the built-in printer; refunds and tip
 adjustment from the handheld; Valor VP550 as a payment or print target;
-low-battery transfer and Wi-Fi roaming (Wave 5); the `atom` branch in
+low-battery transfer and Wi-Fi roaming (Wave 5, built — `wave5-plan.md`); the `atom` branch in
 `markAsCharged` (register work). `finishCleaning` from the handheld tables
 list is no longer needed for Wave 4a, since the close path frees the session
 rather than sending the table to cleaning.

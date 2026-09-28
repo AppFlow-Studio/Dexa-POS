@@ -273,7 +273,7 @@ compiles. Check with: every class in a new file must appear in some other
   register does not block card payments offline at all — it queues them
   (`useOrderStore.ts:4039-4045`). An offline rule for the handheld would make
   it stricter than the register, so Wave 4 does not add one.
-- Plan and checklist: `wave4-plan.md`; Wave 4b (split, cash, receipts, refunds — UI only) in `wave4b-plan.md`.
+- Plan and checklist: `wave4-plan.md`; Wave 4b (split, cash, receipts, refunds — UI only) in `wave4b-plan.md`; Wave 5 (low battery, roaming) in `wave5-plan.md`.
 
 ## Handoff to Wave 2 (write phase) — historical
 

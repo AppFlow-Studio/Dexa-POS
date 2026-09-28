@@ -2,6 +2,8 @@ import { colors } from "@/lib/theme";
 import { vars } from "nativewind";
 import React from "react";
 import { View } from "react-native";
+import { useConnectionWatcher } from "./hooks/useConnectionWatcher";
+import { LowBatteryWatcher } from "./screens/battery/LowBatteryWatcher";
 
 /**
  * The tablet's `--ui-scale` is computed from dp width against a 1333dp
@@ -22,11 +24,22 @@ const HANDHELD_UI_VARS = vars({ "--ui-scale": 1 });
  * StatusBar here would re-show the bar (RN stacks the last mounted props).
  * Portrait is locked by app/_layout.tsx, which never remounts on a theme
  * toggle. Mounted once by app/(main)/handheld/_layout.tsx around its Stack.
+ *
+ * Being mounted once is also why Wave 5's watchers live here: the
+ * connection card's grace timer (one for every page) and the low-battery
+ * sheet (opens over whichever page is up).
  */
 export default function HandheldFrame({ children }: { children: React.ReactNode }) {
   return (
     <View style={[{ flex: 1, backgroundColor: colors.screen }, HANDHELD_UI_VARS]}>
       {children}
+      <Watchers />
     </View>
   );
+}
+
+/** A leaf, so realtime / battery updates re-render it and not the frame. */
+function Watchers() {
+  useConnectionWatcher();
+  return <LowBatteryWatcher />;
 }
