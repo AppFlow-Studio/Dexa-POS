@@ -492,9 +492,10 @@ worse than showing one the detail screen will handle.
 A CodePay kiosk's card screen is CodePay Register, which runs in front of Dexa.
 Dexa can't time it (JS timers pause) or draw over it, so the window is
 Register's own order expiry, set per kiosk profile:
-`kiosk_profiles.payment_window_seconds` (45–180, NULL = legacy 120 s, no
-prompt). Profiles are polled about every 3 min and applied when idle, which
-makes the column the canary switch and the rollback switch.
+`kiosk_profiles.payment_window_seconds` (45–180, default 45 since
+`20260929120000`, which also backfilled existing profiles; NULL = legacy
+120 s, no prompt). Profiles are polled about every 3 min and applied when
+idle, so setting a profile to NULL is the rollback switch.
 
 When the window lapses with no card read, the kiosk asks "Need more time?"
 (`KioskPaymentTimeoutModal`, 30 s countdown):
@@ -530,12 +531,15 @@ A void the store refuses after a charge attempt holds the kiosk
 - [x] Void reason + result plumbing (`useOrderStore.voidOrder(id, {reason})`, `void_blocked` hold).
 - [x] Idle timer counts from the last checkout release (time inside Register isn't idleness).
 - [x] `kiosk_profiles.payment_window_seconds` migration (website repo; staging first, prod by user).
+- [x] Window on by default at 45 s (`20260929120000`, backfills NULL profiles; staging applied 2026-09-29, prod by user).
+- [x] Staging `CODEPAY_CLOUD_CONFIG` set for Uptown Branch (2026-09-29); probe passed (orderquery approved, unknown ref → not_found).
 - [x] Register window + no-card-read expiry classification; `000` before `RESULT_CANCELED`; foreground gate after a watchdog.
 - [x] Attempt loop + "Need more time?" modal; persisted review marker cleared during the prompt.
 - [x] Host status lookup (edge function + client) with prior-attempt check before relaunch.
 - [x] Sentry telemetry (`kiosk.payment.window`, `kiosk.codepay.cloud_lookup`, assistance `cause`).
 - [ ] Wave 0 hardware spike: does Register return by itself at `expires`? Minimum `expires`? A tap at 55 s?
-- [ ] Probe the live CodePay Cloud API (`scripts/codepay-cloud-probe.ts`); settle `trans_status 9`.
+- [x] Probe the live CodePay Cloud API (`scripts/codepay-cloud-probe.ts`).
+- [ ] Settle `trans_status 9` (a walk-away on staging shows what an expired ECR sale reports).
 - [ ] Staging device tests (plan Waves 1 and 3), then the Deli Kiosk 8 canary via a cloned profile.
 
 ### Review

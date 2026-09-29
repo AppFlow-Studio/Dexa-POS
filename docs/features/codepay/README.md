@@ -189,7 +189,8 @@ away held the card screen for 120 s. Plan:
 `~/.claude/plans/lets-look-into-this-glittery-swan.md`.
 
 **Payment window (kiosks only).** `kiosk_profiles.payment_window_seconds`
-(45–180, NULL = legacy 120 s with no prompt) becomes the Register sale
+(45–180, default 45 since `20260929120000`; NULL = legacy 120 s with no
+prompt, the per-profile kill switch) becomes the Register sale
 `expires`. Dexa cannot time this itself: JS timers pause while Register is in
 front, and Dexa can't draw over it. The watchdog for a windowed sale is
 `expires + 60 s`. The kiosk passes `on_screen_signature: false`.
