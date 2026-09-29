@@ -1,6 +1,6 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { syncEmployees } from "@/services/employeeSyncService";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useEmployeeStore, type EmployeeProfile } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { MerchantRole } from "@/lib/types";
 import { Delete, Lock, X } from "@/lib/icons";
@@ -31,7 +31,8 @@ export function KioskAdminPinModal({
 }: {
   visible: boolean;
   onClose: () => void;
-  onVerified: () => void;
+  /** Receives the manager who unlocked, so staff actions can be attributed. */
+  onVerified: (employee: EmployeeProfile) => void;
 }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,7 @@ export function KioskAdminPinModal({
     const employee = useEmployeeStore.getState().findEmployeeByPin(pin);
     const isManager = !!employee && MANAGER_ROLES.includes(employee.role);
 
-    if (!isManager) {
+    if (!employee || !isManager) {
       setError(
         employee
           ? "This employee does not have manager access."
@@ -69,7 +70,7 @@ export function KioskAdminPinModal({
       return;
     }
 
-    onVerified();
+    onVerified(employee);
   }, [pin, onVerified]);
 
   const rows = [

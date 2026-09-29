@@ -26,6 +26,7 @@ import {
   CODEPAY_LOOKUP_RETRY_MS,
   CODEPAY_PAY_SCENARIO,
   CODEPAY_QUERY_TIMEOUT_MS,
+  CODEPAY_REVERSAL_RETRY_GAP_MS,
   CODEPAY_TOPIC,
   CODEPAY_TRANS_STATUS,
   CODEPAY_TRANS_TYPE,
@@ -36,6 +37,10 @@ import {
   type CodePayIntentResult,
   type CodePayQueryParams,
   type CodePayRefundParams,
+  type CodePayReversalAttempt,
+  type CodePayReversalOperation,
+  type CodePayReversalParams,
+  type CodePayReversalResult,
   type CodePaySaleParams,
   type CodePayTipAdjustParams,
   type CodePayTxnResult,
@@ -47,6 +52,12 @@ import {
   isCodePaySuccess,
   parseCodePayBiz,
 } from "./codepay-response-mapper";
+import {
+  classifyCodePayReversalDecline,
+  codePayReversalDeclineMessage,
+  firstCodePayReversalOperation,
+  nextCodePayReversalOperation,
+} from "./codepay-reversal";
 import type {
   CodePayCloudLookup,
   CodePayStatusLookupFn,
@@ -480,12 +491,15 @@ export class CodePayService {
         trans_type: CODEPAY_TRANS_TYPE.REFUND,
         merchant_order_no: params.referenceId,
         price_currency: CODEPAY_DEFAULT_CURRENCY,
+        // In every documented refund sample, referenced or not.
+        pay_scenario: CODEPAY_PAY_SCENARIO.SWIPE_CARD,
       };
       if (params.origMerchantOrderNo) {
         biz.orig_merchant_order_no = params.origMerchantOrderNo;
       }
       if (params.amount != null) biz.order_amount = fmtAmount(params.amount);
       if (params.tipAmount != null) biz.tip_amount = fmtAmount(params.tipAmount);
+      await this._awaitForegroundIfOrphaned();
       const res = await this._dispatch(
         CODEPAY_TOPIC.ORDER,
         biz,
@@ -507,11 +521,17 @@ export class CodePayService {
       const biz: Record<string, unknown> = {
         trans_type: CODEPAY_TRANS_TYPE.VOID,
         merchant_order_no: params.referenceId,
+        // In the documented void sample.
+        pay_scenario: CODEPAY_PAY_SCENARIO.SWIPE_CARD,
       };
       if (params.origMerchantOrderNo) {
         biz.orig_merchant_order_no = params.origMerchantOrderNo;
       }
       if (params.amount != null) biz.order_amount = fmtAmount(params.amount);
+      if (params.tipAmount != null && params.tipAmount > 0) {
+        biz.tip_amount = fmtAmount(params.tipAmount);
+      }
+      await this._awaitForegroundIfOrphaned();
       const res = await this._dispatch(
         CODEPAY_TOPIC.ORDER,
         biz,
@@ -520,6 +540,209 @@ export class CodePayService {
       );
       return this._interpret(res, "void", params.referenceId);
     });
+  }
+
+  // ── Reversal (void or refund, by batch state) ──
+
+  /**
+   * Give a sale's money back the way its batch state allows:
+   *   - still in the open batch, whole sale → void (cancels the whole charge)
+   *   - batch closed, or only part of the sale → referenced refund
+   * Our settled flag can lag the host (a batch closed on the terminal itself,
+   * or not closed yet when we think it was). So when the host turns the first
+   * operation down BECAUSE of the batch state, the other one is tried once.
+   * Only a definitive decline does that; an unknown outcome never does.
+   *
+   * An unknown outcome is looked up with Register first (by this reversal's
+   * own merchant_order_no) and can only be upgraded to success.
+   */
+  async reverse(params: CodePayReversalParams): Promise<CodePayReversalResult> {
+    const attempts: CodePayReversalAttempt[] = [];
+    const first = firstCodePayReversalOperation(params);
+    const initial = await this._attemptReversal(first, params, attempts);
+    if (initial.success || initial.indeterminate || initial.aborted) {
+      return this._reversalResult(initial, first, attempts);
+    }
+
+    const kind = attempts[attempts.length - 1].declineKind ?? "unknown";
+    const second = nextCodePayReversalOperation(
+      first,
+      kind,
+      params.coversWholeSale,
+    );
+    if (!second) {
+      return this._reversalResult(initial, first, attempts, params);
+    }
+
+    console.warn(`[CodePayService] ${first} turned down (${kind}) — trying ${second}`, {
+      origMerchantOrderNo: params.origMerchantOrderNo,
+      errorCode: initial.errorCode,
+    });
+    // Register has just closed its result screen; let Dexa settle in front.
+    await waitForAppActive();
+    await sleep(CODEPAY_REVERSAL_RETRY_GAP_MS);
+    const retry = await this._attemptReversal(second, params, attempts);
+    return this._reversalResult(retry, second, attempts, params);
+  }
+
+  /** One reversal Intent, with a Register lookup when its outcome is unknown. */
+  private async _attemptReversal(
+    operation: CodePayReversalOperation,
+    params: CodePayReversalParams,
+    attempts: CodePayReversalAttempt[],
+  ): Promise<CodePayTxnResult> {
+    const suffix = (params.referenceSuffix ?? "").replace(/[^0-9A-Za-z]/g, "").slice(-4);
+    // merchant_order_no for THIS reversal (≤32 chars, unique per attempt).
+    const referenceId = [
+      operation === "void" ? "CPVD" : "CPRF",
+      Date.now(),
+      suffix || Math.random().toString(36).slice(2, 6),
+    ].join("_");
+    try {
+      params.onAttempt?.({ operation, referenceId });
+    } catch (e) {
+      console.warn("[CodePayService] reversal onAttempt failed:", e);
+    }
+
+    let result =
+      operation === "void"
+        ? await this.void({
+            referenceId,
+            origMerchantOrderNo: params.origMerchantOrderNo,
+            amount: params.saleAmount ?? params.amount,
+            tipAmount: params.saleTipAmount,
+          })
+        : await this.refund({
+            referenceId,
+            origMerchantOrderNo: params.origMerchantOrderNo,
+            amount: params.amount,
+          });
+
+    let outcome: CodePayReversalAttempt["outcome"] = result.success
+      ? "approved"
+      : result.aborted
+        ? "cancelled"
+        : result.indeterminate
+          ? "unconfirmed"
+          : "declined";
+
+    if (result.indeterminate) {
+      const recovered = await this._recoverReversal(operation, referenceId, params);
+      if (recovered) {
+        result = { ...recovered, elapsedMs: result.elapsedMs };
+        outcome = "recovered";
+      }
+    }
+
+    const declineKind =
+      outcome === "declined"
+        ? classifyCodePayReversalDecline(
+            result.errorCode,
+            result.error,
+            result.raw?.trans_error_code,
+            result.raw?.resp_code,
+          )
+        : undefined;
+    attempts.push({
+      operation,
+      referenceId,
+      outcome,
+      errorCode: result.errorCode,
+      error: result.success ? undefined : result.error,
+      declineKind,
+    });
+    return result;
+  }
+
+  /**
+   * Look up a reversal whose outcome is unknown. Returns a success result ONLY
+   * when Register confirms it; anything else returns null and the caller
+   * keeps the unknown outcome. "Not refunded" is never inferred from a lookup.
+   *
+   *  - Either operation: this reversal's own merchant_order_no is approved,
+   *    with the right type (and amount, for a refund).
+   *  - Void only: the original sale now reads "void".
+   */
+  private async _recoverReversal(
+    operation: CodePayReversalOperation,
+    referenceId: string,
+    params: CodePayReversalParams,
+  ): Promise<CodePayTxnResult | null> {
+    const expectedType =
+      operation === "void" ? CODEPAY_TRANS_TYPE.VOID : CODEPAY_TRANS_TYPE.REFUND;
+    try {
+      const q = await this.query({ merchantOrderNo: referenceId });
+      const raw = q.raw;
+      if (
+        q.success &&
+        raw &&
+        Number(raw.trans_status) === CODEPAY_TRANS_STATUS.COMPLETED &&
+        raw.merchant_order_no === referenceId &&
+        raw.trans_type != null &&
+        String(raw.trans_type) === expectedType &&
+        (operation === "void" ||
+          (raw.order_amount != null &&
+            fmtAmount(Number(raw.order_amount)) === fmtAmount(params.amount)))
+      ) {
+        console.log("[CodePayService] unknown reversal recovered via query", {
+          operation,
+          referenceId,
+          transNo: q.transNo,
+        });
+        return { ...q, merchantOrderNo: referenceId, recoveredVia: "device_query" };
+      }
+
+      if (operation === "void") {
+        const sale = await this.query({ merchantOrderNo: params.origMerchantOrderNo });
+        const saleRaw = sale.raw;
+        if (
+          sale.success &&
+          saleRaw &&
+          Number(saleRaw.trans_status) === CODEPAY_TRANS_STATUS.VOIDED &&
+          saleRaw.merchant_order_no === params.origMerchantOrderNo
+        ) {
+          console.log("[CodePayService] unknown void confirmed: the sale reads void", {
+            referenceId,
+            origMerchantOrderNo: params.origMerchantOrderNo,
+          });
+          return { ...sale, merchantOrderNo: referenceId, recoveredVia: "device_query" };
+        }
+      }
+    } catch (e) {
+      console.warn("[CodePayService] reversal recovery query failed:", e);
+    }
+    return null;
+  }
+
+  /** Final reversal result: staff-facing error, plus the trail for the record. */
+  private _reversalResult(
+    result: CodePayTxnResult,
+    operation: CodePayReversalOperation,
+    attempts: CodePayReversalAttempt[],
+    params?: CodePayReversalParams,
+  ): CodePayReversalResult {
+    const last = attempts[attempts.length - 1];
+    const declineKind = last?.declineKind;
+    let error = result.error;
+    if (!result.success && last?.outcome === "declined" && params) {
+      error = codePayReversalDeclineMessage(declineKind ?? "unknown", {
+        operation,
+        coversWholeSale: params.coversWholeSale,
+        code: result.errorCode,
+        message: result.error,
+      });
+    } else if (result.indeterminate) {
+      error =
+        `The ${operation} couldn't be confirmed. Look for ${last?.referenceId ?? "it"} ` +
+        "in CodePay Register's transactions before trying again.";
+    }
+    const terminalResponse: Record<string, unknown> = {
+      ...(result.terminalResponse ?? { terminal_vendor: "codepay", terminal_type: "codepay" }),
+      result_code: result.success ? "000" : (result.errorCode ?? null),
+      response_message: result.success ? "Approved" : (result.error ?? null),
+      codepay_reversal: { operation, attempts },
+    };
+    return { ...result, error, terminalResponse, operation, attempts, declineKind };
   }
 
   // ── Query / Retrieve ──

@@ -58,6 +58,8 @@ export type RefundMutationInput =
       paymentTerminalId: string;
       paymentTerminal?: any;
       stationId?: string;
+      /** Staff profile to record the refund under; defaults to the signed-in employee. */
+      initiatedBy?: string;
     }
   | {
       type: "full" | "payments";
@@ -69,6 +71,8 @@ export type RefundMutationInput =
       paymentTerminalId: string;
       paymentTerminal?: any;
       stationId?: string;
+      /** Staff profile to record the refund under; defaults to the signed-in employee. */
+      initiatedBy?: string;
     };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -124,7 +128,7 @@ async function queueRefundReceipts(
 function buildAndApplyRefundPatch(input: RefundMutationInput): void {
   const now = new Date().toISOString();
   const { loggedInEmployee } = useEmployeeStore.getState();
-  const staffId = loggedInEmployee?.profileId || "unknown";
+  const staffId = input.initiatedBy || loggedInEmployee?.profileId || "unknown";
 
   // Read current order from whichever store has it
   const orderState = useOrderStore.getState();
@@ -297,6 +301,7 @@ export function useRefundMutation() {
               input.type === "items" ? input.selectedItems : undefined,
             refundType: input.type,
             initiatedBy:
+              input.initiatedBy ||
               useEmployeeStore.getState().loggedInEmployee?.profileId ||
               "unknown",
           },
@@ -308,9 +313,13 @@ export function useRefundMutation() {
         };
       }
 
-      const { loggedInEmployee } = useEmployeeStore.getState();
+      // A kiosk has no signed-in employee; it passes the manager who unlocked
+      // its settings instead.
+      const initiatedBy =
+        input.initiatedBy ||
+        useEmployeeStore.getState().loggedInEmployee?.profileId;
 
-      if (!loggedInEmployee?.profileId) {
+      if (!initiatedBy) {
         throw new Error("Staff profile missing. Please re-authenticate.");
       }
       if (!supabase) {
@@ -346,7 +355,7 @@ export function useRefundMutation() {
           },
           reason: reasonType,
           reasonDetail: input.reason,
-          initiatedBy: loggedInEmployee.profileId,
+          initiatedBy,
         };
 
         const result = await refundService.processRefund(refundRequest);
@@ -416,7 +425,7 @@ export function useRefundMutation() {
           // Partial-refund message lives on result.data.error (result is already
           // narrowed to kind:"success" here); surfacing it drives the
           // "Refund Processed (with warnings)" toast for a partial item refund.
-          warning: [result.data?.error, receiptWarning]
+          warning: [result.data?.error, result.data?.note, receiptWarning]
             .filter(Boolean)
             .join("; ") || undefined,
           isOffline: !ordersRealtime.isConnected,
@@ -459,7 +468,7 @@ export function useRefundMutation() {
           refundType,
           reason: reasonType,
           reasonDetail: input.reason,
-          initiatedBy: loggedInEmployee.profileId,
+          initiatedBy,
           referenceId: detail.referenceId,
           payment_terminal_id: input.paymentTerminalId,
           payment_terminal: input.paymentTerminal,
@@ -474,6 +483,9 @@ export function useRefundMutation() {
           );
         } else if (result.data?.error) {
           warnings.push(result.data.error);
+        }
+        if (result.kind === "success" && result.data?.note) {
+          warnings.push(result.data.note);
         }
         if (result.kind === "success" && result.data.reversalId) {
           reversalIds.push(result.data.reversalId);

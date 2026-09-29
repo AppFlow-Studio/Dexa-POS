@@ -58,8 +58,20 @@ jest.mock("@/services/refundJournal", () => ({
   toRefundStepKey: (base: string, step: string) => `${base}::${step}`,
 }));
 
+// CodePay runs through a native Intent bridge; both the presence check and
+// the Intent itself are controllable here.
+const mockCodePayTransact = jest.fn();
+const mockCodePayRegisterAvailable = jest.fn();
+jest.mock("@/native/CodePayBridge", () => ({
+  codepayTransact: (...args: unknown[]) => mockCodePayTransact(...args),
+  isCodePayBridgeAvailable: () => true,
+  codepayIsRegisterAvailable: () => mockCodePayRegisterAvailable(),
+  codepayGetDeviceSerial: async () => null,
+}));
+
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
+import { updateRefundJournal } from "@/services/refundJournal";
 import {
   isTerminalTransportDead,
 } from "@/services/terminals/castles-service";
@@ -412,5 +424,197 @@ describe("explicit refund classification", () => {
     expect(mocked.createReversal.mock.calls[0][1].reversal_type).toBe("refund");
     expect((service as any).processTerminalRefund.mock.calls[0][2]).toBe(false);
     expect(mocked.applyRefundToPayment.mock.calls[0][3]).toBe("refund");
+  });
+});
+
+describe("CodePay refunds: void while in the batch, refund after", () => {
+  const codepayPayment = (over: Record<string, unknown> = {}) => ({
+    paymentId: "pay-0000cb79",
+    referenceId: "CP_1790689413715_cb79",
+    codepayMerchantOrderNo: "CP_1790689413715_cb79",
+    rrn: "rrn-orig",
+    amount: 9.74,
+    tipAmount: 1.46,
+    refundedAmount: 0,
+    availableForRefund: 9.74,
+    paymentMethod: "card",
+    isVoidable: true,
+    terminalId: "term-cp",
+    terminalConfig: {
+      id: "term-cp",
+      terminal_type: "codepay",
+      terminal_name: "Coffee Bar Kiosk 5",
+      register_id: "wzapp",
+    },
+    ...over,
+  });
+  const contextFor = (payment: Record<string, unknown>) => {
+    const context = makeContext();
+    context.payments = [payment];
+    context.payment = payment;
+    return context;
+  };
+  const intent = (over: Record<string, unknown>) => ({
+    resultCode: -1,
+    responseCode: null,
+    responseMsg: null,
+    bizData: null,
+    timedOut: false,
+    canceled: false,
+    ...over,
+  });
+  const approvedIntent = intent({
+    responseCode: "000",
+    bizData: JSON.stringify({ trans_no: "T9", auth_code: "A9", ref_no: "R9" }),
+  });
+  const sentBiz = (i: number) => JSON.parse(mockCodePayTransact.mock.calls[i][2]);
+  const runFull = (service: RefundService, payment: Record<string, unknown>) =>
+    (service as any).processFullPaymentRefund(
+      makeRequest(),
+      contextFor(payment),
+      "journal-id",
+      "refund-key",
+    );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCodePayTransact.mockReset();
+    mockCodePayRegisterAvailable.mockReset().mockResolvedValue(true);
+    mocked.createReversal.mockResolvedValue({ data: { id: "rev-1" }, error: null });
+    mocked.updateReversalStatus.mockResolvedValue({ data: null, error: null });
+    mocked.applyRefundToPayment.mockResolvedValue({ data: null, error: null });
+    mocked.recordRefundItems.mockResolvedValue({ data: null, error: null });
+    mocked.updateOrderPaymentStatusAfterRefund.mockResolvedValue({
+      data: null,
+      error: null,
+    });
+  });
+
+  const makeService = () => {
+    const service = new RefundService({} as any);
+    (service as any).buildFullRefundItems = jest.fn().mockResolvedValue([]);
+    return service;
+  };
+
+  it("on a device without CodePay Register: says where to refund, records nothing", async () => {
+    mockCodePayRegisterAvailable.mockResolvedValue(false);
+
+    const result = await runFull(makeService(), codepayPayment());
+
+    expect(result.kind).toBe("error");
+    expect(result.error).toMatch(/CodePay terminal \(Coffee Bar Kiosk 5\)/);
+    expect(result.error).toMatch(/Kiosk Settings/);
+    expect(mocked.createReversal).not.toHaveBeenCalled();
+    expect(mockCodePayTransact).not.toHaveBeenCalled();
+  });
+
+  it("not batched out: cancels the charge on the terminal, records a refund", async () => {
+    mockCodePayTransact.mockResolvedValueOnce(approvedIntent);
+
+    const result = await runFull(makeService(), codepayPayment());
+
+    expect(result.kind).toBe("success");
+    expect(sentBiz(0)).toMatchObject({
+      trans_type: "2",
+      orig_merchant_order_no: "CP_1790689413715_cb79",
+      order_amount: "9.74",
+      tip_amount: "1.46",
+      pay_scenario: "SWIPE_CARD",
+    });
+    expect(mockCodePayTransact.mock.calls[0][1]).toBe("wzapp");
+    // What we record is unchanged: a refund of the order amount…
+    expect(mocked.createReversal.mock.calls[0][1].reversal_type).toBe("refund");
+    expect(mocked.applyRefundToPayment.mock.calls[0][2]).toBe(9.74);
+    expect(mocked.applyRefundToPayment.mock.calls[0][3]).toBe("refund");
+    // …plus the tip the void gave back, and a note for staff.
+    expect(mocked.applyRefundToPayment.mock.calls[0][5]).toEqual({
+      tipRefundAmount: 1.46,
+    });
+    expect(result.data.note).toMatch(/\$11\.20 was cancelled, including the \$1\.46 tip/);
+    // The reversal's reference is on record before the Intent is sent.
+    expect(updateRefundJournal).toHaveBeenCalledWith("journal-id", {
+      terminalTxnId: sentBiz(0).merchant_order_no,
+    });
+    // The approval details reach the payment row.
+    expect(mocked.applyRefundToPayment.mock.calls[0][4]).toMatchObject({
+      rrn: "R9",
+      authCode: "A9",
+      transactionNumber: "T9",
+    });
+  });
+
+  it("batched out: referenced refund, no note", async () => {
+    mockCodePayTransact.mockResolvedValueOnce(approvedIntent);
+
+    const result = await runFull(makeService(), codepayPayment({ isVoidable: false }));
+
+    expect(result.kind).toBe("success");
+    expect(sentBiz(0)).toMatchObject({ trans_type: "3", order_amount: "9.74" });
+    expect(sentBiz(0).tip_amount).toBeUndefined();
+    expect(mocked.applyRefundToPayment.mock.calls[0][5]).toBeUndefined();
+    expect(result.data.note).toBeUndefined();
+  });
+
+  it("our flag says open but the batch closed on the host: falls back to a refund", async () => {
+    mockCodePayTransact
+      .mockResolvedValueOnce(
+        intent({
+          responseCode: "ET008",
+          responseMsg: "Reversal not allowed, the transaction was settled",
+          bizData: "{}",
+        }),
+      )
+      .mockResolvedValueOnce(approvedIntent);
+
+    const result = await runFull(makeService(), codepayPayment());
+
+    expect(result.kind).toBe("success");
+    expect(sentBiz(0).trans_type).toBe("2");
+    expect(sentBiz(1).trans_type).toBe("3");
+    expect(mocked.applyRefundToPayment.mock.calls[0][5]).toBeUndefined();
+    expect(result.data.note).toBeUndefined();
+  });
+
+  it("a payment that was part-refunded before is never voided", async () => {
+    mockCodePayTransact.mockResolvedValueOnce(approvedIntent);
+
+    await runFull(
+      makeService(),
+      codepayPayment({ refundedAmount: 2, availableForRefund: 7.74, isVoidable: false }),
+    );
+
+    expect(sentBiz(0)).toMatchObject({ trans_type: "3", order_amount: "7.74" });
+  });
+
+  it("turned down: the reversal is marked failed and staff get the reason", async () => {
+    mockCodePayTransact.mockResolvedValueOnce(
+      intent({
+        responseCode: "ET003",
+        responseMsg: "The transaction does not exist",
+        bizData: "{}",
+      }),
+    );
+
+    const result = await runFull(makeService(), codepayPayment({ isVoidable: false }));
+
+    expect(result.kind).toBe("error");
+    expect(result.error).toMatch(/can't find the original payment/);
+    expect(result.error).toMatch(/ET003/);
+    expect(mocked.updateReversalStatus.mock.calls[0][2]).toBe("failed");
+    expect(mocked.applyRefundToPayment).not.toHaveBeenCalled();
+  });
+
+  it("terminal row gone: still CodePay (never Dejavoo), with this device's app id", async () => {
+    mockCodePayTransact.mockResolvedValueOnce(approvedIntent);
+
+    const result = await runFull(
+      makeService(),
+      codepayPayment({ terminalConfig: undefined, isVoidable: false }),
+    );
+
+    expect(result.kind).toBe("success");
+    expect(mockCodePayTransact).toHaveBeenCalledTimes(1);
+    expect(mockCodePayTransact.mock.calls[0][0]).toBe("ecrhub.pay.order");
+    expect(mockCodePayTransact.mock.calls[0][1]).toBeTruthy();
   });
 });

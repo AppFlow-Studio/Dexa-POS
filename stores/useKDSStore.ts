@@ -628,6 +628,45 @@ function maybeAutoPrintKdsTicket(ticket: KDSTicket): void {
   }
 }
 
+export type KdsReprintResult =
+  | "queued"
+  | "no_printer"
+  | "nothing_to_print"
+  | "failed";
+
+/**
+ * Reprint a ticket on demand (KDS hold menu). This is an explicit staff action,
+ * so unlike maybeAutoPrintKdsTicket it ignores the auto-print flag and the
+ * once-per-ticket guard — it only needs a printer claimed on this station.
+ */
+export async function reprintKdsTicket(
+  ticket: KDSTicket,
+): Promise<KdsReprintResult> {
+  const settings = useStoreSettingsStore.getState();
+  const location = settings.selectedStore;
+  if (!location || !settings.selectedStation?.current_receipt_printer_id) {
+    return "no_printer";
+  }
+
+  const items = Array.isArray(ticket.items) ? ticket.items : [];
+  if (!items.some((it) => !it.is_voided && !it.is_refunded)) {
+    return "nothing_to_print";
+  }
+
+  try {
+    const {
+      PrinterService,
+    } = require("@/services/printing/PrinterService");
+    // Items and a claimed printer are checked above, so false here means the
+    // claimed printer is missing or inactive.
+    const queued = await PrinterService.printKdsTicket(ticket, location);
+    return queued ? "queued" : "no_printer";
+  } catch (e) {
+    console.warn("[KDS Reprint] print failed:", e);
+    return "failed";
+  }
+}
+
 /** Track order item IDs whose void/refund notice has been acknowledged locally.
  *  Persisted to MMKV so acknowledgements survive app restarts when there is no
  *  kdsDisplayId for server-side filtering. */
