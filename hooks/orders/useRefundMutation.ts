@@ -425,7 +425,7 @@ export function useRefundMutation() {
           // Partial-refund message lives on result.data.error (result is already
           // narrowed to kind:"success" here); surfacing it drives the
           // "Refund Processed (with warnings)" toast for a partial item refund.
-          warning: [result.data?.error, receiptWarning]
+          warning: [result.data?.error, result.data?.note, receiptWarning]
             .filter(Boolean)
             .join("; ") || undefined,
           isOffline: !ordersRealtime.isConnected,
@@ -483,6 +483,9 @@ export function useRefundMutation() {
           );
         } else if (result.data?.error) {
           warnings.push(result.data.error);
+        }
+        if (result.kind === "success" && result.data?.note) {
+          warnings.push(result.data.note);
         }
         if (result.kind === "success" && result.data.reversalId) {
           reversalIds.push(result.data.reversalId);

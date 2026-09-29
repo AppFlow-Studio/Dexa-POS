@@ -82,6 +82,8 @@ export const CODEPAY_SUCCESS_CODE = "000";
 export const CODEPAY_TRANS_STATUS = {
   COMPLETED: 2,
   PREPAID: 9,
+  /** Glossary "Transaction void": the sale was cancelled while in the batch. */
+  VOIDED: 3,
 } as const;
 
 /**
@@ -183,6 +185,74 @@ export interface CodePayVoidParams {
   origMerchantOrderNo?: string;
   /** Original transaction amount in DOLLARS → order_amount. */
   amount?: number;
+  /**
+   * Original sale's tip in DOLLARS → tip_amount, so the void carries the same
+   * amounts the sale did. A void always cancels the whole charge.
+   */
+  tipAmount?: number;
+}
+
+/** What a CodePay reversal was sent as. */
+export type CodePayReversalOperation = "void" | "refund";
+
+/**
+ * Why CodePay / the processor turned a reversal down. Only the first two ever
+ * cause the other operation to be tried.
+ */
+export type CodePayReversalDeclineKind =
+  /** Batch already closed (settled): the sale can't be cancelled, refund it. */
+  | "void_not_allowed"
+  /** Sale still in the open batch: it can't be refunded yet, cancel it. */
+  | "refund_not_allowed"
+  | "not_found"
+  | "already_reversed"
+  | "amount_exceeds"
+  | "partial_not_allowed"
+  | "duplicate_reference"
+  | "card_mismatch"
+  | "unknown";
+
+export interface CodePayReversalParams {
+  /** Original sale's merchant_order_no → orig_merchant_order_no. */
+  origMerchantOrderNo: string;
+  /** Amount to give back in DOLLARS (order portion, tip excluded). */
+  amount: number;
+  /**
+   * True when this reversal covers the whole sale and nothing was refunded
+   * before. Only then can a void stand in for the refund.
+   */
+  coversWholeSale: boolean;
+  /** True when our records say the sale is still in the open batch. */
+  inOpenBatch: boolean;
+  /** Original sale's order amount in DOLLARS (sent on a void). */
+  saleAmount?: number;
+  /** Original sale's tip in DOLLARS (sent on a void). */
+  saleTipAmount?: number;
+  /** Short suffix that keeps references unique across stations. */
+  referenceSuffix?: string;
+  /** Called with each reference just before its Intent is sent. */
+  onAttempt?: (attempt: {
+    operation: CodePayReversalOperation;
+    referenceId: string;
+  }) => void;
+}
+
+export interface CodePayReversalAttempt {
+  operation: CodePayReversalOperation;
+  /** merchant_order_no sent for this attempt. */
+  referenceId: string;
+  outcome: "approved" | "recovered" | "declined" | "cancelled" | "unconfirmed";
+  errorCode?: string;
+  error?: string;
+  declineKind?: CodePayReversalDeclineKind;
+}
+
+export interface CodePayReversalResult extends CodePayTxnResult {
+  /** The operation the final result belongs to. */
+  operation: CodePayReversalOperation;
+  /** Every Intent sent for this reversal, in order. */
+  attempts: CodePayReversalAttempt[];
+  declineKind?: CodePayReversalDeclineKind;
 }
 
 export interface CodePayQueryParams {
@@ -401,5 +471,16 @@ export const CODEPAY_LOOKUP_BUDGET_MS = 20_000;
 export const CODEPAY_LOOKUP_RETRY_MS = 5_000;
 /** Non-card ops (query / batch close / referenced refund). */
 export const CODEPAY_QUERY_TIMEOUT_MS = 30_000;
+
+/**
+ * Kill switch for batch-aware CodePay reversals (OTA + restart). On: a full
+ * reversal of a sale still in the open batch is sent as a void, anything else
+ * as a referenced refund, and the other operation is tried once when the host
+ * says the first one is the wrong one for the sale's batch state. Off: every
+ * reversal is a referenced refund with no second attempt.
+ */
+export const CODEPAY_REVERSAL_ROUTING_ENABLED = true;
+/** Pause between a declined reversal and the other operation. */
+export const CODEPAY_REVERSAL_RETRY_GAP_MS = 1_500;
 /** Hard ceiling for the interactive "Test Connection" spinner. */
 export const CODEPAY_TEST_DEADLINE_MS = 20_000;

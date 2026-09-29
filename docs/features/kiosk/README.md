@@ -303,6 +303,12 @@ and a confirmation dialog before anything is sent).
   (`buildRefundDetails` in `kioskOrders.ts`, tested in
   `__tests__/kioskOrders.test.ts`). While a refund runs, "All orders" is
   disabled so its progress stays on screen.
+- **CodePay: cancel or refund.** A full refund of a payment that isn't
+  batched out yet cancels the whole card charge, tip included, and the
+  confirmation says so with the real total (`wholeChargeCancelTotal`). After
+  batch-out, and for custom amounts, it is a refund of the order amount.
+  Rules, codes and the terminal checklist: `docs/features/codepay/README.md`
+  → "Refunds and voids".
 - **Who is on record.** A kiosk has no signed-in employee, so
   `KioskAdminPinModal` passes the manager whose PIN opened settings through to
   the panel, and the refund is recorded under them (`initiatedBy`). The DEV
@@ -588,7 +594,10 @@ A void the store refuses after a charge attempt holds the kiosk
 - [x] Sentry telemetry (`kiosk.payment.window`, `kiosk.codepay.cloud_lookup`, assistance `cause`).
 - [x] Wave 0 hardware spike (2026-09-29, staging CodePay terminal): with no card presented, Register closes the card screen by itself at about 60 s (the profile was 45, so ~60 s is Register's floor). The kiosk then shows "Need more time?"; Yes relaunches, and Cancel / no answer voids the order and goes Home with no staff unlock. Still open: a tap at 55 s.
 - [x] Staff lock on an unpaid "Read data failed" sale (S10-0005, 2026-09-29): Register's read-failure screen outlived our watchdog, the bridge dropped Register's later Cancel, and the unconfirmable host lookup held the kiosk. Fix: `CodePayBridgeModule` never resolves while Register is in front, resolves 5 s after Dexa returns without a result, and logs any late result it drops. Native → needs an EAS build on every CodePay kiosk.
-- [ ] Bridge fix on hardware: "Read data failed" → wait >2 min → Cancel shows the prompt (not staff); → OK + tap pays and records; walk-away and normal tap unchanged; time whether Register ever closes the read-failure screen by itself.
+- [x] Bridge fix on hardware (2.5.4 preview APK, EAS `f82c6ebd`, staging Uptown Branch, 2026-09-29):
+  - S10-0006: "Read data failed" → Cancel after ~4 min → prompt → void → Home, no staff lock; CodePay has no trans_no for it.
+  - S10-0007: charge launched 15:39:52 UTC, approved 15:42:31 (2 m 39 s, past the old 120 s watchdog). Register's own result was recorded (`…000002`; card and RRN are on the payment row), not a host recovery.
+  - Still unmeasured: whether Register ever closes the read-failure screen by itself.
 - [x] Probe the live CodePay Cloud API (`scripts/codepay-cloud-probe.ts`).
 - [ ] Settle `trans_status 9` (a walk-away on staging shows what an expired ECR sale reports).
 - [ ] Staging device tests (plan Waves 1 and 3), then the Deli Kiosk 8 canary via a cloned profile.
@@ -607,8 +616,9 @@ A void the store refuses after a charge attempt holds the kiosk
 - **Verified on hardware (2026-09-29):** walk-away → prompt → void → Home;
   live Cloud API orderquery for Joe's (S10-0004 approved, `…000002` invalid →
   S10-0005 not charged).
-- **Bridge fix:** `:app:compileDebugKotlin` passes; not yet on hardware (see
-  the unchecked item above).
+- **Bridge fix:** verified on the staging terminal with the 2.5.4 preview APK
+  (S10-0006 cancel → no staff lock; S10-0007 late approval recorded from
+  Register's own result).
 
 ## Performance
 

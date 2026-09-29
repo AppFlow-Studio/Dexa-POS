@@ -136,3 +136,40 @@ describe("kiosk orders — dates in the store's timezone", () => {
     expect(dayHeading("2026-09-22")).toBe("Tuesday, Sep 22");
   });
 });
+
+describe("kiosk orders — a refund that cancels the whole charge", () => {
+  const { wholeChargeCancelTotal } = jest.requireActual(
+    "@/components/kiosk/shared/kioskOrders",
+  );
+  const pay = (over: Record<string, unknown>) => ({
+    id: "p1",
+    amount: 9.74,
+    tip_amount: 1.46,
+    refunded_amount: 0,
+    status: "captured",
+    is_voided: false,
+    terminal_type: "codepay",
+    is_settled: false,
+    ...over,
+  });
+
+  test("CodePay payment not batched out: the tip goes back too", () => {
+    expect(wholeChargeCancelTotal([pay({})])).toBe(11.2);
+  });
+
+  test("batched out, already part-refunded, no tip, or another processor: refund amount only", () => {
+    expect(wholeChargeCancelTotal([pay({ is_settled: true })])).toBeNull();
+    expect(wholeChargeCancelTotal([pay({ refunded_amount: 2 })])).toBeNull();
+    expect(wholeChargeCancelTotal([pay({ tip_amount: 0 })])).toBeNull();
+    expect(wholeChargeCancelTotal([pay({ terminal_type: "castles" })])).toBeNull();
+  });
+
+  test("split order: only the open-batch CodePay payment adds its tip", () => {
+    expect(
+      wholeChargeCancelTotal([
+        pay({}),
+        pay({ id: "p2", amount: 5, tip_amount: 1, is_settled: true }),
+      ]),
+    ).toBe(16.2);
+  });
+});

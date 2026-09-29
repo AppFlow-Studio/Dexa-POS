@@ -35,7 +35,7 @@ export const DETAIL_SELECT = `id, order_number, display_number, created_at, stat
     order_item_modifiers(modifier_name, is_no, quantity)),
   order_payments(id, amount, tip_amount, refunded_amount, payment_method, status,
     is_voided, card_type, card_last_four, reference_number, transaction_id,
-    initiated_at)`;
+    initiated_at, is_settled, terminal_type)`;
 
 export interface PaymentRow {
   id: string;
@@ -50,6 +50,9 @@ export interface PaymentRow {
   reference_number?: string | null;
   transaction_id?: string | null;
   initiated_at?: string | null;
+  /** True once the payment's batch is closed (batched out). */
+  is_settled?: boolean | null;
+  terminal_type?: string | null;
 }
 
 export interface OrderRow {
@@ -125,6 +128,29 @@ export function orderState(order: OrderRow): { label: string; tone: Tone } {
   if (refunded > 0) return { label: "Partly refunded", tone: "amber" };
   if (paid > 0) return { label: "Paid", tone: "green" };
   return { label: "Unpaid", tone: "gray" };
+}
+
+/**
+ * CodePay cancels (voids) a payment that isn't batched out yet instead of
+ * refunding it, and a void gives back the whole charge, tip included. Returns
+ * what a full refund will really put back on the card(s) when that applies,
+ * or null when the refund amount is all that goes back. `amount` excludes the
+ * tip. RefundService makes the same call (processCodePayTerminalRefund).
+ */
+export function wholeChargeCancelTotal(payments: PaymentRow[]): number | null {
+  let total = new Decimal(0);
+  let tips = new Decimal(0);
+  for (const p of payments) {
+    if (!isCollected(p) || remainingOf(p).lte(0)) continue;
+    const cancels =
+      p.terminal_type === "codepay" &&
+      !p.is_settled &&
+      new Decimal(p.refunded_amount ?? 0).lte(0);
+    const tip = cancels ? new Decimal(p.tip_amount ?? 0) : new Decimal(0);
+    tips = tips.plus(tip);
+    total = total.plus(remainingOf(p)).plus(tip);
+  }
+  return tips.gt(0) ? round2(total) : null;
 }
 
 /**

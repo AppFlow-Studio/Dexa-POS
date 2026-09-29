@@ -19,6 +19,7 @@ import {
   paymentStatusLabel,
   REFUND_REASONS,
   summarizePayments,
+  wholeChargeCancelTotal,
   timeLabel,
   type OrderDetailRow,
 } from "./kioskOrders";
@@ -376,12 +377,17 @@ function RefundCard({
   const collected = payments.filter(isCollected);
   const destination =
     collected.length === 1 ? paymentLabel(collected[0]) : "the original payments";
+  // Not batched out yet: the card charge is cancelled whole, tip included.
+  const cancelTotal = mode === "full" ? wholeChargeCancelTotal(payments) : null;
 
   const submit = () => {
     if (!canRefund || !reason) return;
     showDialog(
       `Refund ${kioskMoney(amount)}?`,
-      `Order ${orderNumber(order)} · goes back to ${destination}. This can't be undone.`,
+      `Order ${orderNumber(order)} · goes back to ${destination}. This can't be undone.` +
+        (cancelTotal != null
+          ? ` Not batched out yet, so the whole card charge of ${kioskMoney(cancelTotal)} is cancelled, tip included.`
+          : ""),
       [
         { text: "Cancel", style: "cancel" },
         {

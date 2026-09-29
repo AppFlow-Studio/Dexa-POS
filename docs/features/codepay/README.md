@@ -37,7 +37,7 @@ server-side in the `codepay-transaction-status` edge function) — see
 | Response → JSONB mapper | `services/terminals/codepay-response-mapper.ts` |
 | POS sale routing | `components/bill/ paymentView/CardPaymentView.tsx` (codepay branch) |
 | Kiosk sale routing | `services/terminals/chargeActiveTerminal.ts` |
-| Refund/void routing | `services/refundService.ts` (`processCodePayTerminalRefund`) |
+| Refund/void routing | `services/refundService.ts` (`processCodePayTerminalRefund`) → `CodePayService.reverse`; rules and codes in `services/terminals/codepay-reversal.ts` |
 | Settlement | `services/settlementService.ts` (`runCodePaySettlement`), `services/pendingFinalize.ts` |
 | Manual batch-out UI | `components/settings/batchout/BatchoutPanel.tsx` (gated by `CODEPAY_BATCHOUT_ENABLED`) |
 
@@ -136,10 +136,139 @@ otherwise route the batch to `needs_review`. Return
 The client also replays this via `pending_finalize_journal` (processor `codepay`)
 if the first finalize call fails after a confirmed close.
 
+## Refunds and voids (2026-09-29)
+
+Every CodePay refund attempted before this change failed: 6 on prod (all on
+2026-09-29, order S13-0001, Coffee Bar Kiosk 5, Bread & Butter) and 2 on
+staging. Each failed in about 100 ms with no terminal response, because it was
+started on a device that isn't a CodePay terminal. PR #221 (Kiosk Settings →
+Orders) lets staff refund on the kiosk itself; this section is what happens
+next.
+
+### What the CodePay docs say
+
+Source: `developer.codepay.us/docs/guides/integrate-with-codepay-terminal`,
+`/docs/CloudAPI`, `/docs/ResponseCodes/{codepay,tsys,fiserv}`.
+
+- **Void** (`trans_type 2`): "You can cancel a payment any time while it is
+  still in the batch. Once the batch is closed, the payment can no longer be
+  canceled." It cancels the whole charge.
+- **Referenced refund** (`trans_type 3` + `orig_merchant_order_no`): no card
+  needed. The Cloud refund API allows partial amounts.
+- **Unreferenced refund** (`trans_type 3`, no `orig_merchant_order_no`): money
+  goes to whatever card is presented. Dexa never sends this.
+- Every documented refund and void sample carries `pay_scenario: "SWIPE_CARD"`.
+  Dexa's requests didn't; they do now.
+- **No time limit is documented** for a referenced refund, and no retention
+  period for transactions. See "How far back" below.
+
+### What Dexa does (`CodePayService.reverse`, rules in `codepay-reversal.ts`)
+
+| Payment | Refund asked for | Sent to Register |
+|---|---|---|
+| Not batched out, nothing refunded yet | the whole payment | **Void** |
+| Not batched out | part of it (custom amount, some items) | Refund |
+| Batched out | any | Refund |
+
+"Not batched out" is `order_payments.is_settled = false`. That flag is only
+set by Dexa's own batch-out, so it can lag the host (on 2026-09-29 prod still
+showed all 53 payments from 9/28 as open). The host decides:
+
+- Void turned down because the batch closed → a refund is sent, once.
+- Refund turned down because the batch is still open → a void is sent, once,
+  and only for a whole payment.
+- A partial refund turned down for that reason stops, and staff are told to
+  refund in full or batch out first.
+- Anything else (decline, host error, cancel on the terminal) is final. The
+  second operation only follows a definitive "wrong operation for this batch
+  state" answer, so no money has moved when it is sent.
+
+| Meaning | Codes | Then |
+|---|---|---|
+| Batch closed, can't void | CodePay `ET008`, `ET007`, `CF008`; TSYS `D0004`, `D0090`, `E8908`, `E8909`; Fiserv 902 / 942 / 414 and CodePay 119 by message | Refund |
+| Batch open, can't refund | TSYS `D0005`, `D0091` | Void (whole payment only) |
+| Original not found | `ET002`, `ET003`, `E04110`, `E04111` | Stop |
+| Amount too high | `E04126`, `E04130` | Stop |
+| Partial not allowed | `E04132`, TSYS `E1502` | Stop |
+| Already reversed | Fiserv 334 / 772 / 774 by message | Stop |
+| Gateway or setup error | `SYS…`, `E07…` | Stop, never read as a verdict |
+
+A processor prefix is stripped before matching (`TS-D0005` → `D0005`).
+
+**Unknown outcome** (watchdog or unreadable result). Dexa asks Register about
+the reversal's own `merchant_order_no` (`ecrhub.pay.query`), and for a void
+also whether the sale now reads `trans_status 3`. A lookup can only turn the
+result into a success. Otherwise the refund fails with the reference to look
+up (`CPRF_…` / `CPVD_…`), which is also written to the refund journal
+(`terminalTxnId`) before the Intent is sent. The other operation is never
+tried after an unknown outcome.
+
+**What is recorded.** Always a refund (`reversal_type = 'refund'`, refund
+receipt as usual), whichever operation ran. The operation and every attempt
+are in `reversals.terminal_response.codepay_reversal`.
+
+**Tips.** `order_payments.amount` excludes the tip, and a refund gives back
+`amount` only (same as every other processor). A void cancels the whole
+charge, so the tip goes back too. The kiosk says so before staff confirm
+(`wholeChargeCancelTotal`), and the result toast repeats it.
+
+**Which device.** CodePay reversals launch Register, so they only run on a
+CodePay terminal. Anywhere else the refund stops before anything is recorded
+and tells staff to open the order on that device. A CodePay payment is always
+routed to CodePay, even if its `payment_terminals` row is gone (it used to
+fall through to Dejavoo) and whatever terminal the station has now.
+
+**Kill switch.** `CODEPAY_REVERSAL_ROUTING_ENABLED` in `types/codepay.ts`
+(OTA). Off = every reversal is a referenced refund with no second attempt.
+
+### How far back
+
+| Layer | Limit |
+|---|---|
+| CodePay payments in prod | Oldest is 2026-09-16; 279 in total on 2026-09-29 |
+| Orders in prod | Oldest is 2026-04-14; nothing deletes or archives orders or payments |
+| Kiosk Settings → Orders | Any past date. Presets stop at 30 days, the calendar has no earliest date |
+| POS Previous Orders | Any past date through Custom range |
+| Dexa refund rules | No age check anywhere |
+| CodePay docs | No refund window or retention period stated |
+
+So the real limit is the processor's, and it is not published. Ask CodePay /
+MTech how long after a sale a referenced refund is accepted on the TSYS MID.
+When it is refused, the refund fails with the host's reason.
+
+### Verify on a terminal
+
+- [ ] Same-day full refund on the kiosk (open batch): Register runs a void,
+      the card gets the whole charge back, the order reads Refunded.
+- [ ] Full refund after batch-out: Register runs a refund for `amount`.
+- [ ] Custom amount after batch-out.
+- [ ] Custom amount before batch-out: note the exact code and message.
+- [ ] Void on a payment whose batch closed on the host while `is_settled` is
+      still false: note the code, confirm the refund follows.
+- [ ] Record the real `response_code` / `response_msg` for each decline here.
+      The code list above is from the docs, not from a terminal.
+- [ ] Does Register accept `tip_amount` on a void, and is `order_amount` the
+      base or the total? Dexa sends base + tip, as the sale did.
+- [ ] Refund from a POS register that is not a CodePay terminal: blocked with
+      the "open the order on that device" message, no reversal row.
+
+### Open
+
+- A void gives the tip back but `order_payments.tip_amount` still holds it, so
+  tip reports overstate by that tip. Needs a server-side decision (website
+  repo migration), e.g. zero the tip when the terminal voided.
+- After batch-out the tip stays with the merchant on a full refund. If a full
+  refund should return the tip too, send `tip_amount` on the refund and track
+  it; that is a product decision for every processor, not just CodePay.
+- `prepare_codepay_settlement` only pins payments with `refunded_amount = 0`,
+  so a partly refunded open-batch payment is never marked settled.
+- The manual "mark completed" recovery screen still labels refunds as Castles
+  (`useRefundVerification.ts`).
+
 ## Status
 
 - **Phase 1 — sale**: done (native Intent bridge, service, mapper, POS + kiosk routing).
-- **Phase 2 — refund/void/query**: done (`refundService.processCodePayTerminalRefund`, referenced by `orig_merchant_order_no`).
+- **Phase 2 — refund/void/query**: done (`refundService.processCodePayTerminalRefund`, referenced by `orig_merchant_order_no`). Batch-aware void/refund routing added 2026-09-29, see "Refunds and voids"; not yet run on a terminal.
 - **Phase 3 — settlement**: client done (`runCodePaySettlement` + pending-finalize replay). Manual batch-out only (BatchoutPanel, kill switch `CODEPAY_BATCHOUT_ENABLED` OFF). **Blocked on backend RPCs** (above).
 - **Phase 4 — tip-adjust / health / identity / test / labels**: done.
   - Tip adjust: `useTipAdjustMutation` codepay branch (topic `ecrhub.pay.tip.adjustment`, references original by `merchant_order_no`). UI gating (`getTerminalMatchInfo`) already allows it.
