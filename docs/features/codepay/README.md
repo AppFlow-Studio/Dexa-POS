@@ -238,8 +238,12 @@ When it is refused, the refund fails with the host's reason.
 
 ### Verify on a terminal
 
-- [ ] Same-day full refund on the kiosk (open batch): Register runs a void,
+- [x] Same-day full refund on the kiosk (open batch): Register runs a void,
       the card gets the whole charge back, the order reads Refunded.
+      **Done 2026-09-29 on the staging terminal**, two $0.01 sales with no
+      tip (S10-0004, S10-0007). Result: `response_code 000`, `trans_type 2`,
+      `trans_status 2`, a 12-digit `ref_no`, a 6-digit `auth_code`, and a
+      **23-character `trans_no`**. Still to do with a tip on the sale.
 - [ ] Full refund after batch-out: Register runs a refund for `amount`.
 - [ ] Custom amount after batch-out.
 - [ ] Custom amount before batch-out: note the exact code and message.
@@ -252,8 +256,23 @@ When it is refused, the refund fails with the host's reason.
 - [ ] Refund from a POS register that is not a CodePay terminal: blocked with
       the "open the order on that device" message, no reversal row.
 
+### Found on the terminal
+
+- **2026-09-29: "Payment update failed: value too long for type character
+  varying(20)".** The void was approved, but `apply_refund_to_payment` was
+  handed CodePay's 23-character `trans_no` for `order_payments.return_number`
+  (`varchar(20)`), so Postgres rejected the whole update and the payment still
+  read as paid. `OrderService` now fits every refund detail to its column
+  before the call (`REFUND_DETAIL_MAX`): a reference that doesn't fit is left
+  out, never cut short, and the full value stays in
+  `reversals.terminal_response`. Both staging payments were re-recorded
+  through the same RPC.
+
 ### Open
 
+- `order_payments.return_number` is `varchar(20)` and `return_auth_code` /
+  `auth_code` are `varchar(10)`. To keep CodePay's `trans_no` on the payment
+  row, widen `return_number` (website repo migration).
 - A void gives the tip back but `order_payments.tip_amount` still holds it, so
   tip reports overstate by that tip. Needs a server-side decision (website
   repo migration), e.g. zero the tip when the terminal voided.

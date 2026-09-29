@@ -200,6 +200,50 @@ export interface HistoryOrderSummary {
   payment_status: string | null;
 }
 
+
+/**
+ * Column sizes for the optional details recorded with a refund
+ * (order_payments.return_* and reversals.*). Postgres rejects the whole
+ * statement when one value is too long, and by then the card has already been
+ * refunded. CodePay's 23-character trans_no did exactly that to
+ * return_number (20) on 2026-09-29.
+ */
+const REFUND_DETAIL_MAX = {
+  returnRrn: 50,
+  returnAuthCode: 10,
+  returnReferenceId: 50,
+  returnNumber: 20,
+  returnReason: 100,
+  reversalResultCode: 10,
+  reversalResponseMessage: 255,
+  reversalPspReference: 50,
+} as const;
+
+/**
+ * A reference that doesn't fit its column is left out, never cut short: a
+ * truncated reference matches nothing. The full value stays in
+ * reversals.terminal_response.
+ */
+function fitReference(
+  value: string | null | undefined,
+  max: number,
+  column: string,
+): string | null {
+  const v = typeof value === "string" ? value.trim() : "";
+  if (!v) return null;
+  if (v.length <= max) return v;
+  console.warn(
+    `[OrderService] ${column} left empty: ${v.length} characters, column holds ${max}`,
+  );
+  return null;
+}
+
+/** Free text is cut to fit. */
+function fitText(value: string | null | undefined, max: number): string | null {
+  if (typeof value !== "string" || !value) return null;
+  return value.length <= max ? value : value.slice(0, max);
+}
+
 export class OrderService {
   /**
    * Validates that the current station session is still active.
@@ -949,9 +993,20 @@ export class OrderService {
         p_status: status,
         p_terminal_response: terminalResponse ?? null,
         p_emv_data: emvData ?? null,
-        p_result_code: resultCode ?? null,
-        p_response_message: responseMessage ?? null,
-        p_reversal_psp_reference: reversalPspReference ?? null,
+        p_result_code: fitReference(
+          resultCode,
+          REFUND_DETAIL_MAX.reversalResultCode,
+          "reversals.result_code",
+        ),
+        p_response_message: fitText(
+          responseMessage,
+          REFUND_DETAIL_MAX.reversalResponseMessage,
+        ),
+        p_reversal_psp_reference: fitReference(
+          reversalPspReference,
+          REFUND_DETAIL_MAX.reversalPspReference,
+          "reversals.reversal_psp_reference",
+        ),
       },
       { deadline: DEADLINES.read, keyOverride: opts?.keyOverride },
     );
@@ -1001,11 +1056,30 @@ export class OrderService {
         p_refund_amount: refundAmount,
         p_reversal_type: reversalType,
         p_tip_refund_amount: options?.tipRefundAmount ?? 0,
-        p_return_rrn: returnDetails?.rrn ?? null,
-        p_return_auth_code: returnDetails?.authCode ?? null,
-        p_return_reference_id: returnDetails?.referenceId ?? null,
-        p_return_number: returnDetails?.transactionNumber ?? null,
-        p_return_reason: returnDetails?.reason ?? null,
+        p_return_rrn: fitReference(
+          returnDetails?.rrn,
+          REFUND_DETAIL_MAX.returnRrn,
+          "order_payments.return_rrn",
+        ),
+        p_return_auth_code: fitReference(
+          returnDetails?.authCode,
+          REFUND_DETAIL_MAX.returnAuthCode,
+          "order_payments.return_auth_code",
+        ),
+        p_return_reference_id: fitReference(
+          returnDetails?.referenceId,
+          REFUND_DETAIL_MAX.returnReferenceId,
+          "order_payments.return_reference_id",
+        ),
+        p_return_number: fitReference(
+          returnDetails?.transactionNumber,
+          REFUND_DETAIL_MAX.returnNumber,
+          "order_payments.return_number",
+        ),
+        p_return_reason: fitText(
+          returnDetails?.reason,
+          REFUND_DETAIL_MAX.returnReason,
+        ),
         p_initiated_by: returnDetails?.initiatedBy ?? null,
         p_restore_paid_quantity: options?.restorePaidQuantity ?? false,
       },
