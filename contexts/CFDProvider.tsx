@@ -107,6 +107,8 @@ interface CFDContextType {
   serverStatus: CFDServerStatus
   isServerReady: boolean
   isConnected: boolean
+  /** A customer can see a display: a paired CFD client or the built-in screen. */
+  hasCustomerDisplay: boolean
   clientCount: number
   connectedClientIds: string[]
   serverError: string | null
@@ -168,6 +170,7 @@ const noopCFDValue: CFDContextType = {
   serverStatus: 'disabled',
   isServerReady: false,
   isConnected: false,
+  hasCustomerDisplay: false,
   clientCount: 0,
   connectedClientIds: [],
   serverError: null,
@@ -2357,7 +2360,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       // never fall through to another terminal's branch below.
       if (captured.terminalType === 'atom') {
         console.log('[CFD tip-adjust] ATOM is tip-before-sale — no post-capture adjust')
-        useTipAdjustStore.getState().clear()
+        useTipAdjustStore.getState().clear(captured.referenceId)
         setTipResponse(null)
         return
       }
@@ -2366,52 +2369,51 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         return
       }
 
-      const customerTipCents = response.tipAmount
-      const customerTip = customerTipCents / 100
-      const posTip = captured.tipAmount
-
-      console.log('[CFD tip-adjust] start', {
-        customerTip,
-        posTip,
-        terminalType: captured.terminalType,
-        rrn: captured.rrn,
-        dbPaymentId: captured.dbPaymentId
-      })
-
-      updateTip(customerTip, response.tipPercentage)
-      showProcessing('card', customerTip)
-      setTipResponse(null)
-
-      // Same-tip skip: nothing to adjust on terminal, just persist if needed.
-      if (Math.abs(customerTip - posTip) < 0.01) {
-        console.log('[CFD tip-adjust] same tip — skipping terminal adjust')
-        showApproved()
-        useTipAdjustStore.getState().finishInFlight()
-        return
-      }
-
-      const terminal =
-        useStoreSettingsStore.getState().selectedStation?.payment_terminal
-      if (!terminal) {
-        console.error('[CFD tip-adjust] no terminal configured')
-        showApproved()
-        useTipAdjustStore.getState().finishInFlight()
-        return
-      }
-
-      // Settle delay: the terminal needs ~1.5s after the original sale
-      // completes before it can accept another command. Without this
-      // buffer, instant back-to-back sale + tipAdjust crashes Castles
-      // C20Pro / Landi units (terminal is still in "Approved"
-      // post-display when we hit it). The host previously got this for
-      // free via React render scheduling between the sale-completion
-      // effect and the tip-adjust effect; routing through CFDProvider
-      // removes that natural gap so we add it explicitly.
-      console.log('[CFD tip-adjust] settling 1.5s before terminal command')
-      await new Promise<void>(resolve => setTimeout(resolve, 1500))
-
-      let terminalTipAdjustSucceeded = false
+      // Everything past startInFlight() runs inside this try so the `finally`
+      // below always releases the slot. A slot left in flight would keep the
+      // split screen's "Pay for next guest" button disabled.
       try {
+        const customerTipCents = response.tipAmount
+        const customerTip = customerTipCents / 100
+        const posTip = captured.tipAmount
+
+        console.log('[CFD tip-adjust] start', {
+          customerTip,
+          posTip,
+          terminalType: captured.terminalType,
+          rrn: captured.rrn,
+          dbPaymentId: captured.dbPaymentId
+        })
+
+        updateTip(customerTip, response.tipPercentage)
+        showProcessing('card', customerTip)
+        setTipResponse(null)
+
+        // Same-tip skip: nothing to adjust on terminal, just persist if needed.
+        if (Math.abs(customerTip - posTip) < 0.01) {
+          console.log('[CFD tip-adjust] same tip — skipping terminal adjust')
+          return
+        }
+
+        const terminal =
+          useStoreSettingsStore.getState().selectedStation?.payment_terminal
+        if (!terminal) {
+          console.error('[CFD tip-adjust] no terminal configured')
+          return
+        }
+
+        // Settle delay: the terminal needs ~1.5s after the original sale
+        // completes before it can accept another command. Without this
+        // buffer, instant back-to-back sale + tipAdjust crashes Castles
+        // C20Pro / Landi units (terminal is still in "Approved"
+        // post-display when we hit it). The host previously got this for
+        // free via React render scheduling between the sale-completion
+        // effect and the tip-adjust effect; routing through CFDProvider
+        // removes that natural gap so we add it explicitly.
+        console.log('[CFD tip-adjust] settling 1.5s before terminal command')
+        await new Promise<void>(resolve => setTimeout(resolve, 1500))
+
+        let terminalTipAdjustSucceeded = false
         if (captured.terminalType === 'castles') {
           const service = getSharedCastlesService()
           const isUsb = terminal.connection_type === 'usb'
@@ -2792,7 +2794,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         console.error('[CFD tip-adjust] runner error:', err)
       } finally {
         showApproved()
-        useTipAdjustStore.getState().finishInFlight()
+        useTipAdjustStore.getState().finishInFlight(captured.referenceId)
       }
     },
     [showApproved, showProcessing, supabase, updateTip]
@@ -2805,6 +2807,31 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     if (!tipResponse) return
     void runPostCaptureTipAdjust(tipResponse)
   }, [tipResponse, runPostCaptureTipAdjust])
+
+  // Tip-selection timeout. Owned here because CardPaymentView unmounts the
+  // moment the sale completes (the sheet switches to the success view), so a
+  // timer armed there could never be cancelled and fired into the next
+  // guest's turn on a split check. Re-armed per capture, dropped once the
+  // runner takes the slot.
+  const capturedTip = useTipAdjustStore(s => s.captured)
+  const tipAdjustInFlight = useTipAdjustStore(s => s.inFlight)
+  useEffect(() => {
+    if (!capturedTip || tipAdjustInFlight) return
+    const { referenceId, expiresAt } = capturedTip
+    const timer = setTimeout(
+      () => {
+        const store = useTipAdjustStore.getState()
+        if (store.inFlight || store.captured?.referenceId !== referenceId) return
+        console.log('[CFD tip-adjust] tip selection timed out — skipping')
+        store.clear(referenceId)
+        // Only while the customer is still on the tip screen. If the operator
+        // has moved on, the display belongs to the next sale.
+        if (activeScreenStateRef.current === 'tip_selection') showApproved()
+      },
+      Math.max(0, expiresAt - Date.now())
+    )
+    return () => clearTimeout(timer)
+  }, [capturedTip, tipAdjustInFlight, showApproved])
 
   const clearResultAutoIdleTimer = useCallback(() => {
     if (!resultAutoIdleTimerRef.current) return
@@ -3667,6 +3694,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     serverStatus,
     isServerReady: serverStatus === 'ready' || serverStatus === 'connected',
     isConnected,
+    hasCustomerDisplay: isConnected || hasBuiltinCfd,
     clientCount,
     connectedClientIds,
     serverError,

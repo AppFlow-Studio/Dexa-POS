@@ -37,6 +37,9 @@ export function isCodePayBridgeAvailable(): boolean {
  * Launch a CodePay Register transaction and await its Intent result.
  * Rejects if the native module is unavailable or CodePay Register isn't
  * installed / no foreground activity / a call is already in flight.
+ *
+ * `timeoutMs` is the native watchdog. It resolves `timedOut` only once Dexa is
+ * back in front with no result; while Register is still on screen it waits.
  */
 export function codepayTransact(
   topic: string,

@@ -367,6 +367,11 @@ export const CODEPAY_TERMINAL_DISPLAY_NAME = "CodePay (on-terminal)";
  * result first. When both were 120s, a slow customer raced the two timers: our
  * watchdog won, the real result was dropped, and the kiosk locked on a
  * "may have charged" sale that almost never charged.
+ *
+ * The native watchdog only gives up once Dexa is back in front
+ * (CodePayBridgeModule). While Register still covers Dexa — e.g. its "Read
+ * data failed" screen, which pauses Register's own expiry — it keeps waiting,
+ * so a late Cancel or payment still reaches JS.
  */
 export const CODEPAY_SALE_TIMEOUT_MS = (CODEPAY_DEFAULT_EXPIRES_SEC + 60) * 1000;
 

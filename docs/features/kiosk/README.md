@@ -492,9 +492,18 @@ worse than showing one the detail screen will handle.
 A CodePay kiosk's card screen is CodePay Register, which runs in front of Dexa.
 Dexa can't time it (JS timers pause) or draw over it, so the window is
 Register's own order expiry, set per kiosk profile:
-`kiosk_profiles.payment_window_seconds` (45–180, NULL = legacy 120 s, no
-prompt). Profiles are polled about every 3 min and applied when idle, which
-makes the column the canary switch and the rollback switch.
+`kiosk_profiles.payment_window_seconds` (45–180, default 60 since
+`20260929120000`, which also backfilled existing profiles; NULL = legacy
+120 s, no prompt). Profiles are polled about every 3 min and applied when
+idle, so setting a profile to NULL is the rollback switch. Register won't go
+below about 60 s: a 45 s window still closed at ~60 s on the terminal.
+
+If the card read fails, Register shows its own "Read data failed" screen
+(Cancel / OK to extend), which pauses the window until someone taps. Dexa
+waits for that answer (`CodePayBridgeModule` defers its watchdog while
+Register is in front), so a Cancel there comes back as no charge → "Need more
+time?", never a staff lock. A walk-away on that screen leaves the kiosk on
+Register until someone taps; Dexa can't close it.
 
 When the window lapses with no card read, the kiosk asks "Need more time?"
 (`KioskPaymentTimeoutModal`, 30 s countdown):
@@ -522,7 +531,9 @@ A void the store refuses after a charge attempt holds the kiosk
    CodePay terminal / portal for a charge before doing anything:
    - **Charged:** record the payment or refund it, and hand the customer their
      order.
-   - **Not charged:** void the draft order.
+   - **Not charged:** void the draft order. For CodePay, "not charged" can be
+     proven from the host: no `trans_no` for that MID after the last recorded
+     sale (`scripts/codepay-cloud-probe.ts --trans-no …` in the website repo).
 3. Tap **Reconciled – unlock kiosk** (`KioskDiagnosticsScreen.tsx`). This only
    unlocks checkout. It never charges, refunds or changes payment records.
 
@@ -530,12 +541,17 @@ A void the store refuses after a charge attempt holds the kiosk
 - [x] Void reason + result plumbing (`useOrderStore.voidOrder(id, {reason})`, `void_blocked` hold).
 - [x] Idle timer counts from the last checkout release (time inside Register isn't idleness).
 - [x] `kiosk_profiles.payment_window_seconds` migration (website repo; staging first, prod by user).
+- [x] Window on by default at 60 s (`20260929120000`, backfills NULL profiles; staging applied 2026-09-29 — first as 45, moved to 60 the same day — prod by user, after the kiosks have the bridge-fix APK).
+- [x] Staging `CODEPAY_CLOUD_CONFIG` set for Uptown Branch (2026-09-29); probe passed (orderquery approved, unknown ref → not_found).
 - [x] Register window + no-card-read expiry classification; `000` before `RESULT_CANCELED`; foreground gate after a watchdog.
 - [x] Attempt loop + "Need more time?" modal; persisted review marker cleared during the prompt.
 - [x] Host status lookup (edge function + client) with prior-attempt check before relaunch.
 - [x] Sentry telemetry (`kiosk.payment.window`, `kiosk.codepay.cloud_lookup`, assistance `cause`).
-- [ ] Wave 0 hardware spike: does Register return by itself at `expires`? Minimum `expires`? A tap at 55 s?
-- [ ] Probe the live CodePay Cloud API (`scripts/codepay-cloud-probe.ts`); settle `trans_status 9`.
+- [x] Wave 0 hardware spike (2026-09-29, staging CodePay terminal): with no card presented, Register closes the card screen by itself at about 60 s (the profile was 45, so ~60 s is Register's floor). The kiosk then shows "Need more time?"; Yes relaunches, and Cancel / no answer voids the order and goes Home with no staff unlock. Still open: a tap at 55 s.
+- [x] Staff lock on an unpaid "Read data failed" sale (S10-0005, 2026-09-29): Register's read-failure screen outlived our watchdog, the bridge dropped Register's later Cancel, and the unconfirmable host lookup held the kiosk. Fix: `CodePayBridgeModule` never resolves while Register is in front, resolves 5 s after Dexa returns without a result, and logs any late result it drops. Native → needs an EAS build on every CodePay kiosk.
+- [ ] Bridge fix on hardware: "Read data failed" → wait >2 min → Cancel shows the prompt (not staff); → OK + tap pays and records; walk-away and normal tap unchanged; time whether Register ever closes the read-failure screen by itself.
+- [x] Probe the live CodePay Cloud API (`scripts/codepay-cloud-probe.ts`).
+- [ ] Settle `trans_status 9` (a walk-away on staging shows what an expired ECR sale reports).
 - [ ] Staging device tests (plan Waves 1 and 3), then the Deli Kiosk 8 canary via a cloned profile.
 
 ### Review
@@ -549,8 +565,11 @@ A void the store refuses after a charge attempt holds the kiosk
   - `tsc` is clean.
   - The full jest suite is green except one pre-existing failure, a
     source-regex test on `syncOrderFromDatabase` formatting.
-- **Not yet verified:** real Register expiry behaviour and the live Cloud API
-  (see the unchecked items above).
+- **Verified on hardware (2026-09-29):** walk-away → prompt → void → Home;
+  live Cloud API orderquery for Joe's (S10-0004 approved, `…000002` invalid →
+  S10-0005 not charged).
+- **Bridge fix:** `:app:compileDebugKotlin` passes; not yet on hardware (see
+  the unchecked item above).
 
 ## Performance
 

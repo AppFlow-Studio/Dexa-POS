@@ -1712,6 +1712,19 @@ function renderKitchenSection (
               Dine In — Table 5
             </Text>
           )}
+          <Text
+            style={{
+              color: '#111827',
+              textAlign: 'center',
+              fontWeight: '700',
+              fontSize: s(8),
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+              marginTop: s(1)
+            }}
+          >
+            Name: Alex R.
+          </Text>
           {config.showServerName && (
             <Text
               style={{
