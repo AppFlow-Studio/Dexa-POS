@@ -34,7 +34,7 @@ import KDSSoundService, {
 } from "@/services/kds/kdsSoundService";
 import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useKDSStore } from "@/stores/useKDSStore";
+import { reprintKdsTicket, useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
@@ -44,6 +44,7 @@ import {
     CheckSquare,
     Flame,
     ListChecks,
+    Printer,
     RotateCcw,
     Settings,
     ShoppingBag,
@@ -3241,6 +3242,43 @@ const KitchenDisplayScreen = () => {
     setActionMenu(null);
   }, [actionMenu, toggleRush]);
 
+  const handleReprint = useCallback(() => {
+    if (!actionMenu) return;
+    // Prefer the live ticket — the menu holds the snapshot from when it opened.
+    const ticket =
+      useKDSStore.getState()._ticketsById[actionMenu.ticketId] ??
+      actionMenu.ticket;
+    const label = kdsTicketLabel(ticket);
+    setActionMenu(null);
+    void reprintKdsTicket(ticket).then((result) => {
+      if (result === "queued") {
+        toast.show({
+          title: `Reprinting ticket ${label}`,
+          message: "Sent to this station's printer.",
+          type: "success",
+        });
+      } else if (result === "no_printer") {
+        toast.show({
+          title: "No printer connected",
+          message: "Connect a printer to this station to reprint tickets.",
+          type: "warning",
+        });
+      } else if (result === "nothing_to_print") {
+        toast.show({
+          title: "Nothing to reprint",
+          message: `Ticket ${label} has no active items.`,
+          type: "warning",
+        });
+      } else {
+        toast.show({
+          title: "Reprint failed",
+          message: `Ticket ${label} could not be sent to the printer.`,
+          type: "error",
+        });
+      }
+    });
+  }, [actionMenu, toast]);
+
   const handleItemPress = useCallback(
     (ticketId: string, itemId: string) => {
       markItemDone(ticketId, itemId);
@@ -4335,7 +4373,7 @@ const KitchenDisplayScreen = () => {
             );
             const top = Math.max(
               12,
-              Math.min(actionMenu.position.y - 10, screen.height - 210),
+              Math.min(actionMenu.position.y - 10, screen.height - 252),
             );
 
             return (
@@ -4619,6 +4657,7 @@ const KitchenDisplayScreen = () => {
                     borderWidth: 1,
                     borderColor: colors.success + "66",
                     backgroundColor: colors.success + "16",
+                    marginBottom: s(6),
                   }}
                 >
                   <View
@@ -4639,6 +4678,41 @@ const KitchenDisplayScreen = () => {
                       {getTicketItems(actionMenu.ticket).some((i) => i.recalled)
                         ? "Mark Done"
                         : "Bump Order"}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                {/* Reprint Ticket */}
+                <Pressable
+                  onPress={handleReprint}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                    backgroundColor: "#F9FAFB",
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(8),
+                    }}
+                  >
+                    <Printer size={s(15)} color="#374151" />
+                    <Text
+                      style={{
+                        color: "#111827",
+                        fontSize: s(13),
+                        fontWeight: "700",
+                      }}
+                    >
+                      Reprint Ticket
                     </Text>
                   </View>
                 </Pressable>
