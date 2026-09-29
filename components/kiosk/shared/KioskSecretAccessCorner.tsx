@@ -27,6 +27,10 @@ export function KioskSecretAccessCorner({
   tint?: string;
 }) {
   const [count, setCount] = useState(0);
+  // The running count lives in a ref so the tap handler can decide and call
+  // onTrigger itself. Calling it from inside a setCount updater runs the
+  // parent's setState during render, which React rejects.
+  const countRef = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -36,17 +40,21 @@ export function KioskSecretAccessCorner({
     [],
   );
 
+  const setTaps = (n: number) => {
+    countRef.current = n;
+    setCount(n);
+  };
+
   const handleTap = () => {
     if (timer.current) clearTimeout(timer.current);
-    setCount((c) => {
-      const next = c + 1;
-      if (next >= REQUIRED_TAPS) {
-        onTrigger();
-        return 0;
-      }
-      return next;
-    });
-    timer.current = setTimeout(() => setCount(0), GAP_MS);
+    const next = countRef.current + 1;
+    if (next >= REQUIRED_TAPS) {
+      setTaps(0);
+      onTrigger();
+      return;
+    }
+    setTaps(next);
+    timer.current = setTimeout(() => setTaps(0), GAP_MS);
   };
 
   return (

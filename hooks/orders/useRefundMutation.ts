@@ -58,6 +58,8 @@ export type RefundMutationInput =
       paymentTerminalId: string;
       paymentTerminal?: any;
       stationId?: string;
+      /** Staff profile to record the refund under; defaults to the signed-in employee. */
+      initiatedBy?: string;
     }
   | {
       type: "full" | "payments";
@@ -69,6 +71,8 @@ export type RefundMutationInput =
       paymentTerminalId: string;
       paymentTerminal?: any;
       stationId?: string;
+      /** Staff profile to record the refund under; defaults to the signed-in employee. */
+      initiatedBy?: string;
     };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -124,7 +128,7 @@ async function queueRefundReceipts(
 function buildAndApplyRefundPatch(input: RefundMutationInput): void {
   const now = new Date().toISOString();
   const { loggedInEmployee } = useEmployeeStore.getState();
-  const staffId = loggedInEmployee?.profileId || "unknown";
+  const staffId = input.initiatedBy || loggedInEmployee?.profileId || "unknown";
 
   // Read current order from whichever store has it
   const orderState = useOrderStore.getState();
@@ -297,6 +301,7 @@ export function useRefundMutation() {
               input.type === "items" ? input.selectedItems : undefined,
             refundType: input.type,
             initiatedBy:
+              input.initiatedBy ||
               useEmployeeStore.getState().loggedInEmployee?.profileId ||
               "unknown",
           },
@@ -308,9 +313,13 @@ export function useRefundMutation() {
         };
       }
 
-      const { loggedInEmployee } = useEmployeeStore.getState();
+      // A kiosk has no signed-in employee; it passes the manager who unlocked
+      // its settings instead.
+      const initiatedBy =
+        input.initiatedBy ||
+        useEmployeeStore.getState().loggedInEmployee?.profileId;
 
-      if (!loggedInEmployee?.profileId) {
+      if (!initiatedBy) {
         throw new Error("Staff profile missing. Please re-authenticate.");
       }
       if (!supabase) {
@@ -346,7 +355,7 @@ export function useRefundMutation() {
           },
           reason: reasonType,
           reasonDetail: input.reason,
-          initiatedBy: loggedInEmployee.profileId,
+          initiatedBy,
         };
 
         const result = await refundService.processRefund(refundRequest);
@@ -459,7 +468,7 @@ export function useRefundMutation() {
           refundType,
           reason: reasonType,
           reasonDetail: input.reason,
-          initiatedBy: loggedInEmployee.profileId,
+          initiatedBy,
           referenceId: detail.referenceId,
           payment_terminal_id: input.paymentTerminalId,
           payment_terminal: input.paymentTerminal,

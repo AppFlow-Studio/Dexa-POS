@@ -23,6 +23,7 @@ import {
     channelForStationType,
     selectVisibleMenus,
 } from "@/lib/menu/stationMenuScope";
+import type { EmployeeProfile } from "@/stores/useEmployeeStore";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -91,6 +92,10 @@ export default function KioskScreen() {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  // The manager whose PIN opened settings; refunds there are recorded under them.
+  const [settingsStaff, setSettingsStaff] = useState<EmployeeProfile | null>(
+    null,
+  );
   // Start-screen stops, drawn in the kiosk's own themed dialog rather than a
   // native alert. Only reachable from the attract screen, so `config` is set.
   const { show: showNotice, dialog: notice } = useKioskDialog(
@@ -243,7 +248,11 @@ export default function KioskScreen() {
         >
           <KioskDiagnosticsScreen
             config={config}
-            onClose={() => setShowDiagnostics(false)}
+            staff={settingsStaff}
+            onClose={() => {
+              setShowDiagnostics(false);
+              setSettingsStaff(null);
+            }}
             onRefreshKioskConfig={handleRefreshKioskConfig}
           />
         </Suspense>
@@ -263,6 +272,7 @@ export default function KioskScreen() {
       <KioskErrorBoundary
         onReset={() => {
           setShowDiagnostics(false);
+          setSettingsStaff(null);
           clearCart();
           setIdle(true);
         }}
@@ -294,8 +304,9 @@ export default function KioskScreen() {
       <KioskAdminPinModal
         visible={showPinModal}
         onClose={() => setShowPinModal(false)}
-        onVerified={() => {
+        onVerified={(employee) => {
           setShowPinModal(false);
+          setSettingsStaff(employee);
           setShowDiagnostics(true);
         }}
       />

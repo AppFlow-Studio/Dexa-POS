@@ -41,6 +41,7 @@ import { probeCodePayNow } from "@/services/terminals/codepayDetector";
 import { ensureCodePayTerminalProvisioned } from "@/services/terminals/codepayAutoProvision";
 import { useCodePayTerminalStore } from "@/stores/useCodePayTerminalStore";
 import { useProcessorPreferenceStore } from "@/stores/useProcessorPreferenceStore";
+import type { EmployeeProfile } from "@/stores/useEmployeeStore";
 import type { KioskConfig } from "@/types/kiosk";
 import type { StationPaymentTerminal } from "@/types/station";
 import { useUsbDevices } from "@/hooks/hardware/useUsbDevices";
@@ -71,6 +72,7 @@ import {
     Pencil,
     Plus,
     Printer,
+    Receipt,
     RefreshCw,
     RotateCcw,
     SlidersHorizontal,
@@ -81,7 +83,7 @@ import {
     X,
 } from "@/lib/icons";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Image,
@@ -97,9 +99,15 @@ import {
 
 const TEAL = "#0D9488";
 
+// Pulls in the refund pipeline; only needed once staff open Orders.
+const KioskOrdersPanel = lazy(() =>
+  import("./KioskOrdersPanel").then((m) => ({ default: m.KioskOrdersPanel })),
+);
+
 /** Sections shown in the sidebar. */
 type SectionId =
   | "overview"
+  | "orders"
   | "profile"
   | "menu"
   | "printers"
@@ -119,6 +127,13 @@ const SECTIONS: {
     Icon: MonitorSmartphone,
     title: "Overview",
     subtitle: "Connectivity and station identity",
+  },
+  {
+    id: "orders",
+    label: "Orders",
+    Icon: Receipt,
+    title: "Orders",
+    subtitle: "Orders placed on this kiosk, their payments, and refunds",
   },
   {
     id: "profile",
@@ -178,10 +193,13 @@ const cardShadow: ViewStyle = {
  */
 export function KioskDiagnosticsScreen({
   config,
+  staff = null,
   onClose,
   onRefreshKioskConfig,
 }: {
   config: KioskConfig;
+  /** Manager whose PIN opened settings; null in the DEV shortcut. */
+  staff?: EmployeeProfile | null;
   onClose: () => void;
   onRefreshKioskConfig?: () => void | Promise<unknown>;
 }) {
@@ -2578,6 +2596,16 @@ export function KioskDiagnosticsScreen({
 
   // ── Layout ─────────────────────────────────────────────────────────
 
+  // Orders owns its scrolling (a virtualized list, plus the order beside or
+  // over it), so it gets a plain full-height area instead of the ScrollView
+  // the other sections share.
+  const ordersSection = activeSection === "orders";
+  const ordersPanel = (
+    <Suspense fallback={<ActivityIndicator color={TEAL} />}>
+      <KioskOrdersPanel staff={staff} />
+    </Suspense>
+  );
+
   const sectionContent = (
     <>
       {activeSection === "overview" && renderOverview()}
@@ -2720,21 +2748,25 @@ export function KioskDiagnosticsScreen({
           </ScrollView>
         </View>
 
-        <ScrollView
-          className="flex-1 px-4 py-4"
-          contentContainerStyle={{ gap: 16, paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}
-        >
-          <View>
-            <Text className="text-xl font-bold text-gray-900">
-              {activeMeta.title}
-            </Text>
-            <Text className="text-sm text-gray-400 mt-0.5">
-              {activeMeta.subtitle}
-            </Text>
-          </View>
-          {sectionContent}
-        </ScrollView>
+        {ordersSection ? (
+          <View className="flex-1 px-4 pt-4 pb-4">{ordersPanel}</View>
+        ) : (
+          <ScrollView
+            className="flex-1 px-4 py-4"
+            contentContainerStyle={{ gap: 16, paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <View>
+              <Text className="text-xl font-bold text-gray-900">
+                {activeMeta.title}
+              </Text>
+              <Text className="text-sm text-gray-400 mt-0.5">
+                {activeMeta.subtitle}
+              </Text>
+            </View>
+            {sectionContent}
+          </ScrollView>
+        )}
 
         {endSessionConfirm}
         {dialog}
@@ -2844,13 +2876,17 @@ export function KioskDiagnosticsScreen({
           </Pressable>
         </View>
 
-        <ScrollView
-          className="flex-1 px-8 py-6"
-          contentContainerStyle={{ gap: 20, paddingBottom: 56 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {sectionContent}
-        </ScrollView>
+        {ordersSection ? (
+          <View className="flex-1 px-8 pt-6 pb-6">{ordersPanel}</View>
+        ) : (
+          <ScrollView
+            className="flex-1 px-8 py-6"
+            contentContainerStyle={{ gap: 20, paddingBottom: 56 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {sectionContent}
+          </ScrollView>
+        )}
       </View>
 
       {endSessionConfirm}

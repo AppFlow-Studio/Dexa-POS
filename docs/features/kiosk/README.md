@@ -269,6 +269,45 @@ manager sets on the tablet itself rather than on the website: `menuColumns` and
 `orientationMode`. Both default to deferring — `"auto"` and `"profile"` — so an
 untouched device behaves as though the setting did not exist.
 
+## Kiosk Settings → Orders
+
+`KioskOrdersPanel` (lazy-loaded) lists this station's orders for a date range:
+Today by default, Yesterday, Last 7 / 30 days, or a day or range picked on a
+calendar (`KioskOrdersDateFilter`). Days are the **store's** days
+(`selectedStore.timezone`), so "Today" is right even if the tablet's zone isn't.
+Search matches the order number as staff type. Tapping an order opens
+`KioskOrderDetail`: items and totals, card transactions, and a refund card
+(full or custom amount, a required reason with the same presets as the POS,
+and a confirmation dialog before anything is sent).
+
+- **Layout.** Orders owns its scrolling, so Kiosk Settings gives it a plain
+  full-height area instead of the ScrollView the other sections share. One
+  thing at a time on every screen: the order replaces the list, and "All
+  orders" brings the list back scrolled to that order (`initialScrollIndex`,
+  with exact row sizes via `overrideItemLayout`). Never stack the two: on
+  Android the list card's elevation drew it above an overlaid detail and took
+  its scroll gestures. (A side-by-side split on landscape was tried and
+  dropped — too much on screen at once.)
+- **List.** A FlashList with fixed row heights (76dp rows, 36dp day headings
+  on multi-day ranges), infinite scroll in pages of 25, pull-to-refresh, and a
+  total count from the first page. Changing dates or search keeps the previous
+  list on screen, dimmed, until the new one lands.
+- **Reads only on demand.** The panel is mounted only while the section is
+  open. It fetches one page on open, pages in more as staff scroll, and reads
+  an order only when it's tapped. There is no polling or realtime, and
+  `gcTime: 0` drops the data when staff leave, so the customer-facing kiosk
+  carries nothing between visits.
+- **Same refund pipeline as the POS.** It goes through `useRefundMutation`, so
+  terminal routing, refund receipts and kitchen refund tickets behave as they
+  do on the POS. A custom amount comes off the oldest payment first
+  (`buildRefundDetails` in `kioskOrders.ts`, tested in
+  `__tests__/kioskOrders.test.ts`). While a refund runs, "All orders" is
+  disabled so its progress stays on screen.
+- **Who is on record.** A kiosk has no signed-in employee, so
+  `KioskAdminPinModal` passes the manager whose PIN opened settings through to
+  the panel, and the refund is recorded under them (`initiatedBy`). The DEV
+  shortcut opens settings without a PIN, so refunds are disabled there.
+
 ## Menu search
 
 `KioskSearchBar` + `KioskSearchOverlay` + `kioskMenuSearch.ts`, ranked logic
