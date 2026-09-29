@@ -82,6 +82,7 @@ beforeEach(() => {
   mockOrderStore.ensureActiveOrderCreated.mockResolvedValue("order-1");
   mockOrderStore.recalculateOrder.mockReturnValue({ total_amount: 25 });
   mockOrderStore.sendNewItemsToKitchenForOrder.mockResolvedValue({ status: "sent" });
+  mockOrderStore.voidOrder.mockReturnValue(true);
   mockConnect.mockResolvedValue(undefined);
   mockSale.mockImplementation(async (args) => { args.onStan?.("42"); return approval(args.tipAmount); });
   mockCancel.mockResolvedValue({ sent: true, cleared: true });
@@ -170,7 +171,9 @@ describe("kiosk checkout through the shared Valor adapter", () => {
     mockSale.mockResolvedValue({ success: false, error: "Declined" });
     const { result } = renderHook(() => useKioskCheckout());
     await act(async () => { await result.current.payOrder(0); });
-    expect(mockOrderStore.voidOrder).toHaveBeenCalledWith("order-1");
+    expect(mockOrderStore.voidOrder).toHaveBeenCalledWith("order-1", {
+      reason: "Kiosk: card declined — Declined",
+    });
     expect(mockPay).not.toHaveBeenCalled();
     expect(mockOrderStore.sendNewItemsToKitchenForOrder).not.toHaveBeenCalled();
   });

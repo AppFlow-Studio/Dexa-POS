@@ -8,6 +8,8 @@ This directory contains POS-side database architecture, performance, measurement
 - [POS Supabase Performance Senior Summary — 2026-08-03](POS-SUPABASE-PERFORMANCE-SENIOR-SUMMARY-2026-08-03.md)
 - [POS Runtime Capture Runbook — 2026-08-03](POS-SUPABASE-PERFORMANCE-RUNTIME-RUNBOOK-2026-08-03.md)
 - [POS Partial Runtime Evidence — 2026-08-03](POS-SUPABASE-PERFORMANCE-PARTIAL-RUNTIME-EVIDENCE-2026-08-03.md)
+- [Supabase Connections and Storage — Diagnosis and Fix Plan — 2026-09-24](SUPABASE-CONNECTIONS-AND-STORAGE-2026-09-24.md)
+- [Supabase Connections and Storage — Deployment Checklist — 2026-09-25](SUPABASE-CONNECTIONS-AND-STORAGE-DEPLOYMENT-2026-09-25.md)
 
 The companion SELECT-only collector is `supabase/audits/20260731_database_workload_delta_readonly.sql`.
 

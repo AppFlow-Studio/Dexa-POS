@@ -30,6 +30,15 @@ const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
 // ---------------------------------------------------------------------------
 export { clearSupabaseTokenCache, getCachedTokenExpMs };
 
+// Optional Clerk JWT template for Supabase. The ~60s session token makes the
+// cache re-mint (and Realtime re-auth every private channel) about twice a
+// minute; a template with a 5-minute lifetime rotates every ~4.5 min instead.
+// The template must be registered in Supabase's Clerk third-party auth and
+// carry the claims the database reads: role = "authenticated", sub, org.id,
+// email. Unset (default): the session token, exactly as before.
+const CLERK_SUPABASE_JWT_TEMPLATE =
+  process.env.EXPO_PUBLIC_CLERK_SUPABASE_JWT_TEMPLATE || undefined;
+
 // Single shared client for the entire app lifetime. One WebSocket connection
 // to Supabase Realtime, shared across all 66+ call sites.
 let sharedClient: SupabaseClient | null = null;
@@ -116,14 +125,22 @@ export function useSupabaseClient(): SupabaseClient {
 
   useEffect(() => {
     setClerkGetToken((options?: ClerkGetTokenOptions) =>
-      getTokenStable.current(options),
+      getTokenStable.current(
+        CLERK_SUPABASE_JWT_TEMPLATE
+          ? { ...options, template: CLERK_SUPABASE_JWT_TEMPLATE }
+          : options,
+      ),
     );
   }, []);
 
   // Set immediately on first render too (before useEffect fires)
   if (!hasClerkGetToken()) {
     setClerkGetToken((options?: ClerkGetTokenOptions) =>
-      getTokenStable.current(options),
+      getTokenStable.current(
+        CLERK_SUPABASE_JWT_TEMPLATE
+          ? { ...options, template: CLERK_SUPABASE_JWT_TEMPLATE }
+          : options,
+      ),
     );
   }
 

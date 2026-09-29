@@ -1,9 +1,9 @@
 /**
  * "The backend just moved — pull now, don't wait for the tick."
  *
- * The delta loop runs every 30 s, which is the right steady-state cadence and
- * the wrong latency for the thing a merchant watches most closely: an order
- * they just created. Two paths converge on the same 30 s wait —
+ * The delta loop runs every 2 min (a safety net; this nudge is the primary
+ * trigger), which is the wrong latency for the thing a merchant watches most
+ * closely: an order they just created. Two paths converge on that wait —
  *
  *   - an order created on THIS station is an own-echo broadcast, deliberately
  *     skipped by the mirror write path (see `_layout.tsx`), so nothing writes
@@ -30,7 +30,7 @@ const NUDGE_DEBOUNCE_MS = 1200;
  * A pure trailing debounce STARVES under sustained traffic: peak measured
  * churn is 55 orders/min (Section B4), i.e. broadcasts closer together than
  * the debounce window, so every nudge would reschedule the previous one and
- * the pull would never fire — exactly the 30 s wait this module exists to
+ * the pull would never fire — exactly the tick-length wait this module exists to
  * remove, now with extra steps. Past this ceiling the next nudge runs instead
  * of deferring.
  */

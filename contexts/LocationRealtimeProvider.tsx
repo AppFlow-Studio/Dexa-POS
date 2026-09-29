@@ -54,8 +54,9 @@ interface LocationRealtimeProviderProps {
   enabled?: boolean;
   /**
    * Join the floor/tables channel (default true). Off for a station with no
-   * tables (the kiosk), which would otherwise receive every table-session
-   * change in the location.
+   * tables (KDS, kiosk). It would otherwise receive every table-session
+   * change in the location, and pay for the private join, its access check
+   * and the floor catch-up reads on every reconnect.
    */
   floor?: boolean;
   /** Max reconnect attempts for realtime channels (default 5, increase for always-on KDS) */
@@ -146,14 +147,14 @@ export function LocationRealtimeProvider({
     ordersRealtime.disconnect();
   }, [floorRealtime, ordersRealtime]);
 
-  // Aggregate status
+  // Aggregate status (a floor channel that is off by design is not "down")
   const allConnected =
     (!floor || floorRealtime.isConnected) &&
     // waitlistRealtime.isConnected &&
     ordersRealtime.isConnected;
 
   const isReconnecting =
-    floorRealtime.isReconnecting || 
+    (floor && floorRealtime.isReconnecting) ||
     // waitlistRealtime.isReconnecting ||
     ordersRealtime.isReconnecting;
 
