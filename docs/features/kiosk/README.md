@@ -309,6 +309,22 @@ and a confirmation dialog before anything is sent).
   batch-out, and for custom amounts, it is a refund of the order amount.
   Rules, codes and the terminal checklist: `docs/features/codepay/README.md`
   → "Refunds and voids".
+- **Refund and the kitchen.** A refund by itself never touches the kitchen:
+  the KDS shows an item as refunded only when `order_items.refunded_quantity`
+  is set, and a full refund records its items with
+  `p_skip_quantity_update = true`. Setting that quantity on a full refund is
+  not the fix: `calculate_order_totals_fast` then prices the balance from the
+  items alone and drops the service charge (proved on staging: balance due
+  $36.47 instead of $43.04). So a **full** refund has a "Cancel the order"
+  switch. On, it calls `void_order_and_cancel_reservation` once the refund is
+  recorded (reason `Refunded: <reason>`), which voids the items and cancels
+  their `kds_item_status` rows, so the tickets leave the kitchen screen. The
+  server refuses that call while card money is still on the order (`P0010`),
+  so it can only follow a recorded refund. It defaults to on while the kitchen
+  still has the order (`isStillInKitchen`) and off once everything is served.
+  Off is for "paid another way": the order stays open and the kitchen keeps
+  making it. If the cancel fails after the refund, staff are told the order is
+  still open. Custom amounts never cancel the order.
 - **Who is on record.** A kiosk has no signed-in employee, so
   `KioskAdminPinModal` passes the manager whose PIN opened settings through to
   the panel, and the refund is recorded under them (`initiatedBy`). The DEV

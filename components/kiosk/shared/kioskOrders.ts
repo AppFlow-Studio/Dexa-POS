@@ -31,7 +31,7 @@ export const DETAIL_SELECT = `id, order_number, display_number, created_at, stat
   customer_name, subtotal, tax_amount, discount_amount, service_charge, tip_amount,
   total_amount,
   order_items(id, item_name, is_open_item, open_item_name, quantity, subtotal,
-    unit_price, is_voided, refunded_quantity,
+    unit_price, is_voided, refunded_quantity, kitchen_status,
     order_item_modifiers(modifier_name, is_no, quantity)),
   order_payments(id, amount, tip_amount, refunded_amount, payment_method, status,
     is_voided, card_type, card_last_four, reference_number, transaction_id,
@@ -77,6 +77,7 @@ export interface ItemRow {
   unit_price: number | null;
   is_voided: boolean | null;
   refunded_quantity: number | null;
+  kitchen_status?: string | null;
   order_item_modifiers:
     | { modifier_name: string; is_no: boolean | null; quantity: number | null }[]
     | null;
@@ -129,6 +130,28 @@ export function orderState(order: OrderRow): { label: string; tone: Tone } {
   if (paid > 0) return { label: "Paid", tone: "green" };
   return { label: "Unpaid", tone: "gray" };
 }
+
+/** Kitchen statuses after which there is nothing left for the kitchen to do. */
+const KITCHEN_DONE = new Set(["served", "done", "completed", "voided"]);
+
+/**
+ * True while the kitchen still has work on this order: an item that isn't
+ * voided, isn't fully refunded, and hasn't been served. A refund alone leaves
+ * those tickets on the kitchen screen; cancelling the order clears them.
+ */
+export function isStillInKitchen(order: OrderDetailRow): boolean {
+  if (isVoidedOrder(order)) return false;
+  if ((order.status ?? "").toLowerCase() === "completed") return false;
+  return (order.order_items ?? []).some(
+    (item) =>
+      !item.is_voided &&
+      (item.refunded_quantity ?? 0) < (item.quantity ?? 1) &&
+      !KITCHEN_DONE.has((item.kitchen_status ?? "").toLowerCase()),
+  );
+}
+
+/** Reason recorded on an order cancelled together with its refund. */
+export const refundCancelReason = (reason: string) => `Refunded: ${reason}`;
 
 /**
  * CodePay cancels (voids) a payment that isn't batched out yet instead of
@@ -224,6 +247,9 @@ export function paymentLabel(p: PaymentRow) {
 }
 
 export function paymentStatusLabel(p: PaymentRow) {
+  // Cancelling an order flags every payment voided, refunded ones included.
+  // What happened to the money is that it was refunded.
+  if (p.status === "refunded") return "Refunded";
   if (p.is_voided) return "Voided";
   if (p.status === "captured") return "Approved";
   return titleCase(p.status || "unknown");

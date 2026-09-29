@@ -11,6 +11,7 @@ import {
   dateTimeLabel,
   DETAIL_SELECT,
   isCollected,
+  isStillInKitchen,
   isVoidedOrder,
   orderNumber,
   orderState,
@@ -18,6 +19,7 @@ import {
   paymentLabel,
   paymentStatusLabel,
   REFUND_REASONS,
+  refundCancelReason,
   summarizePayments,
   wholeChargeCancelTotal,
   timeLabel,
@@ -38,6 +40,7 @@ import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -88,12 +91,13 @@ export function KioskOrderDetail({
 
   const order = detailQuery.data;
 
-  const handleRefund = async (input: RefundSubmit) => {
-    if (!order) return false;
+  const handleRefund = async (input: RefundSubmit): Promise<RefundOutcome> => {
+    if (!order) return { ok: false };
     const station = useStoreSettingsStore.getState().selectedStation;
+    const { cancelOrder, ...refundInput } = input;
     try {
       await refund.mutateAsync({
-        ...input,
+        ...refundInput,
         orderId: order.id,
         dbOrderId: order.id,
         paymentTerminalId: station?.payment_terminal?.id ?? "",
@@ -101,10 +105,22 @@ export function KioskOrderDetail({
         stationId: station?.id,
         initiatedBy: staff?.profileId,
       });
-      return true;
+      if (!cancelOrder) return { ok: true };
+
+      // The money is back. Now cancel the order itself, which is what clears
+      // its tickets from the kitchen screen (a refund alone leaves them). The
+      // server refuses this while card money is still on the order, so it can
+      // only follow a refund that was recorded.
+      const { error } = await supabase.rpc("void_order_and_cancel_reservation", {
+        p_order_id: order.id,
+        p_void_reason: refundCancelReason(input.reason),
+      });
+      return error
+        ? { ok: true, cancelError: error.message || "Unknown error" }
+        : { ok: true, cancelled: true };
     } catch {
       // useRefundMutation already showed the failure.
-      return false;
+      return { ok: false };
     } finally {
       // Re-read the balance either way: a failed batch can still have
       // refunded one of several payments.
@@ -336,6 +352,16 @@ type RefundSubmit = {
   totalAmount: number;
   reason: string;
   perPaymentDetails: ReturnType<typeof buildRefundDetails>;
+  /** Also cancel the order, so its tickets leave the kitchen screen. */
+  cancelOrder: boolean;
+};
+
+type RefundOutcome = {
+  /** The refund went through. */
+  ok: boolean;
+  cancelled?: boolean;
+  /** The refund went through but the order couldn't be cancelled. */
+  cancelError?: string;
 };
 
 const REFUND_MODES = [
@@ -352,12 +378,17 @@ function RefundCard({
   order: OrderDetailRow;
   staff: EmployeeProfile | null;
   processing: boolean;
-  onRefund: (input: RefundSubmit) => Promise<boolean>;
+  onRefund: (input: RefundSubmit) => Promise<RefundOutcome>;
 }) {
   const { show: showDialog, dialog } = useKioskDialog();
   const [mode, setMode] = useState<"full" | "custom">("full");
   const [amountText, setAmountText] = useState("");
   const [reason, setReason] = useState<string | null>(null);
+  // On by default while the kitchen still has the order; staff can keep the
+  // order going (e.g. the customer is paying another way).
+  const inKitchen = isStillInKitchen(order);
+  const [cancelChoice, setCancelChoice] = useState<boolean | null>(null);
+  const cancelOrder = mode === "full" && (cancelChoice ?? inKitchen);
   const submittingRef = useRef(false);
 
   const { refundable } = summarizePayments(order.order_payments);
@@ -387,7 +418,12 @@ function RefundCard({
       `Order ${orderNumber(order)} · goes back to ${destination}. This can't be undone.` +
         (cancelTotal != null
           ? ` Not batched out yet, so the whole card charge of ${kioskMoney(cancelTotal)} is cancelled, tip included.`
-          : ""),
+          : "") +
+        (cancelOrder
+          ? " The order is cancelled too and comes off the kitchen screen."
+          : inKitchen && mode === "full"
+            ? " The order stays open and the kitchen keeps making it."
+            : ""),
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -397,16 +433,25 @@ function RefundCard({
             if (submittingRef.current) return;
             submittingRef.current = true;
             try {
-              const ok = await onRefund({
+              const outcome = await onRefund({
                 type: mode === "full" ? "full" : "payments",
                 totalAmount: amount,
                 reason,
                 perPaymentDetails: buildRefundDetails(payments, amount, mode === "full"),
+                cancelOrder,
               });
-              if (ok) {
+              if (outcome.ok) {
                 setMode("full");
                 setAmountText("");
                 setReason(null);
+                setCancelChoice(null);
+              }
+              if (outcome.cancelError) {
+                showDialog(
+                  "Refunded, but the order is still open",
+                  `The refund went through. The order couldn't be cancelled, so it is still on the kitchen screen. Tell the kitchen, or void the order from a register. (${outcome.cancelError})`,
+                  [{ text: "OK" }],
+                );
               }
             } finally {
               submittingRef.current = false;
@@ -478,6 +523,29 @@ function RefundCard({
                 ? `Enter an amount up to ${kioskMoney(refundable)}`
                 : `Up to ${kioskMoney(refundable)}`}
             </Text>
+          </View>
+        ) : null}
+
+        {mode === "full" ? (
+          <View className="flex-row items-center rounded-2xl bg-gray-50 border border-gray-200 px-4 py-3">
+            <View className="flex-1 pr-3">
+              <Text className="text-sm font-bold text-gray-900">
+                Cancel the order
+              </Text>
+              <Text className="text-xs text-gray-500 mt-0.5">
+                {inKitchen
+                  ? "Takes it off the kitchen screen and marks the order voided. Turn off if the customer is paying another way."
+                  : "The kitchen is done with this order. Turn on to also mark it voided."}
+              </Text>
+            </View>
+            <Switch
+              value={cancelOrder}
+              onValueChange={setCancelChoice}
+              disabled={processing}
+              trackColor={{ false: "#D1D5DB", true: TEAL }}
+              thumbColor="#FFFFFF"
+              accessibilityLabel="Cancel the order"
+            />
           </View>
         ) : null}
 
