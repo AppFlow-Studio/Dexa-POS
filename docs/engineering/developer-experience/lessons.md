@@ -192,3 +192,12 @@
 
 - 2026-09-28 (kiosk performance): asked to make the kiosk "fast and light on all devices from low end 2gb ram devices to 4gb", I started a RAM-based lite/standard device class with a Kiosk Settings override. The user stopped it: the 2 GB and 4 GB figures were reference points, and the kiosk has to work well on every device.
 - Rule: make each optimization unconditional — cheaper animations, lighter images, less background work for everyone. No RAM-based modes, device classes or per-device performance switches unless explicitly asked for.
+
+## A plan's SQL is a claim about the database on the day it was written
+
+- 2026-09-26, floor-switch resilience plan, Wave 2A. The plan defined `get_pos_bootstrap_v3(uuid, boolean)` and a guard that drops every other overload of that name. `get_pos_bootstrap_v3(uuid)` already existed on staging and on production: the menu scheduling feature had taken the next version number two days earlier. Applying the plan as written would have deleted it.
+- The same plan copied its authorization gate "verbatim" from an existing function. Nobody had proven that gate against a caller who should be refused, and a cache hit has nothing behind it to re-check the caller.
+- Rule: before applying SQL from a plan, list `pg_proc` for every function name it creates or drops, on both projects. A name that exists with other arguments is a stop, not a detail.
+- Rule: a migration never drops an overload it did not create. If a guard is wanted, it names the exact signature it supersedes.
+- Rule: prove an authorization gate with a caller who should be refused, including one whose token lacks the claim the gate reads. `NOT f()` is only a gate if `f()` cannot be NULL; write `NOT COALESCE(f(), false)`.
+- Rule: a proposal is proven in `BEGIN; <ddl>; <checks>; ROLLBACK;` on staging, then confirmed absent. Nothing stays behind for someone to find.

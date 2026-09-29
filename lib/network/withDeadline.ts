@@ -15,13 +15,30 @@ export class DeadlineExceededError extends Error {
 const isExempt = (opName: string): boolean =>
   opName.startsWith('_probe_') || opName === 'probe'
 
+export interface DeadlineOptions {
+  /**
+   * `false` keeps this call out of the connection-quality state machine: no
+   * reportSuccess, no reportTimeout, no `connection_quality.timeout`
+   * breadcrumb. The deadline itself still applies and still aborts the call.
+   *
+   * For high-cadence background reads (floor status, session validation)
+   * whose timeouts say "this read was slow", not "the station cannot sell".
+   * Two reported timeouts inside 30 s flip the station to slow mode, which
+   * pauses the outbox drain and stretches payment verification — a background
+   * read must not be able to do that.
+   */
+  quality?: boolean
+}
+
 export async function withDeadline<T> (
   factory: (signal: AbortSignal) => Promise<T>,
   ms: number,
   opName: string,
+  opts?: DeadlineOptions,
 ): Promise<T> {
   const ac = new AbortController()
   const start = Date.now()
+  const reports = opts?.quality !== false && !isExempt(opName)
 
   let timer: ReturnType<typeof setTimeout> | null = null
   const deadline = new Promise<never>((_, reject) => {
@@ -33,13 +50,13 @@ export async function withDeadline<T> (
 
   try {
     const result = await Promise.race([factory(ac.signal), deadline])
-    if (!isExempt(opName)) {
+    if (reports) {
       connectionQuality.reportSuccess(opName, Date.now() - start)
     }
     return result
   } catch (err) {
     if (err instanceof DeadlineExceededError) {
-      if (!isExempt(opName)) {
+      if (reports) {
         connectionQuality.reportTimeout(opName, ms)
         // Sentry breadcrumb so per-op deadline rates are searchable.
         // Probes are exempt to avoid drowning the dashboard during real outages.

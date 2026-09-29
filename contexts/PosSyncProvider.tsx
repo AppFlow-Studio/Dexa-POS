@@ -27,6 +27,8 @@ import {
   registerResumeTask,
   registerSuspendTask,
 } from "@/lib/lifecycle/appLifecycleCoordinator";
+import { connectionQuality } from "@/lib/network/connectionQuality";
+import { withJitter } from "@/lib/network/jitter";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import {
   getBucketKeyCount,
@@ -534,9 +536,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
         // Load status if we have a floor plan
         if (defaultPlan?.id) {
-          await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
-          // Await prefetch so all floorplans are cached before we strip
-          // orphaned sessions below.
+          // Boot waits for the reconcile: the switch itself now returns as
+          // soon as the tables are painted, and the orphan sweep below must
+          // not run against a floor that has not been read yet.
+          await useFloorPlanStore
+            .getState()
+            .setActiveFloorPlan(defaultPlan.id, { waitForReconcile: true });
+          // Only does work where the snapshot RPC is not deployed; there it
+          // warms every plan before the sweep, as before.
           await useFloorPlanStore
             .getState()
             .prefetchFloorPlans(
@@ -545,8 +552,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Strip sessions for tables that no longer exist in ANY floorplan
-        // (e.g. after a floorplan was deleted). Safe to call now because all
-        // floorplans have been prefetched and cached.
+        // (e.g. after a floorplan was deleted). The sweep reads the plans' own
+        // geometry, which the snapshot above just delivered for every plan, so
+        // it does not depend on which plans have been cached.
         const { useTableSessionStore } =
           await import("@/stores/useTableSessionStore");
         useTableSessionStore.getState()._stripOrphanedSessions();
@@ -1021,9 +1029,20 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     if (isSyncFetching || syncFetchStatus === "paused") return;
 
     const attempt = menuRecoveryAttemptRef.current;
-    // 10s, 20s, 40s, then every 60s. Cheap enough to run all shift, slow enough
-    // not to hammer a struggling backend.
-    const delay = Math.min(10_000 * 2 ** attempt, 60_000);
+    // 10s, 20s, 40s, then every 60s: for a station with NOTHING to sell from,
+    // on a connection that works.
+    //
+    // This loop watches the query, and the query is empty whenever the app
+    // restarted and booted from its offline snapshot. Each attempt here also
+    // re-enters the query's own retry budget. On 2026-09-25 staff restarted
+    // frozen tablets, which put every one of them in this loop against a
+    // database that was already timing out. So a station that has a menu on
+    // screen, or is in slow mode, asks every 3 to 5 minutes instead.
+    const calm =
+      connectionQuality.isSlow() || useMenuStore.getState().menus.length > 0;
+    const delay = calm
+      ? withJitter(4 * 60_000, 0.25)
+      : Math.min(10_000 * 2 ** attempt, 60_000);
     const timer = setTimeout(() => {
       menuRecoveryAttemptRef.current = attempt + 1;
       console.warn(

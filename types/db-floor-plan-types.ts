@@ -34,7 +34,23 @@ export interface FloorPlan {
   is_default: boolean
   table_count?: number
   total_capacity?: number
+  display_order?: number
+  /** Per-plan edit counter; the location token is a digest over these. */
+  geometry_version?: number
+  /**
+   * Every object on the plan, z-ordered, inactive ones included, as sent by
+   * get_floor_snapshot_v1. Present whenever the plan came from a snapshot;
+   * absent on plans from older persisted state. `[]` is a known-empty plan.
+   */
+  objects?: FloorPlanGeometryObject[]
 }
+
+/** How a floor-plan switch got its first table paint. */
+export type SwitchPaintPath =
+  | 'cacheHit/fresh'
+  | 'cacheHit/stale'
+  | 'cacheMiss/geometryPaint'
+  | 'cacheMiss/skeleton'
 
 export interface FloorPlanObject {
   id: string
@@ -69,6 +85,62 @@ export interface FloorPlanObject {
     time: string
     status: string
   } | null
+}
+
+/** A plan object as geometry only: no owning plan id, no live joins. */
+export type FloorPlanGeometryObject = Omit<
+  FloorPlanObject,
+  'floor_plan_id' | 'session' | 'next_reservation'
+>
+
+// --- get_floor_snapshot_v1 envelope -----------------------------------------
+
+/** Session as the snapshot RPC sends it. `merged_tables` excludes the table itself. */
+export interface FloorSnapshotSession {
+  id: string
+  session_number: string | null
+  status: TableStatus
+  party_size: number | null
+  guest_name: string | null
+  server_staff_id: string | null
+  order_id: string | null
+  seated_at: string | null
+  current_course: number | null
+  needs_attention: boolean | null
+  is_vip: boolean | null
+  minutes_seated?: number | null
+  merged_tables: string[] | null
+}
+
+export interface FloorSnapshotStatusTable {
+  id: string
+  session: FloorSnapshotSession | null
+  next_reservation?: unknown
+}
+
+/** Live status for one plan. Covers active tables and booths only. */
+export interface FloorSnapshotStatusBucket {
+  floor_plan_id: string
+  tables: FloorSnapshotStatusTable[]
+  summary?: Record<string, number>
+}
+
+export interface FloorSnapshotSection {
+  id: string
+  floor_plan_id: string
+  name: string
+  color: string
+  assigned_staff_id: string | null
+  is_active?: boolean
+}
+
+export interface FloorSnapshotEnvelope {
+  geometry_version: string | null
+  /** null = the caller's token still matches; reuse cached geometry. */
+  geometry: FloorPlan[] | null
+  /** null only when the legacy RPC answered. */
+  status: FloorSnapshotStatusBucket[] | null
+  sections: FloorSnapshotSection[] | null
 }
 
 export interface TableSession {
