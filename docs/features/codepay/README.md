@@ -189,15 +189,36 @@ away held the card screen for 120 s. Plan:
 `~/.claude/plans/lets-look-into-this-glittery-swan.md`.
 
 **Payment window (kiosks only).** `kiosk_profiles.payment_window_seconds`
-(45–180, default 45 since `20260929120000`; NULL = legacy 120 s with no
+(45–180, default 60 since `20260929120000`; NULL = legacy 120 s with no
 prompt, the per-profile kill switch) becomes the Register sale
-`expires`. Dexa cannot time this itself: JS timers pause while Register is in
-front, and Dexa can't draw over it. The watchdog for a windowed sale is
-`expires + 60 s`. The kiosk passes `on_screen_signature: false`.
+`expires`. Register won't go below about 60 s (a 45 s window closed at ~60 s
+on the staging terminal). Dexa cannot time this itself: JS timers pause while
+Register is in front, and Dexa can't draw over it. The watchdog for a windowed
+sale is `expires + 60 s`. The kiosk passes `on_screen_signature: false`.
+
+**Watchdog never fires while Register is in front (bridge fix, 2026-09-29).**
+A failed card read makes Register show "Read data failed" (Cancel / OK to
+extend), which pauses its own `expires`. The old native watchdog resolved
+`timedOut` anyway, then `onActivityResult` dropped the customer's later Cancel
+(`pendingPromise` already cleared), and the host lookup couldn't prove "no
+charge", so S10-0005 ($0.01, not charged) locked the kiosk for staff.
+`CodePayBridgeModule` now:
+- re-checks every 5 s instead of resolving while Dexa is paused (Register in
+  front), logging `Watchdog deferred` once;
+- resolves `timedOut` ("no result after Register closed") 5 s after Dexa comes
+  back with nothing pending delivered (Android delivers the result before
+  `onResume`);
+- logs `Late CodePay result dropped` if a result ever arrives with nothing
+  waiting.
+
+Native change → an EAS build installed on every CodePay kiosk (runtime stays
+2.5.3; the JS interface is unchanged). Known limit: a walk-away on the
+read-failure screen stays on Register until someone taps.
 
 **"Expired" classification** (`CodePayService._interpret`). Applies only when
 the caller passed `expiresSec`, and only when every condition holds:
-- The result arrived within 3 s of the deadline (monotonic clock).
+- The result arrived no earlier than 3 s before the deadline (monotonic
+  clock), so a late Cancel after the window also counts.
 - The result is non-000 or `RESULT_CANCELED`.
 - There's no sign a card was read: no `trans_no` / `auth_code` / `card_no`,
   `trans_status ∉ {0,2,4,9}`, and no `paid_amount`.
@@ -344,7 +365,10 @@ function `codepay-transaction-status` → `_shared/codepayCloud.ts`):
     `on_screen_signature: false`.
 
 **Open — confirm with the probe / on hardware before trusting in prod:**
-- Does Register return by itself at `expires` (the Wave 0 spike)?
+- ~~Does Register return by itself at `expires` (the Wave 0 spike)?~~ Yes when
+  no card is presented (2026-09-29): it closed the card screen at about 60 s
+  with the window set to 45 s, so ~60 s is its floor. No after a failed read:
+  "Read data failed" waits for Cancel / OK (see the bridge fix above).
 - What does `trans_status 9` mean for an expired ECR sale? If it means
   "created, never paid", remap 9 → `failed` in `_shared/codepayCloud.ts`
   (server-only, no OTA). Until then every lapsed window whose host reports 9 is

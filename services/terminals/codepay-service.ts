@@ -642,9 +642,10 @@ export class CodePayService {
     const elapsedMs = timing?.elapsedMs;
     const resultCode = res.resultCode;
 
-    // Native watchdog elapsed — no result came back. The card MAY have been
-    // charged; the caller must reconcile via query(), never blind re-charge.
-    // Register may still be on screen, so the next Intent waits for foreground.
+    // Native watchdog elapsed with Dexa back in front and no result from
+    // Register. The card MAY have been charged; the caller must reconcile via
+    // query(), never blind re-charge. The next Intent still waits for
+    // foreground in case an older bridge build resolved while Register was up.
     if (res.timedOut) {
       this._awaitingForeground = true;
       return {
