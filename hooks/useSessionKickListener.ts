@@ -220,7 +220,11 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
               .abortSignal(signal) as unknown as Promise<{
               data: SessionCheckResult | null;
               error: any;
-            }>
+            }>,
+          // A background poll every 30 s: two slow answers in a row must not
+          // flip the station into slow mode (outbox paused, payment timers
+          // stretched). The deadline still bounds the call.
+          { quality: false },
         );
 
         if (error) {

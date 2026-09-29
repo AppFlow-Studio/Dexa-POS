@@ -418,3 +418,14 @@ in. It needs a SQL-editor runbook, one statement at a time.
 `docs/engineering/database/staging-vs-prod-gaps.md` documents real staging↔prod drift. These
 migrations were authored against **prod** introspection. Verify each applies cleanly on staging
 before promoting.
+
+## Incident 2026-09-25 — bootstrap storm (prod, 17:00–19:00 UTC)
+
+One login with 17 online stations called `get_pos_bootstrap_v2` 468 times in a day while its menu
+was being edited; every other merchant called it once or twice. Each call costs about 800 ms and
+25–44K shared buffers on the Micro instance. From 17:40 UTC the calls exceeded the 8 s statement
+timeout and the client retried each failure four times, so the database ran 30 to 100 times slower
+for every location for about 90 minutes. The visible symptom was a 20-second floor-plan switch at
+Charcoal Gardenia, whose own floor was not busy. The client fix and the monitoring query that
+flags the pattern an hour and a half earlier are in
+[floor-switch resilience](../../features/tables-floorplan/floor-switch-resilience-2026-09.md).
