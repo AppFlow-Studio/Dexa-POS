@@ -832,16 +832,23 @@ const TablesScreen = () => {
                   key={layout.id}
                   onPress={() => {
                     if (layout.id === activeFloorPlanId) return;
-                    // Perf T0: tap → switched-floor painted. `cached` tells us
-                    // whether the instant cache path or the skeleton+RPC path ran.
+                    // Perf T0: tap → switched-floor painted. The switch resolves
+                    // once the tables are committed, so this span is tap → paint;
+                    // the network reconcile is measured on its own
+                    // (floor.load_rpc_ms). `path` says how the paint was made.
                     const perf = startInteraction("pos.floor_switch", {
                       cached:
                         !!useFloorPlanStore.getState().floorPlanCache[
                           layout.id
                         ],
                     });
-                    setActiveFloorPlan(layout.id).finally(() =>
-                      perf.endAfterPaint(),
+                    setActiveFloorPlan(layout.id).then(
+                      (path) =>
+                        perf.endAfterPaint({
+                          path,
+                          cached: path.startsWith("cacheHit"),
+                        }),
+                      () => perf.cancel(),
                     );
                   }}
                   style={[

@@ -12,6 +12,7 @@ import {
   CreateReservationParams,
   FloorPlan,
   FloorPlanObject,
+  FloorSnapshotEnvelope,
   LocationTableStatusRow,
   MergeTableParams,
   Reservation,
@@ -26,6 +27,16 @@ import type {
   SeatGuestsResponse,
 } from "@/types/sessionRpcTypes";
 import { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * Attach the caller's abort signal to a PostgREST builder, when there is one.
+ * A read without a signal stays exactly as it was, so callers that do not run
+ * under a deadline are unaffected.
+ */
+const withSignal = <B extends { abortSignal: (signal: AbortSignal) => B }>(
+  builder: B,
+  signal?: AbortSignal,
+): B => (signal ? builder.abortSignal(signal) : builder);
 
 export class FloorPlanService {
   // --- FLOOR PLAN OPERATIONS ---
@@ -62,29 +73,35 @@ export class FloorPlanService {
   static async getFloorSnapshot(
     client: SupabaseClient,
     locationId: string,
-    opts?: { floorPlanId?: string | null; knownVersion?: string | null },
+    opts?: {
+      floorPlanId?: string | null;
+      knownVersion?: string | null;
+      /** Deadline signal; both the preferred and the legacy call honour it. */
+      signal?: AbortSignal;
+    },
   ): Promise<{
-    data: {
-      geometry_version: string | null;
-      geometry: FloorPlan[] | null;
-      status: any[] | null;
-      sections: any[] | null;
-    } | null;
+    data: FloorSnapshotEnvelope | null;
     error: any;
     usedFallback: boolean;
   }> {
     const res = await rpcWithVersionFallback<any>(
       "get_floor_snapshot_v1",
       () =>
-        client.rpc("get_floor_snapshot_v1", {
-          p_location_id: locationId,
-          p_floor_plan_id: opts?.floorPlanId ?? null,
-          p_geometry_version: opts?.knownVersion ?? null,
-        }) as unknown as Promise<RpcResult<any>>,
+        withSignal(
+          client.rpc("get_floor_snapshot_v1", {
+            p_location_id: locationId,
+            p_floor_plan_id: opts?.floorPlanId ?? null,
+            p_geometry_version: opts?.knownVersion ?? null,
+          }),
+          opts?.signal,
+        ) as unknown as Promise<RpcResult<any>>,
       () =>
-        client.rpc("get_location_floor_plans", {
-          p_location_id: locationId,
-        }) as unknown as Promise<RpcResult<any>>,
+        withSignal(
+          client.rpc("get_location_floor_plans", {
+            p_location_id: locationId,
+          }),
+          opts?.signal,
+        ) as unknown as Promise<RpcResult<any>>,
     );
 
     if (res.error) {
@@ -172,6 +189,7 @@ export class FloorPlanService {
   static async getAllFloorPlanObjects(
     client: SupabaseClient,
     floorPlanId: string,
+    signal?: AbortSignal,
   ): Promise<{
     data: FloorPlanObject[] | null;
     error: any;
@@ -183,12 +201,15 @@ export class FloorPlanService {
         );
 
       // 1. Fetch ALL active floor plan objects (not filtered by category)
-      const { data: allObjects, error: objectsError } = await client
-        .from("floor_plan_objects")
-        .select("*")
-        .eq("floor_plan_id", floorPlanId)
-        .eq("is_active", true)
-        .order("z_index", { ascending: true });
+      const { data: allObjects, error: objectsError } = await withSignal(
+        client
+          .from("floor_plan_objects")
+          .select("*")
+          .eq("floor_plan_id", floorPlanId)
+          .eq("is_active", true)
+          .order("z_index", { ascending: true }),
+        signal,
+      );
 
       if (objectsError) {
         console.error(
@@ -213,11 +234,14 @@ export class FloorPlanService {
       // 2. Fetch session data for tables that have sessions
       // Scope junction query to only tables in this floor plan to avoid cross-plan pollution
       const tableIds = allObjects.map((obj: any) => obj.id);
-      const { data: junctionData, error: junctionError } = await client
-        .from("table_session_tables")
-        .select(`table_id, session_id, seated_position`)
-        .eq("is_active", true)
-        .in("table_id", tableIds);
+      const { data: junctionData, error: junctionError } = await withSignal(
+        client
+          .from("table_session_tables")
+          .select(`table_id, session_id, seated_position`)
+          .eq("is_active", true)
+          .in("table_id", tableIds),
+        signal,
+      );
 
       // Collect unique session IDs from junctions, then fetch only those sessions
       const sessionIdsFromJunctions = new Set<string>();
@@ -231,13 +255,16 @@ export class FloorPlanService {
       let sessionsError: any = null;
 
       if (sessionIdsFromJunctions.size > 0) {
-        const result = await client
-          .from("table_sessions")
-          .select(
-            `id, session_number, status, party_size, guest_name, order_id, reservation_id, server_staff_id, seated_at, current_course, needs_attention, is_vip, is_active`,
-          )
-          .eq("is_active", true)
-          .in("id", Array.from(sessionIdsFromJunctions));
+        const result = await withSignal(
+          client
+            .from("table_sessions")
+            .select(
+              `id, session_number, status, party_size, guest_name, order_id, reservation_id, server_staff_id, seated_at, current_course, needs_attention, is_vip, is_active`,
+            )
+            .eq("is_active", true)
+            .in("id", Array.from(sessionIdsFromJunctions)),
+          signal,
+        );
         sessionsData = result.data;
         sessionsError = result.error;
       }
@@ -387,10 +414,14 @@ export class FloorPlanService {
   static async getLocationTableStatus(
     client: SupabaseClient,
     locationId: string,
+    signal?: AbortSignal,
   ): Promise<{ data: LocationTableStatusRow[] | null; error: any }> {
-    const { data, error } = await client.rpc("get_location_table_status_v2", {
-      p_location_id: locationId,
-    });
+    const { data, error } = await withSignal(
+      client.rpc("get_location_table_status_v2", {
+        p_location_id: locationId,
+      }),
+      signal,
+    );
     return { data, error };
   }
 
@@ -1133,12 +1164,16 @@ export class FloorPlanService {
   static async getServerSections(
     client: SupabaseClient,
     floorPlanId: string,
+    signal?: AbortSignal,
   ): Promise<{ data: ServerSection[] | null; error: any }> {
-    const { data, error } = await client
-      .from("server_sections")
-      .select("id, name, color, assigned_staff_id, floor_plan_id")
-      .eq("floor_plan_id", floorPlanId)
-      .eq("is_active", true);
+    const { data, error } = await withSignal(
+      client
+        .from("server_sections")
+        .select("id, name, color, assigned_staff_id, floor_plan_id")
+        .eq("floor_plan_id", floorPlanId)
+        .eq("is_active", true),
+      signal,
+    );
     return { data, error };
   }
 

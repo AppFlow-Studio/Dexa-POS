@@ -1,6 +1,18 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+  bootstrapRetryDelayMs,
+  classifyBootstrapError,
+  shouldRetryBootstrap,
+} from "@/lib/network/bootstrapRetryPolicy";
+import { connectionQuality } from "@/lib/network/connectionQuality";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
+import {
+  KEY_BOOTSTRAP_FETCH_MS,
+  KEY_BOOTSTRAP_STATEMENT_TIMEOUT,
+} from "@/lib/telemetry/keys";
+import { recordCount, recordSpan } from "@/lib/telemetry/registry";
+import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   ActiveModifierSnoozeSync,
@@ -11,7 +23,50 @@ import {
   StationMenuScopeMap,
   TaxRate,
 } from "@/types/menu";
+import * as Sentry from "@sentry/react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+/**
+ * What a 57014 cost the server: the authenticator role's statement_timeout.
+ * 8 s on production, 15 s on staging (2026-09-26). Reported for the record;
+ * the state machine counts timeouts and does not read the value.
+ */
+const SERVER_STATEMENT_TIMEOUT_MS = 8_000;
+const TIMEOUT_REPORT_MIN_INTERVAL_MS = 5 * 60_000;
+let lastTimeoutReportAt = 0;
+
+/**
+ * A statement timeout is the server saying it is overloaded.
+ *
+ * It reaches the connection-quality state machine here because nothing else
+ * would take it there: the deadline wrapper only reports its OWN deadline, and
+ * the bootstrap's is 60 s, so an 8 s server-side cancel passed as an ordinary
+ * error. The menu version watcher holds its refetch while the station is in
+ * slow mode, and that only works if this kind of failure can put it there.
+ *
+ * Sentry gets one message per five minutes per app session. During an
+ * incident every station hits this on every attempt.
+ */
+function reportBootstrapStatementTimeout(background: boolean): void {
+  connectionQuality.reportTimeout("pos_sync", SERVER_STATEMENT_TIMEOUT_MS);
+  recordCount(KEY_BOOTSTRAP_STATEMENT_TIMEOUT);
+
+  const now = Date.now();
+  if (now - lastTimeoutReportAt < TIMEOUT_REPORT_MIN_INTERVAL_MS) return;
+  lastTimeoutReportAt = now;
+  try {
+    Sentry.captureMessage("pos.bootstrap statement_timeout (57014)", {
+      level: "warning",
+      tags: {
+        event: "pos_bootstrap_timeout",
+        rpc: "get_pos_bootstrap_v2",
+        background: String(background),
+      },
+    });
+  } catch {
+    // observability must never mask the failure itself
+  }
+}
 
 /**
  * Raw envelope returned by `get_pos_bootstrap_v2`.
@@ -52,6 +107,19 @@ interface PosBootstrapPayload {
  */
 export const usePosSync = (locationId: string | null) => {
   const supabase = useSupabaseClient();
+  const queryClient = useQueryClient();
+
+  /**
+   * Is a usable menu already on screen?
+   *
+   * The menu store counts, not only the query cache. There is no query
+   * persister: a station that booted from its offline snapshot has an empty
+   * query cache and a full menu grid, and must not be treated as a first load
+   * with the full retry budget.
+   */
+  const hasMenuOnScreen = () =>
+    queryClient.getQueryData(["pos_sync", locationId]) !== undefined ||
+    useMenuStore.getState().menus.length > 0;
 
   return useQuery<PosSyncData>({
     // Unique key for this location's full data
@@ -60,6 +128,7 @@ export const usePosSync = (locationId: string | null) => {
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
 
+      const startedAt = performance.now();
       // Single round trip. v2 enriches the existing bootstrap with menu channel
       // visibility. Wrapped with deadline so bad WiFi falls back to
       // TanStack `offlineFirst` cache instead of hanging the UI.
@@ -73,10 +142,17 @@ export const usePosSync = (locationId: string | null) => {
       );
 
       if (result.error) {
+        // The HTTP status rides on the RESPONSE, not on the error object. The
+        // retry policy needs both, so they travel together from here.
+        const failure = { ...result.error, status: result.status };
+        if (classifyBootstrapError(failure) === "statement_timeout") {
+          reportBootstrapStatementTimeout(hasMenuOnScreen());
+        }
         // Log this to Sentry immediately - critical failure
-        console.error("POS SYNC FAILED:", result.error);
-        throw result.error;
+        console.error("POS SYNC FAILED:", failure);
+        throw failure;
       }
+      recordSpan(KEY_BOOTSTRAP_FETCH_MS, performance.now() - startedAt);
 
       const data = result.data as unknown as PosBootstrapPayload | null;
       if (!data) throw new Error("get_pos_bootstrap_v2 returned no payload");
@@ -154,12 +230,21 @@ export const usePosSync = (locationId: string | null) => {
     // someone found Settings → Sync POS. One query, one refetch, no stampede.
     refetchOnReconnect: true,
 
-    // Give the boot sync more room before it gives up. The provider layers a
-    // backoff retry loop on top of this (see PosSyncProvider), so exhausting
-    // the budget is no longer terminal — but every attempt spent here is one
-    // the operator doesn't wait through.
-    retry: 4,
-    retryDelay: (attemptIndex) => Math.min(2_000 * 2 ** attemptIndex, 30_000),
+    // An empty menu grid keeps the room it had (4 retries): the provider layers
+    // a backoff loop on top, so exhausting the budget is not terminal, but
+    // every attempt spent here is one the operator doesn't wait through.
+    //
+    // A station that already shows a menu retries at most once, and never on
+    // a statement timeout: see lib/network/bootstrapRetryPolicy.
+    retry: (failureCount, error) =>
+      shouldRetryBootstrap({
+        failureCount,
+        error,
+        hasData: hasMenuOnScreen(),
+        isSlow: connectionQuality.isSlow(),
+      }),
+    retryDelay: (failureCount, error) =>
+      bootstrapRetryDelayMs(failureCount, error),
   });
 };
 
