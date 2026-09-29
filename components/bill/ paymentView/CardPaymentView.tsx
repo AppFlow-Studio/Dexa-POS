@@ -139,9 +139,6 @@ const CardPaymentView = () => {
     /** ATOM paymentId — reversal/tip-adjust reference. */
     paymentId?: string;
   } | null>(null);
-  const tipAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
 
   // Sync isTransactionProcessing with status and error modal
   useEffect(() => {
@@ -283,10 +280,6 @@ const CardPaymentView = () => {
     return () => {
       updateTip(0, null);
       setBaseAmount(null);
-      if (tipAdjustTimeoutRef.current) {
-        clearTimeout(tipAdjustTimeoutRef.current);
-        tipAdjustTimeoutRef.current = null;
-      }
     };
   }, [clearTipResponse, setBaseAmount, updateTip]); // Only run once on mount
 
@@ -294,25 +287,19 @@ const CardPaymentView = () => {
     updateTip(tipAmount, selectedTipPreset);
   }, [tipAmount, selectedTipPreset, updateTip]);
 
-  // Post-capture tip-adjust now lives in CFDProvider's runner (which is
-  // always mounted). We just observe useTipAdjustStore.lastCompletedAt to
-  // flip our local status to 'success' when the runner has finished — the
-  // bill UI was waiting on that transition. If this component unmounted
-  // before completion, that's fine: the runner still fires and updates
-  // the CFD/DB independently.
-  const tipAdjustLastCompletedAt = useTipAdjustStore((s) => s.lastCompletedAt);
+  // Post-capture tip-adjust and its timeout live in CFDProvider (always
+  // mounted). This view normally unmounts as soon as the sale completes; if it
+  // is still mounted, it leaves 'tip_adjusting' once its capture is gone from
+  // the store — the runner finished, the customer timed out, or the operator
+  // skipped.
+  const capturedTip = useTipAdjustStore((s) => s.captured);
   useEffect(() => {
-    if (!tipAdjustLastCompletedAt) return;
     if (status !== "tip_adjusting") return;
-    // Clear the local 30s safety timer if still pending — the runner
-    // already handled the customer's pick.
-    if (tipAdjustTimeoutRef.current) {
-      clearTimeout(tipAdjustTimeoutRef.current);
-      tipAdjustTimeoutRef.current = null;
-    }
+    const ownReferenceId = capturedPaymentRef.current?.referenceId;
+    if (capturedTip && capturedTip.referenceId === ownReferenceId) return;
     schedulePostTipAdjustIdle(3000);
     setStatus("success");
-  }, [tipAdjustLastCompletedAt, status]);
+  }, [capturedTip, status]);
 
   // Logic: Process terminal payment (Castles or Dejavoo)
   useEffect(() => {
@@ -517,24 +504,13 @@ const CardPaymentView = () => {
                       ?.db_order_id
                   : undefined) ?? undefined,
               capturedAt: Date.now(),
+              expiresAt: Date.now() + tipAdjustTimeoutMs,
             });
 
-            // Transition to post-capture CFD tip adjust
+            // Transition to post-capture CFD tip adjust. CFDProvider owns the
+            // timeout (expiresAt) — this view has usually unmounted by now.
             showTipSelection(totalToPay, TIP_PRESETS, "card");
             setStatus("tip_adjusting");
-
-            // Auto-timeout: 30s — if customer doesn't respond, skip tip adjust
-            tipAdjustTimeoutRef.current = setTimeout(() => {
-              console.log("[CardPayment] CFD tip adjust timed out — skipping");
-              // Clear any captured payment from the store so the runner
-              // doesn't fire on a stale tip if the customer eventually
-              // taps. Mirrors what the lastCompletedAt observer would do.
-              useTipAdjustStore.getState().clear();
-              showApproved();
-              schedulePostTipAdjustIdle(3000);
-              setStatus("success");
-              tipAdjustTimeoutRef.current = null;
-            }, tipAdjustTimeoutMs);
             return;
           }
 
@@ -757,17 +733,11 @@ const CardPaymentView = () => {
                       ?.db_order_id
                   : undefined) ?? undefined,
               capturedAt: Date.now(),
+              expiresAt: Date.now() + tipAdjustTimeoutMs,
             });
 
             showTipSelection(totalToPay, TIP_PRESETS, "card");
             setStatus("tip_adjusting");
-            tipAdjustTimeoutRef.current = setTimeout(() => {
-              useTipAdjustStore.getState().clear();
-              showApproved();
-              schedulePostTipAdjustIdle(3000);
-              setStatus("success");
-              tipAdjustTimeoutRef.current = null;
-            }, tipAdjustTimeoutMs);
             return;
           }
 
@@ -1266,24 +1236,13 @@ const CardPaymentView = () => {
                       ?.db_order_id
                   : undefined) ?? undefined,
               capturedAt: Date.now(),
+              expiresAt: Date.now() + tipAdjustTimeoutMs,
             });
 
-            // Transition to post-capture CFD tip adjust
+            // Transition to post-capture CFD tip adjust. CFDProvider owns the
+            // timeout (expiresAt) — this view has usually unmounted by now.
             showTipSelection(totalToPay, TIP_PRESETS, "card");
             setStatus("tip_adjusting");
-
-            // Auto-timeout: 30s — if customer doesn't respond, skip tip adjust
-            tipAdjustTimeoutRef.current = setTimeout(() => {
-              console.log("[CardPayment] CFD tip adjust timed out — skipping");
-              // Clear any captured payment from the store so the runner
-              // doesn't fire on a stale tip if the customer eventually
-              // taps. Mirrors what the lastCompletedAt observer would do.
-              useTipAdjustStore.getState().clear();
-              showApproved();
-              schedulePostTipAdjustIdle(3000);
-              setStatus("success");
-              tipAdjustTimeoutRef.current = null;
-            }, tipAdjustTimeoutMs);
           }
         } catch (error) {
           console.error("[CardPayment] Error processing payment:", error);
@@ -1836,13 +1795,11 @@ const CardPaymentView = () => {
           {status === "tip_adjusting" && (
             <TouchableOpacity
               onPress={() => {
-                if (tipAdjustTimeoutRef.current) {
-                  clearTimeout(tipAdjustTimeoutRef.current);
-                  tipAdjustTimeoutRef.current = null;
-                }
                 // Operator-initiated skip: clear the captured payment so
                 // the CFDProvider runner doesn't fire on a late tap.
-                useTipAdjustStore.getState().clear();
+                useTipAdjustStore
+                  .getState()
+                  .clear(capturedPaymentRef.current?.referenceId);
                 showApproved();
                 schedulePostTipAdjustIdle(3000);
                 setStatus("success");

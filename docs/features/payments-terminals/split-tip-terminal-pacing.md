@@ -1,8 +1,8 @@
 # Split check + card tips: terminal pacing and per-guest tip capture
 
-**Status:** Wave 1 implemented on branch `fix/split-tip-terminal-pacing` (cut from
+**Status:** Waves 1–2 implemented on branch `fix/split-tip-terminal-pacing` (cut from
 `feat/split-receipts` with `feat/codepay-uiux` merged in). `tsc`, lint and the existing Jest suite pass.
-No device check has been run yet. Waves 2–3 not yet implemented.
+No device check has been run yet. Wave 3 not yet implemented.
 **Owner doc for:** spacing between payment-terminal commands, the post-capture tip step on the
 customer display, and the wait between guests on a split check.
 
@@ -67,14 +67,14 @@ every command at least 1.5s after the previous transaction, with no second conne
 
 ## Wave 2 — the tip step belongs to the app; the cashier waits, with Skip Tip
 
-- [ ] `stores/useTipAdjustStore.ts`: `expiresAt` on the capture; `clear(referenceId?)` and
+- [x] `stores/useTipAdjustStore.ts`: `expiresAt` on the capture; `clear(referenceId?)` and
       `finishInFlight(referenceId?)` only erase a matching capture; `clear` no longer releases the
       in-flight slot; `lastCompletedAt` removed (its one reader now watches `captured`)
-- [ ] `contexts/CFDProvider.tsx`: one effect owns the tip timeout; the runner releases the slot in a
+- [x] `contexts/CFDProvider.tsx`: one effect owns the tip timeout; the runner releases the slot in a
       `finally` that covers everything after `startInFlight()`; `hasCustomerDisplay` on the context
-- [ ] `CardPaymentView`: the three `setTimeout` blocks and `tipAdjustTimeoutRef` removed; a view that
+- [x] `CardPaymentView`: the three `setTimeout` blocks and `tipAdjustTimeoutRef` removed; a view that
       is still mounted leaves `tip_adjusting` when its capture is gone from the store
-- [ ] `SplitPaymentSuccessView`: "Pay for next guest" waits while that guest's tip is pending, only
+- [x] `SplitPaymentSuccessView`: "Pay for next guest" waits while that guest's tip is pending, only
       when a customer display exists and the capture belongs to the open order; "Skip Tip" releases it
 
 **Device checks** (customer display, staging):
