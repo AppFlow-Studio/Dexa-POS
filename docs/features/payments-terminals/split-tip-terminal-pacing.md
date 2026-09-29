@@ -1,8 +1,8 @@
 # Split check + card tips: terminal pacing and per-guest tip capture
 
-**Status:** Waves 1–2 implemented on branch `fix/split-tip-terminal-pacing` (cut from
+**Status:** Waves 1–3 implemented on branch `fix/split-tip-terminal-pacing` (cut from
 `feat/split-receipts` with `feat/codepay-uiux` merged in). `tsc`, lint and the existing Jest suite pass.
-No device check has been run yet. Wave 3 not yet implemented.
+No device check has been run yet.
 **Owner doc for:** spacing between payment-terminal commands, the post-capture tip step on the
 customer display, and the wait between guests on a split check.
 
@@ -90,8 +90,8 @@ every command at least 1.5s after the previous transaction, with no second conne
 
 ## Wave 3 — same settle gap for Valor
 
-- [ ] `VALOR_POST_TXN_SETTLE_MS = 1_500` in `types/valor.ts`
-- [ ] `services/terminals/valor-service.ts`: `_runExclusive` waits; `processSale`, `processPreAuth`,
+- [x] `VALOR_POST_TXN_SETTLE_MS = 1_500` in `types/valor.ts`
+- [x] `services/terminals/valor-service.ts`: `_runExclusive` waits; `processSale`, `processPreAuth`,
       `_runTxnCommand` (refund, void, tip adjust, completion) and `settleBatch` mark. Queries and
       `connect` do not. `cancelInFlight` is outside the mutex and is not delayed.
 
