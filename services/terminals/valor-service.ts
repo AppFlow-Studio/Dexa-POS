@@ -44,6 +44,7 @@ import {
   VALOR_CONNECT_TIMEOUT_MS,
   VALOR_SETTLEMENT_TIMEOUT_MS,
   VALOR_SETTLEMENT_MUTEX_ACQUIRE_TIMEOUT_MS,
+  VALOR_POST_TXN_SETTLE_MS,
   type ValorConnectionConfig,
   type ValorRawResponse,
   type ValorRequestBody,
@@ -107,6 +108,8 @@ export class ValorService {
   private _connectedConfig: ValorConnectionConfig | null = null;
   private readonly _mutex = new Mutex();
   private _suspended = false;
+  /** Date.now() before which no new command may start. See _runExclusive. */
+  private _settleUntil = 0;
 
   // ── Lifecycle ──
 
@@ -189,11 +192,30 @@ export class ValorService {
     await this._connectInner(this._config);
   }
 
+  /**
+   * Every command waits out the post-transaction settle gap once it holds the
+   * mutex, so queued commands each honour it. `settles` opens a new gap when a
+   * transaction finishes; queries (terminalQuery, transactionStatus) and
+   * connect leave no result screen behind and do not.
+   */
   private _runExclusive<T>(
     fn: () => Promise<T>,
     acquireTimeoutMs: number = VALOR_MUTEX_ACQUIRE_TIMEOUT_MS,
+    { settles = false }: { settles?: boolean } = {},
   ): Promise<T> {
-    return withTimeout(this._mutex, acquireTimeoutMs).runExclusive(fn);
+    return withTimeout(this._mutex, acquireTimeoutMs).runExclusive(async () => {
+      // Capped so a device clock jump can never stretch the wait.
+      const waitMs = Math.min(
+        this._settleUntil - Date.now(),
+        VALOR_POST_TXN_SETTLE_MS,
+      );
+      if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+      try {
+        return await fn();
+      } finally {
+        if (settles) this._settleUntil = Date.now() + VALOR_POST_TXN_SETTLE_MS;
+      }
+    });
   }
 
   // ── Transaction commands ──
@@ -226,7 +248,7 @@ export class ValorService {
             params.onStan?.(s);
           },
         });
-      });
+      }, undefined, { settles: true });
       return this._interpretSaleFinal(final, capturedStan);
     } catch (err) {
       if (err instanceof ValorCommandError) {
@@ -314,7 +336,7 @@ export class ValorService {
             params.onStan?.(s);
           },
         });
-      });
+      }, undefined, { settles: true });
       // A hold and a sale interpret identically (STATE/PARTIAL/TRAN_NO/RRN/STAN).
       return this._interpretSaleFinal(final, capturedStan);
     } catch (err) {
@@ -499,7 +521,7 @@ export class ValorService {
           correlate: true,
           sendTrailingAck: true,
         });
-      }, VALOR_SETTLEMENT_MUTEX_ACQUIRE_TIMEOUT_MS);
+      }, VALOR_SETTLEMENT_MUTEX_ACQUIRE_TIMEOUT_MS, { settles: true });
       return this._interpretSettlementFinal(final);
     } catch (err) {
       if (err instanceof ValorCommandError) {
@@ -653,7 +675,7 @@ export class ValorService {
           correlate: true,
           sendTrailingAck: true,
         });
-      });
+      }, undefined, { settles: true });
       const { success, indeterminate } = parseValorState(final.STATE);
       const base = {
         raw: final,

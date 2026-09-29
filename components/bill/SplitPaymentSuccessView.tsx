@@ -1,5 +1,8 @@
+import { useCFD } from '@/contexts/CFDProvider'
 import { colors } from '@/lib/theme'
+import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
+import { useTipAdjustStore } from '@/stores/useTipAdjustStore'
 import { ArrowRight, Check, Printer } from '@/lib/icons'
 import { usePrintPaymentReceipt } from '@/hooks/orders/usePrintPaymentReceipt'
 import { useState } from 'react'
@@ -26,6 +29,27 @@ const SplitPaymentSuccessView = () => {
 
   const justPaidSplit = splits.find(s => s.id === activeSplitId)
   const nextSplit = splits.find(s => s.status === 'pending')
+
+  // The guest who just paid still has the tip screen in front of them, or
+  // their tip is being applied on the terminal. Charging the next guest now
+  // would take the display away and queue a sale behind that tip. Only when a
+  // customer can actually see a display, and only for this order's capture —
+  // cash portions and tip-before-sale terminals capture nothing.
+  const activeOrderId = useOrderStore(s => s.activeOrderId)
+  const capturedTip = useTipAdjustStore(s => s.captured)
+  const tipApplying = useTipAdjustStore(s => s.inFlight)
+  const { hasCustomerDisplay, showApproved } = useCFD()
+  const tipPending =
+    hasCustomerDisplay &&
+    !!capturedTip &&
+    capturedTip.localOrderId === activeOrderId
+  const guestName = justPaidSplit?.customerName ?? 'Guest'
+
+  const handleSkipTip = () => {
+    if (!capturedTip || tipApplying) return
+    useTipAdjustStore.getState().clear(capturedTip.referenceId)
+    showApproved()
+  }
 
   return (
     <View
@@ -154,9 +178,34 @@ const SplitPaymentSuccessView = () => {
         </TouchableOpacity>
       )}
 
+      {/* Skip this guest's tip — hidden once the tip is on its way to the terminal */}
+      {tipPending && !tipApplying && (
+        <TouchableOpacity
+          onPress={handleSkipTip}
+          style={{
+            width: '100%',
+            paddingVertical: 12,
+            marginBottom: 10,
+            backgroundColor: colors.card,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Text
+            style={{ color: colors.heading, fontWeight: '700', fontSize: 14 }}
+          >
+            Skip Tip
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Action Button */}
       <TouchableOpacity
         onPress={moveToNextSplit}
+        disabled={tipPending}
         style={{
           width: '100%',
           paddingVertical: 12,
@@ -170,15 +219,31 @@ const SplitPaymentSuccessView = () => {
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.25,
           shadowRadius: 8,
-          elevation: 6
+          elevation: 6,
+          opacity: tipPending ? 0.6 : 1
         }}
       >
-        <Text
-          style={{ color: colors.onSolid, fontWeight: '700', fontSize: 14 }}
-        >
-          Pay for {nextSplit?.customerName || 'Next Guest'}
-        </Text>
-        <ArrowRight size={16} color={colors.onSolid} />
+        {tipPending ? (
+          <>
+            <ActivityIndicator size='small' color={colors.onSolid} />
+            <Text
+              style={{ color: colors.onSolid, fontWeight: '700', fontSize: 14 }}
+            >
+              {tipApplying
+                ? `Applying ${guestName}'s tip on terminal...`
+                : `Waiting for ${guestName}'s tip...`}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text
+              style={{ color: colors.onSolid, fontWeight: '700', fontSize: 14 }}
+            >
+              Pay for {nextSplit?.customerName || 'Next Guest'}
+            </Text>
+            <ArrowRight size={16} color={colors.onSolid} />
+          </>
+        )}
       </TouchableOpacity>
     </View>
   )
