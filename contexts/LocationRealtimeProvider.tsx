@@ -52,6 +52,12 @@ interface LocationRealtimeProviderProps {
   children: ReactNode;
   /** Enable/disable all subscriptions */
   enabled?: boolean;
+  /**
+   * Join the floor/tables channel (default true). Off for a station with no
+   * tables (the kiosk), which would otherwise receive every table-session
+   * change in the location.
+   */
+  floor?: boolean;
   /** Max reconnect attempts for realtime channels (default 5, increase for always-on KDS) */
   maxReconnectAttempts?: number;
   /** Callbacks for handling events (optional) */
@@ -94,13 +100,14 @@ export function LocationRealtimeProvider({
   locationId,
   children,
   enabled = true,
+  floor = true,
   maxReconnectAttempts,
   callbacks,
 }: LocationRealtimeProviderProps) {
   // Floor realtime subscription
   const floorRealtime = useFloorRealtime({
     locationId,
-    enabled,
+    enabled: enabled && floor,
     maxReconnectAttempts,
     onSessionChange: callbacks?.onSessionChange,
     onTableAssignment: callbacks?.onTableAssignment,
@@ -178,11 +185,12 @@ export function LocationRealtimeProvider({
       },
       reconnectAll,
       disconnectAll,
-      allConnected: floorConnected && ordersConnected,
+      allConnected: (!floor || floorConnected) && ordersConnected,
       isReconnecting: floorReconnecting || ordersReconnecting,
       locationId,
     }),
     [
+      floor,
       floorStatus,
       floorConnected,
       floorReconnecting,

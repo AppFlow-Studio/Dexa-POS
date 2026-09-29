@@ -19,8 +19,9 @@ import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
+import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import React, { useMemo } from "react";
-import { Image, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -182,11 +183,11 @@ const KioskMenuItemFeatureRow: React.FC<KioskMenuItemFeatureRowProps> = ({
         }}
       >
         {resolvedImageSource ? (
-          <Image
+          // Decoded at the photo's size — see KioskMenuItem.
+          <OptimizedListImage
             source={resolvedImageSource}
             style={{ width: "100%", height: "100%" }}
-            resizeMode="cover"
-            fadeDuration={0}
+            recyclingKey={item.id}
           />
         ) : (
           <PlaceholderIcon color={t.textFaint} size={m.placeholderSize} />

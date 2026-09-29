@@ -145,6 +145,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // Handheld boot diet (docs/features/handheld/README.md): a handheld is a
   // register for every gate below except the ones marked `isHandheld`.
   const isHandheld = isHandheldStationType(selectedStation?.station_type);
+  // A kiosk (self_service) sells from the menu and builds only its own order
+  // at checkout. It shows no order lists, tables, floor or timeclock, so the
+  // POS workspace upkeep below is skipped there — the same idea as the KDS
+  // gates, with a smaller list: a kiosk still needs the menu, tax rates,
+  // receipt templates, its terminal and printer, employees (the manager PIN
+  // is checked locally) and the order store for its own order.
+  const isKiosk = selectedStation?.station_type === "self_service";
   // The station kind the menu mirror writes as. Memoized so it is a stable
   // effect dependency rather than a new string on every render.
   const menuStationKind = React.useMemo(
@@ -155,13 +162,15 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const lastStoreSettingsRefreshRef = useRef<number>(0);
   const lastEmployeeSyncRefreshRef = useRef<number>(0);
   const supabase = useSupabaseClient();
-  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS).
+  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip
+  // for KDS, and for kiosks: up to 200 of the location's active orders that
+  // nothing on a kiosk lists — checkout creates and tracks its own order).
   // stationId is part of the queryKey so the server-side draft filter refetches
   // when the user switches stations on the same device.
   useOrdersQuery({
     locationId: selectedStore?.id ?? null,
     stationId: selectedStation?.id ?? null,
-    enabled: !!selectedStore?.id && !isKDS,
+    enabled: !!selectedStore?.id && !isKDS && !isKiosk,
   });
 
   // Register Supabase client with all stores BEFORE bootstrap hooks run,
@@ -201,8 +210,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     // };
   }, [supabase]);
 
+  // Refreshes Previous Orders at the rollover hour; a kiosk has none to show.
   useBusinessDayRollover({
-    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
+    enabled: Boolean(supabase && selectedStore?.id && !isKDS && !isKiosk),
   });
 
   // Unattended daily batch-out. Gated to the Castles or CodePay terminal THIS
@@ -438,9 +448,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // PrintRouter's receipt fallback, which without it treats Star printers as
   // "unknown" and picks the device's built-in printer first — the handheld's
   // intended target. An explicit station receipt printer is unaffected, and
-  // kitchen routing never reads reachability.
+  // kitchen routing never reads reachability. A kiosk runs it only when it
+  // has a receipt printer to keep track of.
+  const kioskHasPrinter = !!selectedStation?.current_receipt_printer_id;
   useEffect(() => {
-    if (selectedStore?.id && !isKDS && !isHandheld) {
+    if (
+      selectedStore?.id &&
+      !isKDS &&
+      !isHandheld &&
+      (!isKiosk || kioskHasPrinter)
+    ) {
       startStarPrinterHealthCheck(selectedStore.id);
       startStarPrinterDiscoveryService();
     }
@@ -448,7 +465,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       stopStarPrinterHealthCheck();
       stopStarPrinterDiscoveryService();
     };
-  }, [selectedStore?.id, isKDS, isHandheld]);
+  }, [selectedStore?.id, isKDS, isHandheld, isKiosk, kioskHasPrinter]);
 
   // Sync employees from location_members
   const syncEmployees = useCallback(
@@ -485,12 +502,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   //
   // Handheld skips the interval: a handheld is pocketed and re-foregrounded
   // many times a shift, so the `pos.employees-refresh` resume task below is
-  // enough, and one fewer timer is one fewer wake-up on a 2GB device.
+  // enough, and one fewer timer is one fewer wake-up on a 2GB device. A kiosk
+  // only needs PINs when a manager opens Kiosk Settings, so
+  // KioskAdminPinModal syncs on open instead.
   useEffect(() => {
-    if (isHandheld) return;
+    if (isHandheld || isKiosk) return;
     const interval = setInterval(refreshEmployeesIfStale, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [refreshEmployeesIfStale, isHandheld]);
+  }, [refreshEmployeesIfStale, isHandheld, isKiosk]);
 
   // Sync floor plans from backend
   const syncFloorPlans = useCallback(
@@ -624,13 +643,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       );
       syncEmployees(storeId).then(() => {
         // Hydrate active shifts after employees are loaded (needs employee data for mapping)
-        if (!isKDS) {
+        if (!isKDS && !isKiosk) {
           useTimeclockStore.getState().hydrateActiveShifts(supabase, storeId);
         }
       });
     });
     return () => task.cancel();
-  }, [selectedStore?.id, isKDS, syncEmployees, supabase]);
+  }, [selectedStore?.id, isKDS, isKiosk, syncEmployees, supabase]);
 
   // Run timeclock queue processor at app scope so it is not tied to mounted screens.
   useEffect(() => {
@@ -1120,20 +1139,24 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       // syncFloorPlans reconcile in the background. Blanking tables here on
       // every boot caused a blank board (and forced the re-fetch that paints
       // from the session-stripped cache) before fresh data arrived.
-      const fp = useFloorPlanStore.getState();
-      if (fp.locationId && fp.locationId !== storeId) {
-        useFloorPlanStore.setState({
-          tables: [],
-          lastSyncAt: null,
-        });
-      }
+      // A kiosk has no tables: it needs tax rates (checkout pricing) and
+      // receipt templates (it prints receipts), not the floor plan.
+      if (!isKiosk) {
+        const fp = useFloorPlanStore.getState();
+        if (fp.locationId && fp.locationId !== storeId) {
+          useFloorPlanStore.setState({
+            tables: [],
+            lastSyncAt: null,
+          });
+        }
 
-      syncFloorPlans(storeId);
+        syncFloorPlans(storeId);
+      }
       syncTaxRates(storeId);
       useReceiptTemplateStore.getState().fetchTemplates(storeId);
     });
     return () => task.cancel();
-  }, [selectedStore?.id, isKDS, syncFloorPlans, syncTaxRates]);
+  }, [selectedStore?.id, isKDS, isKiosk, syncFloorPlans, syncTaxRates]);
 
   // Resume recovery, registered with the lifecycle coordinator instead of a
   // private AppState listener. Each item keeps the exact gate it had before —
@@ -1148,7 +1171,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         id: "pos.floor-status-converge",
         bucket: "frame",
         requiresNetwork: true,
-        shouldRun: () => !isKDS,
+        shouldRun: () => !isKDS && !isKiosk,
         run: () => {
           // Floor realtime (re)connection is owned by useFloorRealtime /
           // useRealtimeChannel. Here we only converge state via the
@@ -1163,9 +1186,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Only if data is older than staleTime. useOrderSyncRecovery handles
         // reconnection-triggered refetches separately. queryKey includes
         // stationId, so use a prefix-matching lookup (exact:false) rather than
-        // getQueryState (exact-match).
+        // getQueryState (exact-match). A kiosk never runs that query.
         shouldRun: () => {
-          if (isKDS) return false;
+          if (isKDS || isKiosk) return false;
           const locationId = useStoreSettingsStore.getState().selectedStore?.id;
           if (!locationId) return false;
           const cached = queryClient.getQueryCache().find({
@@ -1281,7 +1304,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     ];
 
     return () => unregister.forEach((fn) => fn());
-  }, [isKDS, supabase, refreshEmployeesIfStale]);
+  }, [isKDS, isKiosk, supabase, refreshEmployeesIfStale]);
 
   // Unified location config sync — hydrates pos_config + subscribes to real-time updates
   // Also handles legacy SETTINGS_UPDATE events for backward compat with older stations

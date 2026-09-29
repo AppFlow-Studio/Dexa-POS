@@ -47,6 +47,9 @@ export interface ReceiptTemplateConfig {
   showVoidReason: boolean
   showApprovedBy: boolean
   showBreakDetails: boolean
+  // Card sales always get a merchant copy for the cardholder to sign. No DB
+  // column yet, so unset on every mapped template.
+  printSignatureLine?: boolean
 }
 
 // ============================================================================

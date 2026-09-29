@@ -18,8 +18,9 @@ import type { MenuItemType } from "@/lib/types";
 import { useKioskItemQuantity } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { ShoppingCart } from "@/lib/icons";
+import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import React, { useMemo } from "react";
-import { Image, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -105,10 +106,11 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
         }}
       >
         {resolvedImageSource ? (
-          <Image
+          // Decoded at the thumbnail's size — see KioskMenuItem.
+          <OptimizedListImage
             source={resolvedImageSource}
             style={{ width: "100%", height: "100%" }}
-            resizeMode="cover"
+            recyclingKey={item.id}
           />
         ) : (
           <View
