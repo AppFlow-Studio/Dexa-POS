@@ -211,8 +211,8 @@ charge", so S10-0005 ($0.01, not charged) locked the kiosk for staff.
 - logs `Late CodePay result dropped` if a result ever arrives with nothing
   waiting.
 
-Native change → an EAS build installed on every CodePay kiosk (runtime stays
-2.5.3; the JS interface is unchanged). Known limit: a walk-away on the
+Native change → ships in the 2.5.4 APK (runtime 2.5.4), installed on every
+CodePay kiosk; the JS interface is unchanged. Known limit: a walk-away on the
 read-failure screen stays on Register until someone taps.
 
 **"Expired" classification** (`CodePayService._interpret`). Applies only when
