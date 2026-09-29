@@ -32,6 +32,11 @@
         "buildType": "apk",
         "withoutCredentials": true
       }
+    },
+    "handheld": {
+      "extends": "production",
+      "channel": "handheld",
+      "distribution": "internal"
     }
   },
   "submit": {
