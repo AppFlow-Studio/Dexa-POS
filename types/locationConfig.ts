@@ -191,7 +191,15 @@ export interface OrderingConfig {
    * explicitly start each order (e.g. "New Order").
    */
   autoCreateOrder: boolean;
+  /**
+   * Set on the web dashboard only (POS Settings → Order Numbering).
+   * `per_station`: each register counts its own `#S1-0042`. `location_wide`:
+   * one shared server counter, `#0042` (see lib/orderNumberReservation.ts).
+   */
+  orderNumberScope: OrderNumberScope;
 }
+
+export type OrderNumberScope = "per_station" | "location_wide";
 
 export interface SecurityConfig {
   /**
@@ -405,6 +413,7 @@ export const DEFAULT_ORDERING_CONFIG: OrderingConfig = {
   // Matches the pre-sync device-local default so no merchant sees a behavior
   // change when this namespace lands.
   autoCreateOrder: true,
+  orderNumberScope: "per_station",
 };
 
 export const DEFAULT_SECURITY_CONFIG: SecurityConfig = {

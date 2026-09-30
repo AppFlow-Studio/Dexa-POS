@@ -209,6 +209,7 @@ import {
 } from "@/hooks/realtime/useOrdersRealtime";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
@@ -9164,6 +9165,9 @@ export const useOrderStore = create<OrderState>()(
                   orderIds: get().orderIds,
                   locationId: selectedStore.id,
                   stationNumber,
+                  locationWide:
+                    useLocationConfigStore.getState().config.ordering
+                      .orderNumberScope === "location_wide",
                 })
               : undefined;
 

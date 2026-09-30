@@ -832,3 +832,103 @@ describe("the cart id actually reaches the drain", () => {
     );
   });
 });
+
+describe("the server renumbers an order", () => {
+  const today = (() => {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}${m}${day}`;
+  })();
+
+  /**
+   * Answers every create with `assigned`: create_order_v4 replacing a
+   * provisional station number in location-wide mode, or healing a collision.
+   */
+  function renumberingServer(assigned: string, display: string) {
+    return {
+      rpc: async (name: string, params: any) => {
+        const reply = {
+          success: true,
+          order_id: params.p_order_id,
+          order_number: assigned,
+          display_number: display,
+          already_existed: false,
+          order_number_reassigned: true,
+        };
+        if (name === "create_order_v4") return { data: reply, error: null };
+        if (name === "seat_guests_v4") {
+          return { data: { ...reply, session_id: params.p_session_id }, error: null };
+        }
+        return { data: null, error: { message: `unexpected rpc ${name}` } };
+      },
+    } as any;
+  }
+
+  const numberOf = (orderId: string) =>
+    getDb()!.getFirstAsync<{ order_number: string; display_number: string }>(
+      `SELECT order_number, display_number FROM orders WHERE id = ?`,
+      [orderId],
+    );
+
+  it("adopts the location-wide number for a created order", async () => {
+    const created = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+    expect(created.value!.displayNumber).toMatch(/^#S1-/);
+
+    await drainOnce(makeOpHandlers(renumberingServer(`ORD-${today}-0044`, "#0044")));
+
+    expect(await numberOf(created.value!.orderId)).toEqual({
+      order_number: `ORD-${today}-0044`,
+      display_number: "#0044",
+    });
+  });
+
+  it("adopts a renumber reported by seat_guests_v4", async () => {
+    // REGRESSION: only the create_order handler read order_number_reassigned,
+    // so a seated order kept its provisional number on the device.
+    const seat = await seatLocal({
+      tableIds: ["t-9"],
+      locationId: LOCATION,
+      merchantId: MERCHANT,
+      partySize: 2,
+      createOrder: true,
+      stationNumber: 1,
+    });
+
+    await drainOnce(makeOpHandlers(renumberingServer(`ORD-${today}-0045`, "#0045")));
+
+    expect(await numberOf(seat.value!.orderId!)).toEqual({
+      order_number: `ORD-${today}-0045`,
+      display_number: "#0045",
+    });
+  });
+
+  it("moves the station counter past a collision so the next order does not collide", async () => {
+    const seqOf = (n: string) => parseInt(n.split("-").pop()!, 10);
+    const first = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+    const healed = seqOf(first.value!.orderNumber) + 40;
+    const healedNumber = `ORD-${today}-S1-${String(healed).padStart(4, "0")}`;
+
+    await drainOnce(
+      makeOpHandlers(renumberingServer(healedNumber, `#S1-${String(healed).padStart(4, "0")}`)),
+    );
+
+    const next = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "take_out",
+      stationNumber: 1,
+    });
+    expect(seqOf(next.value!.orderNumber)).toBe(healed + 1);
+  });
+});

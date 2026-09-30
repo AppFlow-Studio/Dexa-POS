@@ -33,6 +33,7 @@ import { getDb } from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/mutex";
 import type { ClaimedOp } from "@/lib/db/outbox";
 import { isTerminalKitchenMutationError } from "@/lib/kdsSendTraceability";
+import { seedFromAssignedOrderNumber } from "@/lib/localOrderSequence";
 import { sanitizeModifierRowsForRpc } from "@/lib/modifierRpc";
 import { markSessionSynced } from "@/lib/localFirst/unsyncedSessions";
 import {
@@ -42,18 +43,22 @@ import {
 } from "@/services/localFirst/outboxDrain";
 
 /**
- * Take the server's number after a collision renumber (§6.3).
+ * Take the server's number after it renumbered an order: a collision (§6.3),
+ * or a provisional station number replaced in location-wide mode.
  *
  * The id never moves, so this is a pure field update in both places that hold
- * the number: the local row and whatever the operator is looking at. Best
- * effort — a failure here leaves a stale number on one device, which the next
- * header sync corrects, and must never fail the op that already succeeded.
+ * the number: the local row and whatever the operator is looking at (the CFD
+ * follows the store). Best effort — a failure here leaves a stale number on
+ * one device, which the next header sync corrects, and must never fail the op
+ * that already succeeded.
  */
 async function adoptServerOrderNumber(
   orderId: string,
   orderNumber: string,
   displayNumber: string | null,
+  locationId: string | null = null,
 ): Promise<void> {
+  let orderLocationId = locationId;
   try {
     const db = getDb();
     if (db) {
@@ -62,10 +67,21 @@ async function adoptServerOrderNumber(
           `UPDATE orders SET order_number = ?, display_number = ? WHERE id = ?`,
           [orderNumber, displayNumber, orderId],
         );
+        if (!orderLocationId) {
+          const row = await db.getFirstAsync<{ location_id: string }>(
+            `SELECT location_id FROM orders WHERE id = ?`,
+            [orderId],
+          );
+          orderLocationId = row?.location_id ?? null;
+        }
       });
     }
   } catch (err) {
     console.warn("[Drain] renumber: local row not updated:", err);
+  }
+
+  if (orderLocationId) {
+    seedFromAssignedOrderNumber(orderLocationId, orderNumber);
   }
 
   try {
@@ -321,11 +337,13 @@ export function makeOpHandlers(
           `[LF] ✓ create_order_v4 order=${op.entityId} number=${data?.order_number} existed=${!!data?.already_existed}`,
         );
 
-        // §6.3 — the server renumbered us because our locally minted number
-        // collided. The ID is unchanged (identity is sacred); only the number
-        // moved, and the device must correct what it displays. Logging it and
-        // leaving the old number on screen is how a guest ends up holding a
-        // receipt for a number that belongs to somebody else's order.
+        // §6.3 — the server renumbered us: our locally minted number collided,
+        // or the location counts orders location-wide and our station number
+        // was only provisional. The ID is unchanged (identity is sacred); only
+        // the number moved, and the device must correct what it displays.
+        // Logging it and leaving the old number on screen is how a guest ends
+        // up holding a receipt for a number that belongs to somebody else's
+        // order.
         if (data?.order_number_reassigned && data?.order_number) {
           console.warn(
             `[Drain] order ${op.entityId} was renumbered by the server: ` +
@@ -335,6 +353,7 @@ export function makeOpHandlers(
             op.entityId,
             data.order_number as string,
             (data.display_number as string | null) ?? null,
+            p.locationId,
           );
         }
         return { kind: "synced" };
@@ -728,6 +747,20 @@ export function makeOpHandlers(
         console.log(
           `[LF] ✓ seat_guests_v4 session=${op.entityId} order=${data?.order_id}`,
         );
+        // seat_guests_v4 creates the order through create_order_v4, so it can
+        // renumber it the same way (§6.3).
+        const seatedOrderId = (data?.order_id as string | null) ?? p.orderId;
+        if (data?.order_number_reassigned && data?.order_number && seatedOrderId) {
+          console.warn(
+            `[Drain] order ${seatedOrderId} was renumbered by the server: ` +
+              `${p.orderNumber} -> ${data.order_number}`,
+          );
+          await adoptServerOrderNumber(
+            seatedOrderId,
+            data.order_number as string,
+            (data.display_number as string | null) ?? null,
+          );
+        }
         // The server has it now, so a floor-plan snapshot that omits this
         // table is real information rather than a stale read.
         markSessionSynced(op.entityId);

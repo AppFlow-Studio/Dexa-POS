@@ -208,3 +208,8 @@
 ## Filters narrow a list; they don't change its layout
 
 - The menu management Items grid dropped its A–Z letter headers whenever a status pill or a search was active. I thought the headers were noise for a short list. The user read it as "items are not sorted by alphabet when we switch filter pills", even though the order never changed. Keep structural grouping stable across filters: a filter changes which rows show, not how the list is organised.
+
+## Work on the branch the user prepared, in their checkout
+
+- 2026-09-30 (order-number scope): the user had created `shared-location-order-nb` for the POS work. Metro was running from `Dexa-POS`, so to avoid reloading the tablet I put the work in a detached worktree next to the repo instead. The user was confused about where the work was and had to stop me.
+- Rule: when the user has prepared a branch, edit it in their checkout. If the edits will reload a running app, say so and batch them into one write; don't move the work somewhere they didn't ask for.
