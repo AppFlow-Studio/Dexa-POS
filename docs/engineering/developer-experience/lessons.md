@@ -198,3 +198,8 @@
 - 2026-09-29 (CodePay refunds): I taught `parseRefundApproval` to read CodePay's approval details so refunds would carry an auth code, RRN and transaction number. CodePay's `trans_no` is 23 characters and `order_payments.return_number` is `varchar(20)`. The first refund on a real terminal was approved on the card, then `apply_refund_to_payment` failed with `22001 value too long`, and the payment still read as paid. Jest passed: the RPC was mocked.
 - Rule: before passing a value that was null until now into an RPC, read the type and length of the column it is written to (`information_schema.columns`), and call the real RPC on staging with a real-sized value in a rolled-back `DO` block.
 - Rule: optional details must never be able to fail the step that records money. `OrderService.applyRefundToPayment` and `updateReversalStatus` fit every optional value to its column first (`REFUND_DETAIL_MAX`); a reference that doesn't fit is left out, not truncated.
+
+## Work on the branch the user prepared, in their checkout
+
+- 2026-09-30 (order-number scope): the user had created `shared-location-order-nb` for the POS work. Metro was running from `Dexa-POS`, so to avoid reloading the tablet I put the work in a detached worktree next to the repo instead. The user was confused about where the work was and had to stop me.
+- Rule: when the user has prepared a branch, edit it in their checkout. If the edits will reload a running app, say so and batch them into one write; don't move the work somewhere they didn't ask for.

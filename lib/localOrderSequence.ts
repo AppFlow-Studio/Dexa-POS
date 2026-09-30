@@ -41,7 +41,7 @@ function getSequenceKey(
  * That mattered little while these numbers were a cosmetic fallback for
  * offline orders. It matters a lot now: under Decision 0.1 the locally minted
  * number is FINAL and is what the server stores. A reset means every order
- * collides on `orders_order_number_merchant_key`, `create_order_v4` renumbers
+ * collides on `orders_order_number_location_key`, `create_order_v4` renumbers
  * every single one, and the number printed on the guest's receipt stops
  * matching the number in the system — the exact reconciliation problem that
  * decision was taken to avoid.
@@ -159,6 +159,27 @@ export function seedLocalSequence(
 }
 
 /**
+ * Move the local counter past a number the server assigned to one of this
+ * device's orders (`order_number_reassigned`).
+ *
+ * A collision renumber means this counter is behind what the location already
+ * used (a cleared MMKV bucket, two devices on one station). Left alone, every
+ * following order collides and gets renumbered too; seeded here, the device
+ * heals on the first one. Only goes up, and only for today's numbers. A
+ * location-wide reassignment is station-less and lands on the `:global` key,
+ * which station devices never mint from.
+ */
+export function seedFromAssignedOrderNumber(
+  locationId: string,
+  orderNumber: string,
+): void {
+  const match = orderNumber.match(/^ORD-(\d{8})-(?:S(\d+)-)?(\d+)$/);
+  if (!match || match[1] !== getTodayDateStr()) return;
+  const stationNumber = match[2] != null ? parseInt(match[2], 10) : null;
+  seedLocalSequence(locationId, stationNumber, parseInt(match[3], 10));
+}
+
+/**
  * Force-set the local sequence counter to a value the SERVER assigned.
  *
  * Unlike seedLocalSequence (which only goes up) this may rewind, so it is only
@@ -169,7 +190,7 @@ export function seedLocalSequence(
  *
  * NEVER use it to "reclaim" a number from an abandoned draft. Rewinding under
  * Decision 0.1 hands out a number another order already carries, which the
- * server catches as `orders_order_number_merchant_key` and renumbers — and the
+ * server catches as `orders_order_number_location_key` and renumbers — and the
  * receipt in the guest's hand stops matching the system.
  */
 export function forceSetLocalSequence(
