@@ -1,5 +1,7 @@
+import { useScheduleClock } from '@/hooks/useScheduleClock'
+import { getCategoryLockState } from '@/lib/menu/categoryLockState'
 import { colors } from '@/lib/theme'
-import type { Menu } from '@/lib/types'
+import type { Category, Menu } from '@/lib/types'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { useUiScale } from '@/lib/uiScale'
 import { useMenuStore } from '@/stores/useMenuStore'
@@ -94,6 +96,19 @@ const createStyles = () =>
     },
     menuButtonTextActive: {
       color: colors.teal
+    },
+    // Mirrors the classic menu picker's off-schedule card.
+    menuButtonLocked: {
+      opacity: 0.65,
+      borderColor: `${colors.border}90`,
+      backgroundColor: `${colors.panel}cc`
+    },
+    menuButtonIconWrapLocked: {
+      backgroundColor: `${colors.danger}18`,
+      borderColor: `${colors.danger}40`
+    },
+    menuButtonTextLocked: {
+      color: colors.muted
     },
     menuButtonIconWrap: {
       width: 18,
@@ -266,6 +281,35 @@ const createStyles = () =>
     },
     popupCategoryTextActive: {
       color: colors.teal
+    },
+    popupCategoryLocked: {
+      backgroundColor: colors.screen,
+      borderColor: colors.border,
+      opacity: 0.7
+    },
+    popupCategoryTextLocked: {
+      color: colors.label
+    },
+    popupTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8
+    },
+    // Same badge the classic menu picker puts on an off-schedule menu.
+    scheduleBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: `${colors.danger}18`,
+      borderWidth: 1,
+      borderColor: `${colors.danger}40`,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      borderRadius: 6
+    },
+    scheduleBadgeText: {
+      color: colors.danger,
+      fontSize: 10
     }
   })
 
@@ -305,6 +349,9 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   const menus = menuOptions ?? storeMenus
   const isCategoryAvailableNow = useMenuStore(s => s.isCategoryAvailableNow)
   const isCategoryActiveForMenu = useMenuStore(s => s.isCategoryActiveForMenu)
+  // Re-renders this (memoized) bar when a category's window opens or closes,
+  // so tab locks follow the clock rather than the next parent render.
+  const now = useScheduleClock()
   const temporaryActiveCategories = useMenuStore(
     s => s.temporaryActiveCategories
   )
@@ -318,6 +365,21 @@ const MenuControls: React.FC<MenuControlsProps> = ({
     () => new Set(temporaryActiveMenus),
     [temporaryActiveMenus]
   )
+  const isMenuAvailableNow = useMenuStore(s => s.isMenuAvailableNow)
+  // Same availability the classic menu picker uses: on schedule, or unlocked
+  // by a manager grant.
+  const isMenuOpen = (menu: Menu) =>
+    isMenuAvailableNow(menu.id, now) || temporaryActiveMenuSet.has(menu.name)
+  const categoryLock = (cat: Category | string, menu: Menu | undefined) =>
+    getCategoryLockState({
+      category: cat,
+      menu,
+      at: now,
+      isCategoryAvailableNow,
+      isCategoryActiveForMenu,
+      grantedCategories: temporaryActiveCategorySet,
+      grantedMenus: temporaryActiveMenuSet
+    })
   const menuScrollRef = useRef<ScrollView>(null)
   const categoriesScrollRef = useRef<ScrollView>(null)
   const menuButtonRefs = useRef<Record<string, any>>({})
@@ -369,6 +431,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
     () => menus.find(m => m.name === popupMenuName),
     [menus, popupMenuName]
   )
+  const isPopupMenuLocked = !!popupMenu && !isMenuOpen(popupMenu)
 
   useEffect(() => {
     if (!activeCategory) return
@@ -469,6 +532,8 @@ const MenuControls: React.FC<MenuControlsProps> = ({
           {menus.map(menu => {
             const isActive = activeMeal === menu.name
             const isOpen = popupMenuName === menu.name
+            const isLocked = !isMenuOpen(menu)
+            const isScheduled = !!menu.schedules?.length
             return (
               <TouchableOpacity
                 key={menu.id}
@@ -480,6 +545,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   styles.menuButton,
                   isActive && styles.menuButtonActive,
                   isOpen && !isActive && styles.menuButtonOpen,
+                  isLocked && styles.menuButtonLocked,
                   { gap: s(6), paddingHorizontal: s(11), paddingVertical: s(7), borderRadius: s(8) }
                 ]}
               activeOpacity={0.8}
@@ -488,24 +554,39 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                 style={[
                   styles.menuButtonIconWrap,
                   (isActive || isOpen) && styles.menuButtonIconWrapActive,
+                  isLocked && isScheduled && styles.menuButtonIconWrapLocked,
                   { width: s(18), height: s(18), borderRadius: s(9) }
                 ]}
               >
-                <UtensilsCrossed
-                  size={s(10)}
-                  color={isActive || isOpen ? colors.teal : colors.label}
-                />
+                {isLocked ? (
+                  <Lock
+                    size={s(10)}
+                    color={isScheduled ? colors.danger : colors.muted}
+                  />
+                ) : (
+                  <UtensilsCrossed
+                    size={s(10)}
+                    color={isActive || isOpen ? colors.teal : colors.label}
+                  />
+                )}
               </View>
               <Text
                 style={[
                   styles.menuButtonText,
                     (isActive || isOpen) && styles.menuButtonTextActive,
+                    isLocked && styles.menuButtonTextLocked,
                     { fontSize: s(11) }
                   ]}
                   numberOfLines={1}
                 >
                   {menu.name}
                 </Text>
+                {isScheduled && !isLocked && (
+                  <Clock
+                    size={s(11)}
+                    color={isActive || isOpen ? colors.teal : colors.label}
+                  />
+                )}
               </TouchableOpacity>
             )
           })}
@@ -615,27 +696,14 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
               const categoryId =
                 typeof cat === 'string' ? `${tab}-${index}` : cat?.id || tab
-              const isScheduled =
-                typeof cat === 'string'
-                  ? false
-                  : !!(cat.schedules && cat.schedules.length > 0)
-              const isNormallyAvailable =
-                isCategoryAvailableNow(tab) && currentMenu
-                  ? isCategoryActiveForMenu(
-                      currentMenu.id,
-                      typeof cat === 'string' ? tab : cat.id
-                    )
-                  : false
-              // A grant on the containing menu counts too: unlocking a menu is
-              // what lets staff browse it, and MenuSection renders its items on
-              // the same basis. Without this the tab would show a lock while
-              // the items below it were visible.
-              const hasOverride =
-                temporaryActiveCategorySet.has(tab) ||
-                (!!currentMenu && temporaryActiveMenuSet.has(currentMenu.name))
-              const isAvailable = isNormallyAvailable || hasOverride
+              const {
+                isScheduled,
+                isNormallyAvailable,
+                hasOverride,
+                isAvailable,
+                showLock
+              } = categoryLock(cat, currentMenu)
               const isActive = activeCategory === tab
-              const showLock = isScheduled && !isAvailable
 
               return (
                 <TouchableOpacity
@@ -802,7 +870,22 @@ const MenuControls: React.FC<MenuControlsProps> = ({
           >
             <View style={[styles.popupHeader, { marginBottom: s(12), paddingBottom: s(10) }]}>
               <View style={{ flex: 1, paddingRight: s(12) }}>
-                <Text style={[styles.popupTitle, { fontSize: s(15) }]}>{popupMenu?.name}</Text>
+                <View style={[styles.popupTitleRow, { gap: s(8) }]}>
+                  <Text style={[styles.popupTitle, { fontSize: s(15) }]}>{popupMenu?.name}</Text>
+                  {isPopupMenuLocked && !!popupMenu?.schedules?.length && (
+                    <View
+                      style={[
+                        styles.scheduleBadge,
+                        { gap: s(4), paddingHorizontal: s(7), paddingVertical: s(3), borderRadius: s(6) }
+                      ]}
+                    >
+                      <Lock size={s(11)} color={colors.danger} />
+                      <Text style={[styles.scheduleBadgeText, { fontSize: s(10) }]}>
+                        Schedule
+                      </Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={[styles.popupSubtitle, { fontSize: s(11), marginTop: s(2) }]}>
                   Choose a category
                 </Text>
@@ -817,12 +900,23 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             </View>
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.popupGrid, { gap: s(8) }]}
+              contentContainerStyle={[
+                styles.popupGrid,
+                // The classic picker dims a locked menu's whole card, chips included.
+                isPopupMenuLocked && { opacity: 0.65 },
+                { gap: s(8) }
+              ]}
             >
               {popupMenu?.categories?.map(category => {
                 const isActive =
                   activeMeal === popupMenu.name &&
                   activeCategory === category.name
+                const {
+                  isScheduled,
+                  isNormallyAvailable,
+                  hasOverride,
+                  showLock
+                } = categoryLock(category, popupMenu)
                 return (
                   <TouchableOpacity
                     key={category.id}
@@ -837,14 +931,20 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                     style={[
                       styles.popupCategory,
                       isActive && styles.popupCategoryActive,
-                      { minHeight: s(62), borderRadius: s(8), paddingHorizontal: s(10), paddingVertical: s(8) }
+                      showLock && !isActive && styles.popupCategoryLocked,
+                      { gap: s(4), minHeight: s(62), borderRadius: s(8), paddingHorizontal: s(10), paddingVertical: s(8) }
                     ]}
                     activeOpacity={0.82}
                   >
+                    {showLock && <Lock size={s(11)} color={colors.muted} />}
+                    {isScheduled && !isNormallyAvailable && hasOverride && (
+                      <Clock size={s(11)} color={colors.teal} />
+                    )}
                     <Text
                       style={[
                         styles.popupCategoryText,
                         isActive && styles.popupCategoryTextActive,
+                        showLock && !isActive && styles.popupCategoryTextLocked,
                         { fontSize: s(12), lineHeight: s(16) }
                       ]}
                     >

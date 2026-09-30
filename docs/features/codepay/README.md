@@ -450,8 +450,28 @@ function `codepay-transaction-status` → `_shared/codepayCloud.ts`):
    It prints recall/orderquery replies (full vs minimal envelope, signed?) and
    the function's verdict, then writes a base64 `CODEPAY_CLOUD_CONFIG` env file
    (mode 600).
-4. `supabase secrets set --env-file codepay-cloud.env` (staging first), then
-   delete the env file.
+4. `supabase secrets set --env-file codepay-cloud.env --project-ref <ref>`
+   (staging first), then delete the env file. The secret is replaced whole, so
+   the file must hold every entry you want to keep.
+
+**New merchants need no config change (2026-09-29).** The secret can hold one
+shared `"default"` entry (`app_id`, `gateway_url`, `private_key_pem`,
+`gateway_public_key`, no `merchant_no`); write it with the probe's
+`--location default`. A location without its own entry uses it, and its
+merchant number comes from its newest CodePay sale in any status
+(`processor_response.codepay_transaction.merchantNo`), so a re-boarded terminal
+is followed from its first sale on the new MID. Limits:
+- A location with no CodePay sale yet stays `unconfigured` (reason
+  `no_codepay_sale`) until its first one.
+- A merchant on another CodePay gateway, or not linked to our app, needs its
+  own entry. Probe a new MID once to confirm (`--merchant-no <mid> --ref <one
+  of its CP_ refs>`).
+- The not-found canary only uses a captured sale on the same merchant number.
+  A refunded-only history (typical of test locations) means no canary, so a
+  "not found" there stays unverified.
+
+The function logs `configSource` (`location` / `default`) and `merchantNo` on
+every call, and both go into the audit row.
 
 **Live probe findings (2026-09-28, MTech gateway):**
 - **CodePay's replies are signed and verify** with the platform key from PayPilot.

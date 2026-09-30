@@ -3,6 +3,7 @@ import {
   generateLocalOrderNumbers,
   parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
+import { takeReservedOrderNumber } from "@/lib/orderNumberReservation";
 
 function getDateKey(date: Date): string {
   const y = date.getFullYear();
@@ -164,18 +165,28 @@ export function getTodaySequenceFloor(
  * exactly once, at creation, and keeps it for life. Nothing renumbers an order
  * afterwards: the number is already in SQLite, already in the outbox op, and
  * under Decision 0.1 it is what the server stores.
+ *
+ * `locationWide`: the number comes from the shared server counter, reserved
+ * ahead (lib/orderNumberReservation.ts). Without a reservation this mints a
+ * provisional station number, the one case the server replaces on sync.
  */
 export function allocateOrderNumbers({
   ordersById,
   orderIds,
   locationId,
   stationNumber,
+  locationWide = false,
 }: {
   ordersById: Record<string, OrderProfile | undefined>;
   orderIds: string[];
   locationId: string;
   stationNumber: number | null;
+  locationWide?: boolean;
 }): { displayNumber: string; orderNumber: string } {
+  if (locationWide) {
+    const reserved = takeReservedOrderNumber(locationId);
+    if (reserved) return reserved;
+  }
   const floor = getTodaySequenceFloor(ordersById, orderIds, stationNumber);
   return generateLocalOrderNumbers(locationId, stationNumber, floor);
 }

@@ -167,6 +167,12 @@ export interface MenuCategoryEntry {
 
   // Items within this category for this menu
   items: MenuCategoryItem[];
+
+  /**
+   * Category-level schedules (get_pos_bootstrap_v3). Absent on v2 payloads and
+   * snapshots written before v3 — the category is then unscheduled.
+   */
+  schedules?: MenuScheduleEntry[];
 }
 
 // ============================================================================
@@ -176,9 +182,10 @@ export interface MenuCategoryEntry {
 // Individual time slot for a specific day
 export interface ScheduleTimeSlot {
   id: string;
-  day_of_week: number; // 0 = Monday, 1 = Tuesday, ..., 6 = Sunday (confirm with backend)
-  start_time: string; // Currently "HH:MM:SS" format - should be ISO (see backend message)
-  end_time: string; // Currently "HH:MM:SS" format - should be ISO (see backend message)
+  day_of_week: number; // 0 = Sunday .. 6 = Saturday — same as JS Date#getDay()
+  start_time: string; // "HH:MM:SS" (Postgres `time`)
+  end_time: string; // "HH:MM:SS"; always > start_time (DB check) — overnight is split across two days
+  is_active?: boolean; // v3 only
 }
 
 // The schedule definition
@@ -186,7 +193,8 @@ export interface ScheduleDetails {
   id: string;
   name: string;
   description: string | null;
-  is_active: boolean;
+  /** Location-effective (location_schedule_overrides win). v3 only — v2 omitted it. */
+  is_active?: boolean;
   time_slots: ScheduleTimeSlot[];
 }
 

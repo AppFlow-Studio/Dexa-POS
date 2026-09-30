@@ -44,6 +44,8 @@ export function __resetRpcFallbackMemo(): void {
 export interface RpcResult<T> {
   data: T | null;
   error: unknown;
+  /** HTTP status of the PostgREST response; the spreads below carry it through. */
+  status?: number;
 }
 
 export interface RpcFallbackResult<T> extends RpcResult<T> {

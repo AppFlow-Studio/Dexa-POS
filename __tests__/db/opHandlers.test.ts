@@ -267,3 +267,55 @@ describe("error classification through the handlers", () => {
     expect(result.kind).toBe("retry");
   });
 });
+
+describe("set_order_creator (per-order PIN re-credit)", () => {
+  function tableClient(result: { error: any }) {
+    const calls: { table: string; values: any; eq: [string, any] }[] = [];
+    return {
+      calls,
+      client: {
+        from: (table: string) => ({
+          update: (values: any) => ({
+            eq: async (col: string, val: any) => {
+              calls.push({ table, values, eq: [col, val] });
+              return result;
+            },
+          }),
+        }),
+      } as any,
+    };
+  }
+
+  it("writes the new creator onto the same order row", async () => {
+    const { client, calls } = tableClient({ error: null });
+    const handlers = makeOpHandlers(client);
+    const result = await handlers.set_order_creator!(
+      op({
+        op: "set_order_creator",
+        entity: "order",
+        entityId: "o1",
+        orderId: "o1",
+        payload: { orderId: "o1", staffId: "staff-b" },
+      }),
+    );
+    expect(result.kind).toBe("synced");
+    expect(calls).toEqual([
+      {
+        table: "orders",
+        values: { created_by_staff_id: "staff-b" },
+        eq: ["id", "o1"],
+      },
+    ]);
+  });
+
+  it("maps a server refusal to rejected", async () => {
+    const { client } = tableClient({
+      error: { message: "permission denied for table orders" },
+    });
+    const handlers = makeOpHandlers(client);
+    const result = await handlers.set_order_creator!(
+      op({ payload: { orderId: "o1", staffId: "staff-b" } }),
+    );
+    expect(result.kind).toBe("rejected");
+  });
+});

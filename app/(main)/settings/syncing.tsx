@@ -1,6 +1,7 @@
 import { FailedSyncsPanel } from "@/components/settings/sync-status/FailedSyncsPanel";
 import { SyncQueuePanel } from "@/components/settings/sync-status/SyncQueuePanel";
 import {
+  fetchMenuVersion,
   menuVersionQueryKey,
   probeVersionFromEnvelope,
 } from "@/hooks/pos/useMenuVersionWatch";
@@ -10,6 +11,7 @@ import { toastService } from "@/lib/toastService";
 import { useUiScale } from "@/lib/uiScale";
 import { syncEmployees } from "@/services/employeeSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
+import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { syncNow } from "@/services/offlineSyncService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -68,6 +70,10 @@ const SyncingScreen: React.FC = () => {
       syncNow(),
       resyncFloorPlan(),
       syncEmployees(supabase, selectedStore.id),
+      // Location POS settings (order numbering, auto-create, KDS, printing…)
+      // otherwise only reload at startup and on the 5-minute poll, so a change
+      // made on the dashboard never reached the till through this button.
+      refreshLocationConfig(supabase, selectedStore.id),
       queryClient.invalidateQueries({
         queryKey: ["active_orders", selectedStore.id],
       }),
@@ -116,16 +122,12 @@ const SyncingScreen: React.FC = () => {
     if (!supabase || !locationId) return;
     setSyncingKey("menu_version");
     try {
-      // The same probe the background watcher polls. This asked v1 and
-      // compared its token to the envelope's `version`, which carries a format
-      // marker the token does not: the two were never equal, so every tap
-      // pulled the full menu and "Menu Up to Date" could not be reached.
-      const { data, error } = await supabase.rpc("get_pos_menu_version_v2", {
-        p_location_id: locationId,
-      });
-      if (error) throw error;
-
-      const remoteVersion = (data as string | null) ?? null;
+      // The same probe the background watcher polls, compared in the probe's
+      // format: a v2 envelope carries a marker the v2 token does not, and a v3
+      // envelope is already byte-identical to the v3 token. Comparing the raw
+      // envelope against v1 or v2 never matched, so every tap pulled the full
+      // menu and "Menu Up to Date" could not be reached.
+      const remoteVersion = await fetchMenuVersion(supabase, locationId);
       const appliedVersion = probeVersionFromEnvelope(
         queryClient.getQueryData<{ version?: string | null }>([
           "pos_sync",
