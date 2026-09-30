@@ -125,7 +125,11 @@ function makeKdsClient() {
     );
     return chain;
   };
-  return { client: { from } as any, reads, updates };
+  // get_kds_online_accept_config_v1 — not what these tests stage.
+  const rpc = () => ({
+    abortSignal: () => Promise.resolve({ data: null, error: null }),
+  });
+  return { client: { from, rpc } as any, reads, updates };
 }
 
 function seedDisplay(config: Partial<KDSDisplayConfig> = {}) {
@@ -145,6 +149,8 @@ function seedDisplay(config: Partial<KDSDisplayConfig> = {}) {
       showServerName: false,
       fontScale: 1,
       showAllItems: null,
+      showOnlineOrdersButton: true,
+      flowMode: "standard",
       ...config,
     },
   });

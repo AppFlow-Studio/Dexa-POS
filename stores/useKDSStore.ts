@@ -17,6 +17,11 @@ import {
   type BumpStatus,
   type FailedBump,
 } from "@/lib/kds/bumpFailure";
+import {
+  QUICK_DONE_UNDO_MS,
+  resolveBumpStatus,
+  type OnlineAcceptConfig,
+} from "@/lib/kds/flowMode";
 import { isRecallExpired } from "@/lib/kdsAutomation";
 import { createPendingWrites } from "@/lib/pendingWrites";
 import { DEADLINES } from "@/lib/network/deadlines";
@@ -62,6 +67,8 @@ const DISPLAY_COLUMNS = {
   showServerName: "show_server_name",
   soundOnNewOrder: "sound_on_new_order",
   soundConfig: "sound_config",
+  showOnlineOrdersButton: "show_online_orders_button",
+  flowMode: "kds_flow_mode",
 } as const satisfies Partial<Record<keyof KDSDisplayConfig, string>>;
 
 export type KDSDisplayPatch = Partial<
@@ -162,6 +169,22 @@ interface KDSState {
   retryFailedBump: (ticketId: string) => void;
   _setBumpInFlight: (ticketId: string, inFlight: boolean) => void;
   _setBumpFailure: (ticketId: string, failure: FailedBump | null) => void;
+
+  /** Location auto-accept flags for the online-orders button (null = unknown). */
+  onlineAcceptConfig: OnlineAcceptConfig | null;
+  /** Quick Done taps still in their undo window: ticket_id → item ids. */
+  quickDonePending: Record<string, Record<string, true>>;
+  /**
+   * Quick Done item tap: shows the items done now, writes them after the undo
+   * window. Returns Undo, or null when there was nothing to mark.
+   */
+  queueQuickDone: (ticketId: string, itemIds: string[]) => (() => void) | null;
+  /** Marks items served on the board and writes them via kds_complete_items_v1. */
+  completeItems: (
+    ticketId: string,
+    itemIds: string[],
+    idempotencyKey: string,
+  ) => void;
 
   // Actions
   fetchKDSDisplay: (stationId: string) => Promise<void>;
@@ -486,13 +509,124 @@ async function bumpOrThrow(
   status: BumpStatus,
   keyOverride: string,
 ): Promise<void> {
-  const result = await OrderService.bulkUpdateOrderItemStatus(
-    client,
-    itemIds,
-    status,
-    { keyOverride },
-  );
+  // Done goes through kds_complete_items_v1 so a finished website order is
+  // completed in the same transaction as its last line.
+  const result =
+    status === "served"
+      ? await OrderService.kdsCompleteItems(client, itemIds, keyOverride)
+      : await OrderService.bulkUpdateOrderItemStatus(client, itemIds, status, {
+          keyOverride,
+        });
   if (result.error) throw result.error;
+}
+
+/**
+ * An order's last ticket just left this display as served. Nudges the order
+ * to ready (the bump already does it once every line is done; this covers
+ * lines on no display), except for an order kds_complete_items_v1 completed:
+ * update_order_status has no guard and would move it back to ready. Then
+ * archives it locally when it's paid and completion is automatic (Path B:
+ * kitchen finishes after payment).
+ */
+function afterOrderLeftKds(
+  client: SupabaseClient,
+  orderId: string,
+  completedOrderIds: readonly string[],
+): void {
+  if (!completedOrderIds.includes(orderId)) {
+    OrderService.updateOrderStatus(client, orderId, "ready").then(
+      ({ error }) => {
+        if (
+          error &&
+          error.code !== "P0001" &&
+          !error.message?.includes("already in")
+        ) {
+          console.error(
+            "[KDSStore] Failed to update order status to ready:",
+            error,
+          );
+        }
+      },
+    );
+  }
+
+  const completionMode = useStoreSettingsStore.getState().orderCompletionMode;
+  if (completionMode === "auto") {
+    const { ordersById, dbOrderIdIndex } = useOrderStore.getState();
+    const localId = dbOrderIdIndex[orderId];
+    const localOrder = localId ? ordersById[localId] : null;
+    if (localOrder?.paid_status === "Paid") {
+      queueMicrotask(() => {
+        useOrderStore.getState().archiveOrder(localOrder.id);
+      });
+    }
+  }
+}
+
+/** A ticket was served on the KDS: move its table session to "served". */
+function markTicketSessionServed(
+  ticket: KDSTicket | undefined,
+  orderId: string | undefined,
+): void {
+  // Prefer session_id on the ticket (set from broadcast).
+  // Fallback: scan sessions by db_order_id for tickets loaded via RPC
+  // which don't carry session_id (get_kds_tickets_v2 doesn't return it).
+  let sessionId = ticket?.session_id;
+  if (!sessionId && orderId) {
+    const sessions = useTableSessionStore.getState().sessions;
+    const match = Object.values(sessions).find(
+      (s) => s?.order_id === orderId,
+    );
+    sessionId = match?.id ?? null;
+  }
+  if (sessionId) {
+    useTableSessionStore
+      .getState()
+      .updateSessionStatus(sessionId, "served")
+      .catch((err) => {
+        console.error(
+          "[KDSStore] Failed to update table session to served:",
+          err,
+        );
+      });
+  }
+}
+
+/** Sentry tag for a bump's RPC (Done goes through kds_complete_items_v1). */
+function bumpRpcName(status: BumpStatus): string {
+  return status === "served"
+    ? "kds_complete_items_v1"
+    : "bulk_update_order_item_status_v2";
+}
+
+// ─── Quick Done undo window ─────────────────────────────────────
+// An item tap in quick_done writes nothing for QUICK_DONE_UNDO_MS; Undo just
+// clears the timer. The idempotency key is minted at tap time so the eventual
+// write and all its retries share it. Ephemeral: never persisted.
+interface QuickDoneTap {
+  ticketId: string;
+  itemIds: string[];
+  idempotencyKey: string;
+  timer: ReturnType<typeof setTimeout>;
+}
+const _quickDoneTaps = new Map<number, QuickDoneTap>();
+let _quickDoneSeq = 0;
+
+function withQuickDonePending(
+  cur: Record<string, Record<string, true>>,
+  ticketId: string,
+  itemIds: string[],
+  pending: boolean,
+): Record<string, Record<string, true>> {
+  const forTicket: Record<string, true> = { ...(cur[ticketId] ?? {}) };
+  for (const id of itemIds) {
+    if (pending) forTicket[id] = true;
+    else delete forTicket[id];
+  }
+  const next = { ...cur };
+  if (Object.keys(forTicket).length > 0) next[ticketId] = forTicket;
+  else delete next[ticketId];
+  return next;
 }
 
 function cancelRetry(key: string) {
@@ -1675,7 +1809,230 @@ export const useKDSStore = create<KDSState>()(
         const failed = get().failedBumps.get(ticketId);
         if (!failed) return;
         get()._setBumpFailure(ticketId, null);
+        if (failed.quickDoneKey) {
+          get().completeItems(ticketId, failed.itemIds, failed.quickDoneKey);
+          return;
+        }
         get().advanceTicketStatus(ticketId, failed.itemIds, failed.newStatus);
+      },
+
+      onlineAcceptConfig: null,
+      quickDonePending: {},
+
+      queueQuickDone: (ticketId, itemIds) => {
+        const ticket = get()._ticketsById[ticketId];
+        if (!ticket) return null;
+        const alreadyPending = get().quickDonePending[ticketId];
+        const ids = itemIds.filter((id) => {
+          if (alreadyPending?.[id]) return false;
+          const item = ticket.items.find((i) => i.id === id);
+          return !!item && isActionableKitchenItem(item);
+        });
+        if (ids.length === 0) return null;
+
+        const tapId = ++_quickDoneSeq;
+        const idempotencyKey = toIdempotencyKey(
+          `kds_quick_done:${ticketId}:${Date.now()}:${tapId}:${[...ids]
+            .sort()
+            .join(",")}`,
+        );
+        const clearPending = () =>
+          set({
+            quickDonePending: withQuickDonePending(
+              get().quickDonePending,
+              ticketId,
+              ids,
+              false,
+            ),
+          });
+
+        set({
+          quickDonePending: withQuickDonePending(
+            get().quickDonePending,
+            ticketId,
+            ids,
+            true,
+          ),
+        });
+        const timer = setTimeout(() => {
+          if (!_quickDoneTaps.delete(tapId)) return;
+          get().completeItems(ticketId, ids, idempotencyKey);
+          clearPending();
+        }, QUICK_DONE_UNDO_MS);
+        _quickDoneTaps.set(tapId, { ticketId, itemIds: ids, idempotencyKey, timer });
+
+        return () => {
+          const tap = _quickDoneTaps.get(tapId);
+          // Already written (or flushed on unmount): Undo is over.
+          if (!tap) return;
+          clearTimeout(tap.timer);
+          _quickDoneTaps.delete(tapId);
+          clearPending();
+        };
+      },
+
+      completeItems: (ticketId, itemIds, idempotencyKey) => {
+        const { tickets, _ticketsById } = get();
+        const ticket = _ticketsById[ticketId];
+        // Bumped whole, or cleared by the server, inside the undo window: that
+        // write already covers these items.
+        if (!ticket) return;
+        const idSet = new Set(
+          itemIds.filter((id) => {
+            const item = ticket.items.find((i) => i.id === id);
+            return !!item && isActionableKitchenItem(item);
+          }),
+        );
+        if (idSet.size === 0) return;
+        const ids = [...idSet];
+        const orderId = ticket.db_order_id;
+
+        get()._setBumpFailure(ticketId, null);
+        bumpTicketMutationVersion(ticketId);
+        const wasRecalled = _recalledTicketIds.has(ticketId);
+        cancelRetry(`recall_${ticketId}`);
+        cancelRetry(`recall_done_${ticketId}`);
+        for (const id of ids) cancelRetry(`item_${ticketId}_${id}`);
+
+        const updatedItems = ticket.items.map((i) =>
+          idSet.has(i.id)
+            ? {
+                ...i,
+                kitchen_status: "served",
+                ...(wasRecalled && i.recalled ? { recalled: false } : {}),
+              }
+            : wasRecalled && i.recalled
+              ? { ...i, recalled: false }
+              : i,
+        );
+        const remaining = updatedItems.filter((i) =>
+          isActionableKitchenItem(i),
+        );
+        const allDone = remaining.length === 0;
+        if (wasRecalled) deleteRecalledTicketId(ticketId);
+
+        // Same derivation as markItemDone, over the lines still to make.
+        const newTicketStatus: KDSTicket["status"] = allDone
+          ? "done"
+          : remaining.every((i) => i.kitchen_status === "ready")
+            ? "ready"
+            : remaining.some((i) => i.kitchen_status === "sent")
+              ? getKitchenSentStatus() === "preparing"
+                ? "cooking"
+                : "pending"
+              : "cooking";
+
+        const existing = _pendingActions.get(ticketId);
+        const itemStatusMap = existing?.itemStatuses
+          ? new Map(existing.itemStatuses)
+          : new Map<string, string>();
+        for (const id of ids) itemStatusMap.set(id, "served");
+        setPendingAction(ticketId, {
+          ticketId,
+          targetStatus: newTicketStatus,
+          itemStatuses: itemStatusMap,
+          timestamp: Date.now(),
+        });
+
+        const updatedTicket: KDSTicket = {
+          ...ticket,
+          status: newTicketStatus,
+          items: updatedItems,
+        };
+        let updatedTickets: KDSTicket[];
+        let updatedById: Record<string, KDSTicket>;
+        let extraState: Partial<KDSState> = {};
+        if (allDone) {
+          _recalledCycleTicketIds.delete(ticketId);
+          updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
+          updatedById = Object.assign({}, _ticketsById);
+          delete updatedById[ticketId];
+          deleteTicketMutationVersion(ticketId);
+          const updatedDone = mergeDoneTickets(
+            [asDoneTicket(updatedTicket)],
+            get().doneTickets,
+          );
+          extraState = {
+            doneTickets: updatedDone,
+            doneCount: updatedDone.length,
+          };
+        } else {
+          updatedTickets = tickets.map((t) =>
+            t.ticket_id === ticketId ? updatedTicket : t,
+          );
+          updatedById = { ..._ticketsById, [ticketId]: updatedTicket };
+        }
+
+        const bucketed = smartBucketTickets(
+          updatedTickets,
+          get().ticketsByStatus,
+          get().prioritizedTicketIds,
+          get().newOrderPosition,
+        );
+        set({
+          tickets: updatedTickets,
+          _ticketsById: updatedById,
+          _ticketIdsByOrderId: buildOrderIdIndex(updatedById),
+          ...bucketed,
+          ...extraState,
+        });
+
+        const client = getClient();
+        if (!client) return;
+        let completedOrderIds: string[] = [];
+        scheduleRetry(
+          `quick_done_${idempotencyKey}`,
+          async () => {
+            const result = await OrderService.kdsCompleteItems(
+              client,
+              ids,
+              idempotencyKey,
+            );
+            if (result.error) throw result.error;
+            completedOrderIds = result.data?.completed_order_ids ?? [];
+          },
+          0,
+          () => {
+            if (_pendingActions.has(ticketId)) {
+              const lastLoc = get()._lastLocationId;
+              if (lastLoc) get().scheduleRefetch(lastLoc);
+            }
+            if (allDone && orderId) {
+              const hasRemainingTicketsForOrder = get().tickets.some(
+                (t) => t.db_order_id === orderId,
+              );
+              if (!hasRemainingTicketsForOrder) {
+                afterOrderLeftKds(client, orderId, completedOrderIds);
+              }
+            }
+          },
+          () => {
+            // The refetch restores server truth; Retry re-sends these items
+            // with the same key.
+            get()._setBumpFailure(ticketId, {
+              itemIds: ids,
+              newStatus: "served",
+              failedAt: Date.now(),
+              quickDoneKey: idempotencyKey,
+            });
+            deletePendingAction(ticketId);
+            const lastLoc = get()._lastLocationId;
+            if (lastLoc) get().scheduleRefetch(lastLoc);
+          },
+          {
+            maxRetries: BUMP_MAX_RETRIES,
+            onAttemptFailure: (err, willRetry) =>
+              reportBumpFailure(err, {
+                ticketId,
+                orderItemIds: ids,
+                status: "served",
+                willRetry,
+                rpc: bumpRpcName("served"),
+              }),
+          },
+        );
+
+        if (allDone) markTicketSessionServed(ticket, orderId);
       },
 
       _ticketsById: {},
@@ -1766,7 +2123,7 @@ export const useKDSStore = create<KDSState>()(
           // them in parallel (deadline-wrapped) instead of three serial
           // round-trips on KDS entry — the additive latency was amplified once
           // this location switched to prep-station routing.
-          const [rulesRes, prepRes] = await Promise.all([
+          const [rulesRes, prepRes, acceptRes] = await Promise.all([
             runWithDeadline<KDSRoutingRule[]>(
               "fetch_kds_routing_rules",
               DEADLINES.read,
@@ -1794,6 +2151,26 @@ export const useKDSStore = create<KDSState>()(
                   error: any;
                 }>,
             ),
+            // Decides whether the online-orders button may be hidden.
+            runWithDeadline<{
+              store_auto_accept: boolean | null;
+              orderout_auto_accept: boolean | null;
+            }>(
+              "get_kds_online_accept_config_v1",
+              DEADLINES.read,
+              (signal) =>
+                client
+                  .rpc("get_kds_online_accept_config_v1", {
+                    p_location_id: display.location_id,
+                  })
+                  .abortSignal(signal) as unknown as Promise<{
+                  data: {
+                    store_auto_accept: boolean | null;
+                    orderout_auto_accept: boolean | null;
+                  } | null;
+                  error: any;
+                }>,
+            ),
           ]);
           const { data: rules, error: rulesError } = rulesRes;
           const { data: prepStationsData, error: psError } = prepRes;
@@ -1811,6 +2188,23 @@ export const useKDSStore = create<KDSState>()(
               psError,
             );
           }
+
+          // A failed read keeps the last known flags; pending online orders
+          // keep the button up regardless (lib/kds/flowMode).
+          if (acceptRes.error) {
+            console.error(
+              "[KDSStore] fetchKDSDisplay accept config error:",
+              acceptRes.error,
+            );
+          }
+          const onlineAcceptConfig: OnlineAcceptConfig | null =
+            !acceptRes.error && acceptRes.data
+              ? {
+                  storeAutoAccept: acceptRes.data.store_auto_accept ?? null,
+                  orderoutAutoAccept:
+                    acceptRes.data.orderout_auto_accept ?? null,
+                }
+              : get().onlineAcceptConfig;
 
           // Build prep station map: name -> { name, color }
           const prepStationsMap: Record<
@@ -1855,6 +2249,9 @@ export const useKDSStore = create<KDSState>()(
             showServerName: display.show_server_name ?? null,
             fontScale: display.font_scale ?? null,
             showAllItems: display.show_all_items ?? null,
+            showOnlineOrdersButton: display.show_online_orders_button ?? true,
+            flowMode:
+              display.kds_flow_mode === "quick_done" ? "quick_done" : "standard",
             // Edits this read may predate win, so a setting doesn't flip back
             // while (or just after) its save goes through.
             ...(_displayWrites.overlay(
@@ -1870,6 +2267,7 @@ export const useKDSStore = create<KDSState>()(
             kdsDisplayConfig: config,
             prepStations: prepStationsMap,
             enrichedRules: enriched,
+            onlineAcceptConfig,
           });
         } catch (err) {
           console.error("[KDSStore] fetchKDSDisplay exception:", err);
@@ -2453,8 +2851,13 @@ export const useKDSStore = create<KDSState>()(
         }
       },
 
-      advanceTicketStatus: (ticketId, itemIds, newStatus) => {
+      advanceTicketStatus: (ticketId, itemIds, requestedStatus) => {
         const { tickets, _ticketsById } = get();
+        // Quick Done has no Served stage: Cooking bumps straight to Done.
+        const newStatus = resolveBumpStatus(
+          requestedStatus,
+          get().kdsDisplayConfig?.flowMode,
+        );
 
         // Per-ticket in-flight guard: while a bump RPC for this ticket is
         // pending, further taps are dropped. Ten rapid taps = one RPC, and a
@@ -2679,6 +3082,8 @@ export const useKDSStore = create<KDSState>()(
 
         if (client && backendItemIds.length > 0) {
           get()._setBumpInFlight(ticketId, true);
+          // Orders kds_complete_items_v1 completed (served bumps only).
+          let completedOrderIds: string[] = [];
           scheduleRetry(
             retryKey,
             async () => {
@@ -2700,14 +3105,21 @@ export const useKDSStore = create<KDSState>()(
                 });
               }
 
-              const result = await OrderService.bulkUpdateOrderItemStatus(
-                client,
-                backendItemIds,
-                newStatus,
-                {
-                  keyOverride,
-                },
-              );
+              const result =
+                newStatus === "served"
+                  ? await OrderService.kdsCompleteItems(
+                      client,
+                      backendItemIds,
+                      keyOverride,
+                    )
+                  : await OrderService.bulkUpdateOrderItemStatus(
+                      client,
+                      backendItemIds,
+                      newStatus,
+                      {
+                        keyOverride,
+                      },
+                    );
 
               if (__DEV__) {
                 console.log("[KDS Debug] advanceTicketStatus backend result", {
@@ -2721,6 +3133,9 @@ export const useKDSStore = create<KDSState>()(
               }
 
               if (result.error) throw result.error;
+              completedOrderIds =
+                (result.data as { completed_order_ids?: string[] } | null)
+                  ?.completed_order_ids ?? [];
             },
             0,
             () => {
@@ -2754,35 +3169,7 @@ export const useKDSStore = create<KDSState>()(
                 );
 
                 if (!hasRemainingTicketsForOrder) {
-                  OrderService.updateOrderStatus(client, orderId, "ready").then(
-                    ({ error }) => {
-                      if (
-                        error &&
-                        error.code !== "P0001" &&
-                        !error.message?.includes("already in")
-                      ) {
-                        console.error(
-                          "[KDSStore] Failed to update order status to ready:",
-                          error,
-                        );
-                      }
-                    },
-                  );
-
-                  // Auto-complete if paid and completion mode allows (Path B: kitchen finishes after payment)
-                  const completionMode =
-                    useStoreSettingsStore.getState().orderCompletionMode;
-                  if (completionMode === "auto") {
-                    const { ordersById, dbOrderIdIndex } =
-                      useOrderStore.getState();
-                    const localId = dbOrderIdIndex[orderId];
-                    const localOrder = localId ? ordersById[localId] : null;
-                    if (localOrder?.paid_status === "Paid") {
-                      queueMicrotask(() => {
-                        useOrderStore.getState().archiveOrder(localOrder.id);
-                      });
-                    }
-                  }
+                  afterOrderLeftKds(client, orderId, completedOrderIds);
                 }
               }
             },
@@ -2810,34 +3197,14 @@ export const useKDSStore = create<KDSState>()(
                   orderItemIds: backendItemIds,
                   status: newStatus,
                   willRetry,
+                  rpc: bumpRpcName(newStatus),
                 }),
             },
           );
 
           // When all items are marked as served in KDS, also update the table session to "served"
           if (newStatus === "served") {
-            // Prefer session_id on the ticket (set from broadcast).
-            // Fallback: scan sessions by db_order_id for tickets loaded via RPC
-            // which don't carry session_id (get_kds_tickets_v2 doesn't return it).
-            let sessionId = ticket?.session_id;
-            if (!sessionId && orderId) {
-              const sessions = useTableSessionStore.getState().sessions;
-              const match = Object.values(sessions).find(
-                (s) => s?.order_id === orderId,
-              );
-              sessionId = match?.id ?? null;
-            }
-            if (sessionId) {
-              useTableSessionStore
-                .getState()
-                .updateSessionStatus(sessionId, "served")
-                .catch((err) => {
-                  console.error(
-                    "[KDSStore] Failed to update table session to served:",
-                    err,
-                  );
-                });
-            }
+            markTicketSessionServed(ticket, orderId);
           }
         }
       },
@@ -4347,12 +4714,13 @@ export const useKDSStore = create<KDSState>()(
           served: [],
         };
 
+        const flowMode = get().kdsDisplayConfig?.flowMode;
         for (const [ticketId, ticket] of ticketIndex) {
           const newStatus: "preparing" | "ready" | "served" =
             ticket.status === "pending"
               ? "preparing"
               : ticket.status === "cooking"
-                ? "ready"
+                ? resolveBumpStatus("ready", flowMode)
                 : "served";
 
           if (newStatus === "served") {
@@ -4489,6 +4857,7 @@ export const useKDSStore = create<KDSState>()(
                     orderItemIds: ids,
                     status,
                     willRetry,
+                    rpc: bumpRpcName(status),
                   }),
               },
             );
@@ -4603,6 +4972,7 @@ export const useKDSStore = create<KDSState>()(
                     orderItemIds: actionableItemIds,
                     status: "served",
                     willRetry,
+                    rpc: bumpRpcName("served"),
                   }),
               },
             );
@@ -4642,12 +5012,26 @@ export const useKDSStore = create<KDSState>()(
 
       // ─── Cleanup (for unmount) ──────────────────────────────────────
       _cleanup: () => {
+        // Leaving the board ends the undo window: write taps still in it
+        // rather than drop them. Single attempt; the retry state goes below.
+        const client = getClient();
+        for (const [tapId, tap] of _quickDoneTaps) {
+          clearTimeout(tap.timer);
+          _quickDoneTaps.delete(tapId);
+          if (client) {
+            bumpOrThrow(client, tap.itemIds, "served", tap.idempotencyKey).catch(
+              (err) =>
+                console.error("[KDSStore] Quick Done flush failed:", err),
+            );
+          }
+        }
         cancelAllRetries();
         // Cancelled retries never reach their callbacks, so clear the bump
         // tracking here or a ticket could stay "in flight" for good.
         set({
           inFlightBumpTicketIds: new Set<string>(),
           failedBumps: new Map<string, FailedBump>(),
+          quickDonePending: {},
         });
         _pendingActions.clear();
         _queuedAdvanceActions.clear();

@@ -19,6 +19,7 @@ import KDSSoundService, {
   type SoundPreset,
 } from "@/services/kds/kdsSoundService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { requiresManualAccept, type KdsFlowMode } from "@/lib/kds/flowMode";
 import { useKDSStore, type KDSDisplayPatch } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
@@ -96,11 +97,13 @@ function ToggleRow({
   subtitle,
   value,
   onToggle,
+  disabled,
 }: {
   label: string;
   subtitle?: string;
   value: boolean;
   onToggle: (val: boolean) => void;
+  disabled?: boolean;
 }) {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -133,7 +136,7 @@ function ToggleRow({
           </Text>
         )}
       </View>
-      <Switch checked={value} onCheckedChange={onToggle} />
+      <Switch checked={value} onCheckedChange={onToggle} disabled={disabled} />
     </View>
   );
 }
@@ -565,6 +568,12 @@ const COLUMN_OPTIONS = [
   { value: "4", label: "4 per row", desc: "More on screen" },
 ];
 
+const FLOW_MODE_OPTIONS: { value: KdsFlowMode; label: string; desc: string }[] =
+  [
+    { value: "standard", label: "Standard", desc: "Cooking → Served → Done" },
+    { value: "quick_done", label: "Quick Done", desc: "Cooking → Done" },
+  ];
+
 // ─── Per-Station Display Panel ───────────────────────────────────
 function StationDisplayPanel({
   station,
@@ -581,6 +590,8 @@ function StationDisplayPanel({
   const s = (n: number) => Math.round(n * uiScale);
   const toast = useToast();
   const updateKDSDisplay = useKDSStore((s) => s.updateKDSDisplay);
+  const onlineAcceptConfig = useKDSStore((s) => s.onlineAcceptConfig);
+  const onlineButtonForced = requiresManualAccept(onlineAcceptConfig);
 
   // Read straight from the store, which the save updates optimistically — a
   // local copy re-synced from it flipped back whenever a refetch landed
@@ -738,6 +749,40 @@ function StationDisplayPanel({
         subtitle="Show the server's name on each ticket"
         value={displayConfig?.showServerName ?? false}
         onToggle={(val) => saveDisplay({ showServerName: val })}
+      />
+
+      {/* Ticket Flow (this display) */}
+      <SectionHeader title="Ticket Flow" />
+      <Text
+        style={{
+          fontSize: s(11),
+          color: colors.muted,
+          marginBottom: s(6),
+          paddingHorizontal: s(2),
+        }}
+      >
+        Quick Done skips the Served tab: tap an item to mark it done, with 5
+        seconds to undo. Online orders from your website complete once every
+        item is done.
+      </Text>
+      <OptionCards
+        options={FLOW_MODE_OPTIONS}
+        value={displayConfig?.flowMode ?? "standard"}
+        onChange={(v) => saveDisplay({ flowMode: v })}
+      />
+
+      {/* Online Orders button (this display) */}
+      <SectionHeader title="Online Orders" />
+      <ToggleRow
+        label="Online Orders Button"
+        subtitle={
+          onlineButtonForced
+            ? "Always shown here: this location accepts some online orders by hand."
+            : "Show the online orders tab on this display. It also appears whenever an order is waiting to be accepted."
+        }
+        value={onlineButtonForced || (displayConfig?.showOnlineOrdersButton ?? true)}
+        disabled={onlineButtonForced}
+        onToggle={(val) => saveDisplay({ showOnlineOrdersButton: val })}
       />
 
       {/* Sound Section */}

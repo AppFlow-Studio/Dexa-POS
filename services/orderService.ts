@@ -2122,6 +2122,73 @@ export class OrderService {
   }
 
   /**
+   * KDS "Done" write: marks items served and, server-side, completes any
+   * website order that leaves ready with every kitchen line served
+   * (`completed_order_ids`). Environments without kds_complete_items_v1 get
+   * the plain served bump, so nothing completes there but nothing breaks.
+   *
+   * `idempotencyKey` must be minted once per tap and reused by every retry.
+   */
+  static async kdsCompleteItems(
+    client: SupabaseClient,
+    orderItemIds: string[],
+    idempotencyKey: string,
+    opts?: { staffId?: string },
+  ): Promise<{
+    data: (KitchenMutationResult & { completed_order_ids?: string[] }) | null;
+    error: any;
+  }> {
+    if (orderItemIds.length === 0) {
+      return { data: null, error: null };
+    }
+    const result = await rpcWithVersionFallback<
+      KitchenMutationResult & { completed_order_ids?: string[] }
+    >(
+      "kds_complete_items_v1",
+      () =>
+        _runWithDeadline(
+          "kds_complete_items_v1",
+          DEADLINES.sendToKitchen,
+          async (signal) => {
+            const { data, error } = await client
+              .rpc("kds_complete_items_v1", {
+                p_order_item_ids: orderItemIds,
+                p_staff_id: opts?.staffId ?? null,
+                p_idempotency_key: idempotencyKey,
+              })
+              .abortSignal(signal);
+            return { data, error };
+          },
+        ),
+      () =>
+        OrderService.bulkUpdateOrderItemStatus(client, orderItemIds, "served", {
+          staffId: opts?.staffId,
+          keyOverride: idempotencyKey,
+        }),
+    );
+
+    if (result.error || result.usedFallback) {
+      return { data: result.data, error: result.error };
+    }
+
+    const countError = validateKitchenMutationResult(
+      result.data,
+      orderItemIds.length,
+      { operation: "status" },
+    );
+    if (countError) {
+      console.error("[KDS routing] Partial kitchen status update", {
+        ...countError.details,
+        status: "served",
+        code: countError.code,
+      });
+      return { data: result.data, error: countError };
+    }
+
+    return { data: result.data, error: null };
+  }
+
+  /**
    * Atomically transitions a draft order and fires its items while recording
    * station/device/idempotency context in the shared KDS send-attempt ledger.
    */

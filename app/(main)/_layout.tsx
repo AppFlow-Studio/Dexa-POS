@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import MenuSearchSheet from "@/components/menu/MenuSearchSheet";
 import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
+import KdsOnlineOrders from "@/components/online-orders/KdsOnlineOrders";
 import OnlineOrderDrawer from "@/components/online-orders/OnlineOrderDrawer";
 import OnlineOrderEdgeTab from "@/components/online-orders/OnlineOrderEdgeTab";
 import MyProfilePanel from "@/components/profile/MyProfilePanel";
@@ -397,9 +398,10 @@ export default function MainLayout() {
         >
           <StatusBar style="light" translucent />
           <Slot />
-          {/* Online-orders edge tab + drawer on KDS too. kdsMode hides the
-              POS-only navigation (board/detail routes have no header/back
-              affordance in the KDS layout). */}
+          {/* Online-orders edge tab + drawer on KDS too, unless this display
+              turned it off (KdsOnlineOrders). kdsMode hides the POS-only
+              navigation (board/detail routes have no header/back affordance
+              in the KDS layout). */}
           <View
             style={{
               position: "absolute",
@@ -411,8 +413,7 @@ export default function MainLayout() {
             }}
             pointerEvents="box-none"
           >
-            <OnlineOrderEdgeTab />
-            <OnlineOrderDrawer kdsMode />
+            <KdsOnlineOrders />
           </View>
         </SafeAreaView>
       </LocationRealtimeProvider>

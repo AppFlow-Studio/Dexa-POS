@@ -73,6 +73,10 @@ export interface KDSDisplayConfig {
   showServerName: boolean | null;
   fontScale: number | null;
   showAllItems: boolean | null;
+  /** kds_displays.show_online_orders_button — may be forced on, see lib/kds/flowMode. */
+  showOnlineOrdersButton: boolean;
+  /** kds_displays.kds_flow_mode */
+  flowMode: import("@/lib/kds/flowMode").KdsFlowMode;
 }
 
 export interface KDSRoutingRule {

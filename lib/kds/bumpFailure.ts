@@ -12,6 +12,11 @@ export interface FailedBump {
   itemIds: string[];
   newStatus: BumpStatus;
   failedAt: number;
+  /**
+   * Set for a Quick Done item write: Retry re-sends just these items with the
+   * same idempotency key instead of bumping the whole ticket.
+   */
+  quickDoneKey?: string;
 }
 
 export interface BumpFailureContext {
@@ -20,10 +25,13 @@ export interface BumpFailureContext {
   status: BumpStatus;
   /** True when the store will retry on its own after this failure. */
   willRetry: boolean;
+  /** Defaults to bulk_update_order_item_status_v2. */
+  rpc?: string;
 }
 
 /**
- * Surface a failed `bulk_update_order_item_status_v2` call.
+ * Surface a failed KDS bump (`bulk_update_order_item_status_v2`, or
+ * `kds_complete_items_v1` for Done).
  *
  * Charcoal #S1-0020: 13 bumps 500'd (statement timeout) and the KDS showed
  * nothing — the optimistic state was silently reverted by a refetch minutes
@@ -47,7 +55,7 @@ export function reportBumpFailure(
     Sentry.captureException(toError(error), {
       tags: {
         area: "kds",
-        rpc: "bulk_update_order_item_status_v2",
+        rpc: ctx.rpc ?? "bulk_update_order_item_status_v2",
         kds_status: ctx.status,
       },
       extra: {

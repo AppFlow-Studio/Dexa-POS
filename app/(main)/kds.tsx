@@ -17,6 +17,11 @@ import { jitterMs } from "@/lib/network/jitter";
 import { getDeviceId } from "@/lib/deviceId";
 import { registerResumeTask } from "@/lib/lifecycle/appLifecycleCoordinator";
 import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
+import {
+  QUICK_DONE_UNDO_MS,
+  resolveBumpStatus,
+  visibleStatusTabKeys,
+} from "@/lib/kds/flowMode";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { replaceRoute } from "@/lib/rootNavigation";
@@ -91,10 +96,28 @@ const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
 
 const MODIFIER_ADD_COLOR = "#0B5E56";
 
-// Helper: count undone (non-ready, non-voided, non-refunded) items in a ticket
+/**
+ * Whether the board draws an item as done. Standard flow: ready (the Served
+ * stage). Quick Done has no Served stage: served, or tapped and still in its
+ * undo window — a ready item still needs its tap.
+ */
+function isBoardItemDone(
+  item: Pick<KDSTicketItem, "id" | "kitchen_status">,
+  quickDone: boolean,
+  pending: Record<string, true> | undefined,
+): boolean {
+  if (!quickDone) return item.kitchen_status === "ready";
+  return item.kitchen_status === "served" || !!pending?.[item.id];
+}
+
+// Helper: count undone (not ready/served, non-voided, non-refunded) items in a ticket
 function countUndoneItems(ticket: KDSTicket): number {
   return ticket.items.filter(
-    (i) => i.kitchen_status !== "ready" && !i.is_voided && !i.is_refunded,
+    (i) =>
+      i.kitchen_status !== "ready" &&
+      i.kitchen_status !== "served" &&
+      !i.is_voided &&
+      !i.is_refunded,
   ).length;
 }
 
@@ -588,6 +611,8 @@ interface KDSTicketDisplaySettings {
   alphabeticalSort: boolean;
   aggregateIdenticalItems: boolean;
   showServerName: boolean;
+  /** Quick Done flow: an item is done once served (or tapped, inside its undo window). */
+  quickDone: boolean;
 }
 
 // ─── Ticket Timer (isolated re-render boundary) ─────────────────
@@ -730,6 +755,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
     const bumpFailed = useKDSStore((s) => s.failedBumps.has(ticket.ticket_id));
     const retryFailedBump = useKDSStore((s) => s.retryFailedBump);
+    // Quick Done taps still in their undo window (stable ref per ticket).
+    const quickDonePending = useKDSStore(
+      useCallback(
+        (s) => s.quickDonePending[ticket.ticket_id],
+        [ticket.ticket_id],
+      ),
+    );
+    const quickDone = displaySettings.quickDone;
 
     const ticketItems = getTicketItems(ticket);
     const unacknowledgedItems = ticketItems.filter(
@@ -911,14 +944,20 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       // Done count excludes voided/refunded items — they're not "done", they're cancelled/returned
       const doneCount = ticketItems
         .filter(
-          (i) => i.kitchen_status === "ready" && !i.is_voided && !i.is_refunded,
+          (i) =>
+            isBoardItemDone(i, quickDone, quickDonePending) &&
+            !i.is_voided &&
+            !i.is_refunded,
         )
         .reduce((sum, i) => sum + (i.quantity || 0), 0);
 
       // Hide done items setting — voided/refunded always stay visible as kitchen notifications
       let filtered: KDSTicketItem[] = shouldHideDoneItems
         ? ticketItems.filter(
-            (i) => i.kitchen_status !== "ready" || i.is_voided || i.is_refunded,
+            (i) =>
+              !isBoardItemDone(i, quickDone, quickDonePending) ||
+              i.is_voided ||
+              i.is_refunded,
           )
         : [...ticketItems];
 
@@ -1048,6 +1087,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     }, [
       ticketItems,
       shouldHideDoneItems,
+      quickDone,
+      quickDonePending,
       displaySettings.aggregateIdenticalItems,
       displaySettings.alphabeticalSort,
       displaySettings.exclusionsAtTop,
@@ -1530,9 +1571,15 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             {visibleItems.map(
               ({ item, sortedModifiers, representedItemIds }, index) => {
                 const rowKey = `${item.id}_${item._displayState}_${index}`;
+                // An aggregated row reads as tapped once all its lines are.
+                const rowItemIds =
+                  representedItemIds.length > 0 ? representedItemIds : [item.id];
                 const isItemDone =
-                  item.kitchen_status === "ready" &&
-                  item._displayState === "active";
+                  item._displayState === "active" &&
+                  (isBoardItemDone(item, quickDone, undefined) ||
+                    (quickDone &&
+                      !!quickDonePending &&
+                      rowItemIds.every((id) => quickDonePending[id])));
                 const isVoided = item._displayState === "voided";
                 const isRefunded = item._displayState === "refunded";
                 const isChanged = item._displayState === "changed";
@@ -2397,7 +2444,7 @@ const KitchenDisplayScreen = () => {
   const kdsTicketTapMode = kdsConfig.ticketTapMode ?? "double-tap";
 
   const countPending = useKDSStore((s) => s.counts.pending);
-  const countCooking = useKDSStore((s) => s.counts.cooking);
+  const countCookingBucket = useKDSStore((s) => s.counts.cooking);
   const countReady = useKDSStore((s) => s.counts.ready);
   const isInitialLoading = useKDSStore((s) => s.isInitialLoading);
   const hasHydrated = useKDSStore((s) => s._hasHydrated);
@@ -2433,6 +2480,7 @@ const KitchenDisplayScreen = () => {
   const focusedTicketId = useKDSStore((s) => s.focusedTicketId);
   const setFocusedTicketId = useKDSStore((s) => s.setFocusedTicketId);
   const markItemDone = useKDSStore((s) => s.markItemDone);
+  const queueQuickDone = useKDSStore((s) => s.queueQuickDone);
   const acknowledgeNoticeItem = useKDSStore((s) => s.acknowledgeNoticeItem);
   const isTicketRecalled = useKDSStore((s) => s.isTicketRecalled);
   const kdsCleanup = useKDSStore((s) => s._cleanup);
@@ -2474,6 +2522,13 @@ const KitchenDisplayScreen = () => {
   );
 
   const kdsShowServerName = kdsDisplayConfig?.showServerName ?? false;
+  // Per-display flow (kds_displays.kds_flow_mode). Quick Done drops the
+  // Served tab: item taps and bumps go straight to Done.
+  const flowMode = kdsDisplayConfig?.flowMode ?? "standard";
+  const isQuickDone = flowMode === "quick_done";
+  const countCooking = isQuickDone
+    ? countCookingBucket + countReady
+    : countCookingBucket;
 
   const displaySettings = useMemo<KDSTicketDisplaySettings>(
     () => ({
@@ -2485,8 +2540,10 @@ const KitchenDisplayScreen = () => {
       alphabeticalSort: kdsAlphabeticalSort,
       aggregateIdenticalItems: kdsAggregateIdenticalItems,
       showServerName: kdsShowServerName,
+      quickDone: isQuickDone,
     }),
     [
+      isQuickDone,
       kdsHighlightNotes,
       kdsShowOrderNotes,
       kdsItemNameLines,
@@ -2501,13 +2558,10 @@ const KitchenDisplayScreen = () => {
   const workflowMode =
     useLocationConfigStore((s) => s.config.kds.workflowMode) ?? "3-step";
 
-  const visibleStatusTabs = useMemo(
-    () =>
-      workflowMode === "2-step"
-        ? STATUS_TABS.filter((t) => t.key !== "pending")
-        : STATUS_TABS,
-    [workflowMode],
-  );
+  const visibleStatusTabs = useMemo(() => {
+    const keys = visibleStatusTabKeys(workflowMode, flowMode);
+    return STATUS_TABS.filter((t) => keys.includes(t.key));
+  }, [workflowMode, flowMode]);
 
   const [activeStatus, setActiveStatus] = useState<StatusFilter>(
     workflowMode === "2-step" ? "cooking" : "pending",
@@ -2519,6 +2573,13 @@ const KitchenDisplayScreen = () => {
       setActiveStatus("cooking");
     }
   }, [workflowMode]);
+
+  // Quick Done has no Served tab (ready tickets show under Cooking).
+  useEffect(() => {
+    if (isQuickDone && activeStatus === "ready") {
+      setActiveStatus("cooking");
+    }
+  }, [isQuickDone]);
 
   const [activeType, setActiveType] = useState<OrderTypeFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -2630,8 +2691,18 @@ const KitchenDisplayScreen = () => {
 
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
   const pendingTickets = useKDSStore((s) => s.ticketsByStatus.pending);
-  const cookingTickets = useKDSStore((s) => s.ticketsByStatus.cooking);
+  const cookingBucket = useKDSStore((s) => s.ticketsByStatus.cooking);
   const readyTickets = useKDSStore((s) => s.ticketsByStatus.ready);
+  // Quick Done has no Served tab, so a ticket already at ready (marked ready
+  // from the online drawer, or by a display in standard flow) stays under
+  // Cooking until someone taps it Done. The board sorts by start time.
+  const cookingTickets = useMemo(
+    () =>
+      isQuickDone && readyTickets.length > 0
+        ? cookingBucket.concat(readyTickets)
+        : cookingBucket,
+    [isQuickDone, cookingBucket, readyTickets],
+  );
 
   // Device-truth emitter (Architecture B): every ticket in the store is an
   // `arrived`; every ticket rendered to the screen is an `ack`. Both are
@@ -3286,6 +3357,42 @@ const KitchenDisplayScreen = () => {
     [markItemDone],
   );
 
+  // Quick Done item tap. The card calls onItemPress once per line of an
+  // aggregated row in the same tick, so gather that tick into one tap: one
+  // undo window, one toast, one write.
+  const quickDoneBatchRef = useRef<Map<string, string[]> | null>(null);
+  const handleQuickDoneItem = useCallback(
+    (ticketId: string, itemId: string) => {
+      if (quickDoneBatchRef.current) {
+        const ids = quickDoneBatchRef.current.get(ticketId);
+        if (ids) ids.push(itemId);
+        else quickDoneBatchRef.current.set(ticketId, [itemId]);
+        return;
+      }
+      quickDoneBatchRef.current = new Map([[ticketId, [itemId]]]);
+      queueMicrotask(() => {
+        const batch = quickDoneBatchRef.current;
+        quickDoneBatchRef.current = null;
+        if (!batch) return;
+        for (const [tid, ids] of batch) {
+          const undo = queueQuickDone(tid, ids);
+          if (!undo) continue;
+          const ticket = useKDSStore.getState()._ticketsById[tid];
+          const first = ticket?.items.find((i) => i.id === ids[0]);
+          const name = first?.name ?? "Item";
+          toast.show({
+            title: ids.length > 1 ? `${ids.length}× ${name} → Done` : `${name} → Done`,
+            message: ticket ? `Ticket ${kdsTicketLabel(ticket)}` : "",
+            type: "success",
+            duration: QUICK_DONE_UNDO_MS,
+            onUndo: undo,
+          });
+        }
+      });
+    },
+    [queueQuickDone, toast],
+  );
+
   const handleAcknowledgeNotice = useCallback(
     (ticketId: string, itemId: string) => {
       acknowledgeNoticeItem(ticketId, itemId);
@@ -3353,8 +3460,10 @@ const KitchenDisplayScreen = () => {
     (
       ticketId: string,
       itemIds: string[],
-      newStatus: "preparing" | "ready" | "served",
+      requestedStatus: "preparing" | "ready" | "served",
     ) => {
+      // Quick Done: Cooking bumps straight to Done (toast + undo say so too).
+      const newStatus = resolveBumpStatus(requestedStatus, flowMode);
       // Only warn about undone items in 2-step mode where per-item marking is possible
       if (workflowMode === "2-step") {
         const ticket = useKDSStore.getState()._ticketsById[ticketId];
@@ -3369,7 +3478,7 @@ const KitchenDisplayScreen = () => {
       }
       doAdvance(ticketId, itemIds, newStatus);
     },
-    [doAdvance, workflowMode],
+    [doAdvance, workflowMode, flowMode],
   );
 
   // ─── Single-Select Mode (header action bar) ─────────────────────
@@ -3424,7 +3533,13 @@ const KitchenDisplayScreen = () => {
         onAdvance={advanceWithUndo}
         onToggleSelect={toggleTicketSelection}
         onLongPress={handleTicketLongPress}
-        onItemPress={workflowMode === "2-step" ? handleItemPress : undefined}
+        onItemPress={
+          isQuickDone
+            ? handleQuickDoneItem
+            : workflowMode === "2-step"
+              ? handleItemPress
+              : undefined
+        }
         onAcknowledgeNotice={handleAcknowledgeNotice}
         hideDoneItems={kdsHideDoneItems}
         displaySettings={displaySettings}
@@ -3439,6 +3554,8 @@ const KitchenDisplayScreen = () => {
       toggleTicketSelection,
       handleTicketLongPress,
       handleItemPress,
+      handleQuickDoneItem,
+      isQuickDone,
       handleAcknowledgeNotice,
       workflowMode,
       kdsHideDoneItems,
@@ -3523,14 +3640,14 @@ const KitchenDisplayScreen = () => {
 
   // First-paint height for a ticket the board hasn't measured yet. Mirrors the
   // card's own `shouldHideDoneItems = hideDoneItems && !onItemPress`, where
-  // onItemPress is only wired up in 2-step mode.
+  // onItemPress is only wired up in 2-step mode and Quick Done.
   const estimateBoardCardHeight = useCallback(
     (ticket: KDSTicket) =>
       isDoneTab
         ? s(220) // done cards are compact and uniform; measured on first paint
         : estimateTicketCardHeight(
             ticket,
-            kdsHideDoneItems && workflowMode !== "2-step",
+            kdsHideDoneItems && workflowMode !== "2-step" && !isQuickDone,
             displaySettings.aggregateIdenticalItems,
             s,
           ),
@@ -3538,6 +3655,7 @@ const KitchenDisplayScreen = () => {
       isDoneTab,
       kdsHideDoneItems,
       workflowMode,
+      isQuickDone,
       displaySettings.aggregateIdenticalItems,
       s,
     ],
