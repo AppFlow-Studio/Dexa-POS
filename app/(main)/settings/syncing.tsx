@@ -11,6 +11,7 @@ import { toastService } from "@/lib/toastService";
 import { useUiScale } from "@/lib/uiScale";
 import { syncEmployees } from "@/services/employeeSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
+import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { syncNow } from "@/services/offlineSyncService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -69,6 +70,10 @@ const SyncingScreen: React.FC = () => {
       syncNow(),
       resyncFloorPlan(),
       syncEmployees(supabase, selectedStore.id),
+      // Location POS settings (order numbering, auto-create, KDS, printing…)
+      // otherwise only reload at startup and on the 5-minute poll, so a change
+      // made on the dashboard never reached the till through this button.
+      refreshLocationConfig(supabase, selectedStore.id),
       queryClient.invalidateQueries({
         queryKey: ["active_orders", selectedStore.id],
       }),

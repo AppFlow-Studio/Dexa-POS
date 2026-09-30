@@ -1,3 +1,4 @@
+import type { KioskOrderType } from "@/types/kiosk";
 import { create } from "zustand";
 
 /**
@@ -86,7 +87,7 @@ export function lineTotal(line: KioskCartLine): number {
 }
 
 /** Customer-selected fulfilment type, mapped to order_type at checkout. */
-export type KioskOrderType = "dine_in" | "takeout";
+export type { KioskOrderType };
 
 /** Customer captured on the pre-payment screen (phone-first). */
 export interface KioskCartCustomer {
@@ -102,6 +103,11 @@ interface KioskCartState {
   lines: KioskCartLine[];
   /** Null until the customer picks one on the order-type screen. */
   orderType: KioskOrderType | null;
+  /**
+   * Dine-in seating location picked at checkout ("Table 6 — Seat 2"). Written
+   * to orders.table_number. Always null for takeout.
+   */
+  seatLabel: string | null;
 
   /** Captured on the pre-pay customer screen. Required before checkout. */
   customerId: string | null;
@@ -109,6 +115,7 @@ interface KioskCartState {
   customerPhone: string | null;
 
   setOrderType: (type: KioskOrderType) => void;
+  setSeatLabel: (label: string | null) => void;
 
   /** Store the looked-up / created customer for this session. */
   setCustomer: (customer: KioskCartCustomer) => void;
@@ -157,11 +164,19 @@ function lineSignature(
 export const useKioskCartStore = create<KioskCartState>((set, get) => ({
   lines: [],
   orderType: null,
+  seatLabel: null,
   customerId: null,
   customerName: null,
   customerPhone: null,
 
-  setOrderType: (type) => set({ orderType: type }),
+  // A seat only means something for dine-in, so switching away drops it.
+  setOrderType: (type) =>
+    set((state) => ({
+      orderType: type,
+      seatLabel: type === "dine_in" ? state.seatLabel : null,
+    })),
+
+  setSeatLabel: (label) => set({ seatLabel: label }),
 
   setCustomer: (customer) =>
     set({
@@ -225,6 +240,7 @@ export const useKioskCartStore = create<KioskCartState>((set, get) => ({
     set({
       lines: [],
       orderType: null,
+      seatLabel: null,
       customerId: null,
       customerName: null,
       customerPhone: null,

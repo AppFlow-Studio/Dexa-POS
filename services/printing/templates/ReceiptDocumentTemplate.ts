@@ -268,6 +268,7 @@
 //   }
 // }
 
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import {
     PrintDocument,
     PrintNode,
@@ -521,7 +522,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       if (validated.tableName) {
         nodes.push({
           type: "text_line",
-          content: `Table: ${sanitizeForPrint(validated.tableName)}`,
+          content: sanitizeForPrint(formatTableLabel(validated.tableName, "Table: ")),
           align: "center",
           format: BOLD,
         });

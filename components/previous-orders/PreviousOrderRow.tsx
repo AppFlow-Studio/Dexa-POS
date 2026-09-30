@@ -1,3 +1,4 @@
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
 import {
@@ -259,7 +260,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const metaLine = [
     providerKey ? PROVIDER_LABELS[providerKey] : null,
     displayType,
-    tableName ? `Table ${tableName}` : null,
+    tableName ? formatTableLabel(tableName) : null,
     order.server_name && !order._isOnlineOrder
       ? `Server: ${order.server_name}`
       : null,

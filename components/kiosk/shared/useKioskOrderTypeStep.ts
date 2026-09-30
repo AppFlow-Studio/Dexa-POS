@@ -21,6 +21,11 @@ import { startTransition, useCallback, useEffect, useState } from "react";
  * `ensureAccess` is the kiosk's start check (app/(main)/kiosk.tsx). It runs
  * while the customer reads this screen and is awaited here, so nobody reaches
  * the menu on a kiosk that failed it.
+ *
+ * A session that skips the question (the station allows one order type, see
+ * useKioskOrderTypeFlow) opens on the menu, so the menu mounts at once and the
+ * start check is awaited on mount instead of on a tap. A failed check sends
+ * the kiosk back to attract, as it would from a tap.
  */
 export function useKioskOrderTypeStep({
   active,
@@ -33,8 +38,13 @@ export function useKioskOrderTypeStep({
   onChosen: (type: KioskOrderType) => void;
   ensureAccess?: () => Promise<boolean>;
 }) {
-  const [menuMounted, setMenuMounted] = useState(false);
+  const [opensOnMenu] = useState(!active);
+  const [menuMounted, setMenuMounted] = useState(opensOnMenu);
   const [pendingType, setPendingType] = useState<KioskOrderType | null>(null);
+
+  useEffect(() => {
+    if (opensOnMenu) void ensureAccess?.();
+  }, [opensOnMenu, ensureAccess]);
 
   useEffect(() => {
     if (!active || menuMounted) return;

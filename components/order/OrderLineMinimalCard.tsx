@@ -1,3 +1,4 @@
+import { formatTableLabel } from '@/lib/formatTableLabel'
 import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { onlineOrderShortCode } from '@/lib/onlineOrderLabel'
 import { colors } from '@/lib/theme'
@@ -156,7 +157,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
         >
           <Text style={{ fontSize: s(10), color: colors.label }} numberOfLines={1}>
             {order.customer_name || 'Walk-In'}
-            {tableName ? ` . Table ${tableName}` : ''} . {itemCount} item
+            {tableName ? ` . ${formatTableLabel(tableName)}` : ''} . {itemCount} item
             {itemCount !== 1 ? 's' : ''}
           </Text>
           <Text style={{ fontSize: s(10), color: colors.muted }}>{openedAt}</Text>

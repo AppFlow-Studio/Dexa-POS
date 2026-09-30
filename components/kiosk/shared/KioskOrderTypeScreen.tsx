@@ -57,7 +57,8 @@ export const KIOSK_ORDER_TYPE_ENTRANCE_MS = Math.max(
 );
 
 /**
- * Shared order-type selection. The customer chooses Dine In or Takeaway; the
+ * Shared order-type selection. The customer chooses Dine In or Takeaway (or
+ * taps the single allowed type, per the station's order-type setting); the
  * choice is stored on useKioskCartStore and becomes the order_type when the
  * order is created at checkout. Theme-driven from `config` so any template can
  * use it as a session entry step or a mid-session change screen.
@@ -74,13 +75,18 @@ export const KIOSK_ORDER_TYPE_ENTRANCE_MS = Math.max(
  */
 export function KioskOrderTypeScreen({
   config,
+  options: allowed = ["dine_in", "takeout"],
   onSelect,
   selectedType = null,
 }: {
   config: KioskConfig;
+  /** Types the station offers (see resolveOrderTypeFlow). Defaults to both. */
+  options?: KioskOrderType[];
   onSelect: (type: KioskOrderType) => void;
   selectedType?: KioskOrderType | null;
 }) {
+  const options = OPTIONS.filter((o) => allowed.includes(o.type));
+
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
   const { width, height } = useWindowDimensions();
@@ -116,11 +122,11 @@ export function KioskOrderTypeScreen({
           marginBottom: m.headingGap,
         }}
       >
-        Select an option to begin
+        {options.length === 1 ? "Tap to begin" : "Select an option to begin"}
       </Animated.Text>
 
       <View style={{ flexDirection: "row", gap: kioskPx(36, s) }}>
-        {OPTIONS.map(({ type, label, hint, Icon }, index) => (
+        {options.map(({ type, label, hint, Icon }, index) => (
           <Animated.View
             key={type}
             entering={FadeInUp.delay(

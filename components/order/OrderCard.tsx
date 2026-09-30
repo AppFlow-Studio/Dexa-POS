@@ -1,3 +1,4 @@
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
@@ -247,7 +248,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
       <View className="flex-row justify-between mt-1">
         <Text className="text-sm" style={{ color: colors.muted }}>
           {order.order_type}
-          {tableName && <> · Table {tableName}</>}
+          {tableName && <> · {formatTableLabel(tableName)}</>}
           {" · "}
           {order.items.length} item{order.items.length !== 1 ? "s" : ""}
         </Text>
