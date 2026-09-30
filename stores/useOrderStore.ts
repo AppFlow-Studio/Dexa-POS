@@ -149,6 +149,7 @@ import {
   getTodaySequenceFloor,
   isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
+import { isUnsavedLine, selectUnsavedLineIds } from "@/lib/unsavedItems";
 import {
   LOCAL_WRITES_ITEMS,
   LOCAL_WRITES_ORDERS,
@@ -999,11 +1000,67 @@ type KitchenSendCommitResult =
  * resolves as rejected/skipped clears the marker, so the server wins and the
  * line reads unsent again instead of staying "sent" forever.
  */
+/**
+ * Run before routing ANY kitchen batch (takeout and the dine-in table effect).
+ *
+ * A line whose LOCAL save failed has no row, so nothing can ever route it: it
+ * became a straggler that waited an hour and gave up, while the screen said
+ * "sent" and the kitchen never saw it. Save such lines now; any that still
+ * can't be saved go back to unsent — loudly — so staff send again instead of
+ * trusting a ticket that doesn't exist. Returns the held-back line ids.
+ */
+export async function holdBackUnsavedKitchenItems(
+  orderKey: string,
+  lineIds: Iterable<string>,
+): Promise<Set<string>> {
+  if (!LOCAL_WRITES_ITEMS) return new Set();
+  const stillUnsaved = await useOrderStore
+    .getState()
+    .saveUnsavedItems({ orderKey, itemIds: [...lineIds] });
+  if (stillUnsaved.length === 0) return new Set();
+
+  const held = new Set(stillUnsaved);
+  useOrderStore.setState((state) => {
+    const order = state.ordersById[orderKey];
+    if (!order) return;
+    for (const line of order.items) {
+      if (!held.has(line.id)) continue;
+      line.kitchen_status = "new";
+      line.item_status =
+        order.order_type === "dine_in" ? "preparing" : undefined;
+    }
+  });
+  clearKitchenSendInFlight([...held]);
+  toastService.show({
+    title: "Not sent to kitchen",
+    message:
+      held.size === 1
+        ? "1 item couldn't be saved on this tablet, so it was not sent. It keeps retrying — press Send again."
+        : `${held.size} items couldn't be saved on this tablet, so they were not sent. They keep retrying — press Send again.`,
+    type: "error",
+    duration: 8000,
+  });
+  return held;
+}
+
 async function _commitKitchenSendForBatch(
   freshOrder: OrderProfile,
   localOrderId: string,
   sentLocalIds: Set<string>,
 ): Promise<KitchenSendCommitResult> {
+  const heldBack = await holdBackUnsavedKitchenItems(localOrderId, sentLocalIds);
+  if (heldBack.size > 0) {
+    sentLocalIds = new Set([...sentLocalIds].filter((id) => !heldBack.has(id)));
+    if (sentLocalIds.size === 0) {
+      return {
+        status: "rejected",
+        error: new Error("Items could not be saved on this tablet"),
+      };
+    }
+  }
+  // Saving binds row ids — route from the order it left behind.
+  freshOrder = useOrderStore.getState().ordersById[localOrderId] ?? freshOrder;
+
   const localItemIds = (freshOrder.items ?? [])
     .filter((i) => sentLocalIds.has(i.id))
     .map((i) => i.id);
@@ -4876,6 +4933,19 @@ interface OrderState {
     orderId: string,
     staffProfileId: string,
   ) => Promise<boolean>;
+  /**
+   * Local-first safety net: write again the lines whose local save failed
+   * (see lib/unsavedItems). Scope with `orderKey` / `itemIds`; `startup` also
+   * takes lines whose failure predates this launch; `resendLostKitchenItems`
+   * fires the kitchen send for re-saved lines already shown as sent whose
+   * queued send is gone. Resolves the line ids still unsaved.
+   */
+  saveUnsavedItems: (options?: {
+    orderKey?: string;
+    itemIds?: string[];
+    startup?: boolean;
+    resendLostKitchenItems?: boolean;
+  }) => Promise<string[]>;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
   setItemQuantity: (itemId: string, quantity: number) => void;
@@ -9219,6 +9289,122 @@ export const useOrderStore = create<OrderState>()(
               if (o) o.created_by_staff_profile_id = staffProfileId;
             });
             return true;
+          },
+
+          saveUnsavedItems: async (options = {}) => {
+            if (!LOCAL_WRITES_ITEMS) return [];
+            const {
+              orderKey,
+              itemIds,
+              startup = false,
+              resendLostKitchenItems = false,
+            } = options;
+            const onlyIds = itemIds ? new Set(itemIds) : null;
+            const syncStatus = useSyncStatusStore.getState().itemSyncStatus;
+
+            // One line, one attempt: serialized with every other add on the
+            // order and re-checked inside the chain, so a line saved meanwhile
+            // (or by a concurrent sweep) is never written twice.
+            const saveLine = async (
+              key: string,
+              dbOrderId: string,
+              lineId: string,
+            ): Promise<boolean> => {
+              // Written before but never linked (the app died between the
+              // commit and the bind): link it — a second write is a second row.
+              const existingRow = await findQueuedAddItemRow(dbOrderId, lineId);
+              if (existingRow) {
+                bindItemRowId(key, lineId, existingRow);
+                return true;
+              }
+              get().updateItemSyncStatus(key, lineId, "syncing");
+              const attempt = queueItemAddition(key, async () => {
+                const current = get().ordersById[key];
+                const line = current?.items.find((i) => i.id === lineId);
+                if (!current || !line || !isUnsavedLine(line)) return true;
+                return addItemToBackend(
+                  current,
+                  line,
+                  applySetOrderDbId,
+                  (id, error) =>
+                    get().updateItemSyncStatus(key, id, "failed", error),
+                );
+              });
+              get().registerSyncOperation(lineId, attempt);
+              try {
+                return await attempt;
+              } catch (err) {
+                console.error(`[LF] re-save of ${lineId} failed:`, err);
+                return false;
+              } finally {
+                get().unregisterSyncOperation(lineId);
+              }
+            };
+
+            const stillUnsaved: string[] = [];
+            const keys = orderKey ? [orderKey] : [...get().orderIds];
+            for (const key of keys) {
+              const order = get().ordersById[key];
+              if (!order?.db_order_id) continue;
+              const lineIds = selectUnsavedLineIds(order, {
+                startup,
+                now: Date.now(),
+                onlyIds,
+                isFailed: (id) => syncStatus.get(id) === "failed",
+                isInFlight: (id) => pendingSyncOperations.has(id),
+              });
+              if (lineIds.length === 0) continue;
+
+              // Lines added before local-first writes are chased by the legacy
+              // queue's own add op.
+              const legacyAdds = new Set(
+                getOperationsForOrder(key)
+                  .filter((op) => op.type === "add_item")
+                  .map((op) => op.localItemId),
+              );
+              const saved: string[] = [];
+              for (const lineId of lineIds) {
+                if (legacyAdds.has(lineId)) continue;
+                if (await saveLine(key, order.db_order_id, lineId)) {
+                  saved.push(lineId);
+                } else {
+                  stillUnsaved.push(lineId);
+                }
+              }
+              if (saved.length === 0) continue;
+              console.log(
+                `[LF] re-saved ${saved.length} unsaved item(s) on order ${key.slice(0, 8)}`,
+              );
+
+              // Lines already shown as sent: their queued kitchen send gives up
+              // after an hour, and Send ignores sent lines, so nothing else
+              // would ever route them. Fire it unless a queued send still
+              // covers them (it will resolve now that the rows exist).
+              if (!resendLostKitchenItems) continue;
+              const covered = new Set<string>();
+              for (const op of getOperationsForOrder(key)) {
+                if (op.type !== "send_to_kitchen") continue;
+                for (const id of op.params?.localItemIds ?? []) covered.add(id);
+                for (const id of op.params?.unresolvedLocalItemIds ?? [])
+                  covered.add(id);
+              }
+              const fresh = get().ordersById[key];
+              const lost = saved.filter((id) => {
+                const line = fresh?.items.find((i) => i.id === id);
+                return (
+                  !!line?.kitchen_status &&
+                  line.kitchen_status !== "new" &&
+                  !covered.has(id)
+                );
+              });
+              if (fresh && lost.length > 0) {
+                console.log(
+                  `[LF] re-sending ${lost.length} re-saved item(s) to the kitchen on order ${key.slice(0, 8)}`,
+                );
+                void _commitKitchenSendForBatch(fresh, key, new Set(lost));
+              }
+            }
+            return stillUnsaved;
           },
 
           addItemToActiveOrder: (newItem) => {

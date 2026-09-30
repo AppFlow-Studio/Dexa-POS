@@ -188,6 +188,22 @@ export interface CommitResult {
 }
 
 /**
+ * Waits before each retry of a write that hit "database is locked".
+ *
+ * That error means another connection held the file past busy_timeout (5s) —
+ * a checkpoint, or in development a connection orphaned by a Metro reload.
+ * Failing on the first hit dropped the write: the cart line lived only in
+ * memory, never reached the server, and its kitchen send waited forever.
+ * The transaction rolls back whole, so trying again is safe. The wait happens
+ * OUTSIDE the mutex so other writers are not held up behind it.
+ */
+const LOCKED_RETRY_DELAYS_MS = [250, 1_000, 2_500];
+
+function isDatabaseLocked(error: unknown): boolean {
+  return /database is locked|SQLITE_BUSY/i.test(String(error));
+}
+
+/**
  * Write rows AND their sync intent in one transaction. The only way a local
  * mutation may reach disk.
  *
@@ -214,8 +230,8 @@ export async function commitLocalWrite(
   const deviceId = getDeviceId();
   const now = new Date().toISOString();
 
-  try {
-    await dbWriteMutex.runExclusive(async () => {
+  const writeTransaction = () =>
+    dbWriteMutex.runExclusive(async () => {
       await db.withTransactionAsync(async () => {
         for (const s of statements) {
           await db.runAsync(s.sql, s.args);
@@ -242,6 +258,21 @@ export async function commitLocalWrite(
         }
       });
     });
+
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await writeTransaction();
+        break;
+      } catch (error) {
+        const delay = LOCKED_RETRY_DELAYS_MS[attempt];
+        if (delay === undefined || !isDatabaseLocked(error)) throw error;
+        console.warn(
+          `[LF] database is locked — retrying local write in ${delay}ms (attempt ${attempt + 1}/${LOCKED_RETRY_DELAYS_MS.length})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
     if (ops.length > 0) {
       console.log(
         `[LF] committed ${statements.length} row(s) + ${ops.length} op(s):`,

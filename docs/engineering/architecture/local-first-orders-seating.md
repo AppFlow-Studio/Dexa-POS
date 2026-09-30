@@ -1044,6 +1044,43 @@ the online-orders detail screen. Only the *pricing* path skips it.
 
 ---
 
+### A failed local item write lost kitchen tickets silently (2026-09-30)
+
+Seen on staging: 7 orders sent to the kitchen, 3 tickets on the KDS, and the other 4 missing
+from Previous Orders too. Each of the 4 had one line whose `addLocalItem` failed with
+`database is locked` (in development, a SQLite connection orphaned by a Metro reload held the
+file past `busy_timeout`). The chain that followed:
+
+- The failed write left the line only in memory: no row, no outbox op, no `item_row_id`.
+- Send marked it sent anyway. Without a row id it became a straggler in the legacy queue,
+  which waited an hour for an id that could never come and then gave up.
+- The server only had the order header, so it saw an empty draft. Previous Orders is
+  server-fetched while online, and it hides empty drafts.
+
+Fixes:
+
+- `commitLocalWrite` retries `database is locked` / `SQLITE_BUSY` three times (250ms, 1s,
+  2.5s), waiting outside `dbWriteMutex`. The transaction rolls back whole, so a retry never
+  writes anything twice. Other errors still fail at once.
+- Repair (`useOrderStore.saveUnsavedItems`, rules in `lib/unsavedItems.ts`): an unsaved line
+  is one that isn't a draft or voided and has neither `item_row_id` nor `db_order_item_id`.
+  - Every drain tick (30s, online or not) re-saves the lines this session saw fail.
+  - Once per launch (`startup`), it takes every unsaved line on an open order opened in the
+    last 24h, because the failure marker lives in memory only.
+  - A line already written but never linked (the app died between commit and bind) is
+    re-linked through `findQueuedAddItemRow`, not written a second time.
+  - Lines the legacy queue still has an `add_item` for are left to that queue.
+  - Re-saved lines already shown as sent get their kitchen send fired, unless a queued
+    `send_to_kitchen` still covers them.
+- `holdBackUnsavedKitchenItems` runs before every kitchen batch (`_commitKitchenSendForBatch`
+  and the dine-in `sendToKitchenEffect`). It saves any failed line in the batch. Lines that
+  still can't be saved go back to `kitchen_status: "new"`, are dropped from the batch, and
+  staff get a "Not sent to kitchen" error, so the screen never claims a send that can't happen.
+- Previous Orders, while online, also lists this station's open orders that have lines the
+  server doesn't have yet (`hasLinesNotOnServer`).
+
+Tests: `__tests__/db/commitLocalWriteLockedRetry.test.ts`, `__tests__/unsavedItems.test.ts`.
+
 ## 14. Open items to decide during the build
 
 - **Cash payments offline** are out of scope here and need their own phase. The drawer *is* the
