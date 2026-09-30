@@ -82,7 +82,16 @@ export const CODEPAY_SUCCESS_CODE = "000";
 export const CODEPAY_TRANS_STATUS = {
   COMPLETED: 2,
   PREPAID: 9,
+  /** Glossary "Transaction void": the sale was cancelled while in the batch. */
+  VOIDED: 3,
 } as const;
+
+/**
+ * trans_status values that mean a card was read / the sale is live or done
+ * (0 paying, 2 approved, 4 captured, 9 pre-paid). A result carrying one of
+ * these is never classified as a no-card-read expiry.
+ */
+export const CODEPAY_LIVE_TRANS_STATUSES: readonly number[] = [0, 2, 4, 9];
 
 /**
  * biz_data.entry_mode — card entry method (numeric string per api-structure):
@@ -137,6 +146,14 @@ export interface CodePaySaleParams {
   onScreenTip?: boolean;
   /** Show the on-terminal signature screen (default true). */
   onScreenSignature?: boolean;
+  /**
+   * Register order expiry in seconds (default CODEPAY_DEFAULT_EXPIRES_SEC).
+   * When set, the native watchdog becomes expiresSec + 60s, and a non-approved
+   * result that arrives at the deadline with no card read is classified as
+   * `expired` (customer didn't finish in time) rather than a decline. Kiosks
+   * pass their payment window; the POS register leaves it unset.
+   */
+  expiresSec?: number;
   /** 0–3: control receipt printing on the terminal. */
   receiptPrintMode?: number;
   /** Card-present by default. */
@@ -168,6 +185,74 @@ export interface CodePayVoidParams {
   origMerchantOrderNo?: string;
   /** Original transaction amount in DOLLARS → order_amount. */
   amount?: number;
+  /**
+   * Original sale's tip in DOLLARS → tip_amount, so the void carries the same
+   * amounts the sale did. A void always cancels the whole charge.
+   */
+  tipAmount?: number;
+}
+
+/** What a CodePay reversal was sent as. */
+export type CodePayReversalOperation = "void" | "refund";
+
+/**
+ * Why CodePay / the processor turned a reversal down. Only the first two ever
+ * cause the other operation to be tried.
+ */
+export type CodePayReversalDeclineKind =
+  /** Batch already closed (settled): the sale can't be cancelled, refund it. */
+  | "void_not_allowed"
+  /** Sale still in the open batch: it can't be refunded yet, cancel it. */
+  | "refund_not_allowed"
+  | "not_found"
+  | "already_reversed"
+  | "amount_exceeds"
+  | "partial_not_allowed"
+  | "duplicate_reference"
+  | "card_mismatch"
+  | "unknown";
+
+export interface CodePayReversalParams {
+  /** Original sale's merchant_order_no → orig_merchant_order_no. */
+  origMerchantOrderNo: string;
+  /** Amount to give back in DOLLARS (order portion, tip excluded). */
+  amount: number;
+  /**
+   * True when this reversal covers the whole sale and nothing was refunded
+   * before. Only then can a void stand in for the refund.
+   */
+  coversWholeSale: boolean;
+  /** True when our records say the sale is still in the open batch. */
+  inOpenBatch: boolean;
+  /** Original sale's order amount in DOLLARS (sent on a void). */
+  saleAmount?: number;
+  /** Original sale's tip in DOLLARS (sent on a void). */
+  saleTipAmount?: number;
+  /** Short suffix that keeps references unique across stations. */
+  referenceSuffix?: string;
+  /** Called with each reference just before its Intent is sent. */
+  onAttempt?: (attempt: {
+    operation: CodePayReversalOperation;
+    referenceId: string;
+  }) => void;
+}
+
+export interface CodePayReversalAttempt {
+  operation: CodePayReversalOperation;
+  /** merchant_order_no sent for this attempt. */
+  referenceId: string;
+  outcome: "approved" | "recovered" | "declined" | "cancelled" | "unconfirmed";
+  errorCode?: string;
+  error?: string;
+  declineKind?: CodePayReversalDeclineKind;
+}
+
+export interface CodePayReversalResult extends CodePayTxnResult {
+  /** The operation the final result belongs to. */
+  operation: CodePayReversalOperation;
+  /** Every Intent sent for this reversal, in order. */
+  attempts: CodePayReversalAttempt[];
+  declineKind?: CodePayReversalDeclineKind;
 }
 
 export interface CodePayQueryParams {
@@ -267,6 +352,12 @@ export interface CodePayTxnResult {
    */
   indeterminate?: boolean;
   /**
+   * Why the outcome is unknown: the native watchdog fired, the result was
+   * unreadable, the host still reports the sale in progress, or the host's
+   * approval didn't match this sale.
+   */
+  indeterminateCause?: "watchdog" | "unreadable" | "cloud_pending" | "cloud_mismatch";
+  /**
    * true when the cardholder cancelled on the terminal (RESULT_CANCELED, no
    * card read, no charge) — a clean, retryable abort, not a decline.
    */
@@ -277,6 +368,31 @@ export interface CodePayTxnResult {
   terminalResponse?: Record<string, unknown>;
   error?: string;
   errorCode?: string;
+  /**
+   * true when a Cloud status lookup (or two, after a watchdog) confirmed the
+   * host never charged this sale. Always paired with `expired`.
+   */
+  noChargeConfirmed?: boolean;
+  /** How an unknown sale was resolved to success, if it was. */
+  recoveredVia?: "cloud_lookup" | "device_query";
+  /**
+   * The host says an attempt Register reported as not completed was actually
+   * approved (found via the prior-attempt check before a relaunch).
+   */
+  contradictedRegister?: boolean;
+  /** Cloud status lookups made for this sale, for telemetry. */
+  cloudLookups?: { ref: string; status: string; reason?: string; latencyMs?: number }[];
+  /**
+   * true when the sale ran out its Register window (`expiresSec`) with no card
+   * read — the customer didn't finish in time. No money moved; the kiosk asks
+   * "Need more time?" instead of treating it as a decline. Only ever set when
+   * the caller passed `expiresSec`.
+   */
+  expired?: boolean;
+  /** How long the Register activity was up for this op (monotonic ms). */
+  elapsedMs?: number;
+  /** Raw Android activity result code, for telemetry. */
+  resultCode?: number;
   /** CodePay trans_no — the id to reference for refund/void/tip/query. */
   transNo?: string;
   /** merchant_order_no we sent (referenced refund/void key). */
@@ -315,9 +431,56 @@ export const CODEPAY_AUTO_PROVISION_ENABLED = true;
 export const CODEPAY_TERMINAL_DISPLAY_NAME = "CodePay (on-terminal)";
 
 // Per-op timeouts (ms)
-/** Live sale window — the terminal reads the card and contacts the host. */
-export const CODEPAY_SALE_TIMEOUT_MS = 120_000;
+/**
+ * Our native watchdog for a live sale. MUST outlast the order expiry we hand
+ * CodePay Register (`expires`) so Register's own timeout returns a definitive
+ * result first. When both were 120s, a slow customer raced the two timers: our
+ * watchdog won, the real result was dropped, and the kiosk locked on a
+ * "may have charged" sale that almost never charged.
+ *
+ * The native watchdog only gives up once Dexa is back in front
+ * (CodePayBridgeModule). While Register still covers Dexa — e.g. its "Read
+ * data failed" screen, which pauses Register's own expiry — it keeps waiting,
+ * so a late Cancel or payment still reaches JS.
+ */
+export const CODEPAY_SALE_TIMEOUT_MS = (CODEPAY_DEFAULT_EXPIRES_SEC + 60) * 1000;
+
+/** Watchdog margin past the Register expiry (see CODEPAY_SALE_TIMEOUT_MS). */
+export const CODEPAY_WATCHDOG_MARGIN_SEC = 60;
+
+/** Native watchdog for a sale handed `expiresSec` (expiry + margin). */
+export function codepaySaleTimeoutMs(expiresSec: number): number {
+  return (expiresSec + CODEPAY_WATCHDOG_MARGIN_SEC) * 1000;
+}
+
+/**
+ * A non-approved sale result arriving within this much of the Register expiry
+ * counts as "the window ran out" (subject to the no-card-read checks).
+ */
+export const CODEPAY_EXPIRY_GRACE_MS = 3_000;
+
+/**
+ * Kill switch for the kiosk's Cloud status lookup (edge function
+ * `codepay-transaction-status`). The edge function's CODEPAY_CLOUD_CONFIG
+ * secret is the remote switch; this one needs an OTA + restart.
+ */
+export const CODEPAY_CLOUD_LOOKUP_ENABLED = true;
+/** Total time a kiosk spends asking the host before falling back / holding. */
+export const CODEPAY_LOOKUP_BUDGET_MS = 20_000;
+/** Gap between lookups (and the minimum gap between two "no charge" answers). */
+export const CODEPAY_LOOKUP_RETRY_MS = 5_000;
 /** Non-card ops (query / batch close / referenced refund). */
 export const CODEPAY_QUERY_TIMEOUT_MS = 30_000;
+
+/**
+ * Kill switch for batch-aware CodePay reversals (OTA + restart). On: a full
+ * reversal of a sale still in the open batch is sent as a void, anything else
+ * as a referenced refund, and the other operation is tried once when the host
+ * says the first one is the wrong one for the sale's batch state. Off: every
+ * reversal is a referenced refund with no second attempt.
+ */
+export const CODEPAY_REVERSAL_ROUTING_ENABLED = true;
+/** Pause between a declined reversal and the other operation. */
+export const CODEPAY_REVERSAL_RETRY_GAP_MS = 1_500;
 /** Hard ceiling for the interactive "Test Connection" spinner. */
 export const CODEPAY_TEST_DEADLINE_MS = 20_000;

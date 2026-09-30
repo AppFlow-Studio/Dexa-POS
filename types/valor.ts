@@ -406,6 +406,12 @@ export const VALOR_SETTLEMENT_TIMEOUT_MS = 180_000;
  * end-of-day, so a long queue wait here is acceptable.
  */
 export const VALOR_SETTLEMENT_MUTEX_ACQUIRE_TIMEOUT_MS = 300_000;
+/**
+ * Quiet time after a transaction before the next command is sent, so a
+ * back-to-back command never lands while the terminal is still leaving its
+ * result screen. Same value as CASTLES_POST_TXN_SETTLE_MS.
+ */
+export const VALOR_POST_TXN_SETTLE_MS = 1_500;
 /** Hard ceiling for the interactive "Test Connection" spinner. */
 export const VALOR_TEST_DEADLINE_MS = 30_000;
 export const VALOR_TEST_OP_NAME = "_probe_valor_test";

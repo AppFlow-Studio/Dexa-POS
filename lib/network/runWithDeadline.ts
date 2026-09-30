@@ -1,5 +1,9 @@
 import { isDeadlineWrapEnabled } from './killSwitch'
-import { DeadlineExceededError, withDeadline } from './withDeadline'
+import {
+  DeadlineExceededError,
+  withDeadline,
+  type DeadlineOptions,
+} from './withDeadline'
 
 /**
  * Wraps a Supabase RPC/select call with a deadline.
@@ -15,18 +19,22 @@ import { DeadlineExceededError, withDeadline } from './withDeadline'
  *
  * Uses Supabase v2's `.abortSignal(signal)` to actually cancel the underlying
  * fetch — the call is dropped, not just the awaiter.
+ *
+ * `opts.quality: false` bounds the call without reporting it to the
+ * connection-quality state machine (see DeadlineOptions).
  */
 export async function runWithDeadline<T> (
   opName: string,
   deadlineMs: number,
   call: (signal: AbortSignal) => Promise<{ data: T | null; error: any }>,
+  opts?: DeadlineOptions,
 ): Promise<{ data: T | null; error: any }> {
   if (!isDeadlineWrapEnabled()) {
     const ac = new AbortController()
     return call(ac.signal)
   }
   try {
-    return await withDeadline(call, deadlineMs, opName)
+    return await withDeadline(call, deadlineMs, opName, opts)
   } catch (err) {
     if (err instanceof DeadlineExceededError) {
       return {

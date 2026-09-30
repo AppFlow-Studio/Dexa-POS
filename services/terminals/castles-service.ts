@@ -48,6 +48,7 @@ import {
     CASTLES_CONNECT_RETRY_DELAY_MS,
     CASTLES_CONNECT_TIMEOUT_MS,
     CASTLES_GET_DATA_TIMEOUT_MS,
+    CASTLES_POST_TXN_SETTLE_MS,
     CASTLES_RETURN2IDLE_TIMEOUT_MS,
     CASTLES_SETTLEMENT_TIMEOUT_MS,
     CASTLES_SOCKET_TIMEOUT_MS,
@@ -208,6 +209,14 @@ export class CastlesService {
   // ── Suspend state ──
   private _suspended = false;
 
+  // ── Post-transaction settle gap ──
+  /** Date.now() before which no new operation may start. See _awaitSettle. */
+  private _settleUntil = 0;
+  /** Date.now() when the last transaction finished. Breadcrumb data only. */
+  private _lastTxnFinishedAt = 0;
+  /** ms the most recent _awaitSettle actually waited. Breadcrumb data only. */
+  private _lastSettleWaitMs = 0;
+
   // ============================================================
   // CONNECTION
   // ============================================================
@@ -241,7 +250,10 @@ export class CastlesService {
       await withTimeout(
         this._mutex,
         CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS,
-      ).runExclusive(() => this._connectInner(config));
+      ).runExclusive(async () => {
+        await this._awaitSettle();
+        return this._connectInner(config);
+      });
     } catch (e) {
       if (e === E_TIMEOUT) {
         throw new Error(
@@ -791,10 +803,24 @@ export class CastlesService {
    * The "command queue is busy" message is matched by isTerminalTransportDead so
    * the refund loop treats it as a stop signal, and does NOT match isConnectionError
    * so _withRetry will not auto-reconnect/re-send on it.
+   *
+   * Every block waits out the post-transaction settle gap first, and opens a new
+   * one when it finishes. `settles: false` is for queries (getData) that leave no
+   * result screen behind.
    */
-  private _runTxnExclusive<T>(fn: () => Promise<T>): Promise<T> {
+  private _runTxnExclusive<T>(
+    fn: () => Promise<T>,
+    { settles = true }: { settles?: boolean } = {},
+  ): Promise<T> {
     return withTimeout(this._mutex, CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS)
-      .runExclusive(fn)
+      .runExclusive(async () => {
+        await this._awaitSettle();
+        try {
+          return await fn();
+        } finally {
+          if (settles) this._markSettle();
+        }
+      })
       .catch((e) => {
         if (e === E_TIMEOUT) {
           throw new Error(
@@ -1435,7 +1461,7 @@ export class CastlesService {
           await this._forceReturn2Idle();
           return { success: false, error: message };
         }
-      });
+      }, { settles: false });
     });
   }
 
@@ -1453,7 +1479,13 @@ export class CastlesService {
     queueMicrotask(() => {
       this._mutex
         .runExclusive(async () => {
-          await this._tryReturn2Idle();
+          try {
+            await this._tryReturn2Idle();
+          } finally {
+            // The sale is finished once its result screen is dismissed, so the
+            // settle gap restarts here rather than at the sale response.
+            this._markSettle();
+          }
         })
         .catch((err) => {
           console.warn("[CastlesService] Deferred return2Idle failed:", err);
@@ -1559,7 +1591,10 @@ export class CastlesService {
    * Call after fresh connect to clear any stuck-busy state.
    */
   async resetTerminalState(): Promise<boolean> {
-    return this._mutex.runExclusive(() => this._tryReturn2Idle(true));
+    return this._mutex.runExclusive(async () => {
+      await this._awaitSettle();
+      return this._tryReturn2Idle(true);
+    });
   }
 
   /**
@@ -1573,6 +1608,7 @@ export class CastlesService {
    */
   async escalatedReset(): Promise<void> {
     await this._mutex.runExclusive(async () => {
+      await this._awaitSettle();
       await this._ensureConnected();
       for (let i = 0; i < 3; i++) {
         try {
@@ -1614,6 +1650,8 @@ export class CastlesService {
       if (this._suspended) return;
       if (!this.transport?.isOpen || !this.config) return;
       if (this._mutex.isLocked()) return;
+      // A transaction just finished — the ping can wait for the next tick.
+      if (Date.now() < this._settleUntil) return;
       // While wedged the supervisor owns recovery via its own probe loop.
       // Skip ticks here so the two don't race each other into the store.
       if (useTerminalConnectionStore.getState().quality === 'wedged') return;
@@ -1843,6 +1881,8 @@ export class CastlesService {
           ? request.txnPosTxnId
           : undefined;
 
+      this._breadcrumbCommand(expectedTxnType);
+
       // ── Stream parser state ──
       let buffer = "";
       let depth = 0;
@@ -2039,6 +2079,59 @@ export class CastlesService {
 
   private _delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // ============================================================
+  // POST-TRANSACTION SETTLE GAP
+  // ============================================================
+
+  /** Open the settle gap: the next operation starts no sooner than this. */
+  private _markSettle(): void {
+    const now = Date.now();
+    this._lastTxnFinishedAt = now;
+    this._settleUntil = now + CASTLES_POST_TXN_SETTLE_MS;
+  }
+
+  /**
+   * Wait out the settle gap. Called with the mutex HELD, first thing in any
+   * block that starts a new operation, so queued commands each honour it.
+   * Back-to-back commands (tip adjust → next guest's sale, tip → tip on the
+   * Adjust Tips screen, refund → refund) otherwise reach the terminal while
+   * it is still leaving the previous result screen.
+   */
+  private async _awaitSettle(): Promise<void> {
+    // Capped so a device clock jump can never stretch the wait.
+    const waitMs = Math.min(
+      this._settleUntil - Date.now(),
+      CASTLES_POST_TXN_SETTLE_MS,
+    );
+    if (waitMs <= 0) return;
+    this._lastSettleWaitMs = waitMs;
+    await this._delay(waitMs);
+  }
+
+  /**
+   * One breadcrumb per wire command, so a crash report shows the command
+   * sequence and its spacing. Idle getData pings are left out: at one per 30s
+   * they would push everything else out of the breadcrumb buffer.
+   */
+  private _breadcrumbCommand(txnType: string | undefined): void {
+    const sinceTxnMs = this._lastTxnFinishedAt
+      ? Date.now() - this._lastTxnFinishedAt
+      : null;
+    const settleWaitedMs = this._lastSettleWaitMs;
+    this._lastSettleWaitMs = 0;
+    if (txnType === "getData" && (sinceTxnMs === null || sinceTxnMs > 10_000)) {
+      return;
+    }
+    try {
+      Sentry.addBreadcrumb({
+        category: "terminal.castles",
+        level: "info",
+        message: `Castles command: ${txnType ?? "unknown"}`,
+        data: { sinceTxnMs, settleWaitedMs },
+      });
+    } catch { /* breadcrumb failures are non-fatal */ }
   }
 }
 

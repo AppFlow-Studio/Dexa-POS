@@ -302,6 +302,12 @@ export const CASTLES_CONNECT_RETRY_DELAY_MS = 2_000;
 export const CASTLES_CONNECT_MAX_RETRIES = 3;
 /** Settlement contacts multiple hosts — allow up to 5 min */
 export const CASTLES_SETTLEMENT_TIMEOUT_MS = 300_000;
+/**
+ * Quiet time after a transaction (and its close-out return2Idle) before the
+ * next command is sent. CastlesPay is still leaving its result screen right
+ * after a transaction; a command that lands there can lock the terminal.
+ */
+export const CASTLES_POST_TXN_SETTLE_MS = 1_500;
 
 // ============================================================
 // RETURN CODES (8-character format per Castles Appendix B)

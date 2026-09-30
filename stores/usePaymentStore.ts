@@ -43,7 +43,7 @@ type PaymentMethod = "Card" | "Cash" | "Split";
 // (double-tap / retry race — the print queue itself does not dedupe).
 const autoPrintedPaymentIds = new Set<string>();
 /** Returns true the first time a payment id is seen; false on repeats. */
-const claimAutoPrint = (paymentId: string): boolean => {
+export const claimAutoPrint = (paymentId: string): boolean => {
   if (autoPrintedPaymentIds.has(paymentId)) return false;
   autoPrintedPaymentIds.add(paymentId);
   return true;
@@ -183,6 +183,9 @@ interface PaymentState {
   activeSplitId: string | null;
   splitSourceView: PaymentView | null; // FIXED: Added this missing property
   completedPaymentInfo: CompletedPaymentInfo | null; // Snapshot of payment info for success view
+  // Id of the order payment the most recent handlePaymentCompletion appended —
+  // drives the per-transaction "Print Receipt" buttons after each split portion.
+  lastPaidPaymentId: string | null;
   // Wave Cat-B: payment-recovery slot
   verification: PaymentVerificationState | null;
   setVerification: (v: PaymentVerificationState | null) => void;
@@ -381,6 +384,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   activeSplitId: null,
   splitSourceView: null, // Initialized here
   completedPaymentInfo: null, // Initialized here
+  lastPaidPaymentId: null,
   verification: null, // Wave Cat-B: payment-recovery slot
   setVerification: (v) => set({ verification: v }),
   clearVerification: () => set({ verification: null }),
@@ -590,6 +594,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       activeSplitId: null,
       splitSourceView: null,
       completedPaymentInfo: null, // Clear payment info on reset
+      lastPaidPaymentId: null,
       progress: { currentStep: 1, totalSteps: totalSteps },
       isPaymentQueued: false,
       isTransactionProcessing: false,
@@ -1269,7 +1274,16 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Find NEXT pending
       const nextPending = updatedSplits.find((s) => s.status === "pending");
 
-      set({ splits: updatedSplits });
+      const afterSplitOrder =
+        useOrderStore.getState().ordersById[activeOrderId];
+      const justPaidSplitPayment = (afterSplitOrder?.payments ?? []).find(
+        (p) => !prePaymentPaymentIds.has(p.id),
+      );
+
+      set({
+        splits: updatedSplits,
+        lastPaidPaymentId: justPaidSplitPayment?.id ?? null,
+      });
 
       // Auto-print this portion's receipt (supplements the combined receipt).
       // Fires for every portion including the last, so each payer gets a copy.
@@ -1278,10 +1292,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           useLocationConfigStore.getState().config.printing;
         if (autoPrintSplitReceipts) {
           const selectedStore = useStoreSettingsStore.getState().selectedStore;
-          const afterOrder = useOrderStore.getState().ordersById[activeOrderId];
-          const justPaid = (afterOrder?.payments ?? []).find(
-            (p) => !prePaymentPaymentIds.has(p.id),
-          );
+          const afterOrder = afterSplitOrder;
+          const justPaid = justPaidSplitPayment;
           if (
             selectedStore &&
             afterOrder &&
@@ -1514,15 +1526,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // condition as the combined-receipt suppression, so the two are complementary
       // (no double, no gap). Keyed off the recorded payment, not "order fully paid".
       // Persisted totals only (printSplitPaymentReceipt does not recompute).
+      const afterStandardOrder =
+        useOrderStore.getState().ordersById[activeOrderId];
+      const justPaidStandardPayment = (afterStandardOrder?.payments ?? []).find(
+        (p) => !prePaymentPaymentIds.has(p.id),
+      );
       try {
         const { autoPrintSplitReceipts } =
           useLocationConfigStore.getState().config.printing;
-        const afterOrder = useOrderStore.getState().ordersById[activeOrderId];
+        const afterOrder = afterStandardOrder;
         if (autoPrintSplitReceipts && afterOrder?.split_payment_path) {
           const selectedStore = useStoreSettingsStore.getState().selectedStore;
-          const justPaid = (afterOrder.payments ?? []).find(
-            (p) => !prePaymentPaymentIds.has(p.id),
-          );
+          const justPaid = justPaidStandardPayment;
           if (selectedStore && justPaid && claimAutoPrint(justPaid.id)) {
             // Deferred past the next painted frame — see runAfterPaint.
             runAfterPaint(() => {
@@ -1546,6 +1561,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
 
       set({
+        lastPaidPaymentId: justPaidStandardPayment?.id ?? null,
         completedPaymentInfo: {
           totalPaid: paymentAmount, // exactly what was charged this payment
           totalTips: tipAmount || 0, // exactly this payment's tip

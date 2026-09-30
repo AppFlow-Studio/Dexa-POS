@@ -13,7 +13,9 @@ import {
     type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { jitterMs } from "@/lib/network/jitter";
 import { getDeviceId } from "@/lib/deviceId";
+import { registerResumeTask } from "@/lib/lifecycle/appLifecycleCoordinator";
 import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
 import { onlineOrderShortCode } from "@/lib/onlineOrderLabel";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -25,14 +27,14 @@ import {
   setKdsDeviceTruthContext,
 } from "@/services/kds/kdsDeviceTruth";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
+import { KDSScaleProvider, useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
 import KDSSoundService, {
     DEFAULT_SOUND_CONFIG,
 } from "@/services/kds/kdsSoundService";
 import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useKDSStore } from "@/stores/useKDSStore";
+import { reprintKdsTicket, useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
@@ -42,6 +44,7 @@ import {
     CheckSquare,
     Flame,
     ListChecks,
+    Printer,
     RotateCcw,
     Settings,
     ShoppingBag,
@@ -2658,11 +2661,23 @@ const KitchenDisplayScreen = () => {
     );
   }, [kdsDisplayId]);
 
-  // arrived: the item's ticket reached this device from the server.
+  // arrived: the item's ticket reached this device from the server. Tagged
+  // with the path that wrote `tickets` (broadcast / poll / reconnect / resume
+  // / mount / manual / rehydrate) so HQ's lag metric is honest about how the
+  // item got here; the emitter dedupes per display across restarts, so a
+  // rehydrated board does not re-claim items it already reported.
   useEffect(() => {
+    const source = useKDSStore.getState()._lastTicketSource;
     for (const ticket of allTickets) {
       for (const item of ticket.items ?? []) {
-        if (item.id) markKdsItemArrived(item.id, ticket.db_order_id);
+        if (item.id) {
+          markKdsItemArrived(
+            item.id,
+            ticket.db_order_id,
+            source,
+            ticket.start_time_epoch,
+          );
+        }
       }
     }
   }, [allTickets]);
@@ -2718,25 +2733,29 @@ const KitchenDisplayScreen = () => {
     return () => clearTimeout(timer);
   }, [isRealtimeConnected]);
 
-  // Initial fetch + adaptive polling via setTimeout chain
-  // Display-filtered KDS stations use 30s polling as a safety net since
-  // client-side broadcast filtering may miss items that server-side routing includes.
-  const hasDisplayFilter = routingMode !== null && routingMode !== "all";
+  // Initial fetch + board poll via setTimeout chain. The poll is ALWAYS armed:
+  // 30 s while the orders channel is SUBSCRIBED, 15 s otherwise, in every
+  // routing mode. Broadcasts are the fast path; the poll is the bounded
+  // staleness guarantee — a half-open socket still reports SUBSCRIBED until
+  // the next realtime heartbeat times out (25–50 s), and the old "no poll
+  // while healthy and unfiltered" rule let that chain die for good after the
+  // first SUBSCRIBED. Reads the connection flag from a ref on purpose:
+  // re-arming on every flap would reset the timer and could starve the poll.
   useEffect(() => {
     if (!isReady || !locationId) return;
 
-    fetchTickets(locationId);
+    fetchTickets(locationId, "mount");
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
     const schedulePoll = () => {
-      // No poll needed when realtime is healthy and no display filter —
-      // broadcasts cover all updates. Only poll when offline or display-filtered.
-      if (isRealtimeConnectedRef.current && !hasDisplayFilter) return;
-      const interval = isRealtimeConnectedRef.current ? 30_000 : 15_000;
+      // Jittered so a fleet of displays that lost Realtime together doesn't
+      // poll get_kds_tickets_v3 in lockstep.
+      const interval =
+        (isRealtimeConnectedRef.current ? 30_000 : 15_000) + jitterMs(5_000);
       timeoutId = setTimeout(() => {
         if (cancelled) return;
-        backgroundFetchTickets(locationId);
+        backgroundFetchTickets(locationId, "poll");
         if (!cancelled) {
           schedulePoll();
         }
@@ -2748,22 +2767,37 @@ const KitchenDisplayScreen = () => {
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [
-    isReady,
-    locationId,
-    fetchTickets,
-    backgroundFetchTickets,
-    hasDisplayFilter,
-  ]);
+  }, [isReady, locationId, fetchTickets, backgroundFetchTickets]);
 
-  // On reconnection (false -> true), trigger a single background fetch
+  // On reconnection (false -> true), trigger a single background fetch,
+  // after 0-5s so displays that reconnect together don't fetch together.
   useEffect(() => {
     const wasDisconnected = !prevRealtimeConnectedRef.current;
     prevRealtimeConnectedRef.current = isRealtimeConnected;
     if (isRealtimeConnected && wasDisconnected && isReady && locationId) {
-      backgroundFetchTickets(locationId);
+      const timer = setTimeout(
+        () => backgroundFetchTickets(locationId, "reconnect"),
+        jitterMs(5_000),
+      );
+      return () => clearTimeout(timer);
     }
   }, [isRealtimeConnected, isReady, locationId, backgroundFetchTickets]);
+
+  // Foreground resume: refetch the board even when the channel still looks
+  // SUBSCRIBED. While the activity is paused the JS timers and the deferred
+  // broadcast dispatch are frozen, so items can be missed without the socket
+  // ever reporting an error; the channel hook only refreshes auth in that
+  // case. `frame` bucket = after auth/realtime recovery, before interactions.
+  // The in-flight guard makes a same-tick reconnect-edge fetch a no-op.
+  useEffect(() => {
+    if (!isReady || !locationId) return;
+    return registerResumeTask({
+      id: "kds.board-refetch",
+      bucket: "frame",
+      requiresNetwork: true,
+      run: () => backgroundFetchTickets(locationId, "resume"),
+    });
+  }, [isReady, locationId, backgroundFetchTickets]);
 
   // Auto-fire: pending → cooking after configured delay
   useEffect(() => {
@@ -3208,6 +3242,43 @@ const KitchenDisplayScreen = () => {
     setActionMenu(null);
   }, [actionMenu, toggleRush]);
 
+  const handleReprint = useCallback(() => {
+    if (!actionMenu) return;
+    // Prefer the live ticket — the menu holds the snapshot from when it opened.
+    const ticket =
+      useKDSStore.getState()._ticketsById[actionMenu.ticketId] ??
+      actionMenu.ticket;
+    const label = kdsTicketLabel(ticket);
+    setActionMenu(null);
+    void reprintKdsTicket(ticket).then((result) => {
+      if (result === "queued") {
+        toast.show({
+          title: `Reprinting ticket ${label}`,
+          message: "Sent to this station's printer.",
+          type: "success",
+        });
+      } else if (result === "no_printer") {
+        toast.show({
+          title: "No printer connected",
+          message: "Connect a printer to this station to reprint tickets.",
+          type: "warning",
+        });
+      } else if (result === "nothing_to_print") {
+        toast.show({
+          title: "Nothing to reprint",
+          message: `Ticket ${label} has no active items.`,
+          type: "warning",
+        });
+      } else {
+        toast.show({
+          title: "Reprint failed",
+          message: `Ticket ${label} could not be sent to the printer.`,
+          type: "error",
+        });
+      }
+    });
+  }, [actionMenu, toast]);
+
   const handleItemPress = useCallback(
     (ticketId: string, itemId: string) => {
       markItemDone(ticketId, itemId);
@@ -3510,6 +3581,7 @@ const KitchenDisplayScreen = () => {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
+            columnGap: s(12),
           }}
         >
           {/* LEFT: Status tabs */}
@@ -3582,9 +3654,18 @@ const KitchenDisplayScreen = () => {
             })}
           </View>
 
-          {/* RIGHT: Order types + display badge + station/time */}
+          {/* RIGHT: Order types + display badge + station/time. Takes the
+              remaining width and wraps onto a second line rather than running
+              off screen at larger display sizes. */}
           <View
-            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: s(6),
+            }}
           >
             {/* Order type filters */}
             {TYPE_TABS.map((tab) => {
@@ -4233,7 +4314,10 @@ const KitchenDisplayScreen = () => {
                so a selection repaints only the cards whose focus flipped. */
             renderCard={renderBoardCard}
             estimateHeight={estimateBoardCardHeight}
-            cacheNamespace={isDoneTab ? "done" : "active"}
+            // Scale in the key: after a display-size change, cards that are
+            // off screen fall back to the (rescaled) estimate instead of a
+            // height measured at the old size.
+            cacheNamespace={`${isDoneTab ? "done" : "active"}@${uiScale}`}
             horizontalPadding={s(4)}
             cellGutter={s(2)}
             topPadding={s(4)}
@@ -4289,7 +4373,7 @@ const KitchenDisplayScreen = () => {
             );
             const top = Math.max(
               12,
-              Math.min(actionMenu.position.y - 10, screen.height - 210),
+              Math.min(actionMenu.position.y - 10, screen.height - 252),
             );
 
             return (
@@ -4573,6 +4657,7 @@ const KitchenDisplayScreen = () => {
                     borderWidth: 1,
                     borderColor: colors.success + "66",
                     backgroundColor: colors.success + "16",
+                    marginBottom: s(6),
                   }}
                 >
                   <View
@@ -4593,6 +4678,41 @@ const KitchenDisplayScreen = () => {
                       {getTicketItems(actionMenu.ticket).some((i) => i.recalled)
                         ? "Mark Done"
                         : "Bump Order"}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                {/* Reprint Ticket */}
+                <Pressable
+                  onPress={handleReprint}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                    backgroundColor: "#F9FAFB",
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(8),
+                    }}
+                  >
+                    <Printer size={s(15)} color="#374151" />
+                    <Text
+                      style={{
+                        color: "#111827",
+                        fontSize: s(13),
+                        fontWeight: "700",
+                      }}
+                    >
+                      Reprint Ticket
                     </Text>
                   </View>
                 </Pressable>
@@ -4656,11 +4776,29 @@ const KitchenDisplayScreen = () => {
             zIndex: 120,
           }}
         >
-          <KdsSettingsPanel onBack={handleCloseSettings} />
+          {/* Settings stay at the normal size: the display size is picked
+              here, and the page shouldn't resize under the operator's finger. */}
+          <KDSScaleProvider override={null}>
+            <KdsSettingsPanel onBack={handleCloseSettings} />
+          </KDSScaleProvider>
         </View>
       )}
     </View>
   );
 };
 
-export default KitchenDisplayScreen;
+/**
+ * Sizes the whole board (header, tabs, tickets, its modals) by this display's
+ * `font_scale`. Provided above the screen so the screen's own useUiScale() —
+ * which drives the header and the board's height estimates — sees it too.
+ */
+const KitchenDisplayRoute = () => {
+  const fontScale = useKDSStore((s) => s.kdsDisplayConfig?.fontScale ?? null);
+  return (
+    <KDSScaleProvider override={fontScale}>
+      <KitchenDisplayScreen />
+    </KDSScaleProvider>
+  );
+};
+
+export default KitchenDisplayRoute;

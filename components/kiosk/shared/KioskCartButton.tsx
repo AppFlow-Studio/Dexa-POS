@@ -6,7 +6,10 @@ import {
   kioskTracking,
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+  kioskFontPx,
+  kioskPx,
+} from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { ShoppingCart } from "@/lib/icons";
@@ -124,7 +127,7 @@ export function KioskCartButton({
             <Text
               style={{
                 color: t.onPrimary,
-                fontSize: kioskPx(13, s),
+                fontSize: kioskFontPx(13, s),
                 ...kioskFont(t, "bold"),
               }}
             >

@@ -1,3 +1,9 @@
+import {
+  applySessionBroadcast,
+  type SessionBroadcastPayload,
+} from "@/lib/floor/applySessionBroadcast";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { findReservationTableConflictForWindow } from "@/lib/reservationConflicts";
 import { createLazyPersistStorage } from "@/lib/storage";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
@@ -5,20 +11,28 @@ import { isLocalOnlyStatus } from "@/lib/tableStateMachine";
 import {
   KEY_FLOOR_LOAD_APPLY_MS,
   KEY_FLOOR_LOAD_RPC_MS,
+  KEY_FLOOR_READ_DEADLINE,
   KEY_FLOOR_SWITCH_PAINT_MS,
+  KEY_FLOOR_SWITCH_WAIT_MS,
 } from "@/lib/telemetry/keys";
-import { recordSpan } from "@/lib/telemetry/registry";
+import { recordCount, recordSpan } from "@/lib/telemetry/registry";
 import { FloorPlanService } from "@/services/floorPlanService";
-import { getIsOnline } from "@/services/offlineSyncService";
+import { getIsOnline, getRawIsOnline } from "@/services/offlineSyncService";
 import {
   FloorPlan,
   FloorPlanObject,
+  FloorSnapshotEnvelope,
+  FloorSnapshotSession,
+  FloorSnapshotStatusTable,
+  LocationTableStatusRow,
   Reservation,
   ServerSection,
+  SwitchPaintPath,
   TableSession,
   TableStatus,
   WaitlistEntry,
 } from "@/types/db-floor-plan-types";
+import * as Sentry from "@sentry/react-native";
 import { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
@@ -43,6 +57,10 @@ const wasRecentlyCleared = (sessionId: string | undefined | null): boolean => {
   ).wasSessionRecentlyCleared(sessionId);
 };
 
+// Newest broadcast timestamp applied per session, so a broadcast delivered out
+// of order can't roll a session back (applySessionBroadcastPayload).
+const _lastSessionBroadcastAt = new Map<string, number>();
+
 // Lazy accessor — breaks circular dependency with useReservationStore
 const getReservationStore = () =>
   (require("./useReservationStore") as typeof import("./useReservationStore"))
@@ -53,11 +71,32 @@ let _supabaseClient: SupabaseClient | null = null;
 
 // Dedup concurrent loadFloorPlanStatus calls (module-level to avoid re-renders)
 let _loadFloorPlanPromise: Promise<void> | null = null;
-let _loadFloorPlanId: string | null = null; // Track which plan is being loaded
+// What the in-flight load covers: `location:<id>` for the snapshot RPC (one
+// read serves every plan, so a plan switch mid-flight reuses it), or a plan id
+// on the legacy per-plan path.
+let _loadFloorPlanId: string | null = null;
 // Monotonic load sequence: lets a forced load supersede an in-flight stale one.
 // Only the latest-issued snapshot is allowed to commit to state.
 let _loadFloorPlanSeq = 0;
 const _prefetchFloorPlanPromises = new Map<string, Promise<void>>();
+// True once get_floor_snapshot_v1 answered "not deployed here" this session.
+// Floor status then comes from the per-plan table reads, and per-plan prefetch
+// is what warms the other plans. While false, one snapshot fills every plan.
+let _floorSnapshotRpcAbsent = false;
+// refreshTableSessions: one read in flight, at most one queued behind it.
+let _refreshInFlight: Promise<void> | null = null;
+let _refreshRerun = false;
+
+/** Test seam: module state survives between cases otherwise. */
+export const __resetFloorReadStateForTest = () => {
+  _loadFloorPlanPromise = null;
+  _loadFloorPlanId = null;
+  _loadFloorPlanSeq = 0;
+  _prefetchFloorPlanPromises.clear();
+  _floorSnapshotRpcAbsent = false;
+  _refreshInFlight = null;
+  _refreshRerun = false;
+};
 
 export const setFloorPlanSupabaseClient = (client: SupabaseClient | null) => {
   _supabaseClient = client;
@@ -196,17 +235,239 @@ const shallowValueEqual = (a: unknown, b: unknown, depth: number): boolean => {
   return false;
 };
 
+// ---------------------------------------------------------------------------
+// Session mapping
+//
+// A session reaches this store from three reads that spell it differently:
+// the snapshot RPC (merged_tables WITHOUT the table itself, plus a
+// minutes_seated that changes on every call), the status RPC (flat rows, one
+// per table) and the legacy table reads (raw columns, merged_tables WITH the
+// table itself). Mapping all three to one shape — same keys, same defaults,
+// never an undefined-valued key — is what lets shallowValueEqual keep a
+// table's identity when only the source of the read changed.
+//
+// minutes_seated is left out on purpose: it is now() - seated_at, so carrying
+// it would make every session differ from its previous read and re-render the
+// whole floor on every reconcile.
+// ---------------------------------------------------------------------------
+
+/**
+ * The table ids of a merged group: de-duplicated, sorted, and always including
+ * the table the session was read from. `undefined` for a single table, so
+ * "is this merged?" is `merged_tables !== undefined` for every source.
+ */
+export const normalizeMergedTables = (
+  ids: readonly (string | null | undefined)[] | null | undefined,
+): string[] | undefined => {
+  if (!ids || ids.length === 0) return undefined;
+  const unique = Array.from(
+    new Set(ids.filter((id): id is string => !!id)),
+  ).sort((left, right) => left.localeCompare(right));
+  return unique.length > 1 ? unique : undefined;
+};
+
+type SessionSourceFields = {
+  id: string;
+  status: TableStatus;
+  session_number?: string | null;
+  party_size?: number | null;
+  guest_name?: string | null;
+  order_id?: string | null;
+  seated_at?: string | null;
+  current_course?: number | null;
+  needs_attention?: boolean | null;
+  is_vip?: boolean | null;
+  server_staff_id?: string | null;
+};
+
+const buildSession = (
+  fields: SessionSourceFields,
+  groupTableIds: readonly (string | null | undefined)[],
+): TableSession => {
+  const session: TableSession = {
+    id: fields.id,
+    session_number: fields.session_number ?? null,
+    status: fields.status,
+    party_size: fields.party_size ?? 0,
+    guest_name: fields.guest_name ?? null,
+    order_id: fields.order_id ?? null,
+    seated_at: fields.seated_at ?? new Date().toISOString(),
+    current_course: fields.current_course ?? 1,
+    needs_attention: fields.needs_attention ?? false,
+    is_vip: fields.is_vip ?? false,
+  };
+  if (fields.server_staff_id) session.server_staff_id = fields.server_staff_id;
+  const merged = normalizeMergedTables(groupTableIds);
+  if (merged) session.merged_tables = merged;
+  return session;
+};
+
+/** Session from a get_floor_snapshot_v1 status row. */
+export const sessionFromSnapshot = (
+  tableId: string,
+  session: FloorSnapshotSession,
+): TableSession =>
+  buildSession(session, [tableId, ...(session.merged_tables ?? [])]);
+
+/**
+ * Session from a get_location_table_status_v2 row. `groupTableIds` is every
+ * table that row's session sits on (the caller groups the rows by session).
+ */
+export const sessionFromStatusRow = (
+  row: LocationTableStatusRow,
+  groupTableIds: readonly string[],
+): TableSession | null => {
+  if (!row.session_id || !row.session_status) return null;
+  return buildSession(
+    {
+      id: row.session_id,
+      status: row.session_status,
+      session_number: row.session_number,
+      party_size: row.party_size,
+      guest_name: row.guest_name,
+      order_id: row.order_id,
+      seated_at: row.seated_at,
+      current_course: row.current_course,
+      needs_attention: row.needs_attention,
+      is_vip: row.is_vip,
+      server_staff_id: row.server_staff_id,
+    },
+    [row.table_id, ...groupTableIds],
+  );
+};
+
+/** Session from the legacy floor_plan_objects + table_sessions reads. */
+export const sessionFromLegacyObject = (
+  tableId: string,
+  session: TableSession,
+): TableSession =>
+  buildSession(session, [tableId, ...(session.merged_tables ?? [])]);
+
+type NextReservation = NonNullable<FloorPlanObject["next_reservation"]>;
+
+const nextReservationFor = (
+  tableId: string,
+  nextReservationByTableId: Record<string, Reservation | undefined>,
+): NextReservation | null => {
+  // The reservation store's index, not the RPC's copy: it is rebuilt on every
+  // reservation fetch with the active + future filter, and it carries the date.
+  const next = nextReservationByTableId[tableId];
+  if (!next) return null;
+  return {
+    id: next.id,
+    party_name: next.party_name,
+    party_size: next.party_size,
+    date: next.reservation_date,
+    time: next.reservation_time,
+    status: next.status,
+  };
+};
+
+/**
+ * One plan's tables, built from its geometry.
+ *
+ * `statusTables` decides the mode:
+ *  - an array: a reconcile. A table the server reported on takes the server's
+ *    session, behind the same three guards fetchFloorPlanSnapshot applies.
+ *  - `null`: a paint with no network. Sessions come from the session store.
+ *
+ * Iterates the plan's OBJECTS and looks status up by id, never the other way
+ * round: status covers active tables and booths only, geometry covers every
+ * object. An object the server made no claim about keeps its live session.
+ *
+ * Every table gets `session` and `next_reservation` keys, so a painted table
+ * and a reconciled one have the same key set, and a table that is value-equal
+ * to its previous object keeps that object's identity.
+ */
+export const buildPlanTables = (
+  plan: Pick<FloorPlan, "id" | "objects">,
+  statusTables: readonly FloorSnapshotStatusTable[] | null,
+  prevById: Record<string, FloorPlanObject>,
+  liveSessions: Record<string, TableSession | undefined>,
+  nextReservationByTableId: Record<string, Reservation | undefined>,
+): FloorPlanObject[] => {
+  const statusById = statusTables
+    ? new Map(statusTables.map((row) => [row.id, row]))
+    : null;
+
+  const tables: FloorPlanObject[] = [];
+  for (const object of plan.objects ?? []) {
+    if (object.is_active === false) continue;
+
+    const live = liveSessions[object.id];
+    const prev = prevById[object.id];
+    const row = statusById?.get(object.id);
+
+    let session: TableSession | undefined;
+    if (!row) {
+      session = live;
+    } else if (!row.session) {
+      session = undefined;
+    } else {
+      const fresh = sessionFromSnapshot(object.id, row.session);
+      if (live && isLocalOnlyStatus(live.status) && live.id === fresh.id) {
+        // The backend never sees seating/ordering/paying/closing.
+        session = live;
+      } else if (
+        prev?.session &&
+        isLocalOnlyStatus(prev.session.status) &&
+        prev.session.id === fresh.id
+      ) {
+        session = prev.session;
+      } else if (wasRecentlyCleared(fresh.id)) {
+        // Cleared here within the TTL; a lagging read must not bring it back.
+        session = undefined;
+      } else {
+        session = fresh;
+      }
+    }
+
+    const next: FloorPlanObject = {
+      ...object,
+      floor_plan_id: plan.id,
+      session,
+      next_reservation: nextReservationFor(object.id, nextReservationByTableId),
+    };
+    tables.push(prev && shallowValueEqual(prev, next, 3) ? prev : next);
+  }
+  return tables;
+};
+
+const sameElements = <T>(a: readonly T[], b: readonly T[]): boolean =>
+  a.length === b.length && a.every((item, index) => item === b[index]);
+
+/** Breadcrumb for a floor read that failed; never throws. */
+const noteFloorReadFailure = (opName: string, error: unknown) => {
+  const code = (error as { code?: string } | null | undefined)?.code;
+  if (code === "DEADLINE_EXCEEDED") recordCount(KEY_FLOOR_READ_DEADLINE);
+  try {
+    Sentry.addBreadcrumb({
+      category: "floor.read",
+      level: "warning",
+      message: `${opName} failed`,
+      data: {
+        opName,
+        code: code ?? null,
+        message: (error as { message?: string } | null | undefined)?.message,
+      },
+    });
+  } catch {
+    // observability must never mask the read's own outcome
+  }
+};
+
 // Exported for unit testing of the local-only preserve guard.
 export const fetchFloorPlanSnapshot = async (
   floorPlanId: string,
   currentTablesById: Record<string, FloorPlanObject> = {},
+  signal?: AbortSignal,
 ): Promise<{ data: FloorPlanCacheEntry | null; error: Error | null }> => {
   const supabase = getClient();
 
   try {
     const [objectsResult, sectionsResult] = await Promise.all([
-      FloorPlanService.getAllFloorPlanObjects(supabase, floorPlanId),
-      FloorPlanService.getServerSections(supabase, floorPlanId),
+      FloorPlanService.getAllFloorPlanObjects(supabase, floorPlanId, signal),
+      FloorPlanService.getServerSections(supabase, floorPlanId, signal),
     ]);
 
     const { data: freshObjects, error } = objectsResult;
@@ -214,7 +475,25 @@ export const fetchFloorPlanSnapshot = async (
       return { data: null, error };
     }
 
-    const freshTables = freshObjects || [];
+    const rawTables = freshObjects || [];
+    // Read before the mapping below drops the raw `is_active` column.
+    const inactiveSessionTableIds = new Set(
+      rawTables
+        .filter(
+          (table) =>
+            (table.session as unknown as { is_active?: boolean } | undefined)
+              ?.is_active === false,
+        )
+        .map((table) => table.id),
+    );
+    // One session shape for every source — see "Session mapping" above.
+    // "No session" is `undefined` here as everywhere else, never null.
+    const freshTables = rawTables.map((table) => ({
+      ...table,
+      session: table.session
+        ? sessionFromLegacyObject(table.id, table.session)
+        : undefined,
+    }));
 
     // The session store holds ALL plans' live sessions keyed by tableId,
     // independent of which plan's currentTablesById is in scope. Consult it so
@@ -225,9 +504,7 @@ export const fetchFloorPlanSnapshot = async (
 
     const mergedTables = freshTables.map((freshTable) => {
       const currentTable = currentTablesById[freshTable.id];
-      const freshSessionIsInactive =
-        (freshTable.session as unknown as { is_active?: boolean } | undefined)
-          ?.is_active === false;
+      const freshSessionIsInactive = inactiveSessionTableIds.has(freshTable.id);
 
       // Preserve a live, SAME-SESSION local-only status (seating/ordering/
       // paying/closing) — the backend snapshot never knows about these
@@ -367,7 +644,16 @@ interface FloorPlanState {
   setupRealtimeSubscriptions: (locationId: string) => void;
 
   // Floor Plan Actions
-  setActiveFloorPlan: (floorPlanId: string) => Promise<void>;
+  /**
+   * Switch plans. Tables paint before any network read whenever the plan has a
+   * cache entry or geometry; the reconcile then runs in the background.
+   * Resolves with how the first paint was made. `waitForReconcile` makes the
+   * promise wait for the reconcile as well (boot, Sync All).
+   */
+  setActiveFloorPlan: (
+    floorPlanId: string,
+    opts?: { waitForReconcile?: boolean },
+  ) => Promise<SwitchPaintPath>;
   prefetchFloorPlan: (floorPlanId: string) => Promise<void>;
   prefetchFloorPlans: (floorPlanIds?: string[]) => Promise<void>;
   createFloorPlan: (name: string, description?: string) => Promise<string>;
@@ -377,6 +663,13 @@ interface FloorPlanState {
   loadFloorPlanStatus: (force?: boolean) => Promise<void>;
   loadFloorPlanStatusIfStale: (ttlMs?: number) => Promise<void>;
   refreshTableSessions: () => Promise<void>;
+  /** One status read and apply. Callers use refreshTableSessions, which serialises it. */
+  _refreshTableSessionsOnce: () => Promise<void>;
+  /**
+   * Apply one tables-channel session broadcast directly (no RPC). Returns false
+   * when it can't be applied safely; the caller then reconciles as before.
+   */
+  applySessionBroadcastPayload: (payload: SessionBroadcastPayload) => boolean;
   getCachedFloorPlan: (floorPlanId: string) => {
     tables: FloorPlanObject[];
     sections: ServerSection[];
@@ -530,6 +823,207 @@ export const buildTablesById = (
     {} as Record<string, FloorPlanObject>,
   );
 };
+
+type SnapshotReconcileOutcome =
+  | "applied"
+  | "failed"
+  | "superseded"
+  | "rpc_absent";
+
+/**
+ * The floor reconcile: ONE location-wide get_floor_snapshot_v1.
+ *
+ * It returns live status for every plan, so a single round trip commits the
+ * active plan, fills floorPlanCache for all of them and hydrates the session
+ * store for the whole location. It replaces three sequential table reads plus
+ * a sections read per plan, which is what turned a slow database into a
+ * frozen Tables screen.
+ *
+ * Location-wide on purpose: the geometry token is a digest over the plans in
+ * scope, so a per-plan call could never match the location-scoped token the
+ * store holds.
+ *
+ * Bounded by a deadline that does not report into connection quality. On any
+ * failure the store keeps what it has; nothing is retried here.
+ */
+async function reconcileFromFloorSnapshot(
+  locationId: string,
+  mySeq: number,
+): Promise<SnapshotReconcileOutcome> {
+  const store = useFloorPlanStore;
+  const client = getClient();
+  const before = store.getState();
+
+  // A token is only worth sending when every plan it describes has its
+  // objects here. Otherwise "unchanged" would leave nothing to build from.
+  const holdsGeometry =
+    before.floorPlans.length > 0 &&
+    before.floorPlans.every((fp) => Array.isArray(fp.objects));
+  const knownVersion = holdsGeometry ? before.geometryVersion : null;
+
+  let usedFallback = false;
+  const rpcStart = performance.now();
+  const res = await runWithDeadline<FloorSnapshotEnvelope>(
+    "floor_snapshot",
+    DEADLINES.read,
+    async (signal) => {
+      const result = await FloorPlanService.getFloorSnapshot(
+        client,
+        locationId,
+        { knownVersion, signal },
+      );
+      usedFallback = result.usedFallback;
+      return { data: result.data, error: result.error };
+    },
+    { quality: false },
+  );
+  recordSpan(KEY_FLOOR_LOAD_RPC_MS, performance.now() - rpcStart);
+
+  if (usedFallback) {
+    // Not deployed in this environment. Remember it, so later reconciles go
+    // straight to the per-plan reads instead of paying for this probe.
+    _floorSnapshotRpcAbsent = true;
+    if (!res.error) return "rpc_absent";
+  }
+
+  if (res.error || !res.data) {
+    noteFloorReadFailure("floor_snapshot", res.error);
+    if (mySeq === _loadFloorPlanSeq) {
+      store.setState({ error: res.error?.message || "Unknown error" });
+    }
+    return "failed";
+  }
+
+  // A newer load (e.g. a forced post-transfer reconcile) was issued after this
+  // one started; its snapshot is fresher.
+  if (mySeq !== _loadFloorPlanSeq) return "superseded";
+
+  const snap = res.data;
+  const applyStart = performance.now();
+
+  if (snap.geometry) {
+    store.getState().setFloorPlans(snap.geometry);
+  }
+  if (snap.geometry_version !== store.getState().geometryVersion) {
+    store.setState({ geometryVersion: snap.geometry_version });
+  }
+
+  const prev = store.getState();
+  // Read at apply time: the data covers every plan, so it is never "for the
+  // wrong plan" however many switches happened while it was in flight.
+  const activeId = prev.activeFloorPlanId;
+  const plansById = new Map(prev.floorPlans.map((fp) => [fp.id, fp]));
+  const liveSessions = getTableSessionStore().getState().sessions;
+  const nextReservationByTableId =
+    getReservationStore().getState().nextReservationByTableId;
+  const syncedAt = new Date().toISOString();
+
+  const sectionsByPlan = new Map<string, ServerSection[]>();
+  for (const row of snap.sections ?? []) {
+    const list = sectionsByPlan.get(row.floor_plan_id) ?? [];
+    list.push({
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      assigned_staff_id: row.assigned_staff_id,
+      floor_plan_id: row.floor_plan_id,
+    });
+    sectionsByPlan.set(row.floor_plan_id, list);
+  }
+
+  // Cache entries survive only for plans that still exist.
+  const nextCache: Record<string, FloorPlanCacheEntry> = {};
+  for (const [planId, entry] of Object.entries(prev.floorPlanCache)) {
+    if (plansById.has(planId)) nextCache[planId] = entry;
+  }
+
+  // Tables the server made a claim about. Only these may lose a session.
+  const reportedTables: FloorPlanObject[] = [];
+  let activeEntry: FloorPlanCacheEntry | null = null;
+
+  for (const bucket of snap.status ?? []) {
+    const plan = plansById.get(bucket.floor_plan_id);
+    if (!plan || !Array.isArray(plan.objects)) continue;
+
+    const isActive = plan.id === activeId;
+    const prevEntry = prev.floorPlanCache[plan.id];
+    const prevTables = isActive ? prev.tables : prevEntry?.tables;
+    const prevById = isActive
+      ? prev.tablesById
+      : prevEntry
+        ? buildTablesById(prevEntry.tables)
+        : {};
+
+    const built = buildPlanTables(
+      plan,
+      bucket.tables,
+      prevById,
+      liveSessions,
+      nextReservationByTableId,
+    );
+    // Same elements in the same order: keep the ARRAY identity too, so
+    // subscribers to `tables` do not re-render for an unchanged floor.
+    const tables =
+      prevTables && sameElements(prevTables, built) ? prevTables : built;
+
+    const freshSections = sectionsByPlan.get(plan.id) ?? [];
+    const prevSections = isActive ? prev.sections : prevEntry?.sections;
+    const prevSectionsById = isActive
+      ? prev.sectionsById
+      : prevEntry?.sectionsById;
+    const sectionsUnchanged =
+      !!prevSections &&
+      !!prevSectionsById &&
+      shallowValueEqual(prevSections, freshSections, 2);
+
+    const entry = buildFloorPlanCacheEntry(
+      tables,
+      sectionsUnchanged ? prevSections! : freshSections,
+      sectionsUnchanged ? prevSectionsById! : buildSectionsById(freshSections),
+      syncedAt,
+    );
+    nextCache[plan.id] = entry;
+    if (isActive) activeEntry = entry;
+
+    const reportedIds = new Set(bucket.tables.map((row) => row.id));
+    for (const table of tables) {
+      if (reportedIds.has(table.id)) reportedTables.push(table);
+    }
+  }
+
+  if (activeEntry) {
+    const entry: FloorPlanCacheEntry = activeEntry;
+    const tablesUnchanged = entry.tables === prev.tables;
+    const sectionsUnchanged = entry.sections === prev.sections;
+    store.setState({
+      ...(tablesUnchanged
+        ? {}
+        : { tables: entry.tables, tablesById: buildTablesById(entry.tables) }),
+      ...(sectionsUnchanged
+        ? {}
+        : { sections: entry.sections, sectionsById: entry.sectionsById }),
+      lastSyncAt: syncedAt,
+      error: null,
+      isLoading: false,
+      loadingFloorPlanId: null,
+      floorPlanCache: nextCache,
+    });
+  } else {
+    // The active plan had no status bucket (deleted elsewhere, or its geometry
+    // never arrived). Keep what is on screen; the other plans still refresh.
+    store.setState({ floorPlanCache: nextCache, error: null });
+  }
+
+  // Authoritative for the tables it reported on: a reported table without a
+  // session is genuinely free. The sweep is scoped to the tables passed in,
+  // so one call covers every plan.
+  getTableSessionStore()
+    .getState()
+    ._patchSessionsFromTables(reportedTables, { clearMissing: true });
+  recordSpan(KEY_FLOOR_LOAD_APPLY_MS, performance.now() - applyStart);
+
+  return "applied";
+}
 
 export const useFloorPlanStore = create<FloorPlanState>()(
   subscribeWithSelector(
@@ -707,8 +1201,13 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // FLOOR PLAN ACTIONS
         // ====================================================================
 
-        setActiveFloorPlan: async (floorPlanId: string) => {
-          const cached = get().floorPlanCache[floorPlanId];
+        setActiveFloorPlan: async (
+          floorPlanId: string,
+          opts?: { waitForReconcile?: boolean },
+        ): Promise<SwitchPaintPath> => {
+          const switchStart = performance.now();
+          const before = get();
+          const cached = before.floorPlanCache[floorPlanId];
           const FRESH_MS = 30_000;
           const cachedSyncMs = cached?.lastSyncAt
             ? Date.parse(cached.lastSyncAt)
@@ -718,7 +1217,22 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             Number.isFinite(cachedSyncMs) &&
             Date.now() - cachedSyncMs < FRESH_MS;
 
+          // The tables on screen before this switch. If they are this plan's
+          // own (a cold start rehydrates the active plan's tables), they are
+          // the fallback should the skeleton path's read fail.
+          const ownTablesBefore =
+            before.tables.length > 0 &&
+            before.tables.every((t) => t.floor_plan_id === floorPlanId)
+              ? before.tables
+              : null;
+
+          let path: SwitchPaintPath;
+          const plan = cached
+            ? undefined
+            : before.floorPlans.find((fp) => fp.id === floorPlanId);
+
           if (cached) {
+            path = isFresh ? "cacheHit/fresh" : "cacheHit/stale";
             const paintStart = performance.now();
             set({
               activeFloorPlanId: floorPlanId,
@@ -755,7 +1269,47 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             // Wave-1 attribution: synchronous JS block of the cached instant
             // paint (buildTablesById + zustand commit + session patch).
             recordSpan(KEY_FLOOR_SWITCH_PAINT_MS, performance.now() - paintStart);
+          } else if (plan && Array.isArray(plan.objects)) {
+            // No cache entry, but the plan's geometry is already in the store
+            // (and on disk): paint it now with the sessions the session store
+            // holds, and let the reconcile correct it. This is the case a slow
+            // database used to turn into a skeleton for as long as three
+            // sequential reads took. `objects: []` is a known-empty plan and
+            // paints as one.
+            path = "cacheMiss/geometryPaint";
+            const paintedTables = buildPlanTables(
+              plan,
+              null,
+              {},
+              getTableSessionStore().getState().sessions,
+              getReservationStore().getState().nextReservationByTableId,
+            );
+            set({
+              activeFloorPlanId: floorPlanId,
+              tables: paintedTables,
+              tablesById: buildTablesById(paintedTables),
+              sections: [],
+              sectionsById: {},
+              // null, not "now": nothing was read. Staleness checks and the
+              // realtime just-loaded suppression must still see this plan as
+              // never synced.
+              lastSyncAt: null,
+              isLoading: false,
+              loadingFloorPlanId: null,
+              error: null,
+              floorPlanCache: {
+                ...before.floorPlanCache,
+                [floorPlanId]: buildFloorPlanCacheEntry(
+                  paintedTables,
+                  [],
+                  {},
+                  null,
+                ),
+              },
+            });
+            // No _patchSessionsFromTables: these sessions came FROM that store.
           } else {
+            path = "cacheMiss/skeleton";
             set({
               activeFloorPlanId: floorPlanId,
               loadingFloorPlanId: floorPlanId,
@@ -768,26 +1322,65 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             });
           }
 
-          if (isFresh) {
-            // Cache is <30s fresh — the instant paint above is authoritative and
-            // realtime (useFloorRealtime) keeps it live. Skip the redundant
-            // background loadFloorPlanStatus: on every fresh switch it re-fetched
-            // identical data, ran the diff, and re-wrote the PERSISTED
-            // floorPlanCache with a new lastSyncAt → a wasted RPC + MMKV write
-            // (serializing the whole multi-plan cache) + diff per switch, which
-            // compounds into GC/storage churn over a shift. A stale switch
-            // (>30s) or a realtime broadcast still reconciles.
-            set({ isLoading: false, loadingFloorPlanId: null });
-          } else {
-            await get()
-              .loadFloorPlanStatus()
-              .finally(() => {
-                if (get().activeFloorPlanId === floorPlanId) {
-                  set({ isLoading: false, loadingFloorPlanId: null });
-                }
-              });
+          if (path !== "cacheMiss/skeleton") {
+            recordSpan(KEY_FLOOR_SWITCH_WAIT_MS, performance.now() - switchStart);
           }
+
+          const finishLoading = () => {
+            if (get().activeFloorPlanId !== floorPlanId) return;
+            const now = get();
+            if (
+              path === "cacheMiss/skeleton" &&
+              now.tables.length === 0 &&
+              ownTablesBefore
+            ) {
+              // The read failed and there is no geometry to paint from: the
+              // plan's last known tables beat an empty floor.
+              set({
+                tables: ownTablesBefore,
+                tablesById: buildTablesById(ownTablesBefore),
+                isLoading: false,
+                loadingFloorPlanId: null,
+              });
+              return;
+            }
+            if (now.isLoading || now.loadingFloorPlanId) {
+              set({ isLoading: false, loadingFloorPlanId: null });
+            }
+          };
+
+          // Raw reachability, not getIsOnline(): that one is also false in slow
+          // mode, and a slow connection is exactly when a reconcile is wanted.
+          const reachable = getRawIsOnline();
+
+          if (path === "cacheHit/fresh" || !reachable) {
+            // Fresh cache: the paint above is authoritative and realtime keeps
+            // it live, so a reconcile would re-fetch identical data. Offline:
+            // nothing to ask; the paint (or the fallback) is what there is.
+            finishLoading();
+          } else {
+            const reconcile = get()
+              .loadFloorPlanStatus()
+              .catch((error: unknown) => {
+                noteFloorReadFailure("floor_switch_reconcile", error);
+              })
+              .finally(finishLoading);
+
+            if (path === "cacheMiss/skeleton" || opts?.waitForReconcile) {
+              await reconcile;
+              if (path === "cacheMiss/skeleton") {
+                recordSpan(
+                  KEY_FLOOR_SWITCH_WAIT_MS,
+                  performance.now() - switchStart,
+                );
+              }
+            }
+          }
+
+          // Only the legacy per-plan path needs this: one snapshot already
+          // fills every plan's cache.
           void get().prefetchFloorPlans();
+          return path;
         },
 
         prefetchFloorPlan: async (floorPlanId: string) => {
@@ -816,7 +1409,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           const prefetchPromise = (async () => {
             try {
-              const snapshot = await fetchFloorPlanSnapshot(floorPlanId);
+              const snapshot = await runWithDeadline<FloorPlanCacheEntry>(
+                "floor_plan_prefetch",
+                DEADLINES.read,
+                (signal) => fetchFloorPlanSnapshot(floorPlanId, {}, signal),
+                { quality: false },
+              );
               if (!snapshot.data) {
                 if (snapshot.error) {
                   console.warn(
@@ -843,6 +1441,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         },
 
         prefetchFloorPlans: async (floorPlanIds?: string[]) => {
+          // Where the snapshot RPC answers, every reconcile already fills the
+          // cache for all plans in one read. Per-plan prefetch would add four
+          // reads per plan on top, and it was the first thing to fail on a
+          // slow database. It stays for environments without the RPC.
+          if (!_floorSnapshotRpcAbsent && get().locationId) return;
+
           const activeFloorPlanId = get().activeFloorPlanId;
           const ids =
             floorPlanIds && floorPlanIds.length > 0
@@ -964,11 +1568,10 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (error) throw error;
           if (!data) throw new Error("Failed to create floor plan");
 
-          // Reload floor plans
-          const { data: floorPlans } =
-            await FloorPlanService.getLocationFloorPlans(supabase, locationId);
-
-          set({ floorPlans: floorPlans || [] });
+          // Reload through the snapshot, so every plan keeps its `objects`
+          // (the switch paints from them). A new plan changes the geometry
+          // token, so the full geometry comes back.
+          await get().loadFloorPlans();
 
           return data.floor_plan_id;
         },
@@ -1059,10 +1662,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           console.log(
             "[deleteFloorPlan] Floor plan deleted, reloading list...",
           );
-          const { data: floorPlans } =
-            await FloorPlanService.getLocationFloorPlans(supabase, locationId);
+          // Through the snapshot, so the remaining plans keep their `objects`.
+          // The deleted plan is filtered out here as well: if the reload
+          // fails, the list must still not offer a plan that no longer exists.
+          await get().loadFloorPlans();
 
-          const newPlans = floorPlans || [];
+          const newPlans = get().floorPlans.filter((fp) => fp.id !== id);
           const nextCache = { ...get().floorPlanCache };
           delete nextCache[id];
 
@@ -1111,26 +1716,44 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const floorPlanId = get().activeFloorPlanId;
           if (!floorPlanId || !getClient()) return;
 
-          // Only reuse promise if loading same floor plan (avoid stale data on plan switch).
+          // One location-wide snapshot is the reconcile wherever the RPC is
+          // deployed. The per-plan table reads below remain as the fallback
+          // for an environment without it.
+          const locationId = get().locationId;
+          const useSnapshot = !!locationId && !_floorSnapshotRpcAbsent;
+          const loadKey = useSnapshot ? `location:${locationId}` : floorPlanId;
+
+          // Reuse an in-flight load that covers the same thing. On the snapshot
+          // path that is the whole location, so a plan switch mid-flight shares
+          // the read instead of starting another.
           // `force` skips the dedup so a caller that just mutated the backend
           // (e.g. transferSession) gets a snapshot taken AFTER its write — an
           // in-flight read started before the write would return stale state.
-          if (
-            !force &&
-            _loadFloorPlanPromise &&
-            _loadFloorPlanId === floorPlanId
-          ) {
+          if (!force && _loadFloorPlanPromise && _loadFloorPlanId === loadKey) {
             return _loadFloorPlanPromise;
           }
 
-          _loadFloorPlanId = floorPlanId;
+          _loadFloorPlanId = loadKey;
           const mySeq = ++_loadFloorPlanSeq;
           const loadPromise = (async () => {
             try {
+              if (useSnapshot) {
+                const outcome = await reconcileFromFloorSnapshot(
+                  locationId!,
+                  mySeq,
+                );
+                if (outcome !== "rpc_absent") return;
+                // Not deployed here: fall through to the per-plan reads, then
+                // warm the other plans the way this path always has.
+              }
+
               const rpcStart = performance.now();
-              const snapshot = await fetchFloorPlanSnapshot(
-                floorPlanId,
-                get().tablesById,
+              const snapshot = await runWithDeadline<FloorPlanCacheEntry>(
+                "floor_plan_status",
+                DEADLINES.read,
+                (signal) =>
+                  fetchFloorPlanSnapshot(floorPlanId, get().tablesById, signal),
+                { quality: false },
               );
               // Wave-1 attribution: network+parse wait (not a JS block) vs the
               // synchronous apply below — separates "slow RPC" from "slow diff/
@@ -1138,9 +1761,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               recordSpan(KEY_FLOOR_LOAD_RPC_MS, performance.now() - rpcStart);
 
               if (!snapshot.data) {
+                // Last known good stays on screen; nothing is retried here.
+                noteFloorReadFailure("floor_plan_status", snapshot.error);
                 set({ error: snapshot.error?.message || "Unknown error" });
                 return;
               }
+              if (useSnapshot) void get().prefetchFloorPlans();
 
               // A newer load (e.g. a forced post-transfer reconcile) was issued
               // after this one started — its snapshot is fresher. Drop ours so a
@@ -1232,10 +1858,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             } finally {
               // Only clear the dedup slot if WE are still the latest load —
               // a newer forced load may have superseded us.
-              if (
-                mySeq === _loadFloorPlanSeq &&
-                _loadFloorPlanId === floorPlanId
-              ) {
+              if (mySeq === _loadFloorPlanSeq && _loadFloorPlanId === loadKey) {
                 _loadFloorPlanPromise = null;
                 _loadFloorPlanId = null;
               }
@@ -1291,15 +1914,53 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         // Lightweight session-only refresh using get_location_table_status_v2
         // Geometry is preserved from cache — only .session is updated
+        //
+        // One read at a time. This runs on every floor broadcast (about every
+        // 1.5 s on a busy floor); when the database is slow, reads that each
+        // take seconds used to stack up on the HTTP client's per-host queue,
+        // ahead of whatever the operator had just tapped. A call that arrives
+        // while a read is in flight asks for ONE more read after it, so a burst
+        // still ends with a read taken after its last broadcast.
         refreshTableSessions: async () => {
+          if (_refreshInFlight) {
+            _refreshRerun = true;
+            return _refreshInFlight;
+          }
+
+          const run = async (): Promise<void> => {
+            do {
+              _refreshRerun = false;
+              await get()._refreshTableSessionsOnce();
+            } while (_refreshRerun);
+          };
+          const inFlight = run().finally(() => {
+            if (_refreshInFlight === inFlight) {
+              _refreshInFlight = null;
+              _refreshRerun = false;
+            }
+          });
+          _refreshInFlight = inFlight;
+          return inFlight;
+        },
+
+        _refreshTableSessionsOnce: async () => {
           const supabase = getClient();
           const locationId = get().locationId;
           const floorPlanId = get().activeFloorPlanId;
           if (!locationId || !supabase || !floorPlanId) return;
 
-          const { data, error } = await FloorPlanService.getLocationTableStatus(
-            supabase,
-            locationId,
+          const { data, error } = await runWithDeadline<
+            LocationTableStatusRow[]
+          >(
+            "floor_status",
+            DEADLINES.read,
+            (signal) =>
+              FloorPlanService.getLocationTableStatus(
+                supabase,
+                locationId,
+                signal,
+              ),
+            { quality: false },
           );
 
           if (error) {
@@ -1333,6 +1994,14 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               });
               return;
             }
+            noteFloorReadFailure("floor_status", error);
+            if (error.code === "DEADLINE_EXCEEDED") {
+              // The database is slow. A full load would only queue more reads
+              // behind the one that just timed out; the next broadcast or the
+              // heartbeat tries again. Last known good stays on screen.
+              set({ error: error.message });
+              return;
+            }
             console.warn(
               "[refreshTableSessions] Error, falling back to full load:",
               error.message,
@@ -1351,30 +2020,19 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             }
           }
 
-          // Build session lookup from flat rows: tableId → TableSession | null
-          const sessionByTableId: Record<string, TableSession | null> = {};
+          // Session per reported table, in the one shape every floor read maps
+          // to (see "Session mapping"). A reported table with no session is
+          // `undefined`, the same "no session" every other writer uses, so a
+          // free table keeps its identity whichever read touched it last.
+          const reportedTableIds = new Set<string>();
+          const sessionByTableId: Record<string, TableSession | undefined> = {};
           for (const row of data) {
-            if (row.session_id && row.session_status) {
-              const mergedTables = tableIdsBySession[row.session_id];
-              sessionByTableId[row.table_id] = {
-                id: row.session_id,
-                session_number: row.session_number,
-                status: row.session_status,
-                party_size: row.party_size ?? 0,
-                guest_name: row.guest_name,
-                guest_phone: row.guest_phone ?? undefined,
-                order_id: row.order_id,
-                server_staff_id: row.server_staff_id ?? undefined,
-                seated_at: row.seated_at ?? new Date().toISOString(),
-                current_course: row.current_course ?? 1,
-                needs_attention: row.needs_attention ?? false,
-                is_vip: row.is_vip ?? false,
-                merged_tables:
-                  (mergedTables?.length ?? 0) > 1 ? mergedTables : undefined,
-              };
-            } else {
-              sessionByTableId[row.table_id] = null;
-            }
+            reportedTableIds.add(row.table_id);
+            sessionByTableId[row.table_id] =
+              sessionFromStatusRow(
+                row,
+                row.session_id ? (tableIdsBySession[row.session_id] ?? []) : [],
+              ) ?? undefined;
           }
 
           const currentTables = get().tables;
@@ -1384,7 +2042,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             return;
           }
 
-          // Merge sessions into existing tables, preserving geometry
+          // Merge sessions into existing tables, preserving geometry.
+          //
+          // Runs on every floor broadcast (~every 1.5s on a busy floor). A
+          // table whose session is value-equal keeps its OBJECT IDENTITY, the
+          // same T2a rule as loadFloorPlanStatus — otherwise every table is new
+          // on every reconcile and the whole Tables screen, sidebar list and
+          // context sheet re-render with it.
+          const withSession = (
+            table: FloorPlanObject,
+            session: FloorPlanObject["session"],
+          ): FloorPlanObject =>
+            shallowValueEqual(table.session, session, 3)
+              ? table
+              : { ...table, session };
+
           const mergedTables = currentTables.map((table) => {
             const incomingSession = sessionByTableId[table.id];
 
@@ -1396,21 +2068,53 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               incomingSession &&
               currentSession.id === incomingSession.id
             ) {
-              return { ...table, session: currentSession };
+              return withSession(table, currentSession);
             }
 
             // Drop an incoming session that was CLEAR'd locally within TTL —
             // see wasRecentlyCleared() comment for context. Treat as "no session".
             if (incomingSession && wasRecentlyCleared(incomingSession.id)) {
-              return { ...table, session: undefined };
+              return withSession(table, undefined);
             }
 
-            return {
-              ...table,
-              session:
-                incomingSession !== undefined ? incomingSession : table.session,
-            };
+            // A table the status read did not report on keeps what it has.
+            return withSession(
+              table,
+              reportedTableIds.has(table.id) ? incomingSession : table.session,
+            );
           });
+
+          const unchanged = mergedTables.every(
+            (t, i) => t === currentTables[i],
+          );
+          if (unchanged) {
+            // Nothing to paint — `tables` keeps its identity. Freshness still
+            // moves (loadFloorPlanStatusIfStale reads lastSyncAt), exactly as
+            // loadFloorPlanStatus does on an unchanged snapshot. Other paths
+            // (_syncToFloorPlanStore) update `tables` without the cache, so
+            // re-point the cache at the live array.
+            const now = new Date().toISOString();
+            const cached = get().floorPlanCache[floorPlanId];
+            set({
+              lastSyncAt: now,
+              error: null,
+              floorPlanCache: {
+                ...get().floorPlanCache,
+                [floorPlanId]: {
+                  tables: currentTables,
+                  sections: cached?.sections ?? get().sections,
+                  sectionsById: cached?.sectionsById ?? get().sectionsById,
+                  lastSyncAt: now,
+                },
+              },
+            });
+            // The session store still gets the authoritative snapshot — its
+            // SYNC keeps identity for unchanged sessions.
+            getTableSessionStore()
+              .getState()
+              ._patchSessionsFromTables(mergedTables, { clearMissing: true });
+            return;
+          }
 
           set({
             tables: mergedTables,
@@ -1434,6 +2138,53 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           getTableSessionStore()
             .getState()
             ._patchSessionsFromTables(mergedTables, { clearMissing: true });
+        },
+
+        applySessionBroadcastPayload: (payload: SessionBroadcastPayload) => {
+          const floorPlanId = get().activeFloorPlanId;
+          const sessionId = payload?.data?.session?.id;
+          if (!floorPlanId || !sessionId || get().tables.length === 0) {
+            return false;
+          }
+
+          const sentAt = payload.timestamp ? Date.parse(payload.timestamp) : NaN;
+          const lastAt = _lastSessionBroadcastAt.get(sessionId);
+          if (Number.isFinite(sentAt) && lastAt !== undefined && sentAt < lastAt) {
+            // Older than what we already applied: nothing to do.
+            return true;
+          }
+
+          const result = applySessionBroadcast(
+            get().tables,
+            payload,
+            (id) => wasRecentlyCleared(id),
+          );
+          if (!result) return false;
+          if (Number.isFinite(sentAt)) {
+            _lastSessionBroadcastAt.set(sessionId, sentAt);
+          }
+          if (result.changedTables.length === 0) return true;
+
+          set({
+            tables: result.tables,
+            tablesById: buildTablesById(result.tables),
+            floorPlanCache: {
+              ...get().floorPlanCache,
+              [floorPlanId]: {
+                tables: result.tables,
+                sections: get().sections,
+                sectionsById: get().sectionsById,
+                lastSyncAt: get().lastSyncAt,
+              },
+            },
+          });
+
+          // Only the changed tables: clearMissing then frees exactly the
+          // tables this session left, and nothing else.
+          getTableSessionStore()
+            .getState()
+            ._patchSessionsFromTables(result.changedTables, { clearMissing: true });
+          return true;
         },
 
         getCachedFloorPlan: (floorPlanId: string) => {

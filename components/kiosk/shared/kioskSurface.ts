@@ -7,12 +7,9 @@
  * feet away the 1px border is the only thing saying "this is a tappable item".
  * Cards now sit a perceptible step off the page.
  *
- * The step is **a solid colour, not a translucent overlay**, and that is load
- * bearing: the feature row fades its photo out into the card colour, and a
- * gradient needs a real colour to start from. Deriving one solid hex keeps the
- * fill and the fade in exact agreement — a translucent fill would leave the
- * blend ending on the page colour, one step off the card it sits in, which
- * shows up as a faint seam down the middle of every photo.
+ * The step is **a solid colour, not a translucent overlay**: one derived hex
+ * reads the same on every card and under every photo, where an alpha fill
+ * would pick up whatever sits behind it.
  *
  * Direction is chosen from the page's own lightness, because kiosk themes are
  * merchant-configured and may be light or dark: you cannot go lighter than
@@ -84,18 +81,4 @@ export function kioskCardSurface(backgroundColor: string): string {
   return toHex(
     mix(rgb, isLight ? BLACK : WHITE, isLight ? LIGHT_PAGE_STEP : DARK_PAGE_STEP),
   );
-}
-
-/**
- * The same colour at zero alpha, for the far end of a fade.
- *
- * Fading to `transparent` instead would drag the gradient's midpoint toward
- * `rgba(0,0,0,0)` and leave a grey bruise across the middle of the photo, so a
- * fade must always end on its own colour. Returns null when the colour can't be
- * expressed with an alpha channel — callers should then skip the fade rather
- * than guess.
- */
-export function kioskFadeEnd(color: string): string | null {
-  const rgb = parseHex(color);
-  return rgb ? `${toHex(rgb)}00` : null;
 }

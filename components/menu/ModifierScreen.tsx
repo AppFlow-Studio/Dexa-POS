@@ -2342,7 +2342,11 @@ const ModifierScreenContent = () => {
           className="px-4 pb-3 border-t"
           style={{ borderColor: colors.border }}
         >
+          {/* Keyed per open: NotesInput's hasUserTypedRef ignores outside
+              updates once typed in, so a surviving instance kept the previous
+              item's notes on the next item. */}
           <NotesInput
+            key={sessionId ?? "none"}
             initialValue={state.notes}
             isReadOnly={isReadOnly}
             onChange={handleNotesChange}

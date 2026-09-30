@@ -50,4 +50,30 @@ describe("parseRefundApproval", () => {
     expect(approval.resultCode).toBe("0");
     expect(approval.responseMessage).toBe("Approved");
   });
+  it("reads a CodePay reversal (snake_case keys + codepay_transaction)", () => {
+    const approval = parseRefundApproval({
+      terminal_vendor: "codepay",
+      terminal_type: "codepay",
+      authorization_code: "A1B2C3",
+      rrn: "627200123456",
+      reference_number: "CPRF_1790690595087_cb79",
+      transaction_number: "51126005503260929000031",
+      card_last_four: "5478",
+      card_type: "mastercard",
+      entry_type: "contactless",
+      result_code: "000",
+      response_message: "Approved",
+      codepay_transaction: { transNo: "51126005503260929000031" },
+    });
+
+    expect(approval).toMatchObject({
+      rrn: "627200123456",
+      authCode: "A1B2C3",
+      referenceId: "CPRF_1790690595087_cb79",
+      transactionNumber: "51126005503260929000031",
+      resultCode: "000",
+      responseMessage: "Approved",
+      cardLast4: "5478",
+    });
+  });
 });

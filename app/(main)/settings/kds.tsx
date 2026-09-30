@@ -19,7 +19,7 @@ import KDSSoundService, {
   type SoundPreset,
 } from "@/services/kds/kdsSoundService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useKDSStore } from "@/stores/useKDSStore";
+import { useKDSStore, type KDSDisplayPatch } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -552,45 +552,43 @@ const NEW_ORDER_POSITION_OPTIONS = [
   { value: "left", label: "LEFT (Newest First)" },
 ] as const;
 
+// Same steps as the dashboard's station editor, which writes the same column.
+const FONT_SCALE_OPTIONS = [
+  { value: "0.8", label: "Compact", desc: "0.8×" },
+  { value: "1", label: "Normal", desc: "1.0×" },
+  { value: "1.25", label: "Large", desc: "1.25×" },
+  { value: "1.5", label: "Extra Large", desc: "1.5×" },
+];
+
+const COLUMN_OPTIONS = [
+  { value: "3", label: "3 per row", desc: "Wider tickets" },
+  { value: "4", label: "4 per row", desc: "More on screen" },
+];
+
 // ─── Per-Station Display Panel ───────────────────────────────────
 function StationDisplayPanel({
   station,
   displayId,
   displayConfig,
   onRefresh,
-  supabase,
-  selectedStationId,
 }: {
   station: Station;
   displayId: string | null;
   displayConfig: import("@/types/kds").KDSDisplayConfig | null;
   onRefresh: (stationId: string) => void;
-  supabase: ReturnType<typeof useSupabaseClient>;
-  selectedStationId?: string | null;
 }) {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const toast = useToast();
-  const kdsDisplayId = useKDSStore((s) => s.kdsDisplayId);
-  const fetchKDSDisplay = useKDSStore((s) => s.fetchKDSDisplay);
+  const updateKDSDisplay = useKDSStore((s) => s.updateKDSDisplay);
 
-  // Sound state
-  const [soundOnNewOrder, setSoundOnNewOrder] = useState(false);
-  const [soundConfig, setSoundConfig] = useState<KDSSoundConfig>({
-    ...DEFAULT_SOUND_CONFIG,
-  });
+  // Read straight from the store, which the save updates optimistically — a
+  // local copy re-synced from it flipped back whenever a refetch landed
+  // mid-save.
+  const soundOnNewOrder = displayConfig?.soundOnNewOrder ?? false;
+  const soundConfig = displayConfig?.soundConfig ?? DEFAULT_SOUND_CONFIG;
   const [soundServicePreview] = useState(() => new KDSSoundService());
   const [previewReady, setPreviewReady] = useState(false);
-  const [isSavingSound, setIsSavingSound] = useState(false);
-
-  useEffect(() => {
-    if (displayConfig) {
-      setSoundOnNewOrder(displayConfig.soundOnNewOrder ?? false);
-      if (displayConfig.soundConfig) {
-        setSoundConfig(displayConfig.soundConfig);
-      }
-    }
-  }, [displayConfig]);
 
   useEffect(() => {
     soundServicePreview.init().then(() => setPreviewReady(true));
@@ -599,44 +597,27 @@ function StationDisplayPanel({
     };
   }, []);
 
-  const saveSoundConfig = useCallback(
-    async (newSoundOn: boolean, newConfig: KDSSoundConfig) => {
-      if (!displayId) return;
-      setIsSavingSound(true);
-      try {
-        await supabase
-          .from("kds_displays")
-          .update({
-            sound_on_new_order: newSoundOn,
-            sound_config: newConfig as any,
-          })
-          .eq("id", displayId);
-        if (selectedStationId) fetchKDSDisplay(selectedStationId);
-      } catch (err) {
-        console.error("[KDSSettings] saveSoundConfig error:", err);
-      } finally {
-        setIsSavingSound(false);
-      }
-    },
-    [displayId, supabase, selectedStationId, fetchKDSDisplay],
-  );
+  const saveDisplay = async (patch: KDSDisplayPatch) => {
+    if (!displayId) return;
+    if (!(await updateKDSDisplay(displayId, patch))) {
+      toast.show({
+        title: "Couldn't save setting",
+        message: "Check the connection and try again.",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
 
-  const handleSoundToggle = useCallback(
-    (val: boolean) => {
-      setSoundOnNewOrder(val);
-      saveSoundConfig(val, soundConfig);
-    },
-    [soundConfig, saveSoundConfig],
-  );
+  const handleSoundPresetChange = (
+    key: keyof KDSSoundConfig,
+    preset: SoundPreset,
+  ) => saveDisplay({ soundConfig: { ...soundConfig, [key]: preset } });
 
-  const handleSoundPresetChange = useCallback(
-    (key: keyof KDSSoundConfig, preset: SoundPreset) => {
-      const updated = { ...soundConfig, [key]: preset };
-      setSoundConfig(updated);
-      saveSoundConfig(soundOnNewOrder, updated);
-    },
-    [soundConfig, soundOnNewOrder, saveSoundConfig],
-  );
+  const fontScale = displayConfig?.fontScale ?? 1;
+  const fontScaleOption =
+    FONT_SCALE_OPTIONS.find((o) => Math.abs(Number(o.value) - fontScale) < 0.01)
+      ?.value ?? "";
 
   if (!displayId) {
     return (
@@ -718,22 +699,45 @@ function StationDisplayPanel({
 
       {/* Display Toggles */}
       <SectionHeader title="Display" />
+      <View style={{ marginBottom: s(8) }}>
+        <Text
+          style={{
+            fontSize: s(11),
+            color: colors.muted,
+            marginBottom: s(6),
+            paddingHorizontal: s(2),
+          }}
+        >
+          Display size of tickets, tabs and text on the board
+        </Text>
+        <OptionCards
+          options={FONT_SCALE_OPTIONS}
+          value={fontScaleOption}
+          onChange={(v) => saveDisplay({ fontScale: Number(v) })}
+        />
+      </View>
+      <View style={{ marginBottom: s(8) }}>
+        <Text
+          style={{
+            fontSize: s(11),
+            color: colors.muted,
+            marginBottom: s(6),
+            paddingHorizontal: s(2),
+          }}
+        >
+          Tickets per row
+        </Text>
+        <OptionCards
+          options={COLUMN_OPTIONS}
+          value={String(displayConfig?.columns ?? 4)}
+          onChange={(v) => saveDisplay({ columns: Number(v) })}
+        />
+      </View>
       <ToggleRow
         label="Display Server Name"
         subtitle="Show the server's name on each ticket"
         value={displayConfig?.showServerName ?? false}
-        onToggle={async (val) => {
-          if (!displayId) return;
-          try {
-            await supabase
-              .from("kds_displays")
-              .update({ show_server_name: val })
-              .eq("id", displayId);
-            if (selectedStationId) fetchKDSDisplay(selectedStationId);
-          } catch (err) {
-            console.error("[KDSSettings] saveShowServerName error:", err);
-          }
-        }}
+        onToggle={(val) => saveDisplay({ showServerName: val })}
       />
 
       {/* Sound Section */}
@@ -741,7 +745,7 @@ function StationDisplayPanel({
       <ToggleRow
         label="Sound on New Order"
         value={soundOnNewOrder}
-        onToggle={handleSoundToggle}
+        onToggle={(val) => saveDisplay({ soundOnNewOrder: val })}
       />
       <TouchableOpacity
         onPress={() => {
@@ -814,13 +818,6 @@ function StationDisplayPanel({
                 testDisabled={!previewReady}
               />
             ),
-          )}
-          {isSavingSound && (
-            <Text
-              style={{ color: colors.muted, fontSize: s(10), marginTop: s(4) }}
-            >
-              Saving...
-            </Text>
           )}
         </View>
       )}
@@ -1863,8 +1860,6 @@ const KdsSettingsScreen = () => {
                   displayId={kdsDisplayId}
                   displayConfig={kdsDisplayConfig}
                   onRefresh={fetchKDSDisplay}
-                  supabase={supabase}
-                  selectedStationId={activeStation.id}
                 />
               </View>
             )}

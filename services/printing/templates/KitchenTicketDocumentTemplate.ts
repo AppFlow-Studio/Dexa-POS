@@ -92,6 +92,18 @@ export function buildKitchenTicketDocument (
     }
   }
 
+  // Customer name (kiosk / online / POS-entered) so the order can be called
+  // out. Not tied to showOrderType — the name is what the kitchen hands off by.
+  if (data.customerName) {
+    const nameText = `NAME: ${sanitizeForPrint(data.customerName)}`
+    nodes.push({
+      type: 'text_line',
+      content: nameText,
+      align: 'center',
+      format: scaledFormat(nameText, w, { doubleHeight: true })
+    })
+  }
+
   // Server name
   if (cfg?.showServerName !== false && data.serverName) {
     nodes.push({

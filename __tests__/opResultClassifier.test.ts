@@ -40,6 +40,15 @@ describe('classifyError — Postgres string codes', () => {
     }
   })
 
+  it('treats 55P03 lock_not_available (lock timeout) as retryable contention', () => {
+    const result = classifyError({
+      code: '55P03',
+      message: 'canceling statement due to lock timeout'
+    })
+    expect(result.outcome).toBe('retry')
+    expect(result).toMatchObject({ code: 'CONTENTION' })
+  })
+
   it('treats P0001 business-rule rejections as terminal, not transient', () => {
     const result = classifyError({
       code: 'P0001',

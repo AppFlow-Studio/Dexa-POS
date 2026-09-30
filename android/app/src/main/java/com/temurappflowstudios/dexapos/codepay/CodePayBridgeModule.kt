@@ -9,6 +9,7 @@ import android.os.Looper
 import android.util.Log
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -31,11 +32,16 @@ import com.facebook.react.bridge.WritableMap
  *
  * Concurrency: only ONE transaction may be in flight at a time (the JS service
  * also serializes with a mutex). A second transact() while one is pending is
- * rejected with BUSY. The promise is resolved exactly once — by onActivityResult
- * OR by the watchdog timeout, whichever fires first.
+ * rejected with BUSY. The promise is resolved exactly once — by onActivityResult,
+ * or by the watchdog once Dexa is back in front without a result.
+ *
+ * The watchdog never gives up while Register still covers Dexa: Register's
+ * "Read data failed" screen pauses its own expiry, and the customer's later
+ * Cancel / retry is the only definitive answer. Resolving early dropped that
+ * answer and left the kiosk holding an unpaid sale for staff.
  */
 class CodePayBridgeModule(private val reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext), ActivityEventListener {
+    ReactContextBaseJavaModule(reactContext), ActivityEventListener, LifecycleEventListener {
 
     companion object {
         const val TAG = "CodePayBridge"
@@ -51,15 +57,35 @@ class CodePayBridgeModule(private val reactContext: ReactApplicationContext) :
         const val EXTRA_BIZ_DATA = "biz_data"
         const val EXTRA_RESPONSE_CODE = "response_code"
         const val EXTRA_RESPONSE_MSG = "response_msg"
+
+        /** How often a deferred watchdog re-checks whether Register has closed. */
+        const val WATCHDOG_RECHECK_MS = 5_000L
+
+        /**
+         * Android delivers onActivityResult before onResume, so a transaction
+         * still pending this long after Dexa returns to the front means Register
+         * closed without a result.
+         */
+        const val RETURN_GRACE_MS = 5_000L
     }
 
     private val lock = Object()
     private var pendingPromise: Promise? = null
+
+    /** Private to this module, so removeCallbacksAndMessages(null) only clears our timers. */
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var timeoutRunnable: Runnable? = null
+
+    /** Dexa's activity is in front — false while CodePay Register covers it. */
+    @Volatile
+    private var hostResumed = true
+
+    /** The "watchdog deferred" log line is written once per transaction. */
+    @Volatile
+    private var watchdogDeferred = false
 
     init {
         reactContext.addActivityEventListener(this)
+        reactContext.addLifecycleEventListener(this)
     }
 
     override fun getName(): String = NAME
@@ -67,6 +93,8 @@ class CodePayBridgeModule(private val reactContext: ReactApplicationContext) :
     override fun invalidate() {
         super.invalidate()
         reactContext.removeActivityEventListener(this)
+        reactContext.removeLifecycleEventListener(this)
+        clearTimers()
     }
 
     /**
@@ -76,9 +104,10 @@ class CodePayBridgeModule(private val reactContext: ReactApplicationContext) :
      * canceled } — never rejects for a transaction outcome. Rejects only for
      * programmer/environment errors: NO_ACTIVITY, BUSY, NO_CODEPAY_REGISTER.
      *
-     * A watchdog rejects the wait after `timeoutMs` by resolving with
+     * A watchdog ends the wait after `timeoutMs` by resolving with
      * timedOut=true (the caller treats that as INDETERMINATE, not a decline —
-     * the card may have been charged).
+     * the card may have been charged). It only does so once Dexa is back in
+     * front; while Register covers Dexa it keeps waiting for Register's result.
      */
     @ReactMethod
     fun transact(
@@ -118,16 +147,17 @@ class CodePayBridgeModule(private val reactContext: ReactApplicationContext) :
             }
 
             pendingPromise = promise
-            scheduleTimeout(timeoutMs)
+            watchdogDeferred = false
+            scheduleWatchdog(timeoutMs.toLong())
 
             try {
                 activity.startActivityForResult(intent, REQUEST_CODE)
             } catch (e: ActivityNotFoundException) {
-                clearTimeout()
+                clearTimers()
                 pendingPromise = null
                 promise.reject("NO_CODEPAY_REGISTER", "CodePay Register not found: ${e.message}")
             } catch (e: Exception) {
-                clearTimeout()
+                clearTimers()
                 pendingPromise = null
                 promise.reject("LAUNCH_FAILED", e.message ?: "Failed to launch CodePay Register", e)
             }
@@ -196,18 +226,28 @@ class CodePayBridgeModule(private val reactContext: ReactApplicationContext) :
     ) {
         if (requestCode != REQUEST_CODE) return
 
-        val promise: Promise
-        synchronized(lock) {
-            clearTimeout()
-            val p = pendingPromise ?: return
-            pendingPromise = null
-            promise = p
-        }
-
         val responseCode = data?.getStringExtra(EXTRA_RESPONSE_CODE)
         val responseMsg = data?.getStringExtra(EXTRA_RESPONSE_MSG)
         val bizData = data?.getStringExtra(EXTRA_BIZ_DATA)
         val canceled = resultCode == Activity.RESULT_CANCELED
+
+        val promise: Promise
+        synchronized(lock) {
+            clearTimers()
+            val p = pendingPromise
+            if (p == null) {
+                // Nothing is waiting any more (the watchdog already resolved).
+                // Keep the dropped result visible in logcat.
+                Log.w(
+                    TAG,
+                    "Late CodePay result dropped (no pending transaction): resultCode=$resultCode " +
+                        "responseCode=$responseCode canceled=$canceled",
+                )
+                return
+            }
+            pendingPromise = null
+            promise = p
+        }
 
         Log.d(
             TAG,
@@ -229,36 +269,73 @@ class CodePayBridgeModule(private val reactContext: ReactApplicationContext) :
         // Not used — CodePay returns results via onActivityResult.
     }
 
-    // ── Watchdog ──
+    // ── LifecycleEventListener ──
 
-    private fun scheduleTimeout(timeoutMs: Int) {
-        val runnable = Runnable {
-            val promise: Promise
-            synchronized(lock) {
-                val p = pendingPromise ?: return@Runnable
-                pendingPromise = null
-                promise = p
-                timeoutRunnable = null
-            }
-            Log.w(TAG, "CodePay transaction timed out after ${timeoutMs}ms")
-            promise.resolve(
-                buildResult(
-                    resultCode = 0,
-                    responseCode = null,
-                    responseMsg = "timeout",
-                    bizData = null,
-                    timedOut = true,
-                    canceled = false,
-                ),
-            )
+    override fun onHostResume() {
+        hostResumed = true
+        synchronized(lock) {
+            if (pendingPromise == null) return
         }
-        timeoutRunnable = runnable
-        mainHandler.postDelayed(runnable, timeoutMs.toLong())
+        // Register delivers its result before Dexa resumes, so a transaction
+        // still pending after a short grace never got one.
+        mainHandler.postDelayed({
+            if (hostResumed) resolveWithoutResult("no result after Register closed")
+        }, RETURN_GRACE_MS)
     }
 
-    private fun clearTimeout() {
-        timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
-        timeoutRunnable = null
+    override fun onHostPause() {
+        hostResumed = false
+    }
+
+    override fun onHostDestroy() {}
+
+    // ── Watchdog ──
+
+    private fun scheduleWatchdog(delayMs: Long) {
+        mainHandler.postDelayed({ onWatchdog() }, delayMs)
+    }
+
+    private fun onWatchdog() {
+        if (!hostResumed) {
+            // Register (e.g. its "Read data failed" screen) still covers Dexa;
+            // the customer can still pay or cancel. Wait for that answer.
+            synchronized(lock) {
+                if (pendingPromise == null) return
+            }
+            if (!watchdogDeferred) {
+                watchdogDeferred = true
+                Log.w(TAG, "Watchdog deferred: CodePay Register still in front")
+            }
+            scheduleWatchdog(WATCHDOG_RECHECK_MS)
+            return
+        }
+        resolveWithoutResult("timeout")
+    }
+
+    /** Resolve the pending transaction as timedOut (INDETERMINATE for JS). */
+    private fun resolveWithoutResult(reason: String) {
+        val promise: Promise
+        synchronized(lock) {
+            val p = pendingPromise ?: return
+            pendingPromise = null
+            promise = p
+            clearTimers()
+        }
+        Log.w(TAG, "CodePay transaction resolved without a result: $reason")
+        promise.resolve(
+            buildResult(
+                resultCode = 0,
+                responseCode = null,
+                responseMsg = reason,
+                bizData = null,
+                timedOut = true,
+                canceled = false,
+            ),
+        )
+    }
+
+    private fun clearTimers() {
+        mainHandler.removeCallbacksAndMessages(null)
     }
 
     private fun buildResult(

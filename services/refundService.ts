@@ -28,8 +28,17 @@ import {
 } from "@/services/terminals/atomLoopbackDetector";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
 import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from "@/types/atom";
-import { getSharedCodePayService } from "@/services/terminals/codepay-service";
-import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
+import {
+  CodePayService,
+  getSharedCodePayService,
+} from "@/services/terminals/codepay-service";
+import { codepayIsRegisterAvailable } from "@/native/CodePayBridge";
+import { useCodePayTerminalStore } from "@/stores/useCodePayTerminalStore";
+import {
+  CODEPAY_INTERNAL_TERMINAL_ID,
+  CODEPAY_REVERSAL_ROUTING_ENABLED,
+  CODEPAY_SALE_TIMEOUT_MS,
+} from "@/types/codepay";
 import {
     CASTLES_DEFAULT_PORT,
     CASTLES_SOCKET_TIMEOUT_MS,
@@ -58,6 +67,23 @@ type RefundContext = {
   stationId?: string | null;
 };
 
+type TerminalRefundResult = {
+  success: boolean;
+  terminalResponse?: DejavooRefundResponse | Record<string, unknown>;
+  error?: string;
+  /** Something staff should know about an approved reversal. */
+  note?: string;
+  /** Tip the terminal gave back on top of `amount` (a void cancels it all). */
+  tipReturned?: number;
+};
+
+/** A card payment CodePay took: it can only be reversed through CodePay. */
+function isCodePayPayment(payment: PaymentRefundContext): boolean {
+  return (
+    !!payment.codepayMerchantOrderNo ||
+    payment.terminalConfig?.terminal_type === "codepay"
+  );
+}
 
 export class RefundService {
   private supabase: SupabaseClient;
@@ -131,6 +157,28 @@ export class RefundService {
         failRefundJournal(journalId, "create_reversal", "Unknown refund type");
         return { kind: "error", error: "Unknown refund type." };
     }
+  }
+
+  /**
+   * CodePay reversals run through the Register app on the terminal itself.
+   * On any other device there is nothing to launch, so say where to go
+   * instead of recording a reversal that can only fail.
+   */
+  private async codePayDeviceBlocker(
+    payment: PaymentRefundContext | undefined,
+  ): Promise<string | null> {
+    if (!payment || !isCodePayPayment(payment)) return null;
+    const method = payment.paymentMethod?.toString().toLowerCase();
+    if (method === "cash" || isInKindMethod(payment.paymentMethod)) return null;
+    if (CodePayService.isAvailable() && (await codepayIsRegisterAvailable())) {
+      return null;
+    }
+    const name = payment.terminalConfig?.terminal_name;
+    return (
+      `This card payment was taken on a CodePay terminal${name ? ` (${name})` : ""}, ` +
+      "and CodePay refunds only run on a CodePay terminal. Open the order on " +
+      "that device to refund it. On a kiosk: Kiosk Settings, then Orders."
+    );
   }
 
   private buildReversalRefId(context: RefundContext): string {
@@ -309,9 +357,17 @@ export class RefundService {
       return { kind: "error", error: "Payment not found for refund." };
     }
 
+    const blocker = await this.codePayDeviceBlocker(payment);
+    if (blocker) {
+      failRefundJournal(journalId, "create_reversal", blocker);
+      return { kind: "error", error: blocker };
+    }
+
     // This method is reached from the explicit Refund action. Do not silently
     // convert an unsettled full refund into a void; Void has its own UI/path and
     // a refund receipt must remain auditable as reversal_type='refund'.
+    // (CodePay picks void or refund ON THE TERMINAL by batch state; what we
+    // record stays a refund. See processCodePayTerminalRefund.)
     const useVoid = false;
     const reversalType = "refund" as const;
 
@@ -452,7 +508,9 @@ export class RefundService {
         payment.availableForRefund,
         reversalType,
         returnDetails,
-        undefined,
+        terminalResult.tipReturned
+          ? { tipRefundAmount: terminalResult.tipReturned }
+          : undefined,
         {
           keyOverride: toRefundStepKey(
             idempotencyKey,
@@ -572,6 +630,7 @@ export class RefundService {
           dbErrors.length > 0
             ? `Refund processed but: ${dbErrors.join("; ")}`
             : undefined,
+        note: terminalResult.note,
       },
     };
   }
@@ -596,6 +655,12 @@ export class RefundService {
     if (amount <= 0 || amount > payment.availableForRefund) {
       failRefundJournal(journalId, "create_reversal", "Invalid refund amount");
       return { kind: "error", error: "Invalid refund amount." };
+    }
+
+    const blocker = await this.codePayDeviceBlocker(payment);
+    if (blocker) {
+      failRefundJournal(journalId, "create_reversal", blocker);
+      return { kind: "error", error: blocker };
     }
 
     const useVoid = false;
@@ -739,7 +804,9 @@ export class RefundService {
         amount,
         reversalType,
         returnDetails,
-        undefined,
+        terminalResult.tipReturned
+          ? { tipRefundAmount: terminalResult.tipReturned }
+          : undefined,
         {
           keyOverride: toRefundStepKey(
             idempotencyKey,
@@ -920,6 +987,7 @@ export class RefundService {
           dbErrors.length > 0
             ? `Refund processed but: ${dbErrors.join("; ")}`
             : undefined,
+        note: terminalResult.note,
       },
     };
   }
@@ -945,6 +1013,7 @@ export class RefundService {
       amount: number;
     }> = [];
     const errors: string[] = [];
+    const notes: string[] = [];
     let terminalRefundCount = 0;
     let batchIndex = 0;
     // When a terminal refund fails with a transport-death error (terminal hung /
@@ -976,6 +1045,12 @@ export class RefundService {
         // (delta_sc = SC × refund/op.amount) under-collects on every item
         // refund where SC was present. See computeItemRefundAmount above.
         const { amount } = computeItemRefundAmount(payment, itemsTotal);
+
+        const blocker = await this.codePayDeviceBlocker(payment);
+        if (blocker) {
+          errors.push(blocker);
+          continue;
+        }
 
         // Each payment gets a deterministic sub-key from the parent batch key + index.
         const subKey = toRefundStepKey(
@@ -1086,6 +1161,7 @@ export class RefundService {
         }
 
         updateRefundJournal(subJournalId, { status: "terminal_approved" });
+        if (terminalResult.note) notes.push(terminalResult.note);
 
         const terminalResponse = terminalResult.terminalResponse as
           | Record<string, unknown>
@@ -1118,7 +1194,9 @@ export class RefundService {
             amount,
             "item_return",
             returnDetails,
-            undefined,
+            terminalResult.tipReturned
+              ? { tipRefundAmount: terminalResult.tipReturned }
+              : undefined,
             { keyOverride: toRefundStepKey(subKey, "apply_refund_to_payment") },
           ),
         ]);
@@ -1263,6 +1341,7 @@ export class RefundService {
         success: true,
         reversals,
         error: errorParts.length > 0 ? errorParts.join("; ") : undefined,
+        note: notes.length > 0 ? notes.join(" ") : undefined,
       },
     };
   }
@@ -1274,11 +1353,7 @@ export class RefundService {
     terminalId: string,
     terminal: StationPaymentTerminal | undefined,
     journalId?: string,
-  ): Promise<{
-    success: boolean;
-    terminalResponse?: DejavooRefundResponse | Record<string, unknown>;
-    error?: string;
-  }> {
+  ): Promise<TerminalRefundResult> {
     // Cash payments don't go through the terminal — just succeed immediately
     if (payment.paymentMethod?.toLowerCase() === "cash") {
       return { success: true };
@@ -1298,6 +1373,21 @@ export class RefundService {
     // the terminalId guards, and independent of the station's configured terminal.
     if (payment.atomPaymentId) {
       return this.processAtomTerminalRefund(payment, amount, useVoid);
+    }
+
+    // A CodePay payment is reversed through CodePay whatever terminal the
+    // station has now, and even if its own terminal row is gone (the type
+    // would otherwise default to Dejavoo). Register runs on this device, so
+    // the payment's row only supplies the app id.
+    if (isCodePayPayment(payment)) {
+      return this.processCodePayTerminalRefund(
+        payment,
+        amount,
+        useVoid,
+        payment.terminalConfig ??
+          (terminal?.terminal_type === "codepay" ? terminal : undefined),
+        journalId,
+      );
     }
 
     // Check for missing required fields with specific error messages
@@ -1350,7 +1440,8 @@ export class RefundService {
         payment,
         amount,
         useVoid,
-        terminal!,
+        terminal,
+        journalId,
       );
     }
 
@@ -1620,32 +1711,45 @@ export class RefundService {
   }
 
   /**
-   * CodePay (on-terminal Intent) reversal. Both refund and void are REFERENCED
-   * by the original sale's merchant_order_no (orig_merchant_order_no) — no card
-   * re-presentment. Void (trans_type 2) works only while the batch is open
-   * (isVoidable); otherwise a refund (trans_type 3) is issued for the amount.
-   * Amounts are DOLLARS. Config (app_id) comes from the station's configured
-   * CodePay terminal row (app_id, falling back to register_id).
+   * CodePay (on-terminal Intent) reversal, REFERENCED by the original sale's
+   * merchant_order_no (orig_merchant_order_no), so no card is needed.
+   *
+   * Per the CodePay docs a payment can be cancelled "any time while it is still
+   * in the batch"; once the batch is closed it has to be refunded. So:
+   *   - whole sale, not batched out → void (trans_type 2)
+   *   - batched out, or part of the sale → refund (trans_type 3)
+   * and CodePayService.reverse() tries the other one once if the host says the
+   * first is wrong for the batch state (our settled flag can lag the host).
+   *
+   * What we RECORD is a refund either way (see processFullPaymentRefund). A
+   * void cancels the whole charge, tip included; that comes back as
+   * `tipReturned` and a note for staff.
+   *
+   * Amounts are DOLLARS. The app id comes from the payment's terminal row
+   * (app_id, falling back to register_id), then from this device's setting.
    */
   private async processCodePayTerminalRefund(
     payment: PaymentRefundContext,
     amount: number,
     useVoid: boolean,
-    terminal: StationPaymentTerminal,
-  ): Promise<{
-    success: boolean;
-    terminalResponse?: Record<string, unknown>;
-    error?: string;
-  }> {
-    const appId = terminal.app_id ?? terminal.register_id ?? "";
-    if (!appId.trim()) {
+    terminal: StationPaymentTerminal | undefined,
+    journalId?: string,
+  ): Promise<TerminalRefundResult> {
+    const appId = (
+      terminal?.app_id ??
+      terminal?.register_id ??
+      useCodePayTerminalStore.getState().appId ??
+      ""
+    ).trim();
+    if (!appId) {
       return { success: false, error: "CodePay terminal has no app_id configured." };
     }
-    // Referenced reversal needs the ORIGINAL merchant_order_no. Prefer the value
-    // pulled from processor_response.codepay_transaction; fall back to the
-    // generic reference_number/transaction_id.
+    // A referenced reversal needs the ORIGINAL merchant_order_no. The generic
+    // reference is only trusted when it is one of ours ("CP_…"): for a payment
+    // without the CodePay blob it could hold the trans_no instead.
     const origMerchantOrderNo =
-      payment.codepayMerchantOrderNo || payment.referenceId;
+      payment.codepayMerchantOrderNo ||
+      (payment.referenceId?.startsWith("CP_") ? payment.referenceId : "");
     if (!origMerchantOrderNo) {
       return {
         success: false,
@@ -1653,23 +1757,36 @@ export class RefundService {
       };
     }
 
+    const wholeSale =
+      payment.refundedAmount === 0 &&
+      round2(amount) >= round2(payment.availableForRefund) &&
+      round2(payment.availableForRefund) >= round2(payment.amount);
+    const routed = CODEPAY_REVERSAL_ROUTING_ENABLED;
+
     try {
       const service = getSharedCodePayService();
       service.configure({
         appId,
-        terminalId: terminal.id,
-        terminalSn: terminal.serial_number ?? undefined,
+        terminalId: terminal?.id ?? payment.terminalId ?? CODEPAY_INTERNAL_TERMINAL_ID,
+        terminalSn: terminal?.serial_number ?? undefined,
         timeout: CODEPAY_SALE_TIMEOUT_MS,
       });
-      // merchant_order_no for this reversal (≤32 chars).
-      const referenceId = `${useVoid ? "CPVD" : "CPRF"}_${Date.now()}`;
-      const result = useVoid
-        ? await service.void({ referenceId, origMerchantOrderNo, amount })
-        : await service.refund({ referenceId, origMerchantOrderNo, amount });
+      const result = await service.reverse({
+        origMerchantOrderNo,
+        amount,
+        coversWholeSale: routed && wholeSale,
+        inOpenBatch: routed && (useVoid || payment.isVoidable),
+        saleAmount: payment.amount,
+        saleTipAmount: payment.tipAmount,
+        referenceSuffix: payment.paymentId,
+        // On record before the Intent goes out, so an interrupted reversal can
+        // still be looked up in Register by its reference.
+        onAttempt: ({ referenceId }) => {
+          if (journalId) updateRefundJournal(journalId, { terminalTxnId: referenceId });
+        },
+      });
 
-      // An indeterminate reversal (Intent timed out) must NOT be reported as a
-      // clean success; surface it so staff can verify on the terminal.
-      if (result.indeterminate) {
+      if (!result.success) {
         return {
           success: false,
           terminalResponse: result.terminalResponse,
@@ -1678,10 +1795,21 @@ export class RefundService {
             "CodePay reversal result could not be confirmed. Check the terminal before retrying.",
         };
       }
+
+      const tipReturned =
+        result.operation === "void" ? round2(payment.tipAmount || 0) : 0;
       return {
-        success: result.success,
+        success: true,
         terminalResponse: result.terminalResponse,
-        error: result.error,
+        tipReturned,
+        note:
+          result.operation === "void"
+            ? tipReturned > 0
+              ? `This payment wasn't batched out yet, so the whole card charge of $${round2(
+                  amount + tipReturned,
+                ).toFixed(2)} was cancelled, including the $${tipReturned.toFixed(2)} tip.`
+              : undefined
+            : undefined,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
