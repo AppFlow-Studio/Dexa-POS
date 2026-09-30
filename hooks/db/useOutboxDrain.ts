@@ -46,11 +46,19 @@ import {
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { toastService } from "@/lib/toastService";
 import { jitterMs } from "@/lib/network/jitter";
+import { useOrderStore } from "@/stores/useOrderStore";
 
 const DRAIN_INTERVAL_MS = 30_000;
 // On a reconnect (not on mount), release the queue after 0-3s: a Supabase or
 // network blip flips every device back online at the same moment.
 const RECONNECT_DRAIN_JITTER_MS = 3_000;
+
+/**
+ * The startup repair (saveUnsavedItems with `startup`) runs once per launch: it
+ * is the only pass allowed to take lines without a failure marker, which is
+ * safe only while nothing can be mid-write — i.e. before this session adds.
+ */
+let startupRepairDone = false;
 
 /** Any local-first write path on at all? Nothing to drain otherwise. */
 const ANY_LOCAL_WRITES =
@@ -171,6 +179,26 @@ export function useOutboxDrain(): void {
       }
     };
 
+    // Lines whose local save failed ("database is locked") live only in
+    // memory until written again — invisible to the server, the kitchen and
+    // Previous Orders. Local writes need no network, so this runs online or
+    // not; lines already shown as sent get their kitchen send fired.
+    let repairing = false;
+    const repairUnsavedItems = async (startup: boolean) => {
+      if (!LOCAL_WRITES_ITEMS || repairing || cancelled) return;
+      if (!isLocalDbReady()) return;
+      repairing = true;
+      try {
+        await useOrderStore
+          .getState()
+          .saveUnsavedItems({ startup, resendLostKitchenItems: true });
+      } catch (error) {
+        console.warn("[LF] unsaved-item repair failed:", error);
+      } finally {
+        repairing = false;
+      }
+    };
+
     // Let a local write ask for a drain immediately, instead of waiting out
     // the interval — otherwise a ticket could take 30s to reach the kitchen
     // on a perfectly good network.
@@ -197,6 +225,10 @@ export function useOutboxDrain(): void {
       // Protect sessions seated in a PREVIOUS run of the app from being
       // cleared by the first floor-plan snapshot of this one.
       await seedUnsyncedSessions();
+      if (!startupRepairDone) {
+        startupRepairDone = true;
+        await repairUnsavedItems(true);
+      }
       // Kick a drain now that the requeued ops are eligible.
       if (isOnline) void run();
     })();
@@ -228,6 +260,7 @@ export function useOutboxDrain(): void {
     }
 
     const timer = setInterval(() => {
+      void repairUnsavedItems(false);
       if (isOnline) void run();
     }, DRAIN_INTERVAL_MS);
 
