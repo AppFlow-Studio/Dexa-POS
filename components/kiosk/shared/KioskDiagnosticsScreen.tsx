@@ -14,7 +14,9 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
 import {
     MENU_VERSION_POLL_MS,
+    fetchMenuVersion,
     menuVersionQueryKey,
+    probeVersionFromEnvelope,
 } from "@/hooks/pos/useMenuVersionWatch";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
@@ -223,18 +225,19 @@ export function KioskDiagnosticsScreen({
     if (!menuVersionSupabase || !locationId) return;
     setCheckingMenu(true);
     try {
-      const { data, error } = await menuVersionSupabase.rpc(
-        "get_pos_menu_version_v1",
-        { p_location_id: locationId },
+      // Same probe and same comparison as Settings → Syncing: the envelope's
+      // version is put in the probe's format first (a v2 envelope carries a
+      // marker the v2 token does not; a v3 envelope already equals v3).
+      const remoteVersion = await fetchMenuVersion(
+        menuVersionSupabase,
+        locationId,
       );
-      if (error) throw error;
-
-      const remoteVersion = (data as string | null) ?? null;
-      const appliedVersion =
+      const appliedVersion = probeVersionFromEnvelope(
         menuQueryClient.getQueryData<{ version?: string | null }>([
           "pos_sync",
           locationId,
-        ])?.version ?? null;
+        ])?.version,
+      );
 
       if (remoteVersion && appliedVersion && remoteVersion === appliedVersion) {
         toastService.show({
