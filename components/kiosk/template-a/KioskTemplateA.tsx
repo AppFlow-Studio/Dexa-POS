@@ -7,6 +7,7 @@ import { KioskItemDetailModal } from "@/components/kiosk/shared/KioskItemDetailM
 import { kioskCartPlacement } from "@/components/kiosk/shared/kioskLayout";
 import { kioskStrings } from "@/components/kiosk/shared/kioskStrings";
 import { KioskOrderTypeScreen } from "@/components/kiosk/shared/KioskOrderTypeScreen";
+import { useKioskOrderTypeFlow } from "@/components/kiosk/shared/useKioskOrderTypeFlow";
 import { KioskCartView } from "@/components/kiosk/shared/KioskCartView";
 import { KioskScreenTransition } from "@/components/kiosk/shared/KioskScreenTransition";
 import { useKioskIdleTimer } from "@/components/kiosk/shared/useKioskIdleTimer";
@@ -26,7 +27,8 @@ import { StyleSheet, View } from "react-native";
  * Template A — its own ordering flow and layout.
  *
  * Screen sequence: orderType → menu → itemDetail → cart → checkout → confirmation.
- * The session opens on the Dine In / Takeaway choice; the menu is a two-pane
+ * The session opens on the Dine In / Takeaway choice (or straight on the menu
+ * when the station allows a single type — useKioskOrderTypeFlow); the menu is a two-pane
  * split (category rail + item grid) whose ratio follows config.orientation
  * (1/4·3/4 horizontal, 1/3·2/3 vertical). The menu is built behind the
  * order-type screen while the customer chooses (useKioskOrderTypeStep), so the
@@ -49,7 +51,10 @@ export function KioskTemplateA({
   onExit,
   ensureAccess,
 }: KioskTemplateProps) {
-  const [screen, setScreen] = useState<TemplateAScreen>("orderType");
+  const orderTypeFlow = useKioskOrderTypeFlow(config);
+  const [screen, setScreen] = useState<TemplateAScreen>(
+    orderTypeFlow.initialScreen,
+  );
   const [selectedItem, setSelectedItem] = useState<MenuItemType | null>(null);
   const [selectedSource, setSelectedSource] = useState<KioskItemSource>();
   // Set once the checkout reaches the paid/success screen. The order is settled,
@@ -73,10 +78,10 @@ export function KioskTemplateA({
     clearCart();
     setPaid(false);
     setConfirmingStartOver(false);
-    setScreen("orderType");
+    setScreen(orderTypeFlow.initialScreen);
     setSelectedItem(null);
     onExit();
-  }, [clearCart, onExit]);
+  }, [clearCart, onExit, orderTypeFlow.initialScreen]);
 
   // Idle/walk-away. No backend order exists until the customer pays (creation is
   // deferred to payOrder), so there's nothing to void here — just reset.
@@ -238,6 +243,7 @@ export function KioskTemplateA({
         <KioskScreenTransition direction="fade">
           <KioskOrderTypeScreen
             config={config}
+            options={orderTypeFlow.options}
             selectedType={orderTypeStep.pendingType}
             onSelect={orderTypeStep.choose}
           />

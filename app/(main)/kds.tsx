@@ -1,3 +1,4 @@
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { BumpRetryBadge } from "@/components/kds/BumpRetryBadge";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import KDSTicketBoard from "@/components/kds/KDSTicketBoard";
@@ -44,6 +45,7 @@ import {
     CheckSquare,
     Flame,
     ListChecks,
+    MapPin,
     Printer,
     RotateCcw,
     Settings,
@@ -477,6 +479,16 @@ function getDisplayTableName(tableName: string | null | undefined): string {
   return isUuid ? "" : value;
 }
 
+/**
+ * Where to deliver a kiosk dine-in order ("Table 6 — Seat 2"), picked by the
+ * customer on the kiosk and stored as the order's table. Promoted into the
+ * ticket header so runners see it at a glance; "" when there is none.
+ */
+function getKioskDeliverTo(ticket: KDSTicket): string {
+  if (ticket.order_source !== "kiosk") return "";
+  return formatTableLabel(getDisplayTableName(ticket.table_name));
+}
+
 function matchesTypeFilter(
   ticket: KDSTicket,
   filter: OrderTypeFilter,
@@ -886,6 +898,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
+    const kioskDeliverTo = getKioskDeliverTo(ticket);
     const serverName = ticket.server_name?.trim();
     const hasRush = ticketItems.some((item) => item.rush);
     const hasRefire = ticketItems.some((item) => item.recalled);
@@ -1233,6 +1246,36 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 >
                   {orderTypeLabel}
                 </Text>
+                {kioskDeliverTo ? (
+                  <View
+                    style={{
+                      flexShrink: 1,
+                      minWidth: 0,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(3),
+                      paddingHorizontal: s(6),
+                      height: s(16),
+                      borderRadius: s(8),
+                      backgroundColor: hasUrgencyColor
+                        ? "rgba(255,255,255,0.25)"
+                        : "#111827",
+                    }}
+                  >
+                    <MapPin size={s(10)} color="#FFFFFF" />
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        flexShrink: 1,
+                        color: "#FFFFFF",
+                        fontSize: s(11),
+                        fontWeight: "800",
+                      }}
+                    >
+                      {kioskDeliverTo}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             </View>
 
@@ -1471,7 +1514,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               >
                 {ticket.customer_name ? ticket.customer_name : ""}
                 {ticket.customer_name && displayTableName ? " · " : ""}
-                {displayTableName ? `Table ${displayTableName}` : ""}
+                {formatTableLabel(displayTableName)}
                 {(ticket.customer_name || displayTableName) && displayServerName
                   ? " · "
                   : ""}
@@ -2068,6 +2111,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
     );
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
+    const kioskDeliverTo = getKioskDeliverTo(ticket);
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
     const displayTableName = getDisplayTableName(ticket.table_name);
     const displayServerName = showServerName && ticket.server_name;
@@ -2241,6 +2285,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                       }}
                     >
                       {orderTypeLabel}
+                      {kioskDeliverTo ? ` · ${kioskDeliverTo}` : ""}
                     </Text>
                   </View>
                 </View>
@@ -2275,7 +2320,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
               >
                 {ticket.customer_name ? ticket.customer_name : ""}
                 {ticket.customer_name && displayTableName ? " · " : ""}
-                {displayTableName ? `Table ${displayTableName}` : ""}
+                {formatTableLabel(displayTableName)}
                 {(ticket.customer_name || displayTableName) && displayServerName
                   ? " · "
                   : ""}
@@ -3319,7 +3364,7 @@ const KitchenDisplayScreen = () => {
 
       // Build rich context for undo toast subtitle
       const displayTableName = getDisplayTableName(ticket?.table_name);
-      const tablePart = displayTableName ? `Table ${displayTableName}` : "";
+      const tablePart = formatTableLabel(displayTableName);
       const typePart = getOrderTypeLabel(ticket?.order_type ?? null);
       const itemPart = `${ticket?.item_count ?? itemIds.length} items`;
       const parts = [tablePart, typePart, itemPart].filter(Boolean);
@@ -4445,8 +4490,8 @@ const KitchenDisplayScreen = () => {
                 >
                   {getOrderTypeLabel(actionMenu.ticket.order_type)}
                   {getDisplayTableName(actionMenu.ticket.table_name)
-                    ? ` · Table ${getDisplayTableName(
-                        actionMenu.ticket.table_name,
+                    ? ` · ${formatTableLabel(
+                        getDisplayTableName(actionMenu.ticket.table_name),
                       )}`
                     : ""}
                   {actionMenu.ticket.item_count

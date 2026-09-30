@@ -548,6 +548,62 @@ as the safety net for an item whose stock changes while a customer is on it.
 still hydrating) stays visible. Hiding a sellable item over a loading gap is
 worse than showing one the detail screen will handle.
 
+## Order types & dine-in seat selection
+
+Per-station settings in `stations.kiosk_settings` (jsonb), edited on the website
+station page → **Kiosk** tab (self-service stations only). Migration:
+`dexapos-website/supabase/migrations/20260923130000_station_kiosk_settings.sql`.
+
+| Key | Values | Kiosk behaviour |
+|---|---|---|
+| `order_types` | `both` (default) / `dine_in_only` / `takeout_only` | `resolveOrderTypeFlow` (`lib/kiosk/orderTypeFlow.ts`) |
+| `dine_in_only_skip_prompt` | bool (default true) | Dine-In only: auto-start vs single button |
+| `table_label` | string ≤40 / null | fixed table for every dine-in order from this kiosk |
+| `seat_mode` | `off` / `ask` / `fixed` | no seat / guest picks from `seat_options` / always `fixed_seat_label` (no prompt) |
+| `fixed_seat_label` | string ≤40 / null | the kiosk's seat when `seat_mode = fixed` |
+| `seat_selection_enabled` | bool, **legacy** | written as `seat_mode === 'ask'` for older kiosk builds; rows without `seat_mode` map `true → ask`, else `off` |
+| `seat_options` | `[{id,label}]`, ≤200, label ≤40 chars | one-tap grid (`KioskSeatSelectScreen`); kept in every mode |
+
+- **Loading.** `useKioskProfile` fetches the station's `kiosk_settings` next to
+  the profile and folds it into `config.ordering` under the same idle-only apply
+  gate and MMKV persistence. Read it through `kioskOrdering(config)` — configs
+  persisted by older builds have no `ordering`. A missing column (42703) reads as
+  defaults; other errors keep the last persisted config.
+- **Order type.** `useKioskOrderTypeFlow` picks each template's first screen
+  (`orderType` or `menu`) and applies the auto type to the cart on mount.
+  A session that opens on the menu mounts it at once, and
+  `useKioskOrderTypeStep` awaits the start check on mount instead of on a tap.
+- **Seat.** Checkout step order is `customer → seat → tip → processing`. The seat
+  step runs only when `shouldAskForSeat` (dine-in + `seat_mode = ask` + non-empty
+  list); a fixed seat never asks. With a fixed table the question reads "Which
+  seat at Table 1?".
+- **Location label.** `resolveKioskLocationLabel` (`lib/kiosk/orderTypeFlow.ts`)
+  builds what staff see, via `composeKioskLocationLabel` (`lib/formatTableLabel.ts`,
+  mirrored on the web): table + fixed seat → "Table 1, Seat 3"; table + pick →
+  "Table 1, Seat 5"; table only → "Table 1"; fixed seat only → "Seat 3"; a pick
+  with no table stays verbatim (legacy lists). Values starting with a digit get the
+  "Table "/"Seat " prefix; named labels ("Counter", "Stool 3") don't. The separator
+  is an ASCII comma so raw ESC/POS prints never show "?". Takeout → no label.
+  The label rides `service_location_id` → `p_table_number` → `orders.table_number`,
+  so KDS, kitchen/receipt prints and order details show it with no RPC change.
+- **Example (Bread & Butter).** One shared table, 7 kiosks: each station gets
+  Table `1` + Fixed seat `1`…`7` → orders read "Table 1, Seat 3" and customers are
+  never asked.
+- **Display.** `formatTableLabel` (`lib/formatTableLabel.ts`) prefixes only bare
+  names ("6" → "Table 6"). Multi-word labels print as-is, so "Patio Table 4" never
+  becomes "Table Patio Table 4". KDS adds a bold location pill in the header for
+  `order_source === 'kiosk'` tickets.
+
+### Checklist
+- [x] Migration applied on **staging** (`dfwqakoyittmrwbqvxgw`). **PROD pending (manual).**
+- [x] Web: `StationKioskTab`, `updateStation` + server-side normalise, vitest
+- [x] POS: settings load/persist, order-type flow (templates A/B/C)
+- [x] POS: seat step, cart `seatLabel`, `patchOrder`, success screen
+- [x] POS: `formatTableLabel` across KDS/prints/order lists, KDS header pill
+- [x] Web + POS: fixed table + seat mode (`off`/`ask`/`fixed`), legacy mapping, tests
+- [ ] Device QA on staging: all 4 order-type modes, seat → KDS/kitchen print/receipt, offline order
+- [ ] Device QA on staging: fixed table + fixed seat (no seat step, "Table 1, Seat 3" on KDS/print), table + guest pick
+
 ## Payment window & "Need more time?" (CodePay kiosks)
 
 A CodePay kiosk's card screen is CodePay Register, which runs in front of Dexa.

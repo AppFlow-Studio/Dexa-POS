@@ -1,5 +1,7 @@
+import { formatTableLabel } from "@/lib/formatTableLabel";
 import { KitchenTicketData, KitchenTicketItemData } from "@/types/printer";
 import { EscPosBuilder } from "../escpos/EscPosBuilder";
+import { sanitizeForPrint } from "../utils/sanitizeText";
 
 /**
  * Builds ESC/POS commands for a kitchen ticket.
@@ -50,7 +52,7 @@ export function buildKitchenTicketCommands(
     b.doubleHeight(true);
     b.textLine(data.orderType.toUpperCase());
     if (data.tableName) {
-      b.textLine(`TABLE: ${data.tableName}`);
+      b.textLine(sanitizeForPrint(formatTableLabel(data.tableName, "TABLE: ")));
     }
     b.doubleHeight(false);
   }
