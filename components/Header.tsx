@@ -9,6 +9,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
+import { useSalesExitGuardStore } from "@/stores/useSalesExitGuardStore";
 import {
   Href,
   useGlobalSearchParams,
@@ -182,7 +183,7 @@ const Header = () => {
     return title;
   }, [pathname, activeVendorId, relevantTableName, vendors]);
 
-  const handleBackPress = useCallback(() => {
+  const navigateBack = useCallback(() => {
     if (pathname === "/inventory/vendors" && activeVendorId) {
       requestVendorSidebarClose();
       return;
@@ -297,6 +298,16 @@ const Header = () => {
     router,
     overlayTableId,
   ]);
+
+  // Leaving Sales goes through the per-order PIN exit guard: with "Require PIN
+  // per order" on it resets the till (and may ask about unsent items) first.
+  const handleBackPress = useCallback(() => {
+    if (pathname === "/order-processing") {
+      useSalesExitGuardStore.getState().requestSalesExit(navigateBack);
+      return;
+    }
+    navigateBack();
+  }, [navigateBack, pathname]);
 
   return (
     <View className="flex-row justify-between items-center py-1">

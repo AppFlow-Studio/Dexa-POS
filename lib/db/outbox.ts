@@ -62,6 +62,7 @@ export type OutboxOp =
   | "void_item"
   | "remove_item"
   | "set_item_seat"
+  | "set_order_creator"
   | "send_to_kitchen"
   | "seat_guests"
   | "update_session_status";

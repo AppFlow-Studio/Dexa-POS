@@ -170,6 +170,11 @@ export interface SetItemSeatPayload {
   seatNumber: number | null;
 }
 
+export interface SetOrderCreatorPayload {
+  orderId: string;
+  staffId: string;
+}
+
 export interface ReplaceModifiersPayload {
   orderId: string;
   itemId: string;
@@ -561,6 +566,25 @@ export function makeOpHandlers(
           "remove_order_item",
           p.itemId,
         );
+      }
+    },
+
+    // Re-credit an order to another staff member (per-order PIN: a reused
+    // empty draft picked up by someone else). No RPC sets the creator after
+    // create_order, so this is a plain column update — idempotent, and FIFO
+    // per order guarantees the create has landed first.
+    set_order_creator: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as SetOrderCreatorPayload;
+      console.log(`[LF] → set_order_creator order=${p.orderId} staff=${p.staffId}`);
+      try {
+        const { error } = await client
+          .from("orders")
+          .update({ created_by_staff_id: p.staffId })
+          .eq("id", p.orderId);
+        if (error) return rpcError("set_order_creator", error);
+        return { kind: "synced" };
+      } catch (error) {
+        return rpcError("set_order_creator", error);
       }
     },
 

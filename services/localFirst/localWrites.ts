@@ -47,6 +47,7 @@ import type {
   SeatGuestsPayload,
   SendToKitchenPayload,
   SetItemSeatPayload,
+  SetOrderCreatorPayload,
   UpdateItemQuantityPayload,
   VoidItemPayload,
 } from "@/services/localFirst/opHandlers";
@@ -838,6 +839,43 @@ export async function setLocalItemSeat(
         op: "set_item_seat",
         entity: "order_item",
         entityId: input.itemId,
+        orderId: input.orderId,
+        payload,
+      },
+    ],
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
+}
+
+export interface SetLocalOrderCreatorInput {
+  orderId: string;
+  staffId: string;
+}
+
+/** Re-credit an order to another staff member. */
+export async function setLocalOrderCreator(
+  input: SetLocalOrderCreatorInput,
+): Promise<LocalWriteResult<void>> {
+  const ts = nowIso();
+  const payload: SetOrderCreatorPayload = {
+    orderId: input.orderId,
+    staffId: input.staffId,
+  };
+
+  const result = await commitLocalWrite(
+    [
+      {
+        sql: `UPDATE orders SET created_by_staff_id = ?, updated_at = ?, _sync_status = 'local' WHERE id = ?`,
+        args: [input.staffId, ts, input.orderId],
+      },
+    ],
+    [
+      {
+        id: uuidv4(),
+        op: "set_order_creator",
+        entity: "order",
+        entityId: input.orderId,
         orderId: input.orderId,
         payload,
       },

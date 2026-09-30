@@ -147,6 +147,7 @@ import {
   allocateOrderNumbers,
   findLatestReusableEmptyDraftId,
   getTodaySequenceFloor,
+  isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
 import {
   LOCAL_WRITES_ITEMS,
@@ -157,6 +158,7 @@ import {
   editLocalItem,
   removeLocalItem,
   sendLocalToKitchen,
+  setLocalOrderCreator,
   updateLocalItemQuantity,
   voidLocalItem,
 } from "@/services/localFirst/localWrites";
@@ -1671,6 +1673,7 @@ const ensureOrderCreated = async (
   // the same value, which is precisely the invariant that makes every
   // "has the server seen this yet?" check downstream stop mattering.
   if (LOCAL_WRITES_ORDERS) {
+    const creatorStaffId = getKioskSafeCreatorStaffId();
     const res = await createLocalOrder({
       merchantId: selectedStore.merchant_id ?? "",
       locationId: selectedStore.id,
@@ -1685,7 +1688,7 @@ const ensureOrderCreated = async (
       // was always undefined — the order synced with a NULL creator and
       // Previous Orders rendered "Server: Unknown" — and it bypassed the
       // kiosk-safety rule that decides which staff id may be attributed.
-      staffId: getKioskSafeCreatorStaffId(),
+      staffId: creatorStaffId,
       // A table NUMBER, not the table's uuid. service_location_id is the
       // floor-plan object id; the server stores the human-facing name.
       tableNumber: resolveTableNameForOrder(order.service_location_id),
@@ -1708,14 +1711,26 @@ const ensureOrderCreated = async (
       return null;
     }
 
+    const createdOrderId = res.value.orderId;
     setOrderDbId(
       order.id,
-      res.value.orderId,
+      createdOrderId,
       res.value.orderNumber,
       res.value.displayNumber,
       new Date().toISOString(),
     );
-    return res.value.orderId;
+    // Mirror the creator onto the local order, as the legacy path does after
+    // create_order. startNewOrder stamped the signed-in shift user; without
+    // this the local order kept that id while the row carried the per-order
+    // PIN staff, so "Created by" and BillSection's reused-draft PIN check read
+    // the wrong person.
+    if (creatorStaffId) {
+      useOrderStore.setState((state) => {
+        const o = state.ordersById[createdOrderId] ?? state.ordersById[order.id];
+        if (o) o.created_by_staff_profile_id = creatorStaffId;
+      });
+    }
+    return createdOrderId;
   }
 
   // ========================================================================
@@ -4851,6 +4866,16 @@ interface OrderState {
    * No-op (returns existing db_order_id) if already created.
    */
   ensureActiveOrderCreated: (orderId: string) => Promise<string | null>;
+  /**
+   * Re-credit an already-created order to another staff member, locally and
+   * (via the outbox) on the server. Per-order PIN uses it when someone else
+   * picks up a reused empty draft, so the draft keeps its number. Resolves
+   * false when it can't (local order writes off, or the local write failed).
+   */
+  reassignOrderCreator: (
+    orderId: string,
+    staffProfileId: string,
+  ) => Promise<boolean>;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
   setItemQuantity: (itemId: string, quantity: number) => void;
@@ -9179,6 +9204,23 @@ export const useOrderStore = create<OrderState>()(
             }
           },
 
+          reassignOrderCreator: async (orderId, staffProfileId) => {
+            if (!LOCAL_WRITES_ORDERS) return false;
+            const res = await setLocalOrderCreator({
+              orderId,
+              staffId: staffProfileId,
+            });
+            if (!res.ok) {
+              console.error("[reassignOrderCreator] local write failed:", res.error);
+              return false;
+            }
+            set((state) => {
+              const o = state.ordersById[orderId];
+              if (o) o.created_by_staff_profile_id = staffProfileId;
+            });
+            return true;
+          },
+
           addItemToActiveOrder: (newItem) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
@@ -9261,6 +9303,9 @@ export const useOrderStore = create<OrderState>()(
             // attribution since cleared) accept items without a second PIN, while
             // still gating brand-new QSR orders. Covers every add surface since
             // they all funnel through here.
+            // A reused empty draft is gated too even though its row exists: it
+            // is the next order, and BillSection's PIN gate decides whose it is
+            // (a different staff member is moved onto a fresh order).
             // Self-service kiosk orders are exempt — no staff is ringing.
             const currentStation = get().currentStation;
             const isKiosk = currentStation?.station_type === "self_service";
@@ -9269,10 +9314,10 @@ export const useOrderStore = create<OrderState>()(
               !getOrderCreationOperationId(activeOrder.id);
             if (
               !isKiosk &&
-              orderNotYetCreated &&
               useStoreSettingsStore.getState().requirePinPerOrder &&
               useEmployeeStore.getState().orderAttributionOrderId !==
-                activeOrder.id
+                activeOrder.id &&
+              (orderNotYetCreated || isReusableEmptyDraftOrder(activeOrder))
             ) {
               toastService.show({
                 title: "Enter PIN to start",
