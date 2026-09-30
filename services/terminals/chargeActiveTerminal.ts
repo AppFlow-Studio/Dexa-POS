@@ -38,6 +38,7 @@ import {
   suspendAtomLoopbackProbing,
 } from "@/services/terminals/atomLoopbackDetector";
 import { getSharedCodePayService } from "@/services/terminals/codepay-service";
+import type { CodePayStatusLookupFn } from "@/services/terminals/codepayStatusLookup";
 import { CODEPAY_SALE_TIMEOUT_MS } from "@/types/codepay";
 import { getSharedValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
@@ -65,8 +66,31 @@ export interface ChargeActiveTerminalResult {
    * read, or a partial approval). Caller MUST NOT void the order or re-charge.
    */
   indeterminate?: boolean;
+  /** Why an indeterminate result is unknown (e.g. watchdog | unreadable). */
+  indeterminateCause?: string;
   /** Human message for a decline / error / indeterminate. */
   message?: string;
+  /**
+   * CodePay kiosk window ran out with no card read (confirmed no charge): the
+   * customer didn't finish in time. The caller may offer "Need more time?".
+   */
+  timedOut?: boolean;
+  /** The cardholder cancelled on the terminal itself (confirmed no charge). */
+  aborted?: boolean;
+  /** Reference id of the sale attempt (CodePay merchant_order_no). */
+  referenceId?: string;
+  /** How long the terminal step took (ms), when the processor reports it. */
+  elapsedMs?: number;
+  /** Raw terminal codes for telemetry (never shown to customers). */
+  terminalCodes?: { responseCode?: string; resultCode?: number };
+  /** CodePay: a host status lookup confirmed no charge (vs. trusting Register). */
+  noChargeConfirmed?: boolean;
+  /** CodePay: how an unknown sale was resolved to success, if it was. */
+  recoveredVia?: string;
+  /** CodePay: the host approved an attempt Register reported as not completed. */
+  contradictedRegister?: boolean;
+  /** CodePay: host status lookups made for this charge (telemetry). */
+  cloudLookups?: { ref: string; status: string; reason?: string; latencyMs?: number }[];
   /** JSONB handed to `payFullCard` as `p_terminal_response`. */
   terminalResponse?: Record<string, unknown>;
   /** DB id of the terminal that ran the sale (for settlement routing). */
@@ -111,6 +135,22 @@ export interface ChargeActiveTerminalArgs {
    * whenever a real terminal is configured.
    */
   simulatedCardWaitMs?: number;
+  /**
+   * CodePay only: the Register order window in seconds (kiosk payment window).
+   * Unset = the legacy 120s window with no expiry classification.
+   */
+  codepayExpiresSec?: number;
+  /** CodePay only: show Register's on-screen signature step (default true). */
+  codepayOnScreenSignature?: boolean;
+  /**
+   * CodePay only: host status lookup (kiosk). Used to resolve an unknown or
+   * lapsed sale before the caller locks for staff.
+   */
+  codepayStatusLookup?: CodePayStatusLookupFn;
+  /** CodePay only: the previous attempt's reference, checked before relaunch. */
+  codepayPriorReferenceId?: string;
+  /** CodePay only: fired when the outcome is being verified with the host. */
+  onVerifying?: () => void;
 }
 
 const INDETERMINATE_MESSAGE =
@@ -466,6 +506,9 @@ export async function chargeActiveTerminal(
     const referenceId = `CP_${Date.now()}_${staSuffix}`;
 
     const journalId = writeJournal();
+    // Record the merchant_order_no at dispatch (not only on a result), so a
+    // process death mid-sale leaves a journal that can still be looked up.
+    updatePaymentJournal(journalId, { terminalTxnId: referenceId });
     onChargeStarted?.({
       terminalType: "codepay",
       terminalId: terminal.id,
@@ -476,16 +519,49 @@ export async function chargeActiveTerminal(
     // onActivityResult, so — unlike ATOM — the POS is re-foregrounded
     // automatically; no bringToForeground needed. Tip is pre-known here, so we
     // bake it in (no on-screen tip prompt).
-    const result = await service.processSale({
-      amount: base,
-      ...(tipAmount > 0 ? { tipAmount } : {}),
-      referenceId,
-      onScreenTip: false,
-    });
+    let result: Awaited<ReturnType<typeof service.processSale>>;
+    try {
+      result = await service.processSale({
+        amount: base,
+        ...(tipAmount > 0 ? { tipAmount } : {}),
+        referenceId,
+        onScreenTip: false,
+        ...(args.codepayExpiresSec != null
+          ? { expiresSec: args.codepayExpiresSec }
+          : {}),
+        ...(args.codepayOnScreenSignature != null
+          ? { onScreenSignature: args.codepayOnScreenSignature }
+          : {}),
+      }, {
+        statusLookup: args.codepayStatusLookup,
+        priorReferenceId: args.codepayPriorReferenceId,
+        onVerifying: args.onVerifying,
+      });
+    } catch (err) {
+      // The bridge only rejects BEFORE Register is launched (NO_ACTIVITY, BUSY,
+      // NO_CODEPAY_REGISTER, LAUNCH_FAILED, bridge missing) — no card was read,
+      // so this is a clean failure, not a hold-the-kiosk "may have charged".
+      const reason = err instanceof Error ? err.message : String(err);
+      failPaymentJournal(journalId, `terminal_launch_failed: ${reason}`);
+      return {
+        ok: false,
+        message: "The card reader could not be started. Please try again.",
+      };
+    }
 
     const codepayTx = result.terminalResponse?.codepay_transaction as
       | Record<string, unknown>
       | undefined;
+
+    const codes = {
+      ...(result.errorCode ? { responseCode: result.errorCode } : {}),
+      ...(result.resultCode != null ? { resultCode: result.resultCode } : {}),
+    };
+    const lookupInfo = {
+      ...(result.cloudLookups ? { cloudLookups: result.cloudLookups } : {}),
+      ...(result.recoveredVia ? { recoveredVia: result.recoveredVia } : {}),
+      ...(result.contradictedRegister ? { contradictedRegister: true } : {}),
+    };
 
     // INDETERMINATE — the sale MAY have been charged (Intent timed out or an
     // unreadable result). Leave the journal for reconcile; never re-charge.
@@ -494,7 +570,37 @@ export async function chargeActiveTerminal(
         status: "terminal_approved",
         terminalTxnId: result.transNo ?? referenceId,
       });
-      return { ok: false, indeterminate: true, message: INDETERMINATE_MESSAGE };
+      return {
+        ok: false,
+        indeterminate: true,
+        indeterminateCause: result.indeterminateCause,
+        message: INDETERMINATE_MESSAGE,
+        referenceId,
+        elapsedMs: result.elapsedMs,
+        terminalCodes: codes,
+        ...lookupInfo,
+      };
+    }
+
+    // The kiosk window ran out with no card read — the customer didn't finish
+    // in time. No charge; the journal closes so the order can be voided.
+    if (result.expired) {
+      failPaymentJournal(
+        journalId,
+        result.noChargeConfirmed
+          ? "terminal_expired: no charge (confirmed with CodePay host)"
+          : "terminal_expired: no charge",
+      );
+      return {
+        ok: false,
+        timedOut: true,
+        message: "Payment wasn't completed in time — no charge.",
+        referenceId,
+        elapsedMs: result.elapsedMs,
+        terminalCodes: codes,
+        ...(result.noChargeConfirmed ? { noChargeConfirmed: true } : {}),
+        ...lookupInfo,
+      };
     }
 
     // Cardholder cancelled on the terminal — no card read, no charge.
@@ -502,13 +608,23 @@ export async function chargeActiveTerminal(
       failPaymentJournal(journalId, "terminal_aborted: cancelled");
       return {
         ok: false,
+        aborted: true,
         message: result.error || "Payment cancelled — no charge. Please try again.",
+        referenceId,
+        elapsedMs: result.elapsedMs,
+        terminalCodes: codes,
       };
     }
 
     if (!result.success) {
       failPaymentJournal(journalId, `terminal_declined: ${result.error ?? "Declined"}`);
-      return { ok: false, message: result.error || "Payment declined." };
+      return {
+        ok: false,
+        message: result.error || "Payment declined.",
+        referenceId,
+        elapsedMs: result.elapsedMs,
+        terminalCodes: codes,
+      };
     }
 
     updatePaymentJournal(journalId, {
@@ -525,6 +641,9 @@ export async function chargeActiveTerminal(
         transactionId: result.transNo ?? referenceId,
         paymentJournalHandle: journalHandle(journalId),
       },
+      referenceId: result.merchantOrderNo ?? referenceId,
+      elapsedMs: result.elapsedMs,
+      ...lookupInfo,
     };
   }
 

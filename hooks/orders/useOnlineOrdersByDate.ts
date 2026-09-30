@@ -5,6 +5,7 @@ import {
     resolveBoardWindow,
     type BoardWindow,
 } from "@/lib/db/boardQuery";
+import { itemRowToFetchedItem } from "@/lib/db/historyQuery";
 import { isLocalDbReady } from "@/lib/db/index";
 import {
     assembleOnlineOrderBoard,
@@ -90,7 +91,7 @@ async function resolveLocalBoard(
   for (const row of rows) {
     const fetched = {
       ...safeJsonObject(row.order.payload),
-      order_items: row.items.map((it) => safeJsonObject(it.payload)),
+      order_items: row.items.map(itemRowToFetchedItem),
       order_payments: row.payments.map((p) => safeJsonObject(p.payload)),
     } as unknown as FetchedOrderData;
 

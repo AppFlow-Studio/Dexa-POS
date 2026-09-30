@@ -1,26 +1,18 @@
-import {
-  KioskCategoryRail,
-  type CategorySection,
-} from "@/components/kiosk/shared/KioskCategoryRail";
+import { KioskCategoryMenuBody } from "@/components/kiosk/shared/KioskCategoryMenuBody";
+import type { CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
 import {
   hasOrderableItem,
   useModifierGroupResolver,
   useOrderableItems,
 } from "@/components/kiosk/shared/kioskItemAvailability";
-import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
-import { kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
 import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
-import { KioskSearchResults } from "@/components/kiosk/shared/KioskSearchResults";
 import type { KioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
 import {
   useIsStationMenuScopeEmpty,
   useVisibleMenus,
 } from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
-import {
-  kioskItemSourceFromKey,
-  type KioskItemSource,
-} from "@/stores/useKioskCartStore";
+import type { KioskItemSource } from "@/stores/useKioskCartStore";
 import {
   resolveKioskColumns,
   useKioskDeviceSettingsStore,
@@ -28,7 +20,6 @@ import {
 import { useMenuStore } from "@/stores/useMenuStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { useCallback, useMemo, useState } from "react";
-import { View } from "react-native";
 
 /**
  * Template A menu view — a two-pane split, starting flush under the header:
@@ -38,6 +29,8 @@ import { View } from "react-native";
  * Split ratio follows orientation (config.orientation):
  *   horizontal → 1/4 left · 3/4 right, grid 4 columns
  *   vertical   → 1/3 left · 2/3 right, grid 3 columns
+ * On a portrait phone the rail becomes a horizontal strip over a full-width
+ * grid (see KioskCategoryMenuBody).
  *
  * Nothing sits between the header and the content. Categories are in the rail
  * and search lives in the header, so the rail and the grid both begin at the
@@ -123,48 +116,15 @@ export function KioskMenuView({
   if (scopedToNothing) return <KioskNoMenusState config={config} />;
 
   return (
-    <View className="flex-1">
-      <View className="flex-1">
-        <View className="flex-1 flex-row">
-          {/* Left rail — categories grouped by menu */}
-          <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
-            <KioskCategoryRail
-              config={config}
-              sections={sections}
-              resolvedKey={resolvedKey}
-              onSelect={handleSelectCategory}
-            />
-          </View>
-
-          {/* Right pane — item grid */}
-          <View className="flex-1">
-            <KioskItemGrid
-              config={config}
-              items={items}
-              numColumns={numColumns}
-              resetKey={resolvedKey}
-              onSelectItem={(item) =>
-                onSelectItem(item, kioskItemSourceFromKey(resolvedKey))
-              }
-            />
-          </View>
-        </View>
-
-        {/* Results cover the rail and grid without unmounting them, so closing
-            search puts the customer back on the category and scroll offset
-            they left. */}
-        {search.expanded ? (
-          <KioskSearchResults
-            config={config}
-            query={search.query}
-            onClear={search.clear}
-            onSelectItem={(item, source) => {
-              search.close();
-              onSelectItem(item, source);
-            }}
-          />
-        ) : null}
-      </View>
-    </View>
+    <KioskCategoryMenuBody
+      config={config}
+      sections={sections}
+      resolvedKey={resolvedKey}
+      onSelectCategory={handleSelectCategory}
+      items={items}
+      numColumns={numColumns}
+      search={search}
+      onSelectItem={onSelectItem}
+    />
   );
 }

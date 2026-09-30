@@ -12,6 +12,7 @@ import { KioskCartView } from "@/components/kiosk/shared/KioskCartView";
 import { KioskScreenTransition } from "@/components/kiosk/shared/KioskScreenTransition";
 import { useKioskIdleTimer } from "@/components/kiosk/shared/useKioskIdleTimer";
 import { useKioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
+import { useKioskOrderTypeStep } from "@/components/kiosk/shared/useKioskOrderTypeStep";
 import { KioskCheckoutView } from "@/components/kiosk/template-a/KioskCheckoutView";
 import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
@@ -29,7 +30,9 @@ import { StyleSheet, View } from "react-native";
  * The session opens on the Dine In / Takeaway choice (or straight on the menu
  * when the station allows a single type — useKioskOrderTypeFlow); the menu is a two-pane
  * split (category rail + item grid) whose ratio follows config.orientation
- * (1/4·3/4 horizontal, 1/3·2/3 vertical).
+ * (1/4·3/4 horizontal, 1/3·2/3 vertical). The menu is built behind the
+ * order-type screen while the customer chooses (useKioskOrderTypeStep), so the
+ * choice only reveals it.
  *
  * Browses against the local useKioskCartStore; the cart converts to a real
  * order only at checkout. Logic with no layout opinion is pulled from
@@ -43,7 +46,11 @@ export type TemplateAScreen =
   | "checkout"
   | "confirmation";
 
-export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
+export function KioskTemplateA({
+  config,
+  onExit,
+  ensureAccess,
+}: KioskTemplateProps) {
   const orderTypeFlow = useKioskOrderTypeFlow(config);
   const [screen, setScreen] = useState<TemplateAScreen>(
     orderTypeFlow.initialScreen,
@@ -109,31 +116,15 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   // a software keyboard produces none.
   const search = useKioskMenuSearchState(registerActivity);
 
-  // First step: choose Dine In / Takeaway. Full-screen takeover (no header).
-  if (screen === "orderType") {
-    return (
-      <View className="flex-1" onTouchStart={registerActivity}>
-        <KioskScreenTransition direction="fade">
-          <KioskOrderTypeScreen
-            config={config}
-            options={orderTypeFlow.options}
-            onSelect={(type) => {
-              setOrderType(type);
-              setScreen("menu");
-            }}
-          />
-        </KioskScreenTransition>
-        {showWarning && (
-          <KioskIdleModal
-            config={config}
-            secondsLeft={secondsLeft}
-            onContinue={registerActivity}
-            hasActiveCart={hasActiveCart}
-          />
-        )}
-      </View>
-    );
-  }
+  const onOrderType = screen === "orderType";
+  const orderTypeStep = useKioskOrderTypeStep({
+    active: onOrderType,
+    ensureAccess,
+    onChosen: (type) => {
+      setOrderType(type);
+      setScreen("menu");
+    },
+  });
 
   return (
     <View
@@ -141,32 +132,122 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
       style={{ backgroundColor: config.backgroundColor }}
       onTouchStart={registerActivity}
     >
-      {/* Header hidden during checkout — that flow owns its own in-screen Back. */}
-      {screen !== "checkout" && (
-        <KioskHeader
-          config={config}
-          onStartOver={handleStartOver}
-          search={
-            screen === "menu"
-              ? {
-                  expanded: search.expanded,
-                  query: search.query,
-                  onExpand: search.open,
-                  onChangeQuery: search.setQuery,
-                  onClose: search.close,
-                }
-              : undefined
+      {/* The ordering screen. While the order-type screen is up it is hidden
+          with opacity, not display:none: the grid has to lay out to measure
+          itself, mount its cells and start loading photos, and Android doesn't
+          draw an alpha-0 view. */}
+      {orderTypeStep.menuMounted ? (
+        <View
+          style={{ flex: 1, opacity: onOrderType ? 0 : 1 }}
+          pointerEvents={onOrderType ? "none" : "auto"}
+          importantForAccessibility={
+            onOrderType ? "no-hide-descendants" : "auto"
           }
-          cart={
-            cartPlacement === "header"
-              ? {
-                  itemCount,
-                  subtotal,
-                  onPress: () => setScreen("cart"),
-                }
-              : undefined
-          }
-        />
+          accessibilityElementsHidden={onOrderType}
+        >
+          {/* Header hidden during checkout — that flow owns its own in-screen Back. */}
+          {screen !== "checkout" && (
+            <KioskHeader
+              config={config}
+              onStartOver={handleStartOver}
+              search={
+                onOrderType || screen === "menu"
+                  ? {
+                      expanded: search.expanded,
+                      query: search.query,
+                      onExpand: search.open,
+                      onChangeQuery: search.setQuery,
+                      onClose: search.close,
+                    }
+                  : undefined
+              }
+              cart={
+                cartPlacement === "header"
+                  ? {
+                      itemCount,
+                      subtotal,
+                      onPress: () => setScreen("cart"),
+                    }
+                  : undefined
+              }
+            />
+          )}
+
+          {/* Body — a single stacking context. Every screen fills it absolutely
+              (see KioskScreenTransition) so an outgoing screen fades out *over* the
+              incoming one rather than sharing the column with it for the length of
+              its exit animation. */}
+          <View style={{ flex: 1 }}>
+            {/* Menu stays mounted across itemDetail navigation so the category rail
+                and item grid keep their scroll position when an item is added and
+                the customer is returned to the menu (see onAdded below). */}
+            <View
+              style={[
+                StyleSheet.absoluteFillObject,
+                {
+                  display:
+                    onOrderType || screen === "menu" || screen === "itemDetail"
+                      ? "flex"
+                      : "none",
+                },
+              ]}
+            >
+              <KioskScreenTransition key="menu" direction="fade">
+                <KioskMenuView
+                  config={config}
+                  search={search}
+                  onSelectItem={(item, source) => {
+                    setSelectedItem(item);
+                    setSelectedSource(source);
+                    setScreen("itemDetail");
+                  }}
+                />
+                {cartPlacement === "bottomBar" ? (
+                  <KioskCartButton
+                    config={config}
+                    itemCount={itemCount}
+                    subtotal={subtotal}
+                    onPress={() => setScreen("cart")}
+                  />
+                ) : null}
+              </KioskScreenTransition>
+            </View>
+
+            {screen === "cart" && (
+              <KioskScreenTransition key="cart" direction="forward">
+                <KioskCartView
+                  config={config}
+                  onBack={() => setScreen("menu")}
+                  onCheckout={() => setScreen("checkout")}
+                />
+              </KioskScreenTransition>
+            )}
+
+            {screen === "checkout" && (
+              <KioskScreenTransition key="checkout" direction="up">
+                <KioskCheckoutView
+                  config={config}
+                  onBack={() => setScreen("cart")}
+                  onPaid={() => setPaid(true)}
+                  onDone={resetToIdle}
+                />
+              </KioskScreenTransition>
+            )}
+          </View>
+        </View>
+      ) : null}
+
+      {/* First step: choose Dine In / Takeaway. A full-screen layer (no header)
+          over the ordering screen; choosing fades it out over the menu. */}
+      {onOrderType && (
+        <KioskScreenTransition direction="fade">
+          <KioskOrderTypeScreen
+            config={config}
+            options={orderTypeFlow.options}
+            selectedType={orderTypeStep.pendingType}
+            onSelect={orderTypeStep.choose}
+          />
+        </KioskScreenTransition>
       )}
 
       {showWarning && (
@@ -177,66 +258,6 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
           hasActiveCart={hasActiveCart}
         />
       )}
-
-      {/* Body — a single stacking context. Every screen fills it absolutely
-          (see KioskScreenTransition) so an outgoing screen fades out *over* the
-          incoming one rather than sharing the column with it for the length of
-          its exit animation. */}
-      <View style={{ flex: 1 }}>
-        {/* Menu stays mounted across itemDetail navigation so the category rail
-            and item grid keep their scroll position when an item is added and
-            the customer is returned to the menu (see onAdded below). */}
-        <View
-          style={[
-            StyleSheet.absoluteFillObject,
-            {
-              display:
-                screen === "menu" || screen === "itemDetail" ? "flex" : "none",
-            },
-          ]}
-        >
-          <KioskScreenTransition key="menu" direction="fade">
-            <KioskMenuView
-              config={config}
-              search={search}
-              onSelectItem={(item, source) => {
-                setSelectedItem(item);
-                setSelectedSource(source);
-                setScreen("itemDetail");
-              }}
-            />
-            {cartPlacement === "bottomBar" ? (
-              <KioskCartButton
-                config={config}
-                itemCount={itemCount}
-                subtotal={subtotal}
-                onPress={() => setScreen("cart")}
-              />
-            ) : null}
-          </KioskScreenTransition>
-        </View>
-
-        {screen === "cart" && (
-          <KioskScreenTransition key="cart" direction="forward">
-            <KioskCartView
-              config={config}
-              onBack={() => setScreen("menu")}
-              onCheckout={() => setScreen("checkout")}
-            />
-          </KioskScreenTransition>
-        )}
-
-        {screen === "checkout" && (
-          <KioskScreenTransition key="checkout" direction="up">
-            <KioskCheckoutView
-              config={config}
-              onBack={() => setScreen("cart")}
-              onPaid={() => setPaid(true)}
-              onDone={resetToIdle}
-            />
-          </KioskScreenTransition>
-        )}
-      </View>
 
       {/* Overlays sit outside the body, so their scrim covers the header too —
           nothing behind a popup stays tappable. Declared last so they stack

@@ -4,6 +4,14 @@ import { ReceiptTemplateConfig } from "@/types/receipt-template";
 import { formatCurrency } from "@/utils/currency";
 import { EscPosBuilder } from "../escpos/EscPosBuilder";
 import { sanitizeForPrint } from "../utils/sanitizeText";
+import {
+  SIGNATURE_BLANK_LINES,
+  buildSignatureBlockLines,
+  shouldPrintSignatureBlock,
+} from "./signatureBlock";
+
+// This path has always printed a thank-you line when no footer is configured.
+const DEFAULT_FOOTER_MESSAGE = "Thank you for your purchase!";
 
 /**
  * Split a string into lines that each fit within maxLen, breaking at word
@@ -322,6 +330,18 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     }
   }
 
+  // ── Cardholder signature (merchant copy, card tender, opt-in) ──
+  if (shouldPrintSignatureBlock(data)) {
+    const sig = buildSignatureBlockLines(data, w);
+    b.feed(SIGNATURE_BLANK_LINES);
+    b.textLine(sig.rule);
+    b.alignCenter();
+    b.textLine(sig.caption);
+    b.emptyLine();
+    for (const line of sig.disclaimer) b.textLine(line);
+    b.alignLeft();
+  }
+
   // ── Order Details Footer ──
   b.solidLine(w);
   b.emptyLine();
@@ -354,16 +374,17 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.emptyLine();
   b.alignCenter();
   b.bold(true);
-  b.textLine("Customer Copy");
+  b.textLine(data.copyLabel ?? "Customer Copy");
   b.bold(false);
   b.alignLeft();
 
   // ── Footer ──
-  if (data.footerMessage) {
+  const footerMessage = data.footerMessage ?? DEFAULT_FOOTER_MESSAGE;
+  if (footerMessage) {
     b.solidLine(w);
     b.alignCenter();
     b.bold(true);
-    b.textLine(data.footerMessage);
+    b.textLine(footerMessage);
     b.bold(false);
     b.alignLeft();
   }

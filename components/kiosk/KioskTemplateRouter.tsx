@@ -11,6 +11,12 @@ import type { ComponentType } from "react";
 export interface KioskTemplateProps {
   config: KioskConfig;
   onExit: () => void;
+  /**
+   * Resolves true once the kiosk's start check has passed. False means it
+   * failed and the kiosk has already gone back to attract. The template awaits
+   * it before showing the menu (see useKioskOrderTypeStep).
+   */
+  ensureAccess?: () => Promise<boolean>;
 }
 
 /**
@@ -32,7 +38,13 @@ const TEMPLATES: Record<
  * kiosk.tsx template-agnostic — routing is driven entirely by the DB's
  * template_id.
  */
-export function KioskTemplateRouter({ config, onExit }: KioskTemplateProps) {
+export function KioskTemplateRouter({
+  config,
+  onExit,
+  ensureAccess,
+}: KioskTemplateProps) {
   const Template = TEMPLATES[config.templateId] ?? KioskTemplateA;
-  return <Template config={config} onExit={onExit} />;
+  return (
+    <Template config={config} onExit={onExit} ensureAccess={ensureAccess} />
+  );
 }

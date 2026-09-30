@@ -112,6 +112,7 @@ const TERMINAL_PG_CODES: Record<string, string> = {
 const TRANSIENT_PG_CODES = new Set([
   '40001', // serialization_failure / idempotency_in_flight
   '40P01', // deadlock_detected
+  '55P03', // lock_not_available (lock_timeout, e.g. the KDS bump RPC's 2s)
   '53300', // too_many_connections
   '57014', // query_canceled (statement timeout)
   '08000', // connection_exception
@@ -193,6 +194,10 @@ const REMEDIES: Record<string, string> = {
   UNDEFINED_FUNCTION: 'App/server version mismatch. Report this to support.',
   ORDER_MATH_INCONSISTENT:
     "The order's totals don't add up. Reopen the check to rebuild them.",
+  PAYMENT_ORPHANED:
+    'The card was charged but its order never reached the server. Refund it on the terminal, or record it on a new order.',
+  PAYMENT_ORDER_VOID:
+    'The card was charged but the order was voided. Refund it on the terminal, or record it on a new order.',
   NOT_FOUND: 'It no longer exists — likely voided on another station. Refresh.',
   KITCHEN_ITEMS_UNRESOLVED:
     'Those items did not reach the kitchen. Re-fire them from the order.',

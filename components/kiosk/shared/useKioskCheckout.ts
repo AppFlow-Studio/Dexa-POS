@@ -1,6 +1,11 @@
 import { resolveKioskChargeOutcome, KIOSK_VERIFY_STAFF_MESSAGE } from "./chargeOutcome";
-import { acquireKioskCheckout, markKioskPaymentDispatched, releaseKioskCheckout } from "./checkoutGuard";
-import { flagKioskAssistance } from "./flagKioskAssistance";
+import {
+  acquireKioskCheckout,
+  clearKioskPaymentDispatched,
+  markKioskPaymentDispatched,
+  releaseKioskCheckout,
+} from "./checkoutGuard";
+import { flagKioskAssistance, reportKioskPaymentEvent } from "./flagKioskAssistance";
 import { refreshSelectedStationOperationalState } from "@/services/posAccessService";
 import { completePaymentJournal } from "@/services/paymentJournal";
 import { round2 } from "@/utils/money";
@@ -13,9 +18,15 @@ import { PrinterService } from "@/services/printing/PrinterService";
 import { getReceiptPrinter } from "@/services/printing/PrintRouter";
 import {
   chargeActiveTerminal,
+  type ChargeActiveTerminalResult,
   type ChargeStartedHandle,
 } from "@/services/terminals/chargeActiveTerminal";
 import { cancelActiveTerminalCharge } from "@/services/terminals/cancelActiveTerminalCharge";
+import {
+  lookupCodePaySaleStatus,
+  type CodePayStatusLookupFn,
+} from "@/services/terminals/codepayStatusLookup";
+import { CODEPAY_CLOUD_LOOKUP_ENABLED } from "@/types/codepay";
 import {
   lineCashUnitPrice,
   lineUnitPrice,
@@ -28,8 +39,114 @@ import { kioskOrdering } from "@/types/kiosk";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
+
+/**
+ * Void reasons stamped on kiosk orders (orders.void_reason / item void_reason).
+ * Without them every kiosk void read "Order voided" and looked like the kiosk's
+ * signed-in staff member voided it by hand.
+ */
+export const KIOSK_VOID_REASONS = {
+  unconfirmed: "Kiosk: order could not be confirmed",
+  cancelled: "Kiosk: payment cancelled by customer",
+  timedOut: "Kiosk: payment not completed in time",
+  declined: (message?: string) =>
+    message ? `Kiosk: card declined — ${message}` : "Kiosk: card declined",
+} as const;
+
+/** Seconds the "Need more time?" prompt waits before cancelling the order. */
+export const KIOSK_MORE_TIME_PROMPT_SEC = 30;
+/** How many times one order can ask "Need more time?" before it's cancelled. */
+export const KIOSK_MAX_MORE_TIME_PROMPTS = 3;
+
+/** The customer's answer to "Need more time?" (`countdown` = no answer). */
+export type MoreTimeDecision = "more_time" | "cancel" | "countdown";
+
+/**
+ * Void an order AFTER the terminal confirmed no charge (decline, cancel, lapsed
+ * window). Returns false when the void was refused — card money may still be on
+ * the order (e.g. a terminal_approved journal), so the caller must hold the
+ * kiosk for staff instead of moving on.
+ */
+function voidAfterNoCharge(orderId: string, reason: string): boolean {
+  try {
+    if (useOrderStore.getState().voidOrder(orderId, { reason })) return true;
+  } catch (e) {
+    console.warn("[kioskCheckout] void threw:", e);
+  }
+  reportKioskPaymentEvent(
+    "kiosk.order.void_refused",
+    { orderId, reason, stage: "post_charge" },
+    "error",
+  );
+  return false;
+}
+
+/**
+ * CodePay host status lookup bound to this kiosk's location, or undefined when
+ * the lookup is switched off. Only the CodePay charge branch uses it.
+ */
+function buildCodePayStatusLookup(
+  supabase: ReturnType<typeof useSupabaseClient>,
+): CodePayStatusLookupFn | undefined {
+  if (!CODEPAY_CLOUD_LOOKUP_ENABLED) return undefined;
+  const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+  if (!locationId) return undefined;
+  return (merchantOrderNo) =>
+    lookupCodePaySaleStatus({ supabase, locationId, merchantOrderNo });
+}
+
+/** Telemetry for charges where the CodePay host was consulted. */
+function reportCloudLookups(charge: ChargeActiveTerminalResult): void {
+  if (!charge.cloudLookups?.length) return;
+  const outcome = charge.contradictedRegister
+    ? "cloud_contradicts_register"
+    : charge.recoveredVia === "cloud_lookup"
+      ? "recovered_via_cloud"
+      : charge.noChargeConfirmed
+        ? "no_charge_confirmed"
+        : charge.indeterminate
+          ? "hold"
+          : charge.ok
+            ? "approved"
+            : "fell_back";
+  const level =
+    outcome === "cloud_contradicts_register"
+      ? "error"
+      : outcome === "recovered_via_cloud" || outcome === "hold"
+        ? "warning"
+        : "info";
+  reportKioskPaymentEvent(
+    "kiosk.codepay.cloud_lookup",
+    {
+      outcome,
+      referenceId: charge.referenceId,
+      indeterminateCause: charge.indeterminateCause,
+      lookups: charge.cloudLookups,
+    },
+    level,
+  );
+}
+
+/**
+ * Void a half-built order BEFORE any card was attempted. Nothing can have been
+ * charged, so a refused void is reported (the draft lingers) but never holds
+ * the kiosk.
+ */
+function voidPreChargeOrder(orderId: string, reason: string): void {
+  try {
+    if (!useOrderStore.getState().voidOrder(orderId, { reason })) {
+      reportKioskPaymentEvent(
+        "kiosk.order.void_refused",
+        { orderId, reason, stage: "pre_charge" },
+        "warning",
+      );
+    }
+  } catch {
+    /* best-effort */
+  }
+}
 
 /**
  * Shared kiosk checkout orchestration — no layout. Converts the local kiosk cart
@@ -52,6 +169,9 @@ export type KioskCheckoutStatus =
   | "creating" // building + creating the backend order
   | "ready" // order created, totals known, awaiting pay
   | "charging" // waiting on the terminal
+  | "verifying" // outcome unknown / window lapsed: asking the CodePay host
+  | "more_time" // payment window lapsed, no charge: asking "Need more time?"
+  | "timed_out" // no answer / cancelled at the prompt: order voided, go Home
   | "cancelling" // Back pressed during the card read — aborting on the device
   | "cancelled" // confirmed cancel: no charge, order voided
   | "finalizing" // kitchen send + payment record
@@ -168,6 +288,50 @@ export function useKioskCheckout() {
   const settledRef = useRef(false);
   const chargingRef = useRef(false);
 
+  // "Need more time?" prompt. The countdown runs while Dexa is foregrounded
+  // (Register has returned), against a deadline so a paused timer can't
+  // stretch it. The resolver is held in a ref so the modal's buttons, the
+  // countdown and an unmount can each settle it exactly once.
+  const [moreTimeSecondsLeft, setMoreTimeSecondsLeft] = useState(0);
+  const moreTimeResolveRef = useRef<((d: MoreTimeDecision) => void) | null>(
+    null,
+  );
+
+  const askForMoreTime = useCallback((): Promise<MoreTimeDecision> => {
+    return new Promise<MoreTimeDecision>((resolve) => {
+      const deadline = Date.now() + KIOSK_MORE_TIME_PROMPT_SEC * 1000;
+      let timer: ReturnType<typeof setInterval> | null = null;
+      const finish = (decision: MoreTimeDecision) => {
+        if (moreTimeResolveRef.current !== finish) return;
+        moreTimeResolveRef.current = null;
+        if (timer) clearInterval(timer);
+        resolve(decision);
+      };
+      moreTimeResolveRef.current = finish;
+      setMoreTimeSecondsLeft(KIOSK_MORE_TIME_PROMPT_SEC);
+      setStatus("more_time");
+      timer = setInterval(() => {
+        const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+        setMoreTimeSecondsLeft(left);
+        if (left <= 0) finish("countdown");
+      }, 250);
+    });
+  }, []);
+
+  /** The modal's answer: try the card again, or cancel the order. */
+  const respondMoreTime = useCallback((choice: "more_time" | "cancel") => {
+    moreTimeResolveRef.current?.(choice);
+  }, []);
+
+  // Leaving the checkout mid-prompt cancels the order rather than leaving
+  // payOrder parked on an unanswerable question with the kiosk held.
+  useEffect(
+    () => () => {
+      moreTimeResolveRef.current?.("cancel");
+    },
+    [],
+  );
+
   const reset = useCallback(() => {
     if (runningRef.current || settledRef.current) return;
     setStatus("idle");
@@ -191,6 +355,7 @@ export function useKioskCheckout() {
       reason: string,
       message: string,
       ctx?: { dbOrderId?: string; orderId?: string },
+      detail?: Record<string, unknown>,
     ) => {
       const stationId = useStoreSettingsStore.getState().selectedStation?.id;
       const displayNumber = ctx?.orderId
@@ -214,6 +379,7 @@ export function useKioskCheckout() {
         dbOrderId: ctx?.dbOrderId,
         orderId: ctx?.orderId,
         displayNumber,
+        ...(detail ? { detail } : {}),
       });
     },
     [],
@@ -382,12 +548,9 @@ export function useKioskCheckout() {
         const allHaveBackendId = nonDraft.every((i) => !!i.db_order_item_id);
         if (nonDraft.length < expectedItemCount || !allHaveBackendId) {
           // Items didn't fully sync — void the half-built order so it doesn't
-          // linger, and surface the error.
-          try {
-            orderStore.voidOrder(liveOrderId);
-          } catch {
-            /* best-effort */
-          }
+          // linger, and surface the error. No card was attempted yet, so a
+          // refused void is only reported, never held.
+          voidPreChargeOrder(liveOrderId, KIOSK_VOID_REASONS.unconfirmed);
           setStatus("error");
           setError(
             "We couldn't confirm all your items. Please check your connection and try again.",
@@ -402,62 +565,126 @@ export function useKioskCheckout() {
         const chargeTotal = header?.card_total == null ? NaN : Number(header.card_total);
         const amountToCharge = round2(chargeTotal + tipAmount);
         if (headerError || !Number.isFinite(chargeTotal) || chargeTotal <= 0 || round2(t.total_amount) !== round2(chargeTotal)) {
-          try {
-            orderStore.voidOrder(liveOrderId);
-          } catch {
-            /* best-effort */
-          }
+          voidPreChargeOrder(liveOrderId, KIOSK_VOID_REASONS.unconfirmed);
           setStatus("error");
           setError("The order total looks wrong. Please try again.");
           return null;
         }
 
         // 4. Charge the card on the station's ACTIVE terminal — same routing +
-        // per-processor branches (Castles/Valor/ATOM/Dejavoo) the POS uses.
-        // Reset the cancel plumbing for this attempt, and capture the handle the
-        // Back button needs to abort the in-flight sale.
-        cancelRequestedRef.current = false;
-        chargeHandleRef.current = null;
+        // per-processor branches (Castles/Valor/ATOM/Dejavoo/CodePay) the POS
+        // uses. CodePay kiosks with a payment window run as a loop: Register
+        // closes the card screen when the window lapses, and if no card was
+        // read the customer is asked "Need more time?" before we give up.
+        const paymentWindowSeconds =
+          useKioskProfileStore.getState().config?.paymentWindowSeconds ?? null;
+        let moreTimePrompts = 0;
+        let charge: ChargeActiveTerminalResult;
+        const codepayStatusLookup = buildCodePayStatusLookup(supabase);
+        // The attempt whose window lapsed — re-checked with the host before the
+        // relaunch so a late approval is recorded, never charged twice.
+        let priorReferenceId: string | undefined;
         // Terminal type of the sale, captured when it goes live — used to pick
         // the right cancel-outcome branch (Castles' cancel can't confirm no
         // charge; Valor/Dejavoo cancel on a separate channel and can).
         let startedTerminalType: string | undefined;
-        // Recheck billing after order synchronization, immediately before any charge.
-        const paymentAccess = await refreshSelectedStationOperationalState(supabase);
-        if (!paymentAccess.valid) throw new Error(paymentAccess.failure.message);
-        const paymentStation = useStoreSettingsStore.getState().selectedStation;
-        if (paymentStation?.id !== stationId || paymentStation.can_process_payments === false || paymentStation.can_create_orders === false) {
-          throw new Error("Station changed or payment access was removed. Please see a staff member.");
+        for (;;) {
+          // Reset the cancel plumbing for this attempt, and capture the handle
+          // the Back button needs to abort the in-flight sale.
+          cancelRequestedRef.current = false;
+          chargeHandleRef.current = null;
+          startedTerminalType = undefined;
+          // Recheck billing after order synchronization, immediately before
+          // every charge attempt.
+          const paymentAccess = await refreshSelectedStationOperationalState(supabase);
+          if (!paymentAccess.valid) throw new Error(paymentAccess.failure.message);
+          const paymentStation = useStoreSettingsStore.getState().selectedStation;
+          if (paymentStation?.id !== stationId || paymentStation.can_process_payments === false || paymentStation.can_create_orders === false) {
+            throw new Error("Station changed or payment access was removed. Please see a staff member.");
+          }
+          markKioskPaymentDispatched(stationId, createdDbId);
+          needsReview = true;
+          chargingRef.current = true;
+          setStatus("charging");
+          charge = await chargeActiveTerminal({
+            amount: amountToCharge,
+            tipAmount,
+            orderId: liveOrderId,
+            dbOrderId: createdDbId,
+            supabase,
+            onChargeStarted: (handle) => {
+              chargeHandleRef.current = handle;
+              startedTerminalType = handle.terminalType;
+              // If the customer pressed Back while we were still connecting
+              // (before this handle existed), the abort had no reference id to
+              // target for Valor/Dejavoo. Now that the sale is live, dispatch it.
+              if (cancelRequestedRef.current) {
+                void cancelActiveTerminalCharge({
+                  referenceId: handle.referenceId,
+                  supabase,
+                });
+              }
+            },
+            // Unattended kiosk: no signature step on CodePay Register.
+            codepayOnScreenSignature: false,
+            ...(codepayStatusLookup ? { codepayStatusLookup } : {}),
+            ...(priorReferenceId ? { codepayPriorReferenceId: priorReferenceId } : {}),
+            onVerifying: () => setStatus("verifying"),
+            ...(paymentWindowSeconds != null
+              ? { codepayExpiresSec: paymentWindowSeconds }
+              : {}),
+            ...(__DEV__
+              ? { simulatedCardWaitMs: KIOSK_SIMULATED_CARD_WAIT_MS }
+              : {}),
+          });
+          chargingRef.current = false;
+          chargeHandleRef.current = null;
+          reportCloudLookups(charge);
+          if (!charge.timedOut) break;
+          priorReferenceId = charge.referenceId;
+
+          // The window lapsed and the terminal confirmed no card was read — no
+          // money moved. Drop the persisted "payment dispatched" marker (keep
+          // the in-memory hold) so a crash during the prompt doesn't reboot
+          // into a staff-only lock.
+          clearKioskPaymentDispatched(stationId);
+          needsReview = false;
+          const windowEvent = {
+            attempt: moreTimePrompts + 1,
+            referenceId: charge.referenceId,
+            elapsedMs: charge.elapsedMs,
+            windowSeconds: paymentWindowSeconds,
+            noChargeConfirmed: charge.noChargeConfirmed ?? false,
+            ...charge.terminalCodes,
+          };
+          reportKioskPaymentEvent("kiosk.payment.window", {
+            ...windowEvent,
+            outcome: "expired",
+          });
+          let decision: MoreTimeDecision | "cap" = "cap";
+          if (moreTimePrompts < KIOSK_MAX_MORE_TIME_PROMPTS) {
+            moreTimePrompts += 1;
+            decision = await askForMoreTime();
+          }
+          reportKioskPaymentEvent("kiosk.payment.window", {
+            ...windowEvent,
+            outcome: decision,
+          });
+          if (decision === "more_time") continue;
+
+          // Cancelled, no answer, or out of retries: void and go Home.
+          if (!voidAfterNoCharge(liveOrderId, KIOSK_VOID_REASONS.timedOut)) {
+            markKioskPaymentDispatched(stationId, createdDbId);
+            needsReview = true;
+            enterAssistance("void_blocked", KIOSK_VERIFY_STAFF_MESSAGE, {
+              dbOrderId: createdDbId,
+              orderId: liveOrderId,
+            });
+            return null;
+          }
+          setStatus("timed_out");
+          return null;
         }
-        markKioskPaymentDispatched(stationId, createdDbId);
-        needsReview = true;
-        chargingRef.current = true;
-        setStatus("charging");
-        const charge = await chargeActiveTerminal({
-          amount: amountToCharge,
-          tipAmount,
-          orderId: liveOrderId,
-          dbOrderId: createdDbId,
-          supabase,
-          onChargeStarted: (handle) => {
-            chargeHandleRef.current = handle;
-            startedTerminalType = handle.terminalType;
-            // If the customer pressed Back while we were still connecting (before
-            // this handle existed), the abort had no reference id to target for
-            // Valor/Dejavoo. Now that the sale is live, dispatch it for real.
-            if (cancelRequestedRef.current) {
-              void cancelActiveTerminalCharge({
-                referenceId: handle.referenceId,
-                supabase,
-              });
-            }
-          },
-          ...(__DEV__
-            ? { simulatedCardWaitMs: KIOSK_SIMULATED_CARD_WAIT_MS }
-            : {}),
-        });
-        chargingRef.current = false;
-        chargeHandleRef.current = null;
         // Decide the reaction to the settled charge. An APPROVED card always
         // wins — even if the customer pressed Back a beat too late, the order is
         // completed and taken through confirmation (we must not un-charge it).
@@ -466,6 +693,7 @@ export function useKioskCheckout() {
         const outcome = resolveKioskChargeOutcome({
           ok: charge.ok,
           indeterminate: charge.indeterminate,
+          aborted: charge.aborted,
           message: charge.message,
           userCancelled: cancelRequestedRef.current,
           terminalType: startedTerminalType,
@@ -474,25 +702,46 @@ export function useKioskCheckout() {
           // Void the half-built order ONLY when nothing could have been
           // captured (confirmed cancel or clean decline). Never for "verify".
           if (outcome.kind === "cancelled" || outcome.kind === "declined") {
-            needsReview = false;
-            try {
-              orderStore.voidOrder(liveOrderId);
-            } catch {
-              /* best-effort */
+            const reason =
+              outcome.kind === "cancelled"
+                ? KIOSK_VOID_REASONS.cancelled
+                : KIOSK_VOID_REASONS.declined(outcome.message);
+            if (!voidAfterNoCharge(liveOrderId, reason)) {
+              // Refused: card money may still be on the order. Keep the hold.
+              enterAssistance("void_blocked", KIOSK_VERIFY_STAFF_MESSAGE, {
+                dbOrderId: createdDbId,
+                orderId: liveOrderId,
+              });
+              return null;
             }
+            needsReview = false;
           }
           if (outcome.kind === "cancelled") {
             setStatus("cancelled");
             return null;
           }
           if (outcome.kind === "verify") {
-            enterAssistance("charge_verify", outcome.message, {
-              dbOrderId: createdDbId,
-              orderId: liveOrderId,
-            });
+            enterAssistance(
+              "charge_verify",
+              outcome.message,
+              { dbOrderId: createdDbId, orderId: liveOrderId },
+              {
+                cause: charge.indeterminateCause,
+                referenceId: charge.referenceId,
+                elapsedMs: charge.elapsedMs,
+                terminalType: startedTerminalType,
+                ...charge.terminalCodes,
+              },
+            );
           } else {
+            // "timed_out" is consumed by the attempt loop above and never
+            // reaches here; it's only named so the union stays exhaustive.
             setStatus("error");
-            setError(outcome.message);
+            setError(
+              outcome.kind === "declined"
+                ? outcome.message
+                : "Payment wasn't completed. Please try again.",
+            );
           }
           return null;
         }
@@ -602,7 +851,7 @@ export function useKioskCheckout() {
         releaseKioskCheckout(stationId, needsReview);
       }
     },
-    [supabase, enterAssistance],
+    [supabase, enterAssistance, askForMoreTime],
   );
 
   /**
@@ -641,5 +890,8 @@ export function useKioskCheckout() {
     payOrder,
     cancelCharge,
     reset,
+    /** Seconds left on the "Need more time?" prompt (status "more_time"). */
+    moreTimeSecondsLeft,
+    respondMoreTime,
   };
 }

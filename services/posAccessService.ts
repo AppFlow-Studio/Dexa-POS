@@ -10,6 +10,7 @@ import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { SelectedStation, Station } from "@/types/station";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import isEqual from "lodash/isEqual";
 
 export function stationToSelectedStation(station: Station): SelectedStation {
   return {
@@ -210,9 +211,14 @@ export async function refreshSelectedStationOperationalState(
     return { valid: false, failure: createStationInactiveFailure() };
   }
 
-  useStoreSettingsStore
-    .getState()
-    .setSelectedStation(stationToSelectedStation(freshStation));
+  // Only when something changed. A new object re-renders every subscriber to
+  // the whole station (PosSyncProvider, CFDProvider, the main layout) and
+  // rewrites the persisted settings blob, for a check that almost always comes
+  // back identical.
+  const nextStation = stationToSelectedStation(freshStation);
+  if (!isEqual(nextStation, useStoreSettingsStore.getState().selectedStation)) {
+    useStoreSettingsStore.getState().setSelectedStation(nextStation);
+  }
 
   return { valid: true };
 }

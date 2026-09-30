@@ -277,6 +277,12 @@ import {
 import { ReceiptItemData, ReceiptTemplateData } from "@/types/printer";
 import { formatCurrency } from "@/utils/currency";
 import { sanitizeForPrint } from "../utils/sanitizeText";
+import {
+  SIGNATURE_BLANK_LINES,
+  buildSignatureBlockLines,
+  shouldPrintSignatureBlock,
+  wrapPrintText,
+} from "./signatureBlock";
 
 // ============================================================================
 // FORMAT PRESETS
@@ -446,11 +452,15 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
   if (validated.headerMessage) {
-    nodes.push({
-      type: "text_line",
-      content: sanitizeForPrint(validated.headerMessage),
-      align: "center",
-    });
+    // One node per line: the merchant's line breaks are honored and nothing
+    // relies on the printer soft-wrapping.
+    for (const line of wrapPrintText(validated.headerMessage, w)) {
+      nodes.push(
+        line
+          ? { type: "text_line", content: line, align: "center" }
+          : { type: "empty_line" },
+      );
+    }
   }
   nodes.push({ type: "empty_line" });
 
@@ -800,6 +810,24 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     }
   }
 
+  // ── H2. Cardholder signature (merchant copy, card tender, opt-in) ─────
+  // Sits right under the tender lines. Blank signing space is line feeds,
+  // not padding. The rule is a divider, not a hyphen string: this document is
+  // built at w=32, and only dividers are drawn at the printer's real width
+  // (Star Skia line, Landi addDividingLine), so a text rule stopped short. The
+  // X sits just above the line's left end, per card-slip convention.
+  if (shouldPrintSignatureBlock(validated)) {
+    const sig = buildSignatureBlockLines(validated, w);
+    nodes.push({ type: "feed", lines: SIGNATURE_BLANK_LINES });
+    nodes.push({ type: "text_line", content: "X" });
+    nodes.push({ type: "divider", style: "solid", lineWidth: w });
+    nodes.push({ type: "text_line", content: sig.caption, align: "center" });
+    nodes.push({ type: "empty_line" });
+    for (const line of sig.disclaimer) {
+      nodes.push({ type: "text_line", content: line, align: "center" });
+    }
+  }
+
   // ── I. Metadata (Figure key/value block — no "Order #" row, per spec) ─
   // nodes.push({ type: "divider", style: "solid", lineWidth: w });
   nodes.push({ type: "empty_line" });
@@ -915,6 +943,20 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   // Big breathing gap before the footer — this is what makes Figure feel
   // premium vs. cramped. Don't reduce.
   nodes.push({ type: "feed", lines: 4 });
+
+  // Merchant footer text (receipt template / printer setting). Only printed
+  // when the merchant set one; no default string on this path.
+  if (validated.footerMessage) {
+    const footerLines = wrapPrintText(validated.footerMessage, w);
+    for (const line of footerLines) {
+      nodes.push(
+        line
+          ? { type: "text_line", content: line, align: "center" }
+          : { type: "empty_line" },
+      );
+    }
+    if (footerLines.length > 0) nodes.push({ type: "empty_line" });
+  }
 
   const copyLabel = validated?.copyLabel ?? "Customer Copy";
   nodes.push({

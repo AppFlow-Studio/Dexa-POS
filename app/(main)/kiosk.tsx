@@ -1,25 +1,60 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
 import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
 import { KioskAdminPinModal } from "@/components/kiosk/shared/KioskAdminPinModal";
-import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosticsScreen";
+import { useKioskDialog } from "@/components/kiosk/shared/KioskDialog";
 import { KioskErrorBoundary } from "@/components/kiosk/shared/KioskErrorBoundary";
 import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
+import {
+    checkKioskAccess,
+    type KioskAccessVerdict,
+} from "@/components/kiosk/shared/kioskAccessCheck";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { refreshSelectedStationOperationalState } from "@/services/posAccessService";
 import { isKioskCheckoutHeld } from "@/components/kiosk/shared/checkoutGuard";
 import {
     kioskProfileQueryKeys,
     useKioskProfile,
 } from "@/hooks/kiosk/useKioskProfile";
-import { prefetchKioskImages } from "@/lib/kioskMediaPrefetch";
+import {
+    prefetchKioskImages,
+    prefetchKioskMenuImages,
+} from "@/lib/kioskMediaPrefetch";
+import {
+    channelForStationType,
+    selectVisibleMenus,
+} from "@/lib/menu/stationMenuScope";
+import type { EmployeeProfile } from "@/stores/useEmployeeStore";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
+import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import {
+    lazy,
+    Suspense,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
+import {
+    ActivityIndicator,
+    InteractionManager,
+    Pressable,
+    Text,
+    View,
+} from "react-native";
+
+// Staff-only (5-tap corner + manager PIN), and the largest kiosk module by far
+// with the profile editor and update checker behind it — loaded when opened,
+// not with every kiosk start.
+const KioskDiagnosticsScreen = lazy(() =>
+  import("@/components/kiosk/shared/KioskDiagnosticsScreen").then((m) => ({
+    default: m.KioskDiagnosticsScreen,
+  })),
+);
 
 /**
  * Kiosk entry point.
@@ -57,24 +92,43 @@ export default function KioskScreen() {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const handleStart = async () => {
-    try {
-      const stationId = useStoreSettingsStore.getState().selectedStation?.id;
-      const location = useStoreSettingsStore.getState().selectedStore;
-      if (!stationId || !location?.id || !location.merchant_id || isKioskCheckoutHeld(stationId)) {
-        Alert.alert("Staff assistance required", "Please ask a staff member to check this kiosk's payment status.");
-        return;
-      }
-      const access = await refreshSelectedStationOperationalState(supabase);
-      if (!access.valid) {
-        Alert.alert(access.failure.title, access.failure.message);
-        return;
-      }
-      setIdle(false);
-    } catch {
-      Alert.alert("Kiosk unavailable", "Could not verify kiosk access. Please see a staff member.");
+  // The manager whose PIN opened settings; refunds there are recorded under them.
+  const [settingsStaff, setSettingsStaff] = useState<EmployeeProfile | null>(
+    null,
+  );
+  // Start-screen stops, drawn in the kiosk's own themed dialog rather than a
+  // native alert. Only reachable from the attract screen, so `config` is set.
+  const { show: showNotice, dialog: notice } = useKioskDialog(
+    config ?? undefined,
+  );
+
+  // "Tap to start" answers at once. The access check (billing, station still
+  // active) used to run first, two round trips with nothing on screen; it now
+  // runs while the customer reads the order-type screen, and the template
+  // awaits `ensureAccess` before it reveals the menu. Checkout checks again
+  // before creating the order and before charging, so nothing is sold on
+  // this result alone.
+  const accessCheck = useRef<Promise<KioskAccessVerdict> | null>(null);
+
+  const handleStart = () => {
+    const stationId = useStoreSettingsStore.getState().selectedStation?.id;
+    const location = useStoreSettingsStore.getState().selectedStore;
+    if (!stationId || !location?.id || !location.merchant_id || isKioskCheckoutHeld(stationId)) {
+      showNotice("Staff assistance required", "Please ask a staff member to check this kiosk's payment status.");
+      return;
     }
+    accessCheck.current = checkKioskAccess(supabase);
+    setIdle(false);
   };
+
+  const ensureAccess = useCallback(async () => {
+    const verdict = await (accessCheck.current ?? checkKioskAccess(supabase));
+    if (verdict.ok) return true;
+    clearCart();
+    setIdle(true);
+    showNotice(verdict.title, verdict.message);
+    return false;
+  }, [supabase, clearCart, setIdle, showNotice]);
 
   // Warm the image cache once per profile (not on every render — configsEqual
   // in the store keeps `config` referentially stable across identical polls,
@@ -84,6 +138,41 @@ export default function KioskScreen() {
   useEffect(() => {
     if (config) prefetchKioskImages(config);
   }, [config]);
+
+  // Keep every kiosk menu photo in the disk cache: once after start-up, then
+  // after each menu sync (only new photos download). Read from the store
+  // rather than subscribed to, so a sync doesn't re-render this screen.
+  useEffect(() => {
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+    const run = () => {
+      const menu = useMenuStore.getState();
+      const station = useStoreSettingsStore.getState().selectedStation;
+      prefetchKioskMenuImages(
+        selectVisibleMenus(
+          menu.menus,
+          menu.stationMenuScopes,
+          station?.id ?? null,
+          channelForStationType(station?.station_type),
+        ),
+        isCancelled,
+      );
+    };
+    const task = InteractionManager.runAfterInteractions(run);
+    const unsubscribe = useMenuStore.subscribe((state, prev) => {
+      if (
+        state.menus !== prev.menus ||
+        state.stationMenuScopes !== prev.stationMenuScopes
+      ) {
+        run();
+      }
+    });
+    return () => {
+      cancelled = true;
+      task.cancel();
+      unsubscribe();
+    };
+  }, []);
 
   const handleRefreshKioskConfig = useCallback(() => {
     const stationId =
@@ -117,38 +206,56 @@ export default function KioskScreen() {
 
   // No config yet (first ever load, nothing cached). A persisted config renders
   // immediately even while the background poll refreshes.
+  // Inside KioskScaleProvider like every other kiosk screen: outside it these
+  // fell back to the POS scale, which a phone floors at 0.6 — 10px copy.
   if (!config || !effectiveConfig) {
     if (status === "error") {
       return (
-        <View className="flex-1 items-center justify-center bg-black px-8">
-          <Text className="text-white text-xl font-semibold">
-            Kiosk failed to load
-          </Text>
-          <Text className="text-gray-400 mt-2 text-center">
-            {error ?? "Unknown error"}
-          </Text>
-        </View>
+        <KioskScaleProvider>
+          <View className="flex-1 items-center justify-center bg-black px-8">
+            <Text className="text-white text-xl font-semibold text-center">
+              Kiosk failed to load
+            </Text>
+            <Text className="text-gray-400 text-base mt-2 text-center">
+              {error ?? "Unknown error"}
+            </Text>
+          </View>
+        </KioskScaleProvider>
       );
     }
     return (
-      <View className="flex-1 items-center justify-center bg-black">
-        <ActivityIndicator color="#FFFFFF" />
-        <Text className="text-gray-400 mt-3">Loading kiosk…</Text>
-      </View>
+      <KioskScaleProvider>
+        <View className="flex-1 items-center justify-center bg-black">
+          <ActivityIndicator color="#FFFFFF" />
+          <Text className="text-gray-400 text-base mt-3">Loading kiosk…</Text>
+        </View>
+      </KioskScaleProvider>
     );
   }
 
   if (showDiagnostics) {
     return (
-      <KioskScaleProvider>
+      <KioskScaleProvider minScale={1}>
         {/* Raw config, not `effectiveConfig` — this screen inspects and edits
             the profile, so it must show what the profile actually says. It
             resolves the device's own orientation override itself. */}
-        <KioskDiagnosticsScreen
-          config={config}
-          onClose={() => setShowDiagnostics(false)}
-          onRefreshKioskConfig={handleRefreshKioskConfig}
-        />
+        <Suspense
+          fallback={
+            <View className="flex-1 items-center justify-center bg-gray-50">
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <KioskDiagnosticsScreen
+            config={config}
+            staff={settingsStaff}
+            onClose={() => {
+              setShowDiagnostics(false);
+              setSettingsStaff(null);
+            }}
+            onRefreshKioskConfig={handleRefreshKioskConfig}
+          />
+        </Suspense>
       </KioskScaleProvider>
     );
   }
@@ -165,6 +272,7 @@ export default function KioskScreen() {
       <KioskErrorBoundary
         onReset={() => {
           setShowDiagnostics(false);
+          setSettingsStaff(null);
           clearCart();
           setIdle(true);
         }}
@@ -185,16 +293,20 @@ export default function KioskScreen() {
               clearCart();
               setIdle(true);
             }}
+            ensureAccess={ensureAccess}
           />
         )}
       </KioskErrorBoundary>
+
+      {notice}
 
       {/* Manager-PIN gate opened by the secret 5-tap on the attract screen. */}
       <KioskAdminPinModal
         visible={showPinModal}
         onClose={() => setShowPinModal(false)}
-        onVerified={() => {
+        onVerified={(employee) => {
           setShowPinModal(false);
+          setSettingsStaff(employee);
           setShowDiagnostics(true);
         }}
       />

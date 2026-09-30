@@ -20,6 +20,7 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import {
   getOrderStoreSupabaseClient,
+  guardOrderVoid,
   useOrderStore,
 } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -36,6 +37,13 @@ export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
 
   if (!order) {
     console.warn("[voidOrderEffect] Order not found:", orderId);
+    return;
+  }
+
+  // Last line of defence — the UI already refuses, but nothing irreversible
+  // (inventory, void RPC, session clear) may run while card money is on it.
+  if (!guardOrderVoid(orderId)) {
+    clearOrderPendingVoid(orderId);
     return;
   }
 
