@@ -2,6 +2,7 @@ import {
   kioskRadius,
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
+import { isKioskHandheld } from "@/components/kiosk/shared/kioskLayout";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
 import type { MenuItemType } from "@/lib/types";
@@ -29,6 +30,10 @@ const MAX_WIDTH = 1200;
  * its real dimensions on the first frame. Measuring would hand it a zero-size
  * panel for one frame, and it sizes a photo and picks a landscape or portrait
  * layout from exactly those numbers.
+ *
+ * On a phone it fills the screen. A scrim border there buys no sense of place —
+ * the menu behind is a sliver — and costs the photo and the add bar room they
+ * cannot spare.
  */
 export function KioskItemDetailModal({
   config,
@@ -47,8 +52,11 @@ export function KioskItemDetailModal({
   const t = useKioskTheme(config);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
-  const width = Math.min(windowWidth * WIDTH_FRACTION, kioskPx(MAX_WIDTH, s));
-  const height = windowHeight * HEIGHT_FRACTION;
+  const fullScreen = isKioskHandheld(windowWidth, windowHeight);
+  const width = fullScreen
+    ? windowWidth
+    : Math.min(windowWidth * WIDTH_FRACTION, kioskPx(MAX_WIDTH, s));
+  const height = fullScreen ? windowHeight : windowHeight * HEIGHT_FRACTION;
 
   return (
     <Animated.View
@@ -78,7 +86,7 @@ export function KioskItemDetailModal({
         style={{
           width,
           height,
-          borderRadius: kioskPx(kioskRadius.xl, s),
+          borderRadius: fullScreen ? 0 : kioskPx(kioskRadius.xl, s),
           overflow: "hidden",
           backgroundColor: t.page,
         }}

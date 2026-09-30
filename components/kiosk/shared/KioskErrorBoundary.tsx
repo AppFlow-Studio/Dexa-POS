@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/react-native";
 import * as Updates from "expo-updates";
 import { RefreshCw } from "@/lib/icons";
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 const AUTO_RESET_MS = 6000;
 // After this many crashes in one mounted session, stop trying to soft-reset and
@@ -94,11 +94,13 @@ export class KioskErrorBoundary extends React.Component<Props, State> {
     const fg = this.props.textColor || "#FFFFFF";
     const accent = this.props.accentColor || "#0D9488";
 
+    // Scrolls only if the message outgrows the panel — a landscape phone is
+    // ~360dp tall, and the Start over button must never be clipped off it.
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: bg,
+      <ScrollView
+        style={{ flex: 1, backgroundColor: bg }}
+        contentContainerStyle={{
+          flexGrow: 1,
           alignItems: "center",
           justifyContent: "center",
           padding: 32,
@@ -155,7 +157,7 @@ export class KioskErrorBoundary extends React.Component<Props, State> {
             Start over
           </Text>
         </Pressable>
-      </View>
+      </ScrollView>
     );
   }
 }

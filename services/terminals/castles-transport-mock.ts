@@ -51,7 +51,9 @@ function buildMockResponse (request: Record<string, unknown>): string {
   const base: Record<string, unknown> = {
     txnPosTxnId: txnPosTxnId ?? '000000',
     txnType: txnType ?? 'unknown',
-    txnReturnCode: '00',
+    // Real terminals answer '00000000' (CASTLES_SUCCESS_CODE). '00' made
+    // every mocked sale read as "Unknown error: 00".
+    txnReturnCode: '00000000',
     txnApprovalCode: 'MOCK01',
   };
   if (txnType === 'getData') {
@@ -60,10 +62,17 @@ function buildMockResponse (request: Record<string, unknown>): string {
     base.infBatteryLevel = '92';
   }
   if (txnType === 'sale') {
-    base.amountBase = (request.amountBase ?? '100') as string;
-    base.referenceId = `MOCK-REF-${Date.now()}`;
-    base.cardType = 'VISA';
-    base.lastFour = '4242';
+    // Field names the response mapper reads for a real approval.
+    const stan = String(Date.now() % 1000000).padStart(6, '0');
+    base.txnAmtBase = (request.txnAmtBase ?? '0.00') as string;
+    base.txnAmtTip = (request.txnAmtTip ?? '0.00') as string;
+    base.txnRRN = `MOCK${Date.now().toString().slice(-8)}`;
+    base.txnStan = stan;
+    base.txnCardType = 'VISA';
+    base.txnMaskedCardNum = '************4242';
+    base.txnEntryMode = 'CHIP';
+    base.txnBatchNum = '000001';
+    base.txnDateTime = new Date().toISOString();
   }
   return JSON.stringify(base);
 }

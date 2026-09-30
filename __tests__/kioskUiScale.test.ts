@@ -10,11 +10,22 @@ import {
   isItemOrderable,
 } from "@/components/kiosk/shared/kioskItemAvailability";
 import { selectableModifierGroups } from "@/components/kiosk/shared/useItemModifiers";
-import { kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
 import {
-  kioskCardSurface,
-  kioskFadeEnd,
-} from "@/components/kiosk/shared/kioskSurface";
+  isKioskHandheld,
+  KIOSK_HEADER_CONTROL_HEIGHT,
+  KIOSK_MIN_CARD_WIDTH,
+  kioskBannerHeight,
+  kioskFitColumns,
+  kioskMaxMenuColumns,
+  kioskMenuGridLayout,
+  kioskOrderTypeMetrics,
+  kioskOrderTypeTileSize,
+  kioskRailWidth,
+  kioskStripArrowSize,
+  kioskUsesCategoryRail,
+} from "@/components/kiosk/shared/kioskLayout";
+import { categoryPillsFromSections } from "@/components/kiosk/shared/kioskCategoryPills";
+import { kioskCardSurface } from "@/components/kiosk/shared/kioskSurface";
 import {
   BASELINE_HEIGHT_DP,
   BASELINE_WIDTH_DP,
@@ -23,6 +34,15 @@ import {
   KIOSK_MAX_UI_SCALE,
   KIOSK_MIN_UI_SCALE,
 } from "@/lib/uiScale";
+
+/** Common phone viewports, portrait, in dp. */
+const PHONES: [number, number][] = [
+  [360, 640],
+  [360, 800],
+  [390, 844],
+  [412, 915],
+  [430, 932],
+];
 
 /**
  * The kiosk sizing chain: screen dp → kiosk UI scale → card width → card
@@ -62,6 +82,30 @@ describe("computeKioskUiScale", () => {
   it("clamps to the kiosk range at both extremes", () => {
     expect(computeKioskUiScale(3840, 2160)).toBe(KIOSK_MAX_UI_SCALE);
     expect(computeKioskUiScale(320, 480)).toBe(KIOSK_MIN_UI_SCALE);
+  });
+
+  it("puts every phone on the floor, in either orientation", () => {
+    // Raw phone ratios are ~0.5–0.6; they share one scale, the way phone apps
+    // do, rather than a 360dp phone rendering smaller type than a 430dp one.
+    for (const [w, h] of PHONES) {
+      expect(computeKioskUiScale(w, h)).toBe(KIOSK_MIN_UI_SCALE);
+      expect(computeKioskUiScale(h, w)).toBe(KIOSK_MIN_UI_SCALE);
+    }
+  });
+
+  it("keeps the header's controls at a comfortable touch size on a phone", () => {
+    // 44dp is the smallest comfortable touch target. At the old 0.7 floor the
+    // header's X / search / cart controls came out at 36dp.
+    expect(KIOSK_HEADER_CONTROL_HEIGHT * KIOSK_MIN_UI_SCALE).toBeGreaterThanOrEqual(
+      44,
+    );
+  });
+
+  it("does not move any tablet or kiosk panel", () => {
+    // The floor only binds below every real panel's own scale.
+    expect(computeKioskUiScale(1333, 752)).toBeCloseTo(1.12, 2);
+    expect(computeKioskUiScale(1080, 1920)).toBeCloseTo(1.61, 2);
+    expect(computeKioskUiScale(800, 1280)).toBeGreaterThan(KIOSK_MIN_UI_SCALE);
   });
 
   it("falls back to 1 for a missing width", () => {
@@ -491,22 +535,32 @@ describe("kioskFeatureRowMetrics", () => {
     expect(m.height).toBeLessThanOrEqual(140);
   });
 
-  it("keeps the copy clear of the photo's un-faded half", () => {
+  it("insets a whole square photo, with the copy beside it", () => {
+    for (const width of [320, 480, PORTRAIT_ROW_WIDTH, 1388, 2400]) {
+      const m = kioskFeatureRowMetrics(width, 2000);
+      // One pad above and below the photo fills the band exactly.
+      expect(m.imageSize + m.pad * 2).toBe(m.height);
+      // Inset, photo, gutter and copy account for the whole width.
+      expect(m.pad * 3 + m.imageSize + m.textWidth).toBeLessThanOrEqual(
+        Math.max(240, width),
+      );
+    }
+    // On a portrait kiosk the copy is still most of the row.
     const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 879);
-    const copyRightEdge = PORTRAIT_ROW_WIDTH - m.textInset;
-    const photoLeftEdge = PORTRAIT_ROW_WIDTH - m.imageWidth;
-    const fadeStartsAt = photoLeftEdge + m.imageWidth * m.fadeSolidStop;
-
-    // Text ends before the gradient starts lifting off the photo.
-    expect(copyRightEdge).toBeLessThanOrEqual(fadeStartsAt + 1);
-    // …but the copy column is still the dominant half of the row.
-    expect(copyRightEdge).toBeGreaterThan(PORTRAIT_ROW_WIDTH * 0.5);
+    expect(m.textWidth).toBeGreaterThan(PORTRAIT_ROW_WIDTH * 0.5);
   });
 
-  it("leaves the photo's outer edge fully crisp", () => {
+  it("runs the card's corner parallel to the photo's", () => {
     const m = kioskFeatureRowMetrics(PORTRAIT_ROW_WIDTH, 879);
-    expect(m.fadeStop).toBeGreaterThan(m.fadeSolidStop);
-    expect(m.fadeStop).toBeLessThan(1);
+    expect(m.radius).toBe(m.imageRadius + m.pad);
+  });
+
+  it("keeps the phone row's description", () => {
+    // A portrait phone's single column is ~332dp wide.
+    const m = kioskFeatureRowMetrics(332);
+    expect(m.showDescription).toBe(true);
+    expect(m.nameLines).toBe(2);
+    expect(m.nameSize).toBeGreaterThanOrEqual(16);
   });
 
   it("fits the copy shape it reports inside the band at every size", () => {
@@ -517,7 +571,7 @@ describe("kioskFeatureRowMetrics", () => {
       const m = kioskFeatureRowMetrics(width, 2000);
       const blocks = m.showDescription ? 3 : 2;
       const copy =
-        m.padV * 2 +
+        m.pad * 2 +
         m.nameLineHeight * m.nameLines +
         (m.showDescription ? m.descLineHeight * m.descLines : 0) +
         m.priceRowHeight +
@@ -536,8 +590,8 @@ describe("kioskFeatureRowMetrics", () => {
   });
 
   it("gives up description lines before name lines when height is scarce", () => {
-    const squat = kioskFeatureRowMetrics(681, 150);
-    expect(squat.height).toBe(150);
+    const squat = kioskFeatureRowMetrics(681, 100);
+    expect(squat.height).toBe(100);
     expect(squat.nameLines).toBe(2);
     expect(squat.showDescription).toBe(false);
   });
@@ -577,18 +631,15 @@ describe("kioskCardSurface", () => {
     expect(light).toBe("#f2f2f2");
   });
 
-  it("returns a parseable solid colour, so the fade can start from it", () => {
+  it("returns a solid colour, never a translucent one", () => {
     for (const bg of ["#FFFFFF", "#101010", "#fff", "#0C4FD1"]) {
-      const surface = kioskCardSurface(bg);
-      expect(surface).toMatch(/^#[0-9a-f]{6}$/);
-      expect(kioskFadeEnd(surface)).toBe(`${surface}00`);
+      expect(kioskCardSurface(bg)).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
 
   it("leaves a colour it cannot parse exactly as it found it", () => {
     // A card matching the page is the old look — plain, but never wrong.
     expect(kioskCardSurface("rgb(255,255,255)")).toBe("rgb(255,255,255)");
-    expect(kioskFadeEnd("rgb(255,255,255)")).toBeNull();
   });
 });
 
@@ -609,5 +660,219 @@ describe("resolveKioskOrientationMode", () => {
       "horizontal",
     );
     expect(resolveKioskOrientationMode("auto", "vertical")).toBe("auto");
+  });
+});
+
+describe("handheld layouts", () => {
+  /** KioskItemGrid's padding and gap at the phone scale. */
+  const phonePad = Math.round(16 * KIOSK_MIN_UI_SCALE);
+  const phoneGap = Math.round(14 * KIOSK_MIN_UI_SCALE);
+
+  it("classifies phones as handheld and tablets as not", () => {
+    for (const [w, h] of PHONES) {
+      expect(isKioskHandheld(w, h)).toBe(true);
+      expect(isKioskHandheld(h, w)).toBe(true);
+    }
+    expect(isKioskHandheld(800, 1280)).toBe(false);
+    expect(isKioskHandheld(1333, 752)).toBe(false);
+    expect(isKioskHandheld(1080, 1920)).toBe(false);
+  });
+
+  it("swaps the rail for the strip only where width is scarce", () => {
+    expect(kioskUsesCategoryRail(360)).toBe(false);
+    expect(kioskUsesCategoryRail(430)).toBe(false);
+    // A landscape phone keeps the rail: width is what it has to spare.
+    expect(kioskUsesCategoryRail(915)).toBe(true);
+    expect(kioskUsesCategoryRail(800)).toBe(true);
+  });
+
+  it("gives a portrait phone two columns whatever the setting asks for", () => {
+    for (const [w] of PHONES) {
+      for (const requested of [2, 3, 4]) {
+        expect(kioskFitColumns(requested, w, phonePad, phoneGap)).toBe(2);
+      }
+    }
+  });
+
+  it("never lays a card out narrower than the minimum", () => {
+    for (const width of [240, 360, 540, 700, 1080]) {
+      for (const requested of [1, 2, 3, 4]) {
+        const cols = kioskFitColumns(requested, width, phonePad, phoneGap);
+        expect(cols).toBeLessThanOrEqual(requested);
+        if (cols > 1) {
+          const card =
+            (width - (phonePad - phoneGap / 2) * 2) / cols - phoneGap;
+          expect(card).toBeGreaterThanOrEqual(KIOSK_MIN_CARD_WIDTH);
+        }
+      }
+    }
+  });
+
+  it("honours one column, and leaves tablet grids alone", () => {
+    expect(kioskFitColumns(1, 360, phonePad, phoneGap)).toBe(1);
+    // 1080x1920 portrait kiosk, 3 columns beside a 34% rail: ~713dp of grid.
+    const s = computeKioskUiScale(1080, 1920);
+    expect(
+      kioskFitColumns(3, 713, Math.round(16 * s), Math.round(14 * s)),
+    ).toBe(3);
+    // Baseline tablet, landscape, 4 columns beside a 19% rail.
+    expect(kioskFitColumns(4, 1080, 18, 16)).toBe(4);
+  });
+
+  it("fits both order-type tiles across a phone", () => {
+    const s = KIOSK_MIN_UI_SCALE;
+    for (const [w, h] of PHONES) {
+      const tile = kioskOrderTypeTileSize(w, h, s);
+      // Two tiles, the gap between them and the side padding.
+      expect(tile * 2 + 36 * s + 40 * s * 2).toBeLessThanOrEqual(w);
+      expect(tile).toBeGreaterThan(100);
+    }
+  });
+
+  it("keeps the order-type tiles where they were on a tablet", () => {
+    // Previously round(min(max(752 * 0.38, 200), 420 * 1.12)).
+    expect(
+      kioskOrderTypeTileSize(1333, 752, computeKioskUiScale(1333, 752)),
+    ).toBe(286);
+  });
+
+  it("sizes the order-type text to the tile, so a phone is not all heading", () => {
+    // Regression: scaled independently of the tile, a phone got a 35px heading
+    // over 130dp tiles, and "Takeaway" at 24px nearly touched the tile's edges.
+    const tile = kioskOrderTypeTileSize(360, 800, KIOSK_MIN_UI_SCALE);
+    const m = kioskOrderTypeMetrics(tile);
+    expect(m.title).toBeLessThanOrEqual(28);
+    // "Takeaway" (8 bold glyphs ≈ 0.6em) keeps clear margins inside its tile.
+    expect(8 * 0.6 * m.label).toBeLessThan(tile * 0.7);
+    // Readable floors still hold.
+    expect(m.label).toBeGreaterThanOrEqual(16);
+    expect(m.hint).toBeGreaterThanOrEqual(13);
+  });
+
+  it("keeps the order-type text where it was on a tablet and a kiosk", () => {
+    // Previously kioskPx(41 / 20 / 28 / 16, scale).
+    const tablet = kioskOrderTypeMetrics(
+      kioskOrderTypeTileSize(1333, 752, computeKioskUiScale(1333, 752)),
+    );
+    expect(tablet.title).toBe(46);
+    expect(tablet.subtitle).toBe(22);
+    expect(Math.abs(tablet.label - 31)).toBeLessThanOrEqual(1);
+    expect(tablet.hint).toBe(18);
+
+    const kiosk = kioskOrderTypeMetrics(
+      kioskOrderTypeTileSize(1080, 1920, computeKioskUiScale(1080, 1920)),
+    );
+    expect(Math.abs(kiosk.title - 66)).toBeLessThanOrEqual(2);
+    expect(kiosk.subtitle).toBe(32);
+    expect(Math.abs(kiosk.label - 45)).toBeLessThanOrEqual(1);
+  });
+
+  it("shrinks the category strip's arrows on a phone, and only there", () => {
+    // KioskCategoryPillBar's tab height (14 + 22 + 14) at each scale.
+    const tabAt = (scale: number) => Math.round(50 * scale);
+
+    const phone = kioskStripArrowSize(tabAt(KIOSK_MIN_UI_SCALE), true);
+    expect(phone.button).toBeLessThanOrEqual(30);
+    expect(phone.icon).toBeLessThan(tabAt(KIOSK_MIN_UI_SCALE) * 0.5);
+    // Still centred on the tabs, with room for the padded hit area.
+    expect(phone.button).toBeLessThan(tabAt(KIOSK_MIN_UI_SCALE));
+
+    // Panels keep the full-tab circle they shipped with.
+    for (const [w, h] of [
+      [1333, 752],
+      [1080, 1920],
+    ] as const) {
+      const tab = tabAt(computeKioskUiScale(w, h));
+      expect(kioskStripArrowSize(tab, isKioskHandheld(w, h))).toEqual({
+        button: tab,
+        icon: tab * 0.5,
+      });
+    }
+  });
+
+  it("only lowers the banner on phone-height portrait screens", () => {
+    expect(kioskBannerHeight(640)).toBe(154);
+    expect(kioskBannerHeight(1280)).toBe(307);
+    expect(kioskBannerHeight(1920)).toBe(461);
+  });
+});
+
+describe("categoryPillsFromSections", () => {
+  const section = (menuId: string, title: string, names: string[]) => ({
+    menuId,
+    title,
+    data: names.map((name, i) => ({ id: `${menuId}-${i}`, name })),
+  });
+
+  it("keeps the rail's keys and order", () => {
+    const pills = categoryPillsFromSections([
+      section("lunch", "Lunch", ["Burgers", "Sides"]),
+      section("bar", "Bar", ["Cocktails"]),
+    ]);
+    expect(pills).toEqual([
+      { key: "lunch:lunch-0", name: "Burgers" },
+      { key: "lunch:lunch-1", name: "Sides" },
+      { key: "bar:bar-0", name: "Cocktails" },
+    ]);
+  });
+
+  it("names the menu when a category appears under more than one", () => {
+    // The rail shows both under their menu headings; the strip has none, so
+    // without this one of them would be unreachable — or indistinguishable.
+    const pills = categoryPillsFromSections([
+      section("lunch", "Lunch", ["Drinks", "Mains"]),
+      section("dinner", "Dinner", ["Drinks"]),
+    ]);
+    expect(pills.map((p) => p.name)).toEqual([
+      "Drinks · Lunch",
+      "Mains",
+      "Drinks · Dinner",
+    ]);
+  });
+});
+
+describe("kioskMaxMenuColumns (what Kiosk Settings offers)", () => {
+  const max = (
+    template: "template_a" | "template_b" | "template_c",
+    w: number,
+    h: number,
+    hasBannerImages = false,
+  ) => {
+    const isVertical = h > w;
+    return kioskMaxMenuColumns({
+      panelWidth: w,
+      isVertical,
+      scale: computeKioskUiScale(w, h),
+      layout: kioskMenuGridLayout(template, w, isVertical, hasBannerImages),
+    });
+  };
+
+  it("caps a portrait phone at 2 in every template", () => {
+    for (const [w, h] of PHONES) {
+      for (const t of ["template_a", "template_b", "template_c"] as const) {
+        expect(max(t, w, h)).toBe(2);
+      }
+    }
+  });
+
+  it("offers all 4 on a landscape phone beside the rail", () => {
+    expect(kioskMenuGridLayout("template_a", 844, false, false)).toBe("rail");
+    expect(max("template_a", 844, 390)).toBe(4);
+  });
+
+  it("accounts for Template C's media column in landscape", () => {
+    expect(kioskMenuGridLayout("template_c", 640, false, true)).toBe(
+      "sideMedia",
+    );
+    expect(kioskMenuGridLayout("template_c", 640, false, false)).toBe("strip");
+    expect(max("template_c", 640, 360, true)).toBe(3);
+    expect(max("template_c", 640, 360, false)).toBe(4);
+  });
+
+  it("leaves big panels unrestricted", () => {
+    expect(max("template_a", 1080, 1920)).toBe(4);
+    expect(max("template_a", 1920, 1080)).toBe(4);
+    expect(max("template_a", 1333, 752)).toBe(4);
+    expect(max("template_c", 1080, 1920, true)).toBe(4);
   });
 });

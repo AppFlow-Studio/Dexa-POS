@@ -131,6 +131,20 @@ export function useTerminalStatus(
     try {
       // --- Castles branch: lightweight probe ---
       if (paymentTerminal.terminal_type === 'castles') {
+        // If the shared singleton is already connected, trust it — a second
+        // socket (or re-opening the single USB port) cuts across whatever the
+        // singleton has in flight. On a split check this screen mounts seconds
+        // after the previous guest's sale, while its close-out or tip adjust is
+        // still on the wire. Retry and USB auto-reconnect disconnect the
+        // singleton first, so they still run the real probe below.
+        if (getSharedCastlesService().isConnected()) {
+          lastCheckTimeRef.current = now;
+          setStatus('online');
+          setReason('online');
+          setErrorMessage(null);
+          return true;
+        }
+
         const isUsb = paymentTerminal.connection_type === 'usb';
 
         if (isUsb) {

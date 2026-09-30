@@ -7,20 +7,42 @@ import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { Text, View } from "react-native";
 
+const COPY = {
+  scope: {
+    title: "No menus assigned to this station",
+    body: "Please ask a staff member for help.",
+  },
+  schedule: {
+    title: "Ordering isn't available right now",
+    body: "Please check back later.",
+  },
+} as const;
+
 /**
- * Rendered by every kiosk template when this station is scoped to a menu
- * selection that leaves nothing to show (see `useIsStationMenuScopeEmpty`).
+ * Rendered by every kiosk template when there is nothing to order:
  *
- * Fails closed on purpose: a kiosk whose only selected menu was deleted must
- * land here, not on the full menu. Copy is for the customer standing at the
- * kiosk — the fix lives in the dashboard, so it points them at staff.
+ * - `scope` — this station is scoped to a menu selection that leaves nothing
+ *   to show (see `useIsStationMenuScopeEmpty`). Fails closed on purpose: a
+ *   kiosk whose only selected menu was deleted must land here, not on the
+ *   full menu. The fix lives in the dashboard, so it points them at staff.
+ * - `schedule` — every menu/category on this station is outside its
+ *   scheduled hours right now (see `useKioskScheduledMenus`).
+ *
+ * Copy is for the customer standing at the kiosk.
  *
  * Sized through `kioskPx`, never raw px: a component that opts out of the
  * kiosk scale is the smallest thing on a screen a customer has seconds to read.
  */
-export function KioskNoMenusState({ config }: { config: KioskConfig }) {
+export function KioskNoMenusState({
+  config,
+  reason = "scope",
+}: {
+  config: KioskConfig;
+  reason?: keyof typeof COPY;
+}) {
   const s = useKioskUiScale();
   const t = useKioskTheme(config);
+  const copy = COPY[reason];
 
   return (
     <View
@@ -41,7 +63,7 @@ export function KioskNoMenusState({ config }: { config: KioskConfig }) {
           textAlign: "center",
         }}
       >
-        No menus assigned to this station
+        {copy.title}
       </Text>
       <Text
         style={{
@@ -52,7 +74,7 @@ export function KioskNoMenusState({ config }: { config: KioskConfig }) {
           textAlign: "center",
         }}
       >
-        Please ask a staff member for help.
+        {copy.body}
       </Text>
     </View>
   );

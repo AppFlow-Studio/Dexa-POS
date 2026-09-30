@@ -1,10 +1,12 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
 import { useVisibleMenus } from "@/hooks/menu/useVisibleMenus";
+import { useScheduleClock } from "@/hooks/useScheduleClock";
 import { isItemOnChannel } from "@/lib/menu/itemChannelVisibility";
 import { filterPosOrderEntryMenus } from "@/lib/menu/posMenuVisibility";
-import { MenuItemType, Schedule } from "@/lib/types";
+import { MenuItemType } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useSearchStore } from "@/stores/searchStore";
+import { useMenuStore } from "@/stores/useMenuStore";
 import { useMenuVisibilityStore } from "@/stores/useMenuVisibilityStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
@@ -26,32 +28,6 @@ import { Keyboard, Text, TouchableOpacity, View } from "react-native";
 import SearchResultItem from "./SearchResultItem";
 
 const EMPTY_HIDDEN_MENU_IDS: string[] = [];
-
-// Helper to check schedule availability
-const isScheduleActive = (schedules: Schedule[] | undefined): boolean => {
-  if (!schedules || schedules.length === 0) return true;
-
-  const now = new Date();
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const currentDay = days[now.getDay()];
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  return schedules.some((schedule) => {
-    if (!schedule.isActive) return false;
-    if (!schedule.days.includes(currentDay)) return false;
-
-    const [startH, startM] = schedule.startTime.split(":").map(Number);
-    const [endH, endM] = schedule.endTime.split(":").map(Number);
-    const startTotal = startH * 60 + startM;
-    const endTotal = endH * 60 + endM;
-
-    if (endTotal < startTotal) {
-      // Overnight schedule (e.g. 10PM to 2AM)
-      return currentMinutes >= startTotal || currentMinutes <= endTotal;
-    }
-    return currentMinutes >= startTotal && currentMinutes <= endTotal;
-  });
-};
 
 type SearchItem = MenuItemType & {
   menuName: string;
@@ -111,6 +87,20 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const { closeSearch, setSearchSheetRef, clearSearchSheetRef } =
     useSearchStore();
 
+  // Same schedule rules as the order grid (store getters + manager grants),
+  // re-evaluated each minute so an open sheet follows the clock.
+  const isMenuAvailableNow = useMenuStore((state) => state.isMenuAvailableNow);
+  const isCategoryAvailableNow = useMenuStore(
+    (state) => state.isCategoryAvailableNow,
+  );
+  const temporaryActiveMenus = useMenuStore(
+    (state) => state.temporaryActiveMenus,
+  );
+  const temporaryActiveCategories = useMenuStore(
+    (state) => state.temporaryActiveCategories,
+  );
+  const now = useScheduleClock();
+
   // Menu-Aware Search Logic. Skip all work while the sheet is closed — there's
   // nothing to display, and an empty search would otherwise materialize the
   // entire menu into section data on every menus/searchText change.
@@ -120,15 +110,23 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
 
     const availableSections: SearchSection[] = [];
     const unavailableSections: SearchSection[] = [];
+    const menuGrants = new Set(temporaryActiveMenus);
+    const categoryGrants = new Set(temporaryActiveCategories);
 
     visibleMenus.forEach((menu) => {
-      // 1. Check Menu Schedule
-      const isMenuAvailable = isScheduleActive(menu.schedules);
+      // 1. Check Menu Schedule (a manager grant on the menu counts)
+      const menuUnlocked = menuGrants.has(menu.name);
+      const isMenuAvailable =
+        menuUnlocked || isMenuAvailableNow(menu.id, now);
       const menuItems: SearchSection["data"] = [];
 
       menu.categories.forEach((category) => {
-        // 2. Check Category Schedule
-        const isCategoryAvailable = isScheduleActive(category.schedules);
+        // 2. Check Category Schedule (a grant on the category or its menu
+        // counts — the grid renders unlocked categories on the same basis)
+        const isCategoryAvailable =
+          menuUnlocked ||
+          categoryGrants.has(category.name) ||
+          isCategoryAvailableNow(category.id, menu.id, now);
 
         category.items?.forEach((item) => {
           // 3a. Sales channel. Dropped outright rather than added to the
@@ -202,7 +200,16 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
     });
 
     return [...availableSections, ...unavailableSections];
-  }, [isOpen, deferredSearchText, visibleMenus]);
+  }, [
+    isOpen,
+    deferredSearchText,
+    visibleMenus,
+    isMenuAvailableNow,
+    isCategoryAvailableNow,
+    temporaryActiveMenus,
+    temporaryActiveCategories,
+    now,
+  ]);
 
   // Flatten sections → a single virtualizable row list (header + item rows) so
   // BottomSheetFlatList only mounts the rows currently on screen.

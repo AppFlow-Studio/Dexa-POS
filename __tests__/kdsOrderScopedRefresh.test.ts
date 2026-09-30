@@ -213,7 +213,7 @@ describe("_fetchTicketsForOrder — order-scoped board patch", () => {
 
     await useKDSStore.getState()._fetchTicketsForOrder(LOCATION, ORDER_A);
 
-    expect(scheduleRefetch).toHaveBeenCalledWith(LOCATION, true);
+    expect(scheduleRefetch).toHaveBeenCalledWith(LOCATION, true, "broadcast");
     // Missing-function must not be mistaken for "this order has no tickets".
     expect(useKDSStore.getState().tickets).toHaveLength(2);
   });
@@ -230,7 +230,7 @@ describe("_fetchTicketsForOrder — order-scoped board patch", () => {
 
     await useKDSStore.getState()._fetchTicketsForOrder(LOCATION, ORDER_A);
 
-    expect(scheduleRefetch).toHaveBeenCalledWith(LOCATION);
+    expect(scheduleRefetch).toHaveBeenCalledWith(LOCATION, false, "broadcast");
     const state = useKDSStore.getState();
     expect(state._ticketsById[a.ticket_id]).toBe(a);
     expect(state._ticketsById[b.ticket_id]).toBe(b);
@@ -248,7 +248,7 @@ describe("_fetchTicketsForOrder — order-scoped board patch", () => {
 
     // Nothing to splice into — patching would build a board from one order.
     expect(rpc).not.toHaveBeenCalled();
-    expect(scheduleRefetch).toHaveBeenCalledWith(LOCATION, true);
+    expect(scheduleRefetch).toHaveBeenCalledWith(LOCATION, true, "broadcast");
   });
 
   it("passes the display id so routing-scoped stations stay scoped", async () => {

@@ -180,20 +180,16 @@ export function kioskRowMetrics(
   };
 }
 
-/** Metrics for the feature row (full-width: copy left, photo bleeding right). */
+/** Metrics for the feature row (full-width: copy left, square photo right). */
 export interface KioskFeatureRowMetrics {
   height: number;
-  imageWidth: number;
-  /**
-   * Where the photo's left-edge fade finishes, as a 0–1 gradient stop across
-   * the photo. Right of it the photo renders untouched.
-   */
-  fadeStop: number;
-  /** Where the fade starts — left of it the photo is fully covered by the card. */
-  fadeSolidStop: number;
-  padH: number;
-  padV: number;
+  /** Side of the square photo, inset at the right of the row. */
+  imageSize: number;
+  imageRadius: number;
+  /** Inset on every side of the row, and the gutter between copy and photo. */
+  pad: number;
   gap: number;
+  /** Concentric with the photo: its radius plus the inset around it. */
   radius: number;
   placeholderSize: number;
   nameSize: number;
@@ -206,10 +202,9 @@ export interface KioskFeatureRowMetrics {
   showDescription: boolean;
   priceSize: number;
   priceRowHeight: number;
-  badgeIconSize: number;
   badgeTextSize: number;
-  /** Reserved right-hand space so copy never runs onto the crisp photo. */
-  textInset: number;
+  /** Width of the copy column, left of the photo. */
+  textWidth: number;
 }
 
 /**
@@ -231,12 +226,13 @@ const FEATURE_ROW_COPY_SHAPES: { nameLines: number; descLines: number }[] = [
  *
  * Unlike the grid cards this row owns its own height: at one column the cell
  * would otherwise inherit the entire grid height budget. Height is derived from
- * width (a fixed ratio reads as a wide, poster-ish band at every panel size)
- * and only capped by the grid's budget on unusually short viewports.
+ * width (a fixed ratio reads as a wide band at every panel size) and only
+ * capped by the grid's budget on unusually short viewports.
  *
- * Type is sized from the copy column's real width — the photo occupies the
- * right of the card and its faded half is unusable for text — so a long name
- * never sets in a size that collides with the photo.
+ * The photo is a square inset inside the row, one `pad` from every edge, and
+ * the copy takes the rest of the width beside it. Type is sized from that copy
+ * column, bounded by the row's height so a squat row doesn't get headline type
+ * just because it is wide.
  *
  * The copy shape (how many lines the name and description each get) is then
  * *solved* against the height that's left, not guessed: the band clips, so a
@@ -255,29 +251,32 @@ export function kioskFeatureRowMetrics(
   // menu you can scan.
   const height = px(Math.min(clamp(w * 0.27, 132, 420), hCap));
 
-  const imageWidth = px(w * 0.42);
-  const fadeSolidStop = 0.2;
-  const fadeStop = 0.62;
-  const padH = px(clamp(height * 0.15, 14, 44));
-  const padV = px(clamp(height * 0.1, 12, 36));
+  const pad = px(clamp(height * 0.1, 10, 32));
+  const imageSize = height - pad * 2;
+  const imageRadius = px(clamp(imageSize * 0.12, 10, 28));
   const gap = px(clamp(height * 0.035, 4, 14));
 
-  // Copy ends exactly where the fade begins, so text always lands on solid card
-  // colour. `textInset` is applied as right padding on the copy column;
-  // `textWidth` is what's left over to size type from.
-  const textInset = px(imageWidth * (1 - fadeSolidStop));
-  const textWidth = Math.max(120, w - padH * 2 - textInset);
+  // Row inset, the photo, and the gutter between them.
+  const textWidth = Math.max(120, w - pad * 3 - imageSize);
 
-  const nameSize = kioskTypeSize(textWidth * 0.072, 16, 46);
+  const nameSize = kioskTypeSize(
+    Math.min(textWidth * 0.065, height * 0.152),
+    16,
+    46,
+  );
   const nameLineHeight = px(nameSize * 1.2);
-  const descSize = kioskTypeSize(textWidth * 0.046, 13, 28);
+  const descSize = kioskTypeSize(
+    Math.min(textWidth * 0.04, height * 0.1),
+    13,
+    28,
+  );
   const descLineHeight = px(descSize * 1.4);
   const priceSize = nameSize;
   const priceRowHeight = px(priceSize * 1.3);
 
   // Solve the copy shape against the height actually available. One gap sits
   // between every pair of visible blocks.
-  const copyBudget = height - padV * 2 - priceRowHeight;
+  const copyBudget = height - pad * 2 - priceRowHeight;
   const shape =
     FEATURE_ROW_COPY_SHAPES.find(
       (s) =>
@@ -289,26 +288,23 @@ export function kioskFeatureRowMetrics(
 
   return {
     height,
-    imageWidth,
-    fadeStop,
-    fadeSolidStop,
-    padH,
-    padV,
+    imageSize,
+    imageRadius,
+    pad,
     gap,
-    radius: px(clamp(height * 0.13, 14, 36)),
-    placeholderSize: px(clamp(height * 0.34, 30, 110)),
+    radius: imageRadius + pad,
+    placeholderSize: px(clamp(imageSize * 0.36, 28, 110)),
     nameSize,
     nameLineHeight,
     nameLines: shape.nameLines,
     descSize,
     descLineHeight,
     descLines: shape.descLines,
-    showDescription: shape.descLines > 0 && textWidth >= 190,
+    showDescription: shape.descLines > 0 && textWidth >= 150,
     priceSize,
     priceRowHeight,
-    badgeIconSize: px(clamp(height * 0.11, 12, 32)),
-    badgeTextSize: px(clamp(height * 0.115, 12, 32)),
-    textInset,
+    badgeTextSize: px(clamp(imageSize * 0.12, 12, 30)),
+    textWidth,
   };
 }
 

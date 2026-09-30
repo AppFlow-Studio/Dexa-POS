@@ -10,6 +10,7 @@ import BulkCompleteModal from "@/components/order/BulkCompleteModal";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
 import OrderLineMinimalCard from "@/components/order/OrderLineMinimalCard";
+import SalesExitDialog from "@/components/order/SalesExitDialog";
 import { useCFDOrderProcessingActivity } from "@/contexts/CFDProvider";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -32,6 +33,10 @@ import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import {
+  getActiveSalesExitDecision,
+  useSalesExitGuardStore,
+} from "@/stores/useSalesExitGuardStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -42,7 +47,7 @@ import {
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -65,6 +70,7 @@ import React, {
   useState,
 } from "react";
 import {
+  BackHandler,
   Dimensions,
   Keyboard,
   Modal,
@@ -427,6 +433,36 @@ const OrderProcessing = () => {
       clearTimeout(timer);
     };
   }, [activeOrderId, orderAttributionOrderId]);
+
+  // Android back leaves Sales like the header "Back to Menu", so it goes
+  // through the per-order PIN exit guard too. It is only claimed while the
+  // guard applies; otherwise the default back runs exactly as before. Focus-
+  // scoped so a screen pushed over Sales keeps its own back behaviour.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        const guard = useSalesExitGuardStore.getState();
+        if (guard.pendingExit) {
+          guard.stay();
+          return true;
+        }
+        if (getActiveSalesExitDecision() === "navigate") return false;
+        guard.requestSalesExit(() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/home");
+          }
+        });
+        return true;
+      });
+      return () => sub.remove();
+    }, [router]),
+  );
+
+  // An exit prompt still open when Sales goes away must not reopen on the
+  // next visit.
+  useEffect(() => () => useSalesExitGuardStore.getState().stay(), []);
 
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
@@ -1253,7 +1289,11 @@ const OrderProcessing = () => {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    onPress={() => router.replace("/tables")}
+                    onPress={() =>
+                      useSalesExitGuardStore
+                        .getState()
+                        .requestSalesExit(() => router.replace("/tables"))
+                    }
                     className="flex-row items-center rounded-lg p-3 justify-start"
                     style={{
                       borderWidth: 1,
@@ -1641,6 +1681,7 @@ const OrderProcessing = () => {
         onConfirm={handleBulkComplete}
         onCancel={() => setBulkCompleteModalOpen(false)}
       />
+      <SalesExitDialog />
 
       <Modal
         visible={isOrdersModuleOpen}

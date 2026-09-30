@@ -17,12 +17,13 @@ type Slide =
   | { kind: "video"; uri: string };
 
 /**
- * A single image layer that stays mounted for as long as it's in `slides`
- * (see KioskMediaCarousel for why) — only its opacity animates between 0 and
- * 1 as `active` changes. Because the underlying Image never unmounts between
- * slide changes, its bitmap is already decoded and painted by the time it's
- * asked to fade in, so there's no load-race window where the layer is
- * visible-but-blank (which read as a white flash through the transition).
+ * A single image layer. Once mounted it stays mounted while it is the
+ * previous, current or next slide (see KioskMediaCarousel for why); only its
+ * opacity animates between 0 and 1 as `active` changes. Because the next
+ * slide's Image is mounted a whole slide ahead, its bitmap is already decoded
+ * and painted by the time it's asked to fade in, so there's no load-race window
+ * where the layer is visible-but-blank (which read as a white flash through
+ * the transition).
  */
 function ImageLayer({ uri, active }: { uri: string; active: boolean }) {
   const opacity = useSharedValue(active ? 1 : 0);
@@ -57,20 +58,66 @@ function ImageLayer({ uri, active }: { uri: string; active: boolean }) {
 }
 
 /**
+ * The video slide. It owns its player, so a native player exists only while a
+ * video is on screen. A carousel without a video (or showing an image) holds
+ * no decoder at all.
+ */
+function VideoLayer({
+  uri,
+  loop,
+  onEnd,
+}: {
+  uri: string;
+  loop: boolean;
+  onEnd: () => void;
+}) {
+  // useCaching persists the downloaded video to disk (ExoPlayer/AVPlayer cache)
+  // keyed by source — without it expo-video re-fetches over the network every
+  // time this layer mounts (every loop of the carousel, and the idle screen
+  // resetting after each customer). MP4 (not HLS), so the iOS caching
+  // restriction on HLS sources doesn't apply here.
+  const player = useVideoPlayer({ uri, useCaching: true }, (p) => {
+    p.loop = loop;
+    p.muted = true;
+    p.play();
+  });
+
+  useEffect(() => {
+    // Keep loop in sync if the image set changes without recreating the player.
+    player.loop = loop;
+    // When the video is the only asset, native looping replays it; otherwise
+    // it plays once and hands back to the image cycle.
+    if (loop) return;
+    const sub = player.addListener("playToEnd", onEnd);
+    return () => sub.remove();
+  }, [player, loop, onEnd]);
+
+  return (
+    <VideoView
+      player={player}
+      style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+      contentFit="cover"
+      nativeControls={false}
+    />
+  );
+}
+
+/**
  * Media-only, looping cross-fade carousel over images (timed) and a video
  * (plays to completion), used for both the idle/attract screen and the
  * ordering-screen banner in Template B. Renders nothing (null) when there's
  * no media — callers decide the fallback.
  *
- * Image slides are all permanently mounted as stacked, opacity-only layers
- * (see ImageLayer) rather than mounted/unmounted per transition — a freshly
- * mounted native Image view takes at least a frame to resolve/decode/paint
- * even on a cache hit, and doing that mount *during* the opacity ramp-in
- * produced a visible white flash before the real content appeared. Keeping
- * every image layer alive the whole time removes that race entirely: only
- * opacity ever changes. Video is the exception — only the active video slide
- * mounts a player, since keeping N video players alive simultaneously is
- * genuinely expensive, not just a decode blip.
+ * Image slides are stacked, opacity-only layers rather than mounted/unmounted
+ * per transition — a freshly mounted native Image view takes at least a frame
+ * to resolve/decode/paint even on a cache hit, and doing that mount *during*
+ * the opacity ramp-in produced a visible white flash before the real content
+ * appeared. Only three layers are mounted at a time, though: the current
+ * slide, the next one (mounted a whole slide early, so it is decoded before it
+ * fades in) and the previous one (so it can finish fading out). Each layer is
+ * a full-screen bitmap, and keeping every slide decoded cost one per slide for
+ * as long as the kiosk sat idle. Video is the exception: only the active video
+ * slide mounts a player (VideoLayer).
  */
 export function KioskMediaCarousel({
   imageUrls,
@@ -114,52 +161,26 @@ export function KioskMediaCarousel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slide, slides.length]);
 
-  const videoUri = slide?.kind === "video" ? slide.uri : null;
-  // When the video is the ONLY asset, loop it natively for a seamless self-loop
-  // instead of advancing the carousel. When images are also present, the video
-  // plays once and hands back to the image cycle (playToEnd listener below).
-  const videoOnly = imageUrls.length === 0;
-  // useCaching persists the downloaded video to disk (ExoPlayer/AVPlayer cache)
-  // keyed by source — without it expo-video re-fetches over the network on
-  // every remount (e.g. the idle screen resetting after each customer), even
-  // though the same idle video is reused every loop. MP4 (not HLS), so the
-  // iOS caching restriction on HLS sources doesn't apply here.
-  const player = useVideoPlayer(
-    videoUri ? { uri: videoUri, useCaching: true } : "",
-    (p) => {
-      p.loop = videoOnly;
-      p.muted = true;
-    },
-  );
-
-  useEffect(() => {
-    if (!videoUri) return;
-    // Keep loop in sync if the image set changes without recreating the player.
-    player.loop = videoOnly;
-    player.play();
-    // Only advance on end when there are other slides to move to; when the video
-    // is the only asset, native looping replays it (no listener needed).
-    if (videoOnly) return;
-    const sub = player.addListener("playToEnd", () => {
-      advance();
-    });
-    return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoUri, player, videoOnly]);
-
   if (!slide) return null;
+
+  const count = slides.length;
+  const isMounted = (i: number) =>
+    i === index || i === (index + 1) % count || i === (index - 1 + count) % count;
 
   return (
     <View style={[{ overflow: "hidden" }, style]} pointerEvents={pointerEvents}>
       {slides.map((s, i) =>
-        s.kind === "image" ? <ImageLayer key={s.uri} uri={s.uri} active={i === index} /> : null,
+        s.kind === "image" && isMounted(i) ? (
+          <ImageLayer key={s.uri} uri={s.uri} active={i === index} />
+        ) : null,
       )}
       {slide.kind === "video" ? (
-        <VideoView
-          player={player}
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-          contentFit="cover"
-          nativeControls={false}
+        // When the video is the only asset, loop it natively for a seamless
+        // self-loop instead of advancing the carousel.
+        <VideoLayer
+          uri={slide.uri}
+          loop={imageUrls.length === 0}
+          onEnd={advance}
         />
       ) : null}
     </View>

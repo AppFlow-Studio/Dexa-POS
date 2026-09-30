@@ -19,11 +19,16 @@
 //      Castles or Dejavoo sale.
 //   2. The customer picks a tip on the CFD; CFDProvider's tip-adjust
 //      runner reads `captured`, marks `inFlight`, runs the adjust, then
-//      calls `finishInFlight()` to clear `captured` and bump
-//      `lastCompletedAt` so any still-mounted UI can react.
-//   3. If the customer never responds, the captured sits until the
-//      next sale's setCaptured() overwrites it (or until the host
-//      restarts).
+//      calls `finishInFlight()` to release the slot and clear `captured`.
+//      UI that is waiting on the tip step watches `captured` / `inFlight`.
+//   3. If the customer never responds, CFDProvider clears the capture
+//      at `expiresAt`. The timer lives there, not in CardPaymentView,
+//      because that view unmounts the moment the sale completes.
+//
+// `referenceId` is unique per sale and is the capture's identity.
+// clear() and finishInFlight() take it so a late timeout or a finishing
+// runner for one guest can never erase the next guest's capture on a
+// split check.
 
 import { create } from "zustand";
 
@@ -47,29 +52,32 @@ export interface CapturedPayment {
   dbOrderId?: string;
   /** Date.now() at capture — diagnostic only. */
   capturedAt: number;
+  /** Date.now() after which the customer's chance to tip has passed. */
+  expiresAt: number;
 }
 
 interface TipAdjustState {
   captured: CapturedPayment | null;
   inFlight: boolean;
-  /**
-   * Bumped (Date.now()) every time the runner finishes (success, error,
-   * or skip). UI components observe this to transition their local
-   * status, e.g. CardPaymentView flipping to 'success' when its mounted
-   * status was 'tip_adjusting'.
-   */
-  lastCompletedAt: number | null;
 
   setCaptured: (payment: CapturedPayment | null) => void;
   startInFlight: () => boolean;
-  finishInFlight: () => void;
-  clear: () => void;
+  /**
+   * Release the in-flight slot. Drops the capture only if it is still the
+   * sale identified by `referenceId` (any capture when omitted).
+   */
+  finishInFlight: (referenceId?: string) => void;
+  /**
+   * Drop the capture if it is the sale identified by `referenceId` (any
+   * capture when omitted). Never releases the in-flight slot — only the
+   * runner that took it does, through finishInFlight.
+   */
+  clear: (referenceId?: string) => void;
 }
 
 export const useTipAdjustStore = create<TipAdjustState>()((set, get) => ({
   captured: null,
   inFlight: false,
-  lastCompletedAt: null,
 
   setCaptured: (payment) => set({ captured: payment }),
 
@@ -81,16 +89,17 @@ export const useTipAdjustStore = create<TipAdjustState>()((set, get) => ({
     return true;
   },
 
-  finishInFlight: () =>
+  finishInFlight: (referenceId) => {
+    const ownsCapture =
+      !referenceId || get().captured?.referenceId === referenceId;
     set({
       inFlight: false,
-      captured: null,
-      lastCompletedAt: Date.now(),
-    }),
+      ...(ownsCapture ? { captured: null } : {}),
+    });
+  },
 
-  clear: () =>
-    set({
-      captured: null,
-      inFlight: false,
-    }),
+  clear: (referenceId) => {
+    if (referenceId && get().captured?.referenceId !== referenceId) return;
+    set({ captured: null });
+  },
 }));

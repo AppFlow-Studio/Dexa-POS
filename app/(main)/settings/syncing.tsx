@@ -1,6 +1,10 @@
 import { FailedSyncsPanel } from "@/components/settings/sync-status/FailedSyncsPanel";
 import { SyncQueuePanel } from "@/components/settings/sync-status/SyncQueuePanel";
-import { menuVersionQueryKey } from "@/hooks/pos/useMenuVersionWatch";
+import {
+  fetchMenuVersion,
+  menuVersionQueryKey,
+  probeVersionFromEnvelope,
+} from "@/hooks/pos/useMenuVersionWatch";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors, spinnerColor } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
@@ -44,7 +48,14 @@ const SyncingScreen: React.FC = () => {
     useFloorPlanStore.getState().setActiveFloorPlanId(defaultPlan?.id || null);
 
     if (defaultPlan?.id) {
-      await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
+      // A manual sync means "read it again": wait for the reconcile, and run
+      // one even when the cache is fresh enough that a switch would skip it.
+      const path = await useFloorPlanStore
+        .getState()
+        .setActiveFloorPlan(defaultPlan.id, { waitForReconcile: true });
+      if (path === "cacheHit/fresh") {
+        await useFloorPlanStore.getState().loadFloorPlanStatus(true);
+      }
     }
   };
 
@@ -106,17 +117,18 @@ const SyncingScreen: React.FC = () => {
     if (!supabase || !locationId) return;
     setSyncingKey("menu_version");
     try {
-      const { data, error } = await supabase.rpc("get_pos_menu_version_v1", {
-        p_location_id: locationId,
-      });
-      if (error) throw error;
-
-      const remoteVersion = (data as string | null) ?? null;
-      const appliedVersion =
+      // The same probe the background watcher polls, compared in the probe's
+      // format: a v2 envelope carries a marker the v2 token does not, and a v3
+      // envelope is already byte-identical to the v3 token. Comparing the raw
+      // envelope against v1 or v2 never matched, so every tap pulled the full
+      // menu and "Menu Up to Date" could not be reached.
+      const remoteVersion = await fetchMenuVersion(supabase, locationId);
+      const appliedVersion = probeVersionFromEnvelope(
         queryClient.getQueryData<{ version?: string | null }>([
           "pos_sync",
           locationId,
-        ])?.version ?? null;
+        ])?.version,
+      );
 
       if (remoteVersion && appliedVersion && remoteVersion === appliedVersion) {
         toastService.show({

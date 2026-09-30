@@ -45,8 +45,20 @@ import {
 } from "@/services/localFirst/localWrites";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { toastService } from "@/lib/toastService";
+import { jitterMs } from "@/lib/network/jitter";
+import { useOrderStore } from "@/stores/useOrderStore";
 
 const DRAIN_INTERVAL_MS = 30_000;
+// On a reconnect (not on mount), release the queue after 0-3s: a Supabase or
+// network blip flips every device back online at the same moment.
+const RECONNECT_DRAIN_JITTER_MS = 3_000;
+
+/**
+ * The startup repair (saveUnsavedItems with `startup`) runs once per launch: it
+ * is the only pass allowed to take lines without a failure marker, which is
+ * safe only while nothing can be mid-write — i.e. before this session adds.
+ */
+let startupRepairDone = false;
 
 /** Any local-first write path on at all? Nothing to drain otherwise. */
 const ANY_LOCAL_WRITES =
@@ -58,8 +70,13 @@ export function useOutboxDrain(): void {
   // a drain over a degraded link is how a struggling connection gets worse.
   const { isOnline } = useNetworkStatus();
   const runningRef = useRef(false);
+  // A nudge that lands mid-drain. Dropping it left an item added while the
+  // previous one was in flight waiting for the 30s tick (never, in slow mode).
+  const rerunRef = useRef(false);
   // Last reported parked count, so the reason dump prints once per change.
   const lastReportedFailedRef = useRef(-1);
+  // null until the first effect run, so mount is not treated as a reconnect.
+  const wasOnlineRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (!ANY_LOCAL_WRITES) {
@@ -96,7 +113,11 @@ export function useOutboxDrain(): void {
     });
 
     const run = async () => {
-      if (cancelled || runningRef.current) return;
+      if (cancelled) return;
+      if (runningRef.current) {
+        rerunRef.current = true;
+        return;
+      }
       // Never push while offline. `nudgeDrain` fires on every local write, and
       // a drain with no network turns each one into a failed attempt with an
       // exponentially longer `next_at` — see nudgeDrain's header. The write is
@@ -151,6 +172,30 @@ export function useOutboxDrain(): void {
         }
       } finally {
         runningRef.current = false;
+        if (rerunRef.current && !cancelled) {
+          rerunRef.current = false;
+          setTimeout(() => void run(), 0);
+        }
+      }
+    };
+
+    // Lines whose local save failed ("database is locked") live only in
+    // memory until written again — invisible to the server, the kitchen and
+    // Previous Orders. Local writes need no network, so this runs online or
+    // not; lines already shown as sent get their kitchen send fired.
+    let repairing = false;
+    const repairUnsavedItems = async (startup: boolean) => {
+      if (!LOCAL_WRITES_ITEMS || repairing || cancelled) return;
+      if (!isLocalDbReady()) return;
+      repairing = true;
+      try {
+        await useOrderStore
+          .getState()
+          .saveUnsavedItems({ startup, resendLostKitchenItems: true });
+      } catch (error) {
+        console.warn("[LF] unsaved-item repair failed:", error);
+      } finally {
+        repairing = false;
       }
     };
 
@@ -180,6 +225,10 @@ export function useOutboxDrain(): void {
       // Protect sessions seated in a PREVIOUS run of the app from being
       // cleared by the first floor-plan snapshot of this one.
       await seedUnsyncedSessions();
+      if (!startupRepairDone) {
+        startupRepairDone = true;
+        await repairUnsavedItems(true);
+      }
       // Kick a drain now that the requeued ops are eligible.
       if (isOnline) void run();
     })();
@@ -192,6 +241,8 @@ export function useOutboxDrain(): void {
     // operator as sync being broken rather than merely slow. A reconnect
     // invalidates the reason those attempts failed, so it invalidates their
     // schedule too. Runs BEFORE the drain, or the drain claims nothing.
+    const isReconnect = isOnline && wasOnlineRef.current === false;
+    wasOnlineRef.current = isOnline;
     if (isOnline) {
       void (async () => {
         if (!isLocalDbReady()) {
@@ -199,11 +250,17 @@ export function useOutboxDrain(): void {
           if (!db || cancelled) return;
         }
         await resetBackoffForReconnect();
+        if (isReconnect) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, jitterMs(RECONNECT_DRAIN_JITTER_MS)),
+          );
+        }
         if (!cancelled) void run();
       })();
     }
 
     const timer = setInterval(() => {
+      void repairUnsavedItems(false);
       if (isOnline) void run();
     }, DRAIN_INTERVAL_MS);
 

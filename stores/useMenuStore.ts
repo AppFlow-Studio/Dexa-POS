@@ -4,14 +4,14 @@ import {
   sortSyncCategoryItems
 } from '@/lib/menuSyncDedupe'
 import { extractMenuItemPlaceholderIconKey } from '@/lib/menuItemPlaceholderIcon'
+import { isWithinSchedules, mapApiSchedules } from '@/lib/menu/menuSchedule'
 import {
   Category,
   CustomPricing,
   Menu,
   MenuItemType,
   ModifierCategory,
-  ModifierOption,
-  Schedule
+  ModifierOption
 } from '@/lib/types'
 import {
   ActiveModifierSnoozeSync,
@@ -189,10 +189,17 @@ interface MenuState {
   ) => void
 
   // Scheduling
-  setMenuSchedules: (id: string, schedules: Schedule[]) => void
-  setCategorySchedules: (id: string, schedules: Schedule[]) => void
   isMenuAvailableNow: (id: string, at?: Date) => boolean
-  isCategoryAvailableNow: (name: string, at?: Date) => boolean
+  /**
+   * Schedule + active check for one category. Pass `menuId` whenever the
+   * caller renders the category inside a menu: the per-menu entry carries that
+   * menu's active flag, and a category missing from the menu is closed.
+   */
+  isCategoryAvailableNow: (
+    categoryId: string,
+    menuId?: string | null,
+    at?: Date
+  ) => boolean
   setMenuSchedulingEnabled: (isEnabled: boolean) => void
 
   // MENU STOCK (optional per-menu-item)
@@ -235,16 +242,6 @@ interface MenuState {
       availability?: boolean
     }
   ) => void
-
-  // Category schedule info helper
-  getCategoryScheduleInfo: (
-    name: string,
-    at?: Date
-  ) => {
-    daysAvailable: string[]
-    availableToday: boolean
-    timeframe: string | null
-  }
 
   addTemporaryMenuAccess: (menuName: string) => void
   addTemporaryCategoryAccess: (categoryName: string) => void
@@ -419,6 +416,7 @@ const transformMenuItemsFromSync = (
           createdAt: new Date().toISOString(),
           location_id: catEntry.category.location_id,
           location_name: undefined, // Could map if available
+          schedules: mapApiSchedules(catEntry.schedules),
           items: items // NESTED ITEMS specific to this context
         }
       })
@@ -442,40 +440,7 @@ const transformMenuItemsFromSync = (
           if (orderDiff !== 0) return orderDiff
           return a.name.localeCompare(b.name)
         }), // Full Category Objects, sorted
-        schedules: (menu.schedules || []).flatMap(s => {
-          if (!s.schedule.is_active || !s.schedule.time_slots?.length) return []
-
-          // API day_of_week: 0=Monday..6=Sunday → JS getDay(): 0=Sunday..6=Saturday
-          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-          const apiDayToJsDay = (apiDay: number): number => (apiDay + 1) % 7
-
-          // Group time slots by start/end time to create Schedule objects
-          const timeSlotGroups = new Map<
-            string,
-            { startTime: string; endTime: string; days: Set<string> }
-          >()
-
-          s.schedule.time_slots.forEach((ts: any) => {
-            const startTime = ts.start_time || '00:00:00'
-            const endTime = ts.end_time || '23:59:59'
-            const key = `${startTime}-${endTime}`
-
-            if (!timeSlotGroups.has(key)) {
-              timeSlotGroups.set(key, { startTime, endTime, days: new Set() })
-            }
-            const jsDay = apiDayToJsDay(ts.day_of_week)
-            timeSlotGroups.get(key)!.days.add(dayNames[jsDay])
-          })
-
-          return Array.from(timeSlotGroups.values()).map(group => ({
-            id: `${s.id}-${group.startTime}-${group.endTime}`,
-            name: s.schedule.name,
-            startTime: group.startTime,
-            endTime: group.endTime,
-            days: Array.from(group.days),
-            isActive: s.schedule.is_active
-          }))
-        }),
+        schedules: mapApiSchedules(menu.schedules),
         createdAt: menu.created_at,
         updatedAt: menu.updated_at,
         location_id: menu.location_id
@@ -1812,20 +1777,6 @@ export const useMenuStore = create<MenuState>((set, get) => {
     },
 
     // Scheduling
-    setMenuSchedules: (id: string, schedules: Schedule[]) => {
-      set(state => ({
-        menus: state.menus.map((m: Menu) =>
-          m.id === id ? { ...m, schedules } : m
-        )
-      }))
-    },
-    setCategorySchedules: (id: string, schedules: Schedule[]) => {
-      set(state => ({
-        categories: state.categories.map((c: Category) =>
-          c.id === id ? { ...c, schedules } : c
-        )
-      }))
-    },
     isMenuAvailableNow: (id: string, at?: Date): boolean => {
       const state = get()
       const menu = state.menus.find((m: Menu) => m.id === id)
@@ -1834,17 +1785,29 @@ export const useMenuStore = create<MenuState>((set, get) => {
       // If global scheduling is disabled, treat as always available when active
       if (!state.isMenuSchedulingEnabled) return true
       if (!menu.schedules || menu.schedules.length === 0) return true
-      return isNowInAnySchedule(menu.schedules, at)
+      return isWithinSchedules(menu.schedules, at)
     },
-    isCategoryAvailableNow: (name: string, at?: Date): boolean => {
+    isCategoryAvailableNow: (
+      categoryId: string,
+      menuId?: string | null,
+      at?: Date
+    ): boolean => {
       const state = get()
-      const cat = state.categories.find((c: Category) => c.name === name)
+      // By id, never by name: a category's name is per-menu (custom_title), so
+      // a name lookup against the flat first-menu-wins list misses renamed
+      // copies and reports them closed. Arrays, not the *ById maps — the
+      // toggle setters only update the arrays.
+      const cat = menuId
+        ? state.menus
+            .find((m: Menu) => m.id === menuId)
+            ?.categories.find((c: Category) => c.id === categoryId)
+        : state.categories.find((c: Category) => c.id === categoryId)
       if (!cat) return false
       if (!cat.isActive) return false
       // If global scheduling is disabled, treat as always available when active
       if (!state.isMenuSchedulingEnabled) return true
       if (!cat.schedules || cat.schedules.length === 0) return true
-      return isNowInAnySchedule(cat.schedules, at)
+      return isWithinSchedules(cat.schedules, at)
     },
     setMenuSchedulingEnabled: (isEnabled: boolean) =>
       set(() => ({ isMenuSchedulingEnabled: isEnabled })),
@@ -2131,37 +2094,6 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }))
     },
 
-    // Category schedule info helper
-    getCategoryScheduleInfo: (name: string, at?: Date) => {
-      const state = get()
-      const cat = state.categories.find(c => c.name === name)
-      const schedules = (cat?.schedules || []).filter(r => r.isActive)
-      const daysAvailable = Array.from(
-        new Set(schedules.flatMap(r => r.days))
-      ) as string[]
-      const now = at ?? new Date()
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      const todayKey = dayNames[now.getDay()]
-      const todays = schedules.filter(r => r.days.includes(todayKey as any))
-      const availableToday = todays.length > 0
-
-      // If multiple windows today, return the first window as timeframe (or join)
-      const formatTime = (t: string) => {
-        return new Date(t).toLocaleTimeString([], {
-          hour: 'numeric',
-          minute: '2-digit'
-        })
-      }
-      let timeframe: string | null = null
-      if (availableToday) {
-        // Combine all windows into comma-separated ranges
-        timeframe = todays
-          .map(r => `${formatTime(r.startTime)} to ${formatTime(r.endTime)}`)
-          .join(', ')
-      }
-
-      return { daysAvailable, availableToday, timeframe }
-    },
     addTemporaryMenuAccess: menuName => {
       set(state => ({
         temporaryActiveMenus: [
@@ -2673,60 +2605,3 @@ export const useMenuStore = create<MenuState>((set, get) => {
 })
 
 // No selector hooks - use the store directly to avoid recursion
-
-function isNowInAnySchedule (schedules: Schedule[], at?: Date): boolean {
-  const now = at ?? new Date()
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const day = dayNames[now.getDay()]
-  const minutes = now.getHours() * 60 + now.getMinutes()
-
-  // Helper to parse time string (HH:MM:SS or HH:MM format) to minutes since midnight
-  const parseTimeToMinutes = (timeStr: string): number => {
-    if (!timeStr) return 0
-
-    // Handle ISO date strings (if timeStr contains 'T' or is a full ISO date)
-    if (timeStr.includes('T') || timeStr.includes('-')) {
-      const date = new Date(timeStr)
-      if (!isNaN(date.getTime())) {
-        return date.getHours() * 60 + date.getMinutes()
-      }
-    }
-
-    // Handle HH:MM:SS or HH:MM format
-    const parts = timeStr.split(':')
-    if (parts.length >= 2) {
-      const hours = parseInt(parts[0], 10) || 0
-      const mins = parseInt(parts[1], 10) || 0
-      return hours * 60 + mins
-    }
-
-    return 0
-  }
-
-  return schedules.some(rule => {
-    if (!rule.isActive) return false
-    if (!rule.days || rule.days.length === 0) return false
-    if (!rule.days.includes(day)) return false
-
-    // Parse time strings to minutes since midnight
-    const startM = parseTimeToMinutes(rule.startTime)
-    let endM = parseTimeToMinutes(rule.endTime)
-
-    // Handle crossing midnight (e.g. 2 AM < 10 PM)
-    // If endM is less than startM, we assume it's next day, so add 24h
-    if (endM < startM) {
-      endM += 24 * 60
-    }
-
-    // Check if current time falls within the schedule
-    if (endM >= 1440) {
-      // It's an overnight shift (e.g. 22:00 to 26:00/02:00)
-      // We are in it if we are >= start (today) OR < end (today)
-      const visibleEndM = endM % 1440
-      return minutes >= startM || minutes < visibleEndM
-    } else {
-      // Normal day shift
-      return minutes >= startM && minutes < endM
-    }
-  })
-}

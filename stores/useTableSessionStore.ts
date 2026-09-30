@@ -53,6 +53,7 @@ import { useEmployeeStore } from "./useEmployeeStore";
 import {
     buildTablesById,
     getFloorPlanClient,
+    normalizeMergedTables,
     useFloorPlanStore,
 } from "./useFloorPlanStore";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
@@ -1024,11 +1025,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           if (changedIds) {
             const changedSet = new Set(changedIds);
-            let anyChanged = false;
-            let newTablesById = floorPlanState.tablesById;
+            // Copied ONCE, on the first real change — not once per table.
+            let newTablesById: typeof floorPlanState.tablesById | null = null;
 
             for (const tableId of changedIds) {
-              const existingTable = newTablesById[tableId];
+              const existingTable = floorPlanState.tablesById[tableId];
               if (!existingTable) continue;
 
               const session = sessions[tableId];
@@ -1038,19 +1039,19 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
               if (!needsUpdate) continue;
 
-              anyChanged = true;
-              const updated = session
+              newTablesById ??= { ...floorPlanState.tablesById };
+              newTablesById[tableId] = session
                 ? { ...existingTable, session }
                 : { ...existingTable, session: undefined };
-              newTablesById = { ...newTablesById, [tableId]: updated };
             }
 
-            if (!anyChanged) return;
+            if (!newTablesById) return;
 
+            const nextById = newTablesById;
             const newTables = floorPlanState.tables.map((t) =>
               changedSet.has(t.id) &&
-              newTablesById[t.id] !== floorPlanState.tablesById[t.id]
-                ? newTablesById[t.id]
+              nextById[t.id] !== floorPlanState.tablesById[t.id]
+                ? nextById[t.id]
                 : t,
             );
             useFloorPlanStore.setState({
@@ -1095,8 +1096,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               require("@/stores/useFloorPlanStore") as typeof import("@/stores/useFloorPlanStore");
             const fpState = useFloorPlanStore.getState();
 
-            // Collect all known table IDs from every cached floorplan
-            // plus the currently-active tables.
+            // Every table this station knows of. The plans' own geometry is
+            // the primary source: it is complete the moment the plan list
+            // loads, whereas the cache only fills as plans are read. Sourcing
+            // from the cache alone cleared every session on a plan that had
+            // not been read yet ("all tables available" after boot, for as
+            // long as the recently-cleared TTL kept stripping them again).
             const knownTableIds = new Set<string>();
             for (const table of fpState.tables) {
               knownTableIds.add(table.id);
@@ -1105,6 +1110,19 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               for (const table of cacheEntry.tables) {
                 knownTableIds.add(table.id);
               }
+            }
+            for (const plan of fpState.floorPlans) {
+              if (Array.isArray(plan.objects)) {
+                for (const object of plan.objects) {
+                  knownTableIds.add(object.id);
+                }
+                continue;
+              }
+              // A plan with no geometry and no cache entry is a plan whose
+              // tables are unknown. Its sessions cannot be told from orphans,
+              // so nothing is stripped this round.
+              const isActive = plan.id === fpState.activeFloorPlanId;
+              if (!isActive && !fpState.floorPlanCache[plan.id]) return;
             }
 
             if (knownTableIds.size === 0) return; // nothing to compare against
@@ -1308,13 +1326,13 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             order_id:
               params.localOrderId ||
               (shouldCreateOrder ? localOrderId : undefined),
-            reservation_id: params.reservationId ?? null,
             current_course: 1,
             needs_attention: false,
             is_vip: false,
             server_staff_id: serverStaffId ?? undefined,
-            merged_tables:
-              params.tableIds.length > 1 ? [...params.tableIds] : undefined,
+            // Same shape every floor read maps to: sorted, self included,
+            // undefined for a single table.
+            merged_tables: normalizeMergedTables(params.tableIds),
           };
 
           get().batchDispatch(
@@ -1798,7 +1816,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             // Stamp the session onto the new target tables.
             const movedSession: TableSession = {
               ...moving,
-              merged_tables: newTableIds.length > 1 ? newTableIds : undefined,
+              merged_tables: normalizeMergedTables(newTableIds),
             };
             for (const tId of newTableIds) {
               optimistic.push({
@@ -1851,11 +1869,18 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           if (primarySession) {
             const existingMerged = primarySession.merged_tables ?? [];
-            const merged =
-              existingMerged.length > 0
-                ? [...existingMerged, tableId] // Primary already in list from prior merge
-                : [primaryTableId!, tableId]; // First merge: include both tables
-            const updatedSession = { ...primarySession, merged_tables: merged };
+            // Always the whole group, the primary included, sorted: the shape
+            // every floor read maps to (normalizeMergedTables).
+            const mergedIds = normalizeMergedTables([
+              primaryTableId!,
+              ...existingMerged,
+              tableId,
+            ]);
+            const merged = mergedIds ?? [primaryTableId!];
+            const updatedSession = {
+              ...primarySession,
+              merged_tables: mergedIds,
+            };
             const batch: Array<{ tableId: string; action: SessionAction }> = [];
             for (const tid of merged) {
               batch.push({

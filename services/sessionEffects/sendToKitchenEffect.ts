@@ -36,6 +36,7 @@ import { OrderService } from "@/services/orderService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
   getOrderStoreSupabaseClient,
+  holdBackUnsavedKitchenItems,
   useOrderStore,
 } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -113,15 +114,15 @@ export async function sendToKitchenEffect(
 async function runSendToKitchenEffect(
   ctx: SendToKitchenContext,
 ): Promise<KitchenEffectOutcome> {
-  const { itemIds, orderId } = ctx.action;
+  const { itemIds: requestedItemIds, orderId } = ctx.action;
   let { dbItemIds, dbOrderId } = ctx.action;
   const supabase = getOrderStoreSupabaseClient();
 
   if (!supabase) {
-    if (itemIds.length > 0) {
+    if (requestedItemIds.length > 0) {
       await queueKitchenSend(
         orderId,
-        itemIds,
+        requestedItemIds,
         createCurrentContext(),
         true,
       );
@@ -137,9 +138,20 @@ async function runSendToKitchenEffect(
   // add_order_item round trip, so a slow tablet bailed into the offline queue
   // for what was a normal send.
   await useOrderStore.getState().waitForPendingSyncs(orderId, {
-    itemIds,
+    itemIds: requestedItemIds,
     maxMs: DEADLINES.sendToKitchen,
   });
+
+  // Lines whose local save failed can never be routed: save them now, or put
+  // them back to unsent (see holdBackUnsavedKitchenItems).
+  const heldBack = await holdBackUnsavedKitchenItems(orderId, requestedItemIds);
+  const itemIds = requestedItemIds.filter((id) => !heldBack.has(id));
+  if (heldBack.size > 0 && itemIds.length === 0) {
+    return {
+      status: "rejected",
+      error: new Error("Items could not be saved on this tablet"),
+    };
+  }
 
   const freshOrder = useOrderStore.getState().ordersById[orderId];
   if (freshOrder) dbOrderId = freshOrder.db_order_id ?? dbOrderId;

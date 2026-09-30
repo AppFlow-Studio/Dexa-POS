@@ -96,6 +96,11 @@ export interface RefundResult {
   reversals?: Array<{ reversalId: string; paymentId: string; amount: number }>;
   terminalResponse?: DejavooRefundResponse | Record<string, unknown>;
   error?: string;
+  /**
+   * Something staff should know about a refund that went through, e.g. the
+   * terminal cancelled the whole charge (tip included) instead of refunding.
+   */
+  note?: string;
 }
 
 export interface PaymentRefundContext {

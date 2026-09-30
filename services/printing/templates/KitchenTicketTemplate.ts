@@ -55,6 +55,14 @@ export function buildKitchenTicketCommands(
     b.doubleHeight(false);
   }
 
+  // Customer name (kiosk / online / POS-entered) so the order can be called
+  // out. Not tied to showOrderType — the name is what the kitchen hands off by.
+  if (data.customerName) {
+    b.doubleHeight(true);
+    b.textLine(`NAME: ${data.customerName}`);
+    b.doubleHeight(false);
+  }
+
   b.bold(false);
 
   // Server name

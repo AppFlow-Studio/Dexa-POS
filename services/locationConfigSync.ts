@@ -19,7 +19,11 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { refillOrderNumberReservation } from '@/lib/orderNumberReservation'
+import {
+  beginLocationConfigRead,
+  useLocationConfigStore,
+} from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import type { ConfigNamespace } from '@/types/locationConfig'
 import { DEFAULT_POS_CONFIG } from '@/types/locationConfig'
@@ -71,6 +75,8 @@ async function _fetchAndHydrate(
   locationId: string,
   stationId: string | null = null
 ) {
+  // Taken before the fetch so hydrate knows which local edits it may predate.
+  const readStartedAt = beginLocationConfigRead()
   try {
     let config: Record<string, any> | null = null
     let shouldBackfillLocationDefaults = false
@@ -97,12 +103,23 @@ async function _fetchAndHydrate(
       shouldBackfillLocationDefaults = true
     }
 
-    useLocationConfigStore.getState().hydrateConfig(locationId, config, stationId)
+    useLocationConfigStore
+      .getState()
+      .hydrateConfig(locationId, config, stationId, readStartedAt)
     if (__DEV__) {
       console.log(
         `${LOG_TAG} Hydrated config for location ${locationId}` +
           (stationId ? ` / station ${stationId}` : '')
       )
+    }
+
+    // Location-wide numbering: keep one number from the shared counter in hand
+    // so New Order shows its final number at once.
+    if (
+      useLocationConfigStore.getState().config.ordering.orderNumberScope ===
+      'location_wide'
+    ) {
+      void refillOrderNumberReservation(locationId, supabase)
     }
 
     // Backfill only when reading raw location config. Effective station config

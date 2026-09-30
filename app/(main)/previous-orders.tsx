@@ -30,6 +30,7 @@ import {
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
+import { hasLinesNotOnServer } from "@/lib/unsavedItems";
 import {
     DEFAULT_HISTORY_FILTERS,
     historyFilterKey,
@@ -37,6 +38,7 @@ import {
 import { useLocalDbSyncStore } from "@/stores/useLocalDbSyncStore";
 import {
     calculateOrderTotalsForOrder,
+    guardOrderVoid,
     useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -329,13 +331,14 @@ const PreviousOrdersScreen = () => {
   const { isSyncing, hasCompletedCycle } = useLocalDbSyncStore();
   const freshness = useLocalFreshness("orders", selectedStore?.id ?? null);
 
-  // OFFLINE ONLY: backend unreachable, so previousOrders can't refresh. Surface
+  // OFFLINE: backend unreachable, so previousOrders can't refresh. Surface
   // the device's own non-final orders (active + working set + own-station open)
-  // so open/unpaid offline orders are visible too, each badged "Offline". Empty
-  // when online (list stays server-fetched only).
+  // so open/unpaid offline orders are visible too, each badged "Offline".
+  // ONLINE: the list is server-fetched, so an own-station order whose lines
+  // the server doesn't have yet (a failed local save being repaired) would be
+  // invisible — the server sees an empty draft. Surface just those.
   const offlineLiveOrders = useOrderStore(
     useShallow((s) => {
-      if (rawIsOnline) return [] as OrderProfile[];
       const finalStatuses = new Set([
         "completed",
         "void",
@@ -343,9 +346,11 @@ const PreviousOrdersScreen = () => {
         "voided",
       ]);
       const ids = new Set<string>();
-      if (s.activeOrderId) ids.add(s.activeOrderId);
-      for (const wsId of s.workingSetOrderIds || []) {
-        ids.add(s.dbOrderIdIndex[wsId] || wsId);
+      if (!rawIsOnline) {
+        if (s.activeOrderId) ids.add(s.activeOrderId);
+        for (const wsId of s.workingSetOrderIds || []) {
+          ids.add(s.dbOrderIdIndex[wsId] || wsId);
+        }
       }
       for (const id of s.orderIds) {
         if (ids.has(id)) continue;
@@ -353,6 +358,7 @@ const PreviousOrdersScreen = () => {
         if (!o) continue;
         if (o.station_id !== s.currentStationId) continue;
         if (finalStatuses.has(o.order_status ?? "")) continue;
+        if (rawIsOnline && !hasLinesNotOnServer(o)) continue;
         ids.add(id);
       }
       const result: OrderProfile[] = [];
@@ -438,9 +444,10 @@ const PreviousOrdersScreen = () => {
 
   const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
 
-  // Server-fetched history mapped to OrderProfile. Online: exactly the
-  // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
-  // pending orders) is prepended so open/unpaid offline orders show too.
+  // Server-fetched history mapped to OrderProfile. Online: the date-bounded
+  // backend fetch, plus own orders with lines the server doesn't have yet.
+  // Offline: offlineLiveOrders (the device's own pending orders) is prepended
+  // so open/unpaid offline orders show too.
   const allOrders: OrderProfile[] = useMemo(() => {
     const config = dayGroupingConfig;
     const rawMappedHistory: OrderProfile[] = previousOrders.map((po) => {
@@ -744,6 +751,7 @@ const PreviousOrdersScreen = () => {
   const handleVoidOrder = useCallback(
     (order: OrderProfile) => {
       if (!order.db_order_id) return;
+      if (!guardOrderVoid(order.id)) return;
       voidOrderMutation.mutate({ dbOrderId: order.db_order_id });
     },
     [voidOrderMutation],

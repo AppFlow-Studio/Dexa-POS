@@ -36,6 +36,7 @@ import {
 import { getDeviceId } from "@/lib/deviceId";
 import { generateLocalOrderNumbers } from "@/lib/localOrderSequence";
 import { markSessionUnsynced } from "@/lib/localFirst/unsyncedSessions";
+import { nudgeDrain } from "@/services/localFirst/outboxDrain";
 import { v4 as uuidv4 } from "uuid";
 
 import type {
@@ -46,6 +47,7 @@ import type {
   SeatGuestsPayload,
   SendToKitchenPayload,
   SetItemSeatPayload,
+  SetOrderCreatorPayload,
   UpdateItemQuantityPayload,
   VoidItemPayload,
 } from "@/services/localFirst/opHandlers";
@@ -846,6 +848,43 @@ export async function setLocalItemSeat(
   return { ok: true };
 }
 
+export interface SetLocalOrderCreatorInput {
+  orderId: string;
+  staffId: string;
+}
+
+/** Re-credit an order to another staff member. */
+export async function setLocalOrderCreator(
+  input: SetLocalOrderCreatorInput,
+): Promise<LocalWriteResult<void>> {
+  const ts = nowIso();
+  const payload: SetOrderCreatorPayload = {
+    orderId: input.orderId,
+    staffId: input.staffId,
+  };
+
+  const result = await commitLocalWrite(
+    [
+      {
+        sql: `UPDATE orders SET created_by_staff_id = ?, updated_at = ?, _sync_status = 'local' WHERE id = ?`,
+        args: [input.staffId, ts, input.orderId],
+      },
+    ],
+    [
+      {
+        id: uuidv4(),
+        op: "set_order_creator",
+        entity: "order",
+        entityId: input.orderId,
+        orderId: input.orderId,
+        payload,
+      },
+    ],
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
+}
+
 export interface ReplaceLocalItemModifiersInput {
   orderId: string;
   itemId: string;
@@ -949,6 +988,10 @@ export async function editLocalItem(
       const res = await commitLocalWrite(rowUpdates, []);
       if (!res.ok) return { ok: false, error: res.error };
     }
+    // An amended REJECTED add is back to pending — push the edited version now
+    // rather than on the next interval (commitLocalWrite only nudges when it
+    // runs, and a modifiers-only edit has no row update to commit).
+    nudgeDrain();
     return { ok: true, value: { amended: true } };
   }
 

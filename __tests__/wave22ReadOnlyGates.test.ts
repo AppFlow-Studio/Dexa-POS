@@ -134,7 +134,8 @@ describe('Wave 2.2 — MoreOptionsBottomSheet menu items', () => {
 
   it('Void Order subtitle reflects the read-only reason', () => {
     expect(moreOptionsSrc).toMatch(
-      /isReadOnlyForStation\s*\?\s*["']Owned by another station["']\s*:\s*["']This action cannot be undone["']/
+      // Read-only wins first; the card-payment block (2026-09-25) sits between.
+      /isReadOnlyForStation\s*\?\s*["']Owned by another station["']\s*:[\s\S]*?["']Refund card payments first["']\s*:\s*["']This action cannot be undone["']/
     )
   })
 

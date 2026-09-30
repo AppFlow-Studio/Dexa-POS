@@ -1,31 +1,24 @@
-import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
+import { KioskCategoryMenuBody } from "@/components/kiosk/shared/KioskCategoryMenuBody";
+import type { CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
 import {
   hasOrderableItem,
   useModifierGroupResolver,
   useOrderableItems,
 } from "@/components/kiosk/shared/kioskItemAvailability";
-import { KioskItemGrid } from "@/components/kiosk/shared/KioskItemGrid";
-import { kioskBannerHeight, kioskRailWidth } from "@/components/kiosk/shared/kioskLayout";
+import { kioskBannerHeight } from "@/components/kiosk/shared/kioskLayout";
 import { KioskNoMenusState } from "@/components/kiosk/shared/KioskNoMenusState";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
-import { KioskSearchResults } from "@/components/kiosk/shared/KioskSearchResults";
 import type { KioskMenuSearchState } from "@/components/kiosk/shared/useKioskMenuSearchState";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
-import {
-  useIsStationMenuScopeEmpty,
-  useVisibleMenus,
-} from "@/hooks/menu/useVisibleMenus";
+import { useKioskScheduledMenus } from "@/components/kiosk/shared/useKioskScheduledMenus";
+import { useIsStationMenuScopeEmpty } from "@/hooks/menu/useVisibleMenus";
 import type { MenuItemType } from "@/lib/types";
-import {
-  kioskItemSourceFromKey,
-  type KioskItemSource,
-} from "@/stores/useKioskCartStore";
+import type { KioskItemSource } from "@/stores/useKioskCartStore";
 import { useKioskUiScale } from "@/lib/uiScale";
 import {
   resolveKioskColumns,
   useKioskDeviceSettingsStore,
 } from "@/stores/useKioskDeviceSettingsStore";
-import { useMenuStore } from "@/stores/useMenuStore";
 import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useCallback, useMemo, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
@@ -44,7 +37,8 @@ import { useWindowDimensions, View } from "react-native";
  *
  * Nothing sits between the banner and the split: categories are in the rail
  * and search lives in the header, so the rail and grid get the whole of what
- * the banner leaves.
+ * the banner leaves. On a portrait phone the rail becomes a horizontal strip
+ * over a full-width grid (see KioskCategoryMenuBody).
  */
 export function KioskMenuViewB({
   config,
@@ -58,12 +52,11 @@ export function KioskMenuViewB({
   search: KioskMenuSearchState;
 }) {
   const s = useKioskUiScale();
-  // Kiosk channel + per-station scope are applied by the shared selector.
-  const menus = useVisibleMenus();
+  // Kiosk channel, per-station scope and menu/category schedules are applied
+  // by the shared selectors.
+  const { menus, closedBySchedule } = useKioskScheduledMenus();
   const scopedToNothing = useIsStationMenuScopeEmpty();
   const resolveGroups = useModifierGroupResolver();
-  const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
-  const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
   const isVertical = config.orientation === "vertical";
   const columnsPref = useKioskDeviceSettingsStore((st) => st.menuColumns);
@@ -71,19 +64,15 @@ export function KioskMenuViewB({
 
   const sections = useMemo<CategorySection[]>(() => {
     return menus
-      .filter((m) => isMenuAvailableNow(m.id))
       .map((m) => ({
         menuId: m.id,
         title: m.name,
-        data: m.categories.filter(
-          (c) =>
-            c.isActive &&
-            isCategoryAvailableNow(c.name) &&
-            hasOrderableItem(c.items, resolveGroups),
+        data: m.categories.filter((c) =>
+          hasOrderableItem(c.items, resolveGroups),
         ),
       }))
       .filter((s) => s.data.length > 0);
-  }, [menus, isMenuAvailableNow, isCategoryAvailableNow, resolveGroups]);
+  }, [menus, resolveGroups]);
 
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -119,6 +108,9 @@ export function KioskMenuViewB({
   // Scoped to a selection that leaves nothing: fail closed to the empty state,
   // never to the full menu. After every hook, so the hook order is stable.
   if (scopedToNothing) return <KioskNoMenusState config={config} />;
+  if (closedBySchedule) {
+    return <KioskNoMenusState config={config} reason="schedule" />;
+  }
 
   return (
     <View className="flex-1">
@@ -146,46 +138,16 @@ export function KioskMenuViewB({
         </View>
       ) : null}
 
-      <View className="flex-1">
-        <View className="flex-1 flex-row">
-          {/* Left rail — categories grouped by menu */}
-          <View style={{ width: kioskRailWidth(isVertical, numColumns) }}>
-            <KioskCategoryRail
-              config={config}
-              sections={sections}
-              resolvedKey={resolvedKey}
-              onSelect={handleSelectCategory}
-            />
-          </View>
-
-          {/* Right pane — item grid */}
-          <View className="flex-1">
-            <KioskItemGrid
-              config={config}
-              items={items}
-              numColumns={numColumns}
-              resetKey={resolvedKey}
-              onSelectItem={(item) =>
-                onSelectItem(item, kioskItemSourceFromKey(resolvedKey))
-              }
-            />
-          </View>
-        </View>
-
-        {/* Results cover the rail and grid without unmounting them, so closing
-            search restores the category and scroll offset untouched. */}
-        {search.expanded ? (
-          <KioskSearchResults
-            config={config}
-            query={search.query}
-            onClear={search.clear}
-            onSelectItem={(item, source) => {
-              search.close();
-              onSelectItem(item, source);
-            }}
-          />
-        ) : null}
-      </View>
+      <KioskCategoryMenuBody
+        config={config}
+        sections={sections}
+        resolvedKey={resolvedKey}
+        onSelectCategory={handleSelectCategory}
+        items={items}
+        numColumns={numColumns}
+        search={search}
+        onSelectItem={onSelectItem}
+      />
     </View>
   );
 }

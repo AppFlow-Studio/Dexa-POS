@@ -26,12 +26,15 @@
  * being idempotent on the row id itself, a retry is safe twice over: the call
  * dedupes, and so does the row.
  */
+import * as Sentry from "@sentry/react-native";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getDb } from "@/lib/db/index";
 import { dbWriteMutex } from "@/lib/db/mutex";
 import type { ClaimedOp } from "@/lib/db/outbox";
 import { isTerminalKitchenMutationError } from "@/lib/kdsSendTraceability";
+import { seedFromAssignedOrderNumber } from "@/lib/localOrderSequence";
+import { sanitizeModifierRowsForRpc } from "@/lib/modifierRpc";
 import { markSessionSynced } from "@/lib/localFirst/unsyncedSessions";
 import {
   outcomeFromError,
@@ -40,18 +43,22 @@ import {
 } from "@/services/localFirst/outboxDrain";
 
 /**
- * Take the server's number after a collision renumber (§6.3).
+ * Take the server's number after it renumbered an order: a collision (§6.3),
+ * or a provisional station number replaced in location-wide mode.
  *
  * The id never moves, so this is a pure field update in both places that hold
- * the number: the local row and whatever the operator is looking at. Best
- * effort — a failure here leaves a stale number on one device, which the next
- * header sync corrects, and must never fail the op that already succeeded.
+ * the number: the local row and whatever the operator is looking at (the CFD
+ * follows the store). Best effort — a failure here leaves a stale number on
+ * one device, which the next header sync corrects, and must never fail the op
+ * that already succeeded.
  */
 async function adoptServerOrderNumber(
   orderId: string,
   orderNumber: string,
   displayNumber: string | null,
+  locationId: string | null = null,
 ): Promise<void> {
+  let orderLocationId = locationId;
   try {
     const db = getDb();
     if (db) {
@@ -60,10 +67,21 @@ async function adoptServerOrderNumber(
           `UPDATE orders SET order_number = ?, display_number = ? WHERE id = ?`,
           [orderNumber, displayNumber, orderId],
         );
+        if (!orderLocationId) {
+          const row = await db.getFirstAsync<{ location_id: string }>(
+            `SELECT location_id FROM orders WHERE id = ?`,
+            [orderId],
+          );
+          orderLocationId = row?.location_id ?? null;
+        }
       });
     }
   } catch (err) {
     console.warn("[Drain] renumber: local row not updated:", err);
+  }
+
+  if (orderLocationId) {
+    seedFromAssignedOrderNumber(orderLocationId, orderNumber);
   }
 
   try {
@@ -166,6 +184,11 @@ export interface SetItemSeatPayload {
   orderId: string;
   itemId: string;
   seatNumber: number | null;
+}
+
+export interface SetOrderCreatorPayload {
+  orderId: string;
+  staffId: string;
 }
 
 export interface ReplaceModifiersPayload {
@@ -314,11 +337,13 @@ export function makeOpHandlers(
           `[LF] ✓ create_order_v4 order=${op.entityId} number=${data?.order_number} existed=${!!data?.already_existed}`,
         );
 
-        // §6.3 — the server renumbered us because our locally minted number
-        // collided. The ID is unchanged (identity is sacred); only the number
-        // moved, and the device must correct what it displays. Logging it and
-        // leaving the old number on screen is how a guest ends up holding a
-        // receipt for a number that belongs to somebody else's order.
+        // §6.3 — the server renumbered us: our locally minted number collided,
+        // or the location counts orders location-wide and our station number
+        // was only provisional. The ID is unchanged (identity is sacred); only
+        // the number moved, and the device must correct what it displays.
+        // Logging it and leaving the old number on screen is how a guest ends
+        // up holding a receipt for a number that belongs to somebody else's
+        // order.
         if (data?.order_number_reassigned && data?.order_number) {
           console.warn(
             `[Drain] order ${op.entityId} was renumbered by the server: ` +
@@ -328,6 +353,7 @@ export function makeOpHandlers(
             op.entityId,
             data.order_number as string,
             (data.display_number as string | null) ?? null,
+            p.locationId,
           );
         }
         return { kind: "synced" };
@@ -375,7 +401,9 @@ export function makeOpHandlers(
             p_selected_size_id: p.selectedSizeId ?? null,
             p_selected_size_name: p.selectedSizeName ?? null,
             p_size_price_modifier: p.sizePriceModifier ?? 0,
-            p_modifiers: p.modifiers ?? null,
+            // Sanitized at send time too, so ops queued by an older build
+            // with a custom modifier's sentinel ids heal instead of 22P02-ing.
+            p_modifiers: sanitizeModifierRowsForRpc(p.modifiers ?? null),
             p_special_instructions: p.specialInstructions ?? null,
             p_course_number: p.courseNumber ?? 1,
             p_seat_number: p.seatNumber ?? null,
@@ -419,6 +447,64 @@ export function makeOpHandlers(
           console.warn("[LF] could not bind synced item to cart:", e);
         }
 
+        // Open items: add_open_item_v5 has no p_modifiers, so the custom
+        // modifiers ride a second call, as the legacy path did. Runs AFTER
+        // the bind above — the row exists on the server regardless of how
+        // this call goes, and a line that lies about that wedges kitchen
+        // sends and payments.
+        //
+        // Row prices are sent as 0 ON PURPOSE. OpenItemAdder rolls modifier
+        // prices into the all-in `open_item_price` that p_unit_price already
+        // carried, replace_order_item_modifiers_v2 reprices the line by the
+        // row prices it inserts (unit_price − old rows + new rows), and the
+        // client composer adds row prices on top of open_item_price again. A
+        // non-zero row price would be charged twice, on both sides. The rows
+        // are descriptive: kitchen tickets and receipts show the names.
+        //
+        // Same op id under a different op name: idempotency_keys is unique on
+        // (key, op), so a retry replays both calls safely.
+        if (
+          p.isOpenItem &&
+          Array.isArray(p.modifiers) &&
+          p.modifiers.length > 0
+        ) {
+          const rows = (
+            sanitizeModifierRowsForRpc(p.modifiers) as Record<string, unknown>[]
+          ).map((row) => ({ ...row, price_modifier: 0 }));
+          try {
+            const { error: modError } = await client.rpc(
+              "replace_order_item_modifiers_v2",
+              {
+                p_order_item_id: op.entityId,
+                p_modifiers: rows,
+                p_idempotency_key: op.id,
+              },
+            );
+            if (modError) throw modError;
+            console.log(
+              `[LF] ✓ open-item modifiers item=${op.entityId} rows=${rows.length}`,
+            );
+          } catch (modErr) {
+            const outcome = rpcError("replace_order_item_modifiers_v2", modErr);
+            // Transient: retry the whole op (the add is idempotent on its row
+            // id). Permanent: the item is on the server without its modifier
+            // names — report it rather than park a line that did sync.
+            if (outcome.kind === "retry") return outcome;
+            try {
+              Sentry.captureMessage("[LF] open-item modifiers rejected", {
+                level: "warning",
+                tags: { lf_event: "open_item_modifiers_rejected" },
+                extra: {
+                  item_id: op.entityId,
+                  order_id: p.orderId,
+                  rows: rows.length,
+                  reason: outcome.kind === "rejected" ? outcome.reason : outcome.kind,
+                },
+              });
+            } catch {}
+          }
+        }
+
         return { kind: "synced", syncVersion: data?.sync_version ?? null };
       } catch (error) {
         return rpcError(rpcName, error);
@@ -449,7 +535,7 @@ export function makeOpHandlers(
       try {
         const { error } = await client.rpc("replace_order_item_modifiers_v2", {
           p_order_item_id: p.itemId,
-          p_modifiers: p.modifiers,
+          p_modifiers: sanitizeModifierRowsForRpc(p.modifiers),
           p_idempotency_key: op.id,
         });
         if (error) return rpcError("replace_order_item_modifiers_v2", error);
@@ -499,6 +585,25 @@ export function makeOpHandlers(
           "remove_order_item",
           p.itemId,
         );
+      }
+    },
+
+    // Re-credit an order to another staff member (per-order PIN: a reused
+    // empty draft picked up by someone else). No RPC sets the creator after
+    // create_order, so this is a plain column update — idempotent, and FIFO
+    // per order guarantees the create has landed first.
+    set_order_creator: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as SetOrderCreatorPayload;
+      console.log(`[LF] → set_order_creator order=${p.orderId} staff=${p.staffId}`);
+      try {
+        const { error } = await client
+          .from("orders")
+          .update({ created_by_staff_id: p.staffId })
+          .eq("id", p.orderId);
+        if (error) return rpcError("set_order_creator", error);
+        return { kind: "synced" };
+      } catch (error) {
+        return rpcError("set_order_creator", error);
       }
     },
 
@@ -642,6 +747,20 @@ export function makeOpHandlers(
         console.log(
           `[LF] ✓ seat_guests_v4 session=${op.entityId} order=${data?.order_id}`,
         );
+        // seat_guests_v4 creates the order through create_order_v4, so it can
+        // renumber it the same way (§6.3).
+        const seatedOrderId = (data?.order_id as string | null) ?? p.orderId;
+        if (data?.order_number_reassigned && data?.order_number && seatedOrderId) {
+          console.warn(
+            `[Drain] order ${seatedOrderId} was renumbered by the server: ` +
+              `${p.orderNumber} -> ${data.order_number}`,
+          );
+          await adoptServerOrderNumber(
+            seatedOrderId,
+            data.order_number as string,
+            (data.display_number as string | null) ?? null,
+          );
+        }
         // The server has it now, so a floor-plan snapshot that omits this
         // table is real information rather than a stale read.
         markSessionSynced(op.entityId);

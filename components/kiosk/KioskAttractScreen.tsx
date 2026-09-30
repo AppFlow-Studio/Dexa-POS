@@ -5,7 +5,13 @@ import {
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
 import { kioskIdleImages, kioskIdleVideo, type KioskConfig } from "@/types/kiosk";
 import { Image } from "expo-image";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 /**
  * Idle / attract screen — shared by every template. Shown whenever no customer
@@ -39,6 +45,10 @@ export function KioskAttractScreen({
   const idleImages = kioskIdleImages(config);
   const idleVideo = kioskIdleVideo(config);
   const hasCarousel = idleImages.length > 0 || !!idleVideo;
+  // Bounded by the short edge so logo, welcome and button still stack inside a
+  // landscape phone's ~360dp; on a panel the 160 cap is what binds.
+  const { width, height } = useWindowDimensions();
+  const logoSize = Math.round(Math.min(160, Math.min(width, height) * 0.28));
 
   return (
     <View className="flex-1" style={{ backgroundColor: t.page }}>
@@ -64,13 +74,23 @@ export function KioskAttractScreen({
           {config.logoUrl ? (
             <Image
               source={{ uri: config.logoUrl }}
-              style={{ width: 160, height: 160, marginBottom: 32 }}
+              style={{
+                width: logoSize,
+                height: logoSize,
+                marginBottom: logoSize * 0.2,
+              }}
               contentFit="contain"
               cachePolicy="memory-disk"
             />
           ) : null}
 
+          {/* A merchant's message can be any length. Capped at three lines and
+              shrunk to fit them, so a long one can't push the start button off
+              a phone's screen. */}
           <Text
+            numberOfLines={3}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
             className="text-5xl font-bold text-center p-3"
             style={{ color: config.headerTextColor }}
           >

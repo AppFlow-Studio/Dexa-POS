@@ -8,6 +8,10 @@
 //      pure "something changed" SIGNAL. Its payload is never applied to local
 //      state — broadcasts are best-effort, partial, and can arrive out of
 //      order, which is what made the old payload-trusting path drift.
+//      Exception, behind EXPO_PUBLIC_FLOOR_BROADCAST_APPLY=1: table_sessions
+//      INSERT/UPDATE payloads (full session + active tables, plus is_active)
+//      are applied by applySessionBroadcastPayload, with an out-of-order guard;
+//      the heartbeat, (re)subscribe catch-up and fallback poll still converge.
 //   2. The ONLY writer of backend-owned table/session state is the atomic
 //      snapshot RPC behind `loadFloorPlanStatus()` (get_floor_plan_objects_
 //      with_sessions → _patchSessionsFromTables). It reads sessions + junction
@@ -27,6 +31,8 @@
 //     reconnect gaps, and stops the instant broadcasts resume.
 
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import type { SessionBroadcastPayload } from "@/lib/floor/applySessionBroadcast";
+import { jitterMs } from "@/lib/network/jitter";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import type {
     RealtimeEventType,
@@ -34,6 +40,14 @@ import type {
 } from "@/types/real-time";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useRealtimeChannel } from "./useRealtimechannel";
+
+// Phase 6.2 (SUPABASE-CONNECTIONS-AND-STORAGE plan): apply table_sessions
+// INSERT/UPDATE broadcasts straight to the store instead of re-reading
+// get_location_table_status_v2 on every one. Off unless set to "1". Needs the
+// is_active/server_staff_id payload fields (20260925123000); without them a
+// broadcast is not applied and the signal-only reconcile below runs as before.
+const FLOOR_BROADCAST_APPLY =
+  process.env.EXPO_PUBLIC_FLOOR_BROADCAST_APPLY === "1";
 
 // Coalesce bursts of broadcasts into a single authoritative reload.
 const RECONCILE_DEBOUNCE_MS = 300;
@@ -76,6 +90,13 @@ const HEARTBEAT_STALE_MS = 60_000;
 const FALLBACK_POLL_MS = 5_000;
 const FALLBACK_POLL_MAX_MS = 30_000;
 const FALLBACK_POLL_BACKOFF = 2;
+// A CLOSED during a token-refresh resubscribe lasts well under this, so the
+// fallback poll only starts for a real outage. The random part spreads the
+// fleet: every device loses the channel at the same moment.
+const FALLBACK_GRACE_MS = 10_000;
+const FALLBACK_GRACE_JITTER_MS = 5_000;
+// Re-subscribe catch-up is spread over 0-10s for the same reason.
+const CATCH_UP_JITTER_MS = 10_000;
 
 /**
  * Subscribes to `location:{locationId}:tables` and keeps the floor plan +
@@ -178,8 +199,16 @@ export function useFloorRealtime({
     (event: RealtimeEventType, payload: unknown) => {
       if (__DEV__) console.log(`[FloorRealtime] Signal: ${event}`);
 
-      // Single authoritative reconcile for every floor-affecting event.
-      scheduleReconcile();
+      const applied =
+        FLOOR_BROADCAST_APPLY &&
+        (event === "INSERT" || event === "UPDATE") &&
+        useFloorPlanStore
+          .getState()
+          .applySessionBroadcastPayload(payload as SessionBroadcastPayload);
+
+      // Everything else (DELETE, assignment and session-event signals, or a
+      // payload that couldn't be applied): single authoritative reconcile.
+      if (!applied) scheduleReconcile();
 
       // Pass-through callbacks (consumers that want the raw payload, e.g. for
       // toasts/analytics). State changes still come only from the reconcile.
@@ -215,11 +244,18 @@ export function useFloorRealtime({
 
   // ------------------------------------------------------------------
   // Catch-up on (re)subscribe — recover anything dropped while down.
-  // Fires immediately (unthrottled) on every transition into SUBSCRIBED.
+  // Fires on every transition into SUBSCRIBED: immediately the first time,
+  // after a random 0-10s delay on re-subscribes.
   // ------------------------------------------------------------------
   const wasConnectedRef = useRef(false);
+  const hasSubscribedRef = useRef(false);
   useEffect(() => {
     if (isConnected && !wasConnectedRef.current) {
+      wasConnectedRef.current = true;
+      // First SUBSCRIBED after mount: converge now (boot already loaded the
+      // floor, so this is usually a staleness no-op). Re-subscribes: jitter.
+      const delay = hasSubscribedRef.current ? jitterMs(CATCH_UP_JITTER_MS) : 0;
+      hasSubscribedRef.current = true;
       if (__DEV__)
         console.log(
           "[FloorRealtime] (re)SUBSCRIBED — catch-up reconcile (staleness-gated)",
@@ -233,9 +269,13 @@ export function useFloorRealtime({
       // so this either no-ops (fresh) or runs the lightweight session refresh.
       // A genuinely long disconnect leaves data stale → still reconciles. The
       // heartbeat below remains the backstop for structural/geometry drift.
-      void useFloorPlanStore
-        .getState()
-        .loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
+      const timer = setTimeout(() => {
+        void useFloorPlanStore
+          .getState()
+          .loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
+      }, delay);
+      // Dropped again before the catch-up ran: the fallback poll takes over.
+      return () => clearTimeout(timer);
     }
     wasConnectedRef.current = isConnected;
   }, [isConnected]);
@@ -259,7 +299,9 @@ export function useFloorRealtime({
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!enabled || isConnected || !locationId) return;
-    reconcileNow(); // cover the mount→SUBSCRIBED gap immediately
+    // Not immediately: the mount→SUBSCRIBED gap is covered by boot's floor
+    // load, and a brief CLOSED during a resubscribe must not trigger the
+    // heaviest floor RPC on every device at once.
 
     // Self-rescheduling timeout rather than setInterval, so the delay can grow.
     // Resets to FALLBACK_POLL_MS every time this effect re-runs — i.e. on every
@@ -273,7 +315,7 @@ export function useFloorRealtime({
       delay = Math.min(delay * FALLBACK_POLL_BACKOFF, FALLBACK_POLL_MAX_MS);
       timer = setTimeout(tick, delay);
     };
-    timer = setTimeout(tick, delay);
+    timer = setTimeout(tick, FALLBACK_GRACE_MS + jitterMs(FALLBACK_GRACE_JITTER_MS));
 
     return () => {
       if (timer) clearTimeout(timer);

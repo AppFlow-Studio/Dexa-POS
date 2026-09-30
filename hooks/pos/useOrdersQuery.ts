@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useOrderStore, withUnsyncedLocalLines } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { resolveBusinessDayConfig } from "@/stores/usePreviousOrdersStore";
@@ -236,6 +236,13 @@ function hydrateWorkspace(
       serverMap[key] = order;
     }
     serverIds.push(key);
+  }
+
+  // Keep a preserved order's unsynced lines when the server also returned it.
+  for (const id of preservedIds) {
+    if (serverMap[id]) {
+      serverMap[id] = withUnsyncedLocalLines(preserved[id], serverMap[id]);
+    }
   }
 
   let newOrdersById: Record<string, OrderProfile> = { ...preserved, ...serverMap };
