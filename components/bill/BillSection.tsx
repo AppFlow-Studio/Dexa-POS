@@ -517,6 +517,16 @@ const BillSectionContent = ({
     }),
   );
 
+  const isCurrentOrderEmptyDraft = useMemo(() => {
+    if (!activeOrder) return false;
+    if (cartLength > 0) return false;
+    // Read the FULL order snapshot on demand — isReusableEmptyDraftOrder needs
+    // financial fields we deliberately don't subscribe to (see the scalar pick
+    // above). cartLength changes on every add/remove, keeping this memo fresh.
+    const fullOrder = useOrderStore.getState().ordersById[activeOrder.id];
+    return isReusableEmptyDraftOrder(fullOrder);
+  }, [activeOrder, cartLength]);
+
   // Per-order PIN attribution gate. When `requirePinPerOrder` is on, the
   // register must verify a PIN (attribution-only) before each new order. The
   // gate is shown whenever the setting is on and no staff is yet verified for
@@ -531,12 +541,15 @@ const BillSectionContent = ({
   // "sometimes shows, sometimes not"). Dine-in orders are attributed at
   // seating (already have a db_order_id by the time they reach this screen), so
   // the db_order_id check stops them re-prompting; the gate also never pops on
-  // the empty / just-paid state.
+  // the empty / just-paid state. A reused empty draft still prompts even though
+  // its backend row exists: it is the next order, and handlePinVerified moves a
+  // different staff member onto a fresh order so the draft's creator can't
+  // claim it.
   const pinGateOpen =
     requirePinPerOrder &&
     !!activeOrderId &&
     orderAttributionOrderId !== activeOrderId &&
-    !activeOrder?.db_order_id &&
+    (!activeOrder?.db_order_id || isCurrentOrderEmptyDraft) &&
     activeOrderPaidStatus !== "Paid" &&
     activeOrder?.check_status !== "Closed";
 
@@ -660,16 +673,6 @@ const BillSectionContent = ({
     activeOrderHasPayments &&
     (activeOrderPaidStatus !== "Paid" ||
       Math.max(activeOrderOutstandingTotal, activeOrderOutstandingCash) > 0.01);
-
-  const isCurrentOrderEmptyDraft = useMemo(() => {
-    if (!activeOrder) return false;
-    if (cartLength > 0) return false;
-    // Read the FULL order snapshot on demand — isReusableEmptyDraftOrder needs
-    // financial fields we deliberately don't subscribe to (see the scalar pick
-    // above). cartLength changes on every add/remove, keeping this memo fresh.
-    const fullOrder = useOrderStore.getState().ordersById[activeOrder.id];
-    return isReusableEmptyDraftOrder(fullOrder);
-  }, [activeOrder, cartLength]);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const isPaymentSheetOpen = usePaymentStore((state) => state.isOpen);
@@ -1787,6 +1790,35 @@ const BillSectionContent = ({
     setActiveOrder(null);
   }, [clearSelectedTable, setActiveOrder]);
 
+  // A reused empty draft already has its backend row, and that row keeps the
+  // creator it was made with (created_by_staff_id is only set at creation).
+  // When someone else PINs in, re-credit the draft to them so it keeps its
+  // number. Only if that can't be done (local order writes off, or the write
+  // failed) and the draft is still empty, fall back to a fresh order — the
+  // eager-create effect in order-processing writes it with them as creator.
+  const handlePinVerified = useCallback(async (staffProfileId: string) => {
+    const state = useOrderStore.getState();
+    const draft = state.activeOrderId
+      ? state.ordersById[state.activeOrderId]
+      : null;
+    if (!draft?.db_order_id || !isReusableEmptyDraftOrder(draft)) return;
+    if (draft.created_by_staff_profile_id === staffProfileId) return;
+    if (await state.reassignOrderCreator(draft.id, staffProfileId)) return;
+
+    const latest = useOrderStore.getState();
+    if (
+      latest.activeOrderId !== draft.id ||
+      !isReusableEmptyDraftOrder(latest.ordersById[draft.id])
+    ) {
+      return;
+    }
+    const fresh = latest.startNewOrder();
+    latest.setActiveOrder(fresh.id);
+    useEmployeeStore
+      .getState()
+      .setOrderAttributionStaff(staffProfileId, fresh.id);
+  }, []);
+
   const handleStartNewOrder = useCallback(() => {
     clearSelectedTable();
 
@@ -1921,6 +1953,7 @@ const BillSectionContent = ({
         <OrderPinGate
           open={pinGateOpen}
           attributionOrderId={activeOrderId}
+          onVerified={handlePinVerified}
           onCancel={handleCancelPinGate}
         />
       </View>
@@ -2884,6 +2917,7 @@ const BillSectionContent = ({
       <OrderPinGate
         open={pinGateOpen}
         attributionOrderId={activeOrderId}
+        onVerified={handlePinVerified}
         onCancel={handleCancelPinGate}
       />
     </View>

@@ -98,14 +98,83 @@ the same person. Cleared only when the order is fully paid/closed:
   let payment fall back to the shift user).
 - `components/bill/ paymentView/PaymentSuccessView.tsx` — `handleDone` clears attribution at the
   top (runs on both dine-in and QSR finalize paths), re-opening the gate for the next order.
+- Leaving Sales also ends it: see "Shared-till exit reset" below.
+
+### Shared-till exit reset (added)
+Problem: leaving Sales (Back to Menu) and coming back resumed the same order with no PIN
+prompt, so the next person's sale was credited to the previous person. Separately, a reused
+empty draft that already had its row kept its first creator (`created_by_staff_id` is only
+set at creation) — also reachable through the New Order button.
+
+Scope: `requirePinPerOrder` ON, not a kiosk station, active order is QSR/takeout (not dine-in,
+no table) and not paid/closed/final. Anything else leaves exactly as before.
+
+Every exit from Sales goes through `useSalesExitGuardStore.requestSalesExit(navigate)`:
+- header Back (`components/Header.tsx`, `/order-processing` only),
+- the Tables shortcut on the Sales screen,
+- Android back (`BackHandler` in `order-processing.tsx`, focus-scoped; only claimed when the
+  guard applies, otherwise the default back runs).
+
+Decision (pure, `lib/salesExitGuard.ts` → `getSalesExitDecision`):
+- out of scope → navigate unchanged;
+- unsent items (`!kitchen_status || kitchen_status === "new"`, excluding the draft item still
+  open in the modifier sidebar) → `SalesExitDialog`: **Send & Leave** / **Leave Order Open** /
+  **Stay**;
+- otherwise → `resetForNextOrder()` then navigate: discard the modifier-sidebar draft, clear
+  attribution, clear the selected table, `setActiveOrder(null)`.
+
+Leaving never deletes or voids. An order with items stays open and is resumable from Previous
+Orders on this station (drafts with items are listed; empty drafts and other stations' drafts
+are not). Send & Leave uses `sendNewItemsToKitchenForOrder`; if it is rejected or any item is
+still unsent afterwards, a toast shows and staff stay on the order.
+
+Re-entering Sales mounts with no active order, so the mount effect resumes the latest empty
+draft or mints one, and the PIN gate asks who is ringing.
+
+Reused empty drafts:
+- `BillSection.pinGateOpen` also opens for a reusable empty draft that already has a
+  `db_order_id` (`!db_order_id || isCurrentOrderEmptyDraft`). Seated dine-in is never a
+  reusable draft (it has a `service_location_id`), so it still does not re-prompt.
+- `handlePinVerified` (both gate mounts): if the draft's `created_by_staff_profile_id` is a
+  different staff, the draft is re-credited to them and keeps its number
+  (`useOrderStore.reassignOrderCreator`). That updates the local order and the SQLite row and
+  queues a `set_order_creator` outbox op, which drains after the order's `create_order` (FIFO
+  per order) as `UPDATE orders SET created_by_staff_id` — no RPC sets the creator after
+  creation. Only if the re-credit can't happen (local order writes off, or the local write
+  failed) and the draft is still empty does it fall back to a fresh order
+  (`startNewOrder()` → `setActiveOrder` → `setOrderAttributionStaff`), which burns a number.
+- `addItemToActiveOrder` PIN guard also covers reusable empty drafts, so a scanner add can't
+  slip in before the PIN.
+- `ensureOrderCreated` local-first path (`LOCAL_WRITES_ORDERS`) now writes the creator onto the
+  local order, as the legacy path already did. Before, the local order kept the shift user
+  from `startNewOrder` while the row carried the PIN'd staff, so "Created by" and the check
+  above read the wrong person.
 
 ## Follow-ups
 - `verify_staff_pin` not in `database.types.ts` yet -> called via `(supabase.rpc as any)`. Regenerate types after Ali D deploys, drop the cast.
 - Hydration of `requirePinPerOrder` from the location setting NOT wired (column TBD). Stays false until then.
 - Dine-in/`assigned_server` interaction intentionally unchanged (QSR-focused).
+- `ensureOrderCreated`'s PIN backstop sits after the local-first (`LOCAL_WRITES_ORDERS`) branch,
+  so with local writes on it never runs; the eager-create effect and the add guard are what
+  enforce the PIN there. Worth moving above the branch.
 
 ## QA matrix (pending on device)
 - ON, two staff back-to-back -> each order correct `created_by_staff_id`.
+- ON, ring + send, Back to Menu, tap Sales -> new order + PIN prompt; previous order open in
+  Previous Orders.
+- ON, unsent items, Back -> prompt. Send & Leave: ticket fires, then reset. Leave Order Open:
+  order stays open with items unsent, then reset. Stay: nothing changes. Send fails: toast,
+  still on the order.
+- ON, Staff A PINs an empty order, Back; Staff B PINs -> same order number, now credited to B
+  (Previous Orders / KDS show B once the outbox drains). Staff A PINs instead -> same draft,
+  unchanged. No number burned either way.
+- ON, Tables shortcut and Android back -> same as header Back.
+- ON, New Order on an empty draft that already has a row -> PIN prompt; a different staff gets
+  the same draft re-credited to them.
+- OFF / kiosk / dine-in table order -> leaving Sales unchanged.
+- Staging SQL: `SELECT display_number, created_by_staff_id, status, created_at FROM orders
+  WHERE location_id = '<loc>' ORDER BY created_at DESC LIMIT 10;` — each row shows the PIN'd
+  staff.
 - OFF -> behavior unchanged, active user credited.
 - Wrong PIN -> rejected, shake, no order started.
 - Offline -> cached-hash verify; attribution syncs on reconnect.
