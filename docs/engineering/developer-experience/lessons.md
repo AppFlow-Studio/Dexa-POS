@@ -198,3 +198,13 @@
 - 2026-09-29 (CodePay refunds): I taught `parseRefundApproval` to read CodePay's approval details so refunds would carry an auth code, RRN and transaction number. CodePay's `trans_no` is 23 characters and `order_payments.return_number` is `varchar(20)`. The first refund on a real terminal was approved on the card, then `apply_refund_to_payment` failed with `22001 value too long`, and the payment still read as paid. Jest passed: the RPC was mocked.
 - Rule: before passing a value that was null until now into an RPC, read the type and length of the column it is written to (`information_schema.columns`), and call the real RPC on staging with a real-sized value in a rolled-back `DO` block.
 - Rule: optional details must never be able to fail the step that records money. `OrderService.applyRefundToPayment` and `updateReversalStatus` fit every optional value to its column first (`REFUND_DETAIL_MAX`); a reference that doesn't fit is left out, not truncated.
+
+## Suspense-based freezing and transitions don't mix
+
+- To stop hidden keep-alive tabs re-rendering, I wrapped menu management panels in a `react-freeze`-style `Freeze` (the child throws a thenable that never settles) and swapped the shown tab inside `startTransition`. The user got "Can't perform a React state update on a component that hasn't mounted yet" for `ItemGridBase`, `ModifiersPanel` and `Surface`, all below `Suspender`.
+- Cause: freezing the outgoing tab suspends a Suspense boundary that is already showing content. Inside a transition, React keeps the old screen and waits for the thenable rather than hiding revealed content. A thenable that never settles means the transition can't commit, so React keeps rendering the incoming panel in work-in-progress trees that never mount. The only way out is lane expiry, a multi-second stall that React then forces through synchronously.
+- Rule: never suspend already-revealed content inside a transition. A never-settling freeze thenable is the extreme case. If you freeze, toggle it outside any transition. On low-end tablets, prefer mounting only the visible tab and making remounts cheap: shared module-level derivation caches, view state in a store, and a remembered scroll position. That removes the hidden re-renders and the memory with no Suspense involved.
+
+## Filters narrow a list; they don't change its layout
+
+- The menu management Items grid dropped its A–Z letter headers whenever a status pill or a search was active. I thought the headers were noise for a short list. The user read it as "items are not sorted by alphabet when we switch filter pills", even though the order never changed. Keep structural grouping stable across filters: a filter changes which rows show, not how the list is organised.

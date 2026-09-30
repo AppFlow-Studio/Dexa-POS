@@ -9,7 +9,7 @@ import {
 import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
-import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
+import { useMenuManagementUiStore } from "@/stores/useMenuManagementUiStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
@@ -29,7 +29,7 @@ const EditMenuScreen: React.FC = () => {
     useIsSingleLocation();
   const { canWrite } = useMenuWriteGate();
   const [isSaving, setIsSaving] = useState(false);
-  const setMenuTab = useMenuManagementSearchStore((s) => s.setActiveTab);
+  const setMenuTab = useMenuManagementUiStore((s) => s.setActiveTab);
 
   const existing = useMemo(() => menus.find((m) => m.id === id), [id, menus]);
 
@@ -144,7 +144,6 @@ const EditMenuScreen: React.FC = () => {
         description: data.description,
         isActive: data.isActive,
         categories: data.categories,
-        schedules: data.schedules,
       });
 
       show({

@@ -25,6 +25,7 @@ export { default as ArrowLeftRight } from "lucide-react-native/dist/esm/icons/ar
 export { default as ArrowRight } from "lucide-react-native/dist/esm/icons/arrow-right.mjs";
 export { default as ArrowRightLeft } from "lucide-react-native/dist/esm/icons/arrow-right-left.mjs";
 export { default as ArrowUp } from "lucide-react-native/dist/esm/icons/arrow-up.mjs";
+export { default as ArrowUpDown } from "lucide-react-native/dist/esm/icons/arrow-up-down.mjs";
 export { default as ArrowUpCircle } from "lucide-react-native/dist/esm/icons/circle-arrow-up.mjs";
 export { default as ArrowUpRight } from "lucide-react-native/dist/esm/icons/arrow-up-right.mjs";
 export { default as ArrowUpToLine } from "lucide-react-native/dist/esm/icons/arrow-up-to-line.mjs";
@@ -176,6 +177,7 @@ export { default as Route } from "lucide-react-native/dist/esm/icons/route.mjs";
 export { default as Salad } from "lucide-react-native/dist/esm/icons/salad.mjs";
 export { default as Save } from "lucide-react-native/dist/esm/icons/save.mjs";
 export { default as Search } from "lucide-react-native/dist/esm/icons/search.mjs";
+export { default as SearchX } from "lucide-react-native/dist/esm/icons/search-x.mjs";
 export { default as Send } from "lucide-react-native/dist/esm/icons/send.mjs";
 export { default as Settings } from "lucide-react-native/dist/esm/icons/settings.mjs";
 export { default as Settings2 } from "lucide-react-native/dist/esm/icons/settings-2.mjs";
