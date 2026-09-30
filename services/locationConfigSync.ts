@@ -19,6 +19,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { refillOrderNumberReservation } from '@/lib/orderNumberReservation'
 import {
   beginLocationConfigRead,
   useLocationConfigStore,
@@ -110,6 +111,15 @@ async function _fetchAndHydrate(
         `${LOG_TAG} Hydrated config for location ${locationId}` +
           (stationId ? ` / station ${stationId}` : '')
       )
+    }
+
+    // Location-wide numbering: keep one number from the shared counter in hand
+    // so New Order shows its final number at once.
+    if (
+      useLocationConfigStore.getState().config.ordering.orderNumberScope ===
+      'location_wide'
+    ) {
+      void refillOrderNumberReservation(locationId, supabase)
     }
 
     // Backfill only when reading raw location config. Effective station config
