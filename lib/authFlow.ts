@@ -4,6 +4,15 @@ export function getPinPromptLabel(pinLength: number): string {
   return `Enter your ${pinLength}-digit PIN`;
 }
 
+/**
+ * KDS and kiosk stations run unattended: they start without a staff PIN
+ * (pos_station_login) and land straight on their screen. Every other station
+ * signs in with a staff PIN on pin-login.
+ */
+export function isUnattendedStation(stationType?: string | null): boolean {
+  return stationType === "kds" || stationType === "self_service";
+}
+
 export function resolvePostLoginRoute(
   stationType?: string | null,
 ): "home" | "kds" | "kiosk" {

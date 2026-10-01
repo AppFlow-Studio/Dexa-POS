@@ -1737,7 +1737,11 @@ export const useKDSStore = create<KDSState>()(
 
           if (displayError) {
             console.error("[KDSStore] fetchKDSDisplay error:", displayError);
-            // Fall back to no display (show all items)
+            // A failed read keeps this station's saved display — its columns,
+            // size and routing — rather than resetting to defaults until the
+            // next read succeeds.
+            if (get().kdsDisplayConfig?.stationId === stationId) return;
+            // Nothing saved for this station: fall back to no display (show all items)
             set({
               kdsDisplayId: null,
               routingMode: null,
@@ -1840,6 +1844,7 @@ export const useKDSStore = create<KDSState>()(
           });
 
           const config: KDSDisplayConfig = {
+            stationId,
             displayName: display.display_name || "Kitchen Display",
             columns: display.columns ?? null,
             alertMinutes: display.alert_minutes ?? null,
@@ -1873,6 +1878,7 @@ export const useKDSStore = create<KDSState>()(
           });
         } catch (err) {
           console.error("[KDSStore] fetchKDSDisplay exception:", err);
+          if (get().kdsDisplayConfig?.stationId === stationId) return;
           set({
             kdsDisplayId: null,
             routingMode: null,

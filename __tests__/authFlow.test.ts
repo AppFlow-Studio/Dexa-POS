@@ -1,6 +1,7 @@
 import {
     getPinAuthFailure,
     getPinPromptLabel,
+    isUnattendedStation,
     resolvePostLoginRoute,
 } from "@/lib/authFlow";
 
@@ -57,5 +58,13 @@ describe("authFlow", () => {
     expect(resolvePostLoginRoute("self_service")).toBe("kiosk");
     expect(resolvePostLoginRoute("pos")).toBe("home");
     expect(resolvePostLoginRoute(undefined)).toBe("home");
+  });
+
+  it("starts only KDS and kiosk stations without a staff PIN", () => {
+    expect(isUnattendedStation("kds")).toBe(true);
+    expect(isUnattendedStation("self_service")).toBe(true);
+    expect(isUnattendedStation("register")).toBe(false);
+    expect(isUnattendedStation("kiosk")).toBe(false);
+    expect(isUnattendedStation(undefined)).toBe(false);
   });
 });

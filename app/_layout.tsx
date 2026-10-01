@@ -6,6 +6,7 @@ import { PortalProvider } from "react-native-teleport";
 import { ClerkSessionKeeper } from "@/components/auth/ClerkSessionKeeper";
 import ClockInWallModal from "@/components/auth/ClockInWallModal";
 import ManagerPinModal from "@/components/auth/ManagerPinModal";
+import { OrderPinGateHost } from "@/components/auth/OrderPinGate";
 import CustomerSheet from "@/components/bill/CustomerSheet";
 import { ProductionErrorBoundary } from "@/components/ErrorBoundary";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
@@ -1071,6 +1072,7 @@ export default Sentry.wrap(function RootLayout() {
                                       <Stack.Screen name="(profiles-and-timeclock)" />
                                     </Stack>
                                     <PortalHost />
+                                    {isPOSMode && <OrderPinGateHost />}
                                     {isPOSMode && <SearchBottomSheet />}
                                     {isPOSMode && isCustomizationOpen && (
                                       <ItemCustomizationDialog />

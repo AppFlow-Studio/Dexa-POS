@@ -16,11 +16,13 @@ export interface VerifiedStaff {
  * Do NOT swap this for `pos_staff_login*` — that path is heavy (~700ms) and has
  * session/clock side effects.
  *
- * Online: calls the `verify_staff_pin` RPC (owned by the backend; may not exist
- * yet). Offline OR when the RPC is missing/fails, falls back to the same cached
- * plain-PIN match used by offline login (`findEmployeeByPin`), so per-order
- * attribution works offline and the feature degrades gracefully before the RPC
- * ships.
+ * Cached first: the device already holds the location's staff PINs (the same
+ * plain-PIN match offline login uses, `findEmployeeByPin`), so the common case
+ * verifies with no round-trip and the gate closes the moment the 4th digit
+ * lands. Only a PIN with no cached match goes to the `verify_staff_pin` RPC
+ * (owned by the backend; may not exist yet) — a PIN added or changed since the
+ * last employee sync — and only when online. Like offline login, a PIN changed
+ * on the server keeps matching here until the next employee sync.
  */
 export function useVerifyStaffPin() {
   const supabase = useSupabaseClient();
@@ -33,18 +35,16 @@ export function useVerifyStaffPin() {
     }): Promise<VerifiedStaff | null> => {
       const { pin, locationId, isOnline } = params;
 
-      // Offline fallback: cached plain-PIN match (same mechanism as offline login).
-      const offlineVerify = (): VerifiedStaff | null => {
-        const employee = useEmployeeStore.getState().findEmployeeByPin(pin);
-        if (!employee?.profileId) return null;
+      const employee = useEmployeeStore.getState().findEmployeeByPin(pin);
+      if (employee?.profileId) {
         return {
           staffProfileId: employee.profileId,
           name: employee.displayName || employee.fullName,
           role: employee.role ?? null,
         };
-      };
+      }
 
-      if (!isOnline) return offlineVerify();
+      if (!isOnline) return null;
 
       try {
         // `verify_staff_pin` is not in generated types yet — cast to call it.
@@ -53,10 +53,9 @@ export function useVerifyStaffPin() {
           { p_location_id: locationId, p_pin_code: pin },
         );
 
-        if (error) {
-          // RPC missing (not-yet-deployed) or transport error → offline path.
-          return offlineVerify();
-        }
+        // RPC missing (not-yet-deployed) or transport error: the cache already
+        // had no match, so there is nothing else to check.
+        if (error) return null;
 
         const row = Array.isArray(data) ? data[0] : data;
         if (!row?.staff_profile_id) return null; // wrong PIN — server rejected
@@ -67,7 +66,7 @@ export function useVerifyStaffPin() {
           role: row.role ?? null,
         };
       } catch {
-        return offlineVerify();
+        return null;
       }
     },
     [supabase],
