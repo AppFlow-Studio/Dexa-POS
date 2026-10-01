@@ -2624,7 +2624,8 @@ const KitchenDisplayScreen = () => {
     }
     clearStationSession();
     clearStationData();
-    replaceRoute("(auth)", "pin-login");
+    // KDS has no PIN step; pick a station again to restart it.
+    replaceRoute("(auth)", "station-select");
   }, [stationSessionId, selectedStore?.id, supabase, clearStationSession]);
 
   // Triple-tap station name → logout
