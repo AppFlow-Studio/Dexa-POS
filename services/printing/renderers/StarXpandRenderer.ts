@@ -15,6 +15,7 @@ export interface StarRenderOptions {
   supportsAutoCut: boolean;
   maxCharsPerLine: number;
   graphicsOnly: boolean; // TSP100III etc. — must use actionPrintImage
+  impact: boolean; // SP700 etc. (StarDot) — dot-matrix head, print with printer fonts
 }
 
 export interface StarRenderResult {
@@ -86,10 +87,20 @@ export async function renderDocumentToStarCommands(
   // (TSP100III/IIU+ are graphics-only anyway and never reach this path.)
   printerBuilder.styleCharacterSpace(0);
 
-  // Force all printing to use graphics mode to ensure exact font consistency across all printers.
-  // This uses SkiaTicketRenderer which enforces the bundled SpaceMono font.
   const tempFiles: string[] = [];
-  await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand, tempFiles);
+  if (options.impact) {
+    // Impact (dot-matrix) printers print text with their own fonts. Their head
+    // is far narrower than the 576-dot raster below, so a rendered image comes
+    // out enlarged with the right side cut off.
+    const fmt = createFormatTracker(printerBuilder, StarXpandCommand);
+    for (const node of doc.nodes) {
+      await renderNode(printerBuilder, node, w, options, StarXpandCommand, fmt);
+    }
+  } else {
+    // Thermal printers: graphics mode for exact font consistency.
+    // This uses SkiaTicketRenderer which enforces the bundled SpaceMono font.
+    await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand, tempFiles);
+  }
 
   const builder = new StarXpandCommand.StarXpandCommandBuilder();
   builder.addDocument(
@@ -478,6 +489,8 @@ async function renderNode(
     }
 
     case "qr_code": {
+      // Impact heads can't print QR codes
+      if (options.impact) break;
       fmt.setAlignment("center");
       pb.actionPrintQRCode(
         new sdk.Printer.QRCodeParameter(node.data)
@@ -489,6 +502,8 @@ async function renderNode(
     }
 
     case "image": {
+      // Impact heads: same overflow as the raster path — skip logos
+      if (options.impact) break;
       if (node.base64Png) {
         const printWidthDots = lineWidth >= 42
           ? PRINT_WIDTH_DOTS_80MM

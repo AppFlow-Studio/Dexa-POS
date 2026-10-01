@@ -227,14 +227,26 @@ export const usePrinterStore = create<PrinterStoreState>()(
         try {
           // If setting as default receipt, clear other defaults at same station (max 1 receipt printer)
           if (updates.isDefaultReceipt === true && printer.stationId) {
-            await supabase
+            const { error: clearError } = await supabase
               .from("printers")
               .update({ is_default_receipt: false })
               .eq("station_id", printer.stationId)
               .neq("id", printerId);
+            if (clearError) throw new Error(clearError.message);
           }
 
-          // isDefaultKitchen: multiple kitchen printers allowed — no clearing
+          // One default kitchen printer per location (DB unique index
+          // idx_one_default_kitchen_per_location). Setting a new default moves
+          // the flag; without clearing first the update fails with 23505.
+          if (updates.isDefaultKitchen === true && printer.locationId) {
+            const { error: clearError } = await supabase
+              .from("printers")
+              .update({ is_default_kitchen: false })
+              .eq("location_id", printer.locationId)
+              .eq("is_default_kitchen", true)
+              .neq("id", printerId);
+            if (clearError) throw new Error(clearError.message);
+          }
 
           // Map camelCase to snake_case DB columns
           const dbUpdates: Record<string, unknown> = {};
@@ -289,7 +301,20 @@ export const usePrinterStore = create<PrinterStoreState>()(
             };
           }
 
-          await supabase.from("printers").update(dbUpdates).eq("id", printerId);
+          // Check the result: a rejected or RLS-filtered write must not look
+          // saved (the optimistic update below would be reverted by the next
+          // fetchPrinters with no error shown).
+          const { data: updatedRows, error: updateError } = await supabase
+            .from("printers")
+            .update(dbUpdates)
+            .eq("id", printerId)
+            .select("id");
+          if (updateError) throw new Error(updateError.message);
+          if (!updatedRows?.length) {
+            throw new Error(
+              "Printer settings were not saved. This account may not have permission to change printers.",
+            );
+          }
 
           // Optimistic local update (mutative via Immer)
           set((state) => {
@@ -348,7 +373,13 @@ export const usePrinterStore = create<PrinterStoreState>()(
                 ) {
                   p.isDefaultReceipt = false;
                 }
-                // isDefaultKitchen: multiple allowed — no clearing
+                // Clear default kitchen on other printers at same location (max 1)
+                if (
+                  updates.isDefaultKitchen === true &&
+                  p.locationId === printer.locationId
+                ) {
+                  p.isDefaultKitchen = false;
+                }
               }
             }
           });

@@ -1158,6 +1158,16 @@ function EditPrinterDialog({
   const [name, setName] = useState(printer.printerName);
   const [role, setRole] = useState(printer.printerRole);
   const [isDefaultKitchen, setIsDefaultKitchen] = useState(printer.isDefaultKitchen);
+  // One default kitchen printer per location — saving moves the flag here.
+  const currentDefaultKitchenName = usePrinterStore(
+    (store) =>
+      store.printers.find(
+        (p) =>
+          p.id !== printer.id &&
+          p.locationId === printer.locationId &&
+          p.isDefaultKitchen,
+      )?.printerName,
+  );
   const [isActive, setIsActive] = useState(printer.isActive);
   const [saving, setSaving] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -1331,6 +1341,11 @@ function EditPrinterDialog({
         </View>
         <ToggleRow
           label="Default Kitchen Printer"
+          subtitle={
+            isDefaultKitchen && currentDefaultKitchenName
+              ? `Replaces ${currentDefaultKitchenName} as the default`
+              : undefined
+          }
           value={isDefaultKitchen}
           onToggle={setIsDefaultKitchen}
         />
