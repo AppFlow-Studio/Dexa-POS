@@ -4372,6 +4372,9 @@ const KitchenDisplayScreen = () => {
                Card Pressables capture their own taps. */
             onPressFooter={handleClearFocus}
             footerHeight={s(80)}
+            // Same skeleton as the loading state, kept up until the cards on
+            // screen are measured so the board doesn't paint at estimates.
+            placeholder={renderSkeletons()}
           />
         </View>
       )}

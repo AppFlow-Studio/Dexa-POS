@@ -60,6 +60,11 @@ export interface KDSTicket {
 }
 
 export interface KDSDisplayConfig {
+  /**
+   * Station the display belongs to. A failed refresh keeps the saved config
+   * only for this station. Absent on configs saved before it was added.
+   */
+  stationId?: string;
   displayName: string;
   columns: number | null;
   alertMinutes: number | null;

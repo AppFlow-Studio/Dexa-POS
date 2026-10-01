@@ -226,6 +226,50 @@ describe("updateKDSDisplay vs fetchKDSDisplay", () => {
   });
 });
 
+describe("fetchKDSDisplay when the read fails", () => {
+  afterEach(() => setKDSSupabaseClient(null));
+
+  it("keeps this station's saved columns and size", async () => {
+    seedDisplay({ stationId: STATION_ID, columns: 3, fontScale: 1.25 });
+    const { client, reads } = makeKdsClient();
+    setKDSSupabaseClient(client);
+
+    const read = useKDSStore.getState().fetchKDSDisplay(STATION_ID);
+    await flush();
+    reads[0].resolve({ data: null, error: { message: "timeout" } });
+    await read;
+
+    expect(useKDSStore.getState().kdsDisplayId).toBe(DISPLAY_ID);
+    expect(displayConfig().columns).toBe(3);
+    expect(displayConfig().fontScale).toBe(1.25);
+  });
+
+  it("drops a display saved for another station", async () => {
+    seedDisplay({ stationId: "other-station", columns: 3 });
+    const { client, reads } = makeKdsClient();
+    setKDSSupabaseClient(client);
+
+    const read = useKDSStore.getState().fetchKDSDisplay(STATION_ID);
+    await flush();
+    reads[0].resolve({ data: null, error: { message: "timeout" } });
+    await read;
+
+    expect(useKDSStore.getState().kdsDisplayConfig).toBeNull();
+  });
+
+  it("records the station on a successful read", async () => {
+    const { client, reads } = makeKdsClient();
+    setKDSSupabaseClient(client);
+
+    const read = useKDSStore.getState().fetchKDSDisplay(STATION_ID);
+    await flush();
+    reads[0].resolve({ data: displayRow(), error: null });
+    await read;
+
+    expect(displayConfig().stationId).toBe(STATION_ID);
+  });
+});
+
 // ─── Location config (useLocationConfigStore) ─────────────────────
 
 describe("updateConfig vs config hydrate", () => {

@@ -5,6 +5,7 @@ import {
   NativeSyntheticEvent,
   Pressable,
   ScrollView,
+  StyleSheet,
   View,
 } from "react-native";
 
@@ -29,6 +30,10 @@ import type { KDSTicket } from "@/types/kds";
  * so tab switches and remounts lay out exactly on the first pass. Cards far
  * outside the viewport are not mounted, and on first paint only the on-screen
  * cards are — the buffer around them follows a frame later.
+ *
+ * A card is invisible until its height is measured: laid out at its estimated
+ * height it would show in the wrong place and then jump. On a cold start the
+ * `placeholder` covers the board until the cards on screen are measured.
  */
 
 interface KDSTicketBoardProps {
@@ -46,6 +51,8 @@ interface KDSTicketBoardProps {
   /** Tapping the empty space below the grid. */
   onPressFooter?: () => void;
   footerHeight: number;
+  /** Covers the board until the cards on screen have their real heights. */
+  placeholder?: React.ReactNode;
 }
 
 // Rendered window around the viewport, in viewport heights. Generous below so
@@ -57,6 +64,9 @@ const MAX_CACHED_HEIGHTS = 600;
 // Module-level so a tab switch (which remounts the board) keeps its layout.
 // Key: `${namespace}|${roundedWidth}|${ticketId}`.
 const heightCache = new Map<string, number>();
+// Last measured board size, so a remount lays out on its first render instead
+// of drawing an empty frame while it waits for onLayout.
+const lastBoardSize = { width: 0, height: 0 };
 
 function pruneHeightCache(live: Set<string>) {
   if (heightCache.size <= MAX_CACHED_HEIGHTS) return;
@@ -71,6 +81,8 @@ interface SlotProps {
   top: number;
   width: number;
   gutter: number;
+  /** False while the slot sits at an estimated height: kept invisible. */
+  measured: boolean;
   renderCard: (ticket: KDSTicket) => React.ReactElement;
   onMeasured: (ticketId: string, height: number) => void;
 }
@@ -81,6 +93,7 @@ const TicketSlot = React.memo(function TicketSlot({
   top,
   width,
   gutter,
+  measured,
   renderCard,
   onMeasured,
 }: SlotProps) {
@@ -90,7 +103,9 @@ const TicketSlot = React.memo(function TicketSlot({
     [ticketId, onMeasured],
   );
   return (
-    <View style={{ position: "absolute", left, top, width }}>
+    <View
+      style={{ position: "absolute", left, top, width, opacity: measured ? 1 : 0 }}
+    >
       <View onLayout={handleLayout} style={{ paddingHorizontal: gutter }}>
         {renderCard(ticket)}
       </View>
@@ -110,9 +125,10 @@ export default function KDSTicketBoard({
   bottomPadding,
   onPressFooter,
   footerHeight,
+  placeholder,
 }: KDSTicketBoardProps) {
-  const [width, setWidth] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
+  const [width, setWidth] = useState(lastBoardSize.width);
+  const [viewportHeight, setViewportHeight] = useState(lastBoardSize.height);
   // Scroll position the rendered window is anchored to. Updated only when the
   // scroll moves half a viewport away, not per scroll event.
   const [windowAnchor, setWindowAnchor] = useState(0);
@@ -177,7 +193,8 @@ export default function KDSTicketBoard({
       const column = i % Math.max(columns, 1);
       const key = cacheKey(ticket.ticket_id);
       live.add(key);
-      const height = heightCache.get(key) ?? estimateHeight(ticket);
+      const measuredHeight = heightCache.get(key);
+      const height = measuredHeight ?? estimateHeight(ticket);
       const top = columnBottoms[column];
       columnBottoms[column] = top + height;
       return {
@@ -185,6 +202,7 @@ export default function KDSTicketBoard({
         left: horizontalPadding + column * columnWidth,
         top,
         height,
+        measured: measuredHeight !== undefined,
       };
     });
     pruneHeightCache(live);
@@ -206,9 +224,29 @@ export default function KDSTicketBoard({
 
   const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
     const { width: w, height: h } = e.nativeEvent.layout;
+    lastBoardSize.width = w;
+    lastBoardSize.height = h;
     setWidth((prev) => (Math.abs(prev - w) < 0.5 ? prev : w));
     setViewportHeight((prev) => (Math.abs(prev - h) < 0.5 ? prev : h));
   }, []);
+
+  // Hold the placeholder until every card on screen has its real height. Once
+  // the board has painted it stays up: later cards (new tickets, scrolling)
+  // only hide themselves until measured.
+  const onScreenMeasured =
+    width > 0 &&
+    viewportHeight > 0 &&
+    layout.slots.every(
+      (slot) =>
+        slot.measured ||
+        slot.top >= windowAnchor + viewportHeight ||
+        slot.top + slot.height <= windowAnchor,
+    );
+  const [painted, setPainted] = useState(false);
+  useEffect(() => {
+    if (onScreenMeasured) setPainted(true);
+  }, [onScreenMeasured]);
+  const showPlaceholder = !!placeholder && !painted && !onScreenMeasured;
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -226,6 +264,7 @@ export default function KDSTicketBoard({
     windowAnchor + viewportHeight * (1 + (bufferReady ? WINDOW_BELOW : 0));
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{ height: layout.gridBottom + footerHeight }}
@@ -245,6 +284,7 @@ export default function KDSTicketBoard({
               top={slot.top}
               width={layout.columnWidth}
               gutter={cellGutter}
+              measured={slot.measured}
               renderCard={renderCard}
               onMeasured={handleMeasured}
             />
@@ -263,5 +303,9 @@ export default function KDSTicketBoard({
         />
       )}
     </ScrollView>
+    {showPlaceholder ? (
+      <View style={StyleSheet.absoluteFill}>{placeholder}</View>
+    ) : null}
+    </View>
   );
 }
