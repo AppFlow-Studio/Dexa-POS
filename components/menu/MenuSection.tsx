@@ -470,8 +470,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // Per-order PIN attribution: block adding items (which is what creates the
   // backend order row) until the staff who's ringing has been verified. This
   // closes the timing gap where an order could be created — and attributed —
-  // before the PIN is entered. The PIN prompt itself (OrderPinGate) is rendered
-  // by BillSection; here we only gate adds and surface the right message.
+  // before the PIN is entered. The PIN prompt itself (OrderPinGate) is declared
+  // by BillSection; here we only gate adds.
   const requirePinPerOrder = useStoreSettingsStore((s) => s.requirePinPerOrder);
   const orderAttributionOrderId = useEmployeeStore(
     (s) => s.orderAttributionOrderId,
@@ -495,22 +495,22 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     isTableSeating ||
     effectiveCreatingOrder ||
     isAwaitingOrderPin;
+  // While awaiting the PIN the menu stays blocked but isn't blurred: the PIN
+  // prompt (OrderPinGateHost) already covers the screen.
+  const showMenuDisabledOverlay =
+    hasNoActiveOrder || isTableSeating || effectiveCreatingOrder;
   // Seating takes precedence over "creating" in the label (a dine-in order is
   // also db_order_id-less while seating, but "Seating in progress" is clearer).
   const menuDisabledTitle = hasNoActiveOrder
     ? "No Active Order"
     : isTableSeating
       ? "Seating in progress"
-      : isAwaitingOrderPin
-        ? "Enter PIN to start"
-        : "Creating order";
+      : "Creating order";
   const menuDisabledMessage = hasNoActiveOrder
     ? "Start an order to add items."
     : isTableSeating
       ? "Items can be added once the table is seated."
-      : isAwaitingOrderPin
-        ? "Enter your PIN to start this order."
-        : "Items can be added once the order is ready.";
+      : "Items can be added once the order is ready.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );
@@ -1603,7 +1603,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
         {/* Blocking overlay isolated — only re-renders when modifier opens */}
         <SeatingBlockingOverlay
-          isVisible={isMenuAddDisabled}
+          isVisible={showMenuDisabledOverlay}
           title={menuDisabledTitle}
           message={menuDisabledMessage}
           showSpinner={!hasNoActiveOrder}
