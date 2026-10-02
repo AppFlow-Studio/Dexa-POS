@@ -250,6 +250,12 @@ export type ConflictSink = (conflict: TableOccupiedConflict) => void;
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Attempts a regular item's add op is held back for its TO GO flag before the
+ * line binds without it (the flag then retries on the durable to-go queue).
+ */
+const TO_GO_HOLD_ATTEMPTS = 2;
+
 function rpcError(rpc: string, error: unknown): DrainOutcome {
   const outcome = outcomeFromError(error);
   const text =
@@ -453,6 +459,10 @@ export function makeOpHandlers(
         // was still running). Unbound, the send treats the line as a
         // straggler and routes it once this op completes. A retry replays the
         // add as a no-op (same row id) and this call again.
+        //
+        // Bounded, though: holding the line back must never cost the food. A
+        // flag that keeps failing is handed to the durable to-go queue and
+        // the line binds anyway.
         if (needsToGoToggle) {
           try {
             const { error: toGoError } = await client.rpc(
@@ -463,15 +473,29 @@ export function makeOpHandlers(
             console.log(`[LF] ✓ to-go item=${op.entityId}`);
           } catch (toGoErr) {
             const outcome = rpcError("toggle_to_go_order_items", toGoErr);
-            if (outcome.kind === "retry") return outcome;
-            // Permanent: the item is on the server, just not flagged. Drop the
-            // guard so the tablet shows what the kitchen will see, and report
-            // it rather than park a line that did sync.
-            clearPendingToGo([op.entityId]);
+            if (
+              outcome.kind === "retry" &&
+              op.attempts < TO_GO_HOLD_ATTEMPTS
+            ) {
+              return outcome;
+            }
+            if (outcome.kind === "retry") {
+              // Keeps the pending guard and retries on its own schedule.
+              const { OrderService } =
+                require("@/services/orderService") as typeof import("@/services/orderService");
+              void OrderService.toggleToGoOnItems(client, [op.entityId], true, {
+                localOrderId: p.orderId,
+                localItemIds: p.cartItemId ? [p.cartItemId] : undefined,
+              }).catch(() => {});
+            } else {
+              // Permanent: the item is on the server, just not flagged. Drop
+              // the guard so the tablet shows what the kitchen will see.
+              clearPendingToGo([op.entityId]);
+            }
             try {
-              Sentry.captureMessage("[LF] to-go flag rejected", {
+              Sentry.captureMessage("[LF] to-go flag not applied with add", {
                 level: "warning",
-                tags: { lf_event: "to_go_rejected" },
+                tags: { lf_event: "to_go_not_applied" },
                 extra: {
                   item_id: op.entityId,
                   order_id: p.orderId,
