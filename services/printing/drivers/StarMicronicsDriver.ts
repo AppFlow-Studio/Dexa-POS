@@ -210,14 +210,18 @@ export class StarMicronicsDriver implements PrinterDriver {
       throw new Error("Star Micronics driver not initialized");
     }
 
+    // Dot-matrix models (SP700 series) report the StarDot emulation
+    const impact = this.config.metadata?.emulation === "StarDot";
+
     console.log(
-      `[StarMicronicsDriver] graphicsOnly=${this.config.graphicsOnly}, model=${this.config.printerModel}, maxCharsPerLine=${this.config.maxCharsPerLine}, addr=${this.config.networkAddress}`,
+      `[StarMicronicsDriver] graphicsOnly=${this.config.graphicsOnly}, impact=${impact}, model=${this.config.printerModel}, maxCharsPerLine=${this.config.maxCharsPerLine}, addr=${this.config.networkAddress}`,
     );
 
     const { commands, tempFiles } = await renderDocumentToStarCommands(doc, {
       supportsAutoCut: this.config.supportsAutoCut,
       maxCharsPerLine: this.config.maxCharsPerLine,
       graphicsOnly: this.config.graphicsOnly ?? false,
+      impact,
     });
 
     console.log(
