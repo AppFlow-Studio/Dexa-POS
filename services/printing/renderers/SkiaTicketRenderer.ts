@@ -115,6 +115,72 @@ function getTypeface(bold: boolean): any {
 }
 
 // ============================================================================
+// WORD WRAP
+// ============================================================================
+
+/**
+ * Splits text blocks wider than maxWidth (measured with the render font) into
+ * several blocks at word boundaries. Continuation lines keep the original
+ * indent plus two spaces. Dividers and two-column rows are left as-is.
+ */
+function wrapBlocksToWidth(blocks: TextBlock[], maxWidth: number): TextBlock[] {
+  const fonts = new Map<boolean, ReturnType<typeof Skia.Font>>();
+  const fits = (text: string, bold: boolean) => {
+    let font = fonts.get(bold);
+    if (!font) {
+      font = Skia.Font(getTypeface(bold) ?? undefined, BASE_FONT_SIZE);
+      fonts.set(bold, font);
+    }
+    return font.getTextWidth(text) <= maxWidth;
+  };
+
+  try {
+    const out: TextBlock[] = [];
+    for (const block of blocks) {
+      if (block.isDivider || block.rightAlignedText || fits(block.text, block.bold)) {
+        out.push(block);
+        continue;
+      }
+      // Wrapped lines print at single width so every line matches (the draw
+      // pass would drop doubleWidth on the long ones anyway).
+      for (const text of wrapText(block.text, (t) => fits(t, block.bold))) {
+        out.push({ ...block, text, doubleWidth: false });
+      }
+    }
+    return out;
+  } finally {
+    for (const font of fonts.values()) {
+      (font as unknown as { dispose?: () => void }).dispose?.();
+    }
+  }
+}
+
+function wrapText(text: string, fits: (line: string) => boolean): string[] {
+  const indent = text.match(/^\s*/)?.[0] ?? "";
+  const continuation = `${indent}  `;
+  const lines: string[] = [];
+  let line = indent;
+  for (const word of text.trim().split(/\s+/)) {
+    const candidate = line.trim() ? `${line} ${word}` : `${line}${word}`;
+    if (fits(candidate)) {
+      line = candidate;
+      continue;
+    }
+    if (line.trim()) lines.push(line);
+    line = continuation + word;
+    // A single word wider than the line is hard-broken
+    while (!fits(line) && line.length > continuation.length + 1) {
+      let cut = line.length - 1;
+      while (cut > continuation.length + 1 && !fits(line.slice(0, cut))) cut--;
+      lines.push(line.slice(0, cut));
+      line = continuation + line.slice(cut);
+    }
+  }
+  if (line.trim()) lines.push(line);
+  return lines;
+}
+
+// ============================================================================
 // PUBLIC API
 // ============================================================================
 
@@ -170,6 +236,11 @@ async function rasterizeTextBlocksInner(
 
   // Ensure custom typeface is loaded before rasterizing text
   await loadCustomTypeface();
+
+  // Drawing never wraps, so anything wider than the head (long notes,
+  // modifiers, item names) was cut off at the right edge. ~33 chars fit at
+  // 576 dots regardless of the printer's max_chars_per_line.
+  blocks = wrapBlocksToWidth(blocks, printWidthDots - 2 * HORIZONTAL_PADDING);
 
   // First pass: calculate total height
   let totalHeight = 0;
