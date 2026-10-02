@@ -36,6 +36,7 @@ import {
 import { getDeviceId } from "@/lib/deviceId";
 import { generateLocalOrderNumbers } from "@/lib/localOrderSequence";
 import { markSessionUnsynced } from "@/lib/localFirst/unsyncedSessions";
+import { markPendingToGo } from "@/lib/pendingToGo";
 import { nudgeDrain } from "@/services/localFirst/outboxDrain";
 import { v4 as uuidv4 } from "uuid";
 
@@ -48,6 +49,7 @@ import type {
   SendToKitchenPayload,
   SetItemSeatPayload,
   SetOrderCreatorPayload,
+  ToggleToGoPayload,
   UpdateItemQuantityPayload,
   VoidItemPayload,
 } from "@/services/localFirst/opHandlers";
@@ -932,6 +934,12 @@ export interface EditLocalItemInput {
   specialInstructions?: string | null;
   /** Already FLATTENED to the row shape the RPC inserts. */
   modifiers?: unknown[];
+  /**
+   * Folds into the unsent add like the fields above, or queues a toggle_to_go
+   * op behind it. Only for lines not yet bound to their row — a bound line's
+   * caller persists TO GO via OrderService.toggleToGoOnItems.
+   */
+  isToGo?: boolean;
 }
 
 /**
@@ -961,6 +969,7 @@ export async function editLocalItem(
     patch.specialInstructions = input.specialInstructions;
   }
   if (input.modifiers !== undefined) patch.modifiers = input.modifiers;
+  if (input.isToGo !== undefined) patch.isToGo = input.isToGo;
   if (Object.keys(patch).length === 0) {
     return { ok: true, value: { amended: false } };
   }
@@ -980,6 +989,12 @@ export async function editLocalItem(
     rowUpdates.push({
       sql: `UPDATE order_items SET special_instructions = ?, updated_at = ? WHERE id = ?`,
       args: [input.specialInstructions ?? null, ts, input.itemId],
+    });
+  }
+  if (input.isToGo !== undefined) {
+    rowUpdates.push({
+      sql: `UPDATE order_items SET is_to_go = ?, updated_at = ? WHERE id = ?`,
+      args: [input.isToGo ? 1 : 0, ts, input.itemId],
     });
   }
 
@@ -1027,12 +1042,30 @@ export async function editLocalItem(
       payload,
     });
   }
+  if (input.isToGo !== undefined) {
+    const payload: ToggleToGoPayload = {
+      orderId: input.orderId,
+      itemId: input.itemId,
+      isToGo: input.isToGo,
+    };
+    ops.push({
+      id: uuidv4(),
+      op: "toggle_to_go",
+      entity: "order_item",
+      entityId: input.itemId,
+      orderId: input.orderId,
+      payload,
+    });
+  }
 
   if (ops.length === 0 && rowUpdates.length === 0) {
     return { ok: true, value: { amended: false } };
   }
   const res = await commitLocalWrite(rowUpdates, ops);
   if (!res.ok) return { ok: false, error: res.error };
+  // The add can land (and a fetch arrive) before the queued toggle does; keep
+  // that fetch from overwriting the tablet's TO GO with the row's old value.
+  if (input.isToGo !== undefined) markPendingToGo([input.itemId], input.isToGo);
   return { ok: true, value: { amended: false } };
 }
 
