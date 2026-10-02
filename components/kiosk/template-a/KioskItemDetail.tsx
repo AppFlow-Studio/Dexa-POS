@@ -8,6 +8,7 @@ import {
   useKioskTheme,
 } from "@/components/kiosk/shared/kioskDesign";
 import { KioskPressable } from "@/components/kiosk/shared/KioskPressable";
+import { KioskScrollRail } from "@/components/kiosk/shared/KioskScrollRail";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { useItemModifiers } from "@/components/kiosk/shared/useItemModifiers";
@@ -20,7 +21,7 @@ import type { KioskConfig } from "@/types/kiosk";
 import { Check, ChevronLeft, Minus, Plus } from "@/lib/icons";
 import { useCallback, useMemo, useState } from "react";
 import OptimizedListImage from "@/components/ui/OptimizedListImage";
-import { ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -547,20 +548,19 @@ export function KioskItemDetail({
           {/* Right panel — modifiers (hidden if none); on a landscape phone the
               title block scrolls here too. */}
           {hasRightPane ? (
-            <ScrollView
-              showsVerticalScrollIndicator={false}
+            <KioskScrollRail
+              color={t.textFaint}
               contentContainerStyle={{
                 paddingBottom: kioskPx(32, s),
                 paddingHorizontal: kioskPx(24, s),
                 flexGrow: 1,
               }}
-              style={{ flex: 1 }}
             >
               <View style={{ width: "100%", maxWidth: kioskPx(720, s) }}>
                 {compactLandscape ? titleBlock : null}
                 {modifierGroups}
               </View>
-            </ScrollView>
+            </KioskScrollRail>
           ) : null}
         </View>
 
@@ -594,9 +594,8 @@ export function KioskItemDetail({
       {portraitPinnedTitle}
 
       {/* Only the description and modifier groups scroll */}
-      <ScrollView
-        style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
+      <KioskScrollRail
+        color={t.textFaint}
         contentContainerStyle={{
           paddingTop: kioskPx(4, s),
           paddingBottom: kioskPx(32, s),
@@ -613,7 +612,7 @@ export function KioskItemDetail({
           {descriptionText}
           {modifierGroups}
         </View>
-      </ScrollView>
+      </KioskScrollRail>
 
       {footer}
     </View>
