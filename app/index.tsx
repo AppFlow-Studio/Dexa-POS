@@ -1,3 +1,4 @@
+import { isUnattendedStation } from "@/lib/authFlow";
 import { colors } from "@/lib/theme";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -8,6 +9,12 @@ import { ActivityIndicator, View } from "react-native";
 const StartPage = () => {
   const { isSignedIn, isLoaded } = useAuth();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+  const selectedStation = useStoreSettingsStore(
+    (state) => state.selectedStation,
+  );
+  const stationSessionId = useStoreSettingsStore(
+    (state) => state.stationSessionId,
+  );
   const isCFDMode = useStoreSettingsStore((state) => state.isCFDMode);
   const isPaired = useCFDClientStore((state) => state.isPaired);
 
@@ -30,8 +37,18 @@ const StartPage = () => {
 
   // Redirect based on authentication status and store selection
   if (isSignedIn) {
-    // If store is already selected, go directly to pin-login
     if (selectedStore) {
+      // KDS and kiosk stations have no PIN step: reopen the station's screen
+      // on its saved session, or pick the station again to start a new one.
+      if (isUnattendedStation(selectedStation?.station_type)) {
+        if (!stationSessionId) return <Redirect href="/station-select" />;
+        return (
+          <Redirect
+            href={selectedStation?.station_type === "kds" ? "/kds" : "/kiosk"}
+          />
+        );
+      }
+      // Every other station signs in with a staff PIN.
       return <Redirect href="/pin-login" />;
     }
     // Otherwise, go to store-select

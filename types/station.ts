@@ -128,7 +128,8 @@ export interface Station {
 export interface StationCurrentSession {
   session_id: string;
   device_name: string | null;
-  staff_name: string;
+  /** Null for a KDS / kiosk station, which runs without a staff sign-in. */
+  staff_name: string | null;
   started_at: string;
 }
 
@@ -191,6 +192,20 @@ export interface PosStaffLoginResponse {
   };
   current_session?: StationCurrentSession;
   shift?: Record<string, unknown>;
+}
+
+// Response from pos_station_login RPC — claims a KDS / kiosk station without a
+// staff PIN (no staff, no clock-in).
+export interface PosStationLoginResponse {
+  success: boolean;
+  error?: string;
+  error_code?:
+    | "STATION_NOT_FOUND"
+    | "STATION_IN_USE"
+    | "ACCESS_DENIED"
+    | "PIN_REQUIRED";
+  session?: PosStaffLoginResponse["session"];
+  current_session?: StationCurrentSession;
 }
 
 // === STATION DEVICE TYPES ===

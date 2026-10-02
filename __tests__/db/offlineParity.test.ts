@@ -374,6 +374,132 @@ describe("an edit before the add is sent rewrites the add", () => {
   });
 });
 
+describe("TO GO reaches the server", () => {
+  // add_order_item_v5 has no p_is_to_go, so a regular item's flag rides a
+  // second call. Without it the KDS never showed TO GO, and the re-fetch after
+  // the kitchen send cleared the tablet's badge.
+  async function makeToGoOrder(item: { isToGo?: boolean; isOpenItem?: boolean }) {
+    const order = await createLocalOrder({
+      merchantId: MERCHANT,
+      locationId: LOCATION,
+      orderType: "dine_in",
+      stationNumber: 1,
+    });
+    const added = await addLocalItem({
+      orderId: order.value!.orderId,
+      locationId: LOCATION,
+      itemName: "Iced Latte",
+      quantity: 1,
+      unitPrice: 5,
+      cartItemId: "cart|latte_1",
+      ...item,
+    });
+    return { orderId: order.value!.orderId, itemId: added.value!.itemId };
+  }
+
+  it("flags a to-go item inside its add op, so it lands before a kitchen send", async () => {
+    const { itemId } = await makeToGoOrder({ isToGo: true });
+
+    const server = recordingServer();
+    await drainOnce(makeOpHandlers(server.client));
+    expect(server.names()).toEqual([
+      "create_order_v4",
+      "add_order_item_v5",
+      "toggle_to_go_order_items",
+    ]);
+    expect(server.calls[2].params).toEqual({
+      p_order_item_ids: [itemId],
+      p_is_to_go: true,
+    });
+    expect(await pendingOpCount()).toBe(0);
+  });
+
+  it("makes no extra call for an item that is not to go", async () => {
+    await makeOrderWithItem();
+    const server = recordingServer();
+    await drainOnce(makeOpHandlers(server.client));
+    expect(server.names()).toEqual(["create_order_v4", "add_order_item_v5"]);
+  });
+
+  it("leaves open items to add_open_item_v5, which carries TO GO itself", async () => {
+    await makeToGoOrder({ isToGo: true, isOpenItem: true });
+    const server = recordingServer();
+    await drainOnce(makeOpHandlers(server.client));
+    expect(server.names()).toEqual(["create_order_v4", "add_open_item_v5"]);
+    expect(server.calls[1].params.p_is_to_go).toBe(true);
+  });
+
+  it("retries the add op when the flag fails, instead of dropping it", async () => {
+    const { itemId } = await makeToGoOrder({ isToGo: true });
+
+    const flaky = recordingServer({
+      override: (name) =>
+        name === "toggle_to_go_order_items"
+          ? { data: null, error: { message: "Network request failed" } }
+          : null,
+    });
+    await drainOnce(makeOpHandlers(flaky.client));
+    expect(await pendingOpCount()).toBe(1);
+
+    await resetBackoffForReconnect();
+    const server = recordingServer();
+    await drainOnce(makeOpHandlers(server.client));
+    // The add replays as a no-op on the same row id; the flag lands.
+    expect(server.names()).toEqual([
+      "add_order_item_v5",
+      "toggle_to_go_order_items",
+    ]);
+    expect(server.calls[1].params.p_order_item_ids).toEqual([itemId]);
+    expect(await pendingOpCount()).toBe(0);
+  });
+
+  it("folds a TO GO toggle into an add that has not been sent", async () => {
+    const { orderId, itemId } = await makeOrderWithItem();
+
+    const res = await editLocalItem({ orderId, itemId, isToGo: true });
+    expect(res.value!.amended).toBe(true);
+    expect(await pendingOpCount()).toBe(2);
+
+    const server = recordingServer();
+    await drainOnce(makeOpHandlers(server.client));
+    expect(server.names()).toEqual([
+      "create_order_v4",
+      "add_order_item_v5",
+      "toggle_to_go_order_items",
+    ]);
+  });
+
+  it("queues its own op once the add is already on its way", async () => {
+    const { orderId, itemId } = await makeOrderWithItem();
+    const db = getDb()!;
+    const addOp = await db.getFirstAsync<{ id: string; attempts: number }>(
+      `SELECT id, attempts FROM outbox WHERE op = 'add_item'`,
+    );
+    await markRetry(addOp!.id, addOp!.attempts, "Network request failed");
+
+    const res = await editLocalItem({ orderId, itemId, isToGo: true });
+    expect(res.value!.amended).toBe(false);
+    const row = await db.getFirstAsync<{ is_to_go: number }>(
+      `SELECT is_to_go FROM order_items WHERE id = ?`,
+      [itemId],
+    );
+    expect(row?.is_to_go).toBe(1);
+
+    await resetBackoffForReconnect();
+    const server = recordingServer();
+    await drainOnce(makeOpHandlers(server.client));
+    expect(server.names()).toEqual([
+      "create_order_v4",
+      "add_order_item_v5",
+      "toggle_to_go_order_items",
+    ]);
+    expect(server.calls[2].params).toEqual({
+      p_order_item_ids: [itemId],
+      p_is_to_go: true,
+    });
+  });
+});
+
 describe("reconnect means now", () => {
   it("clears the backoff that offline failures accumulated", async () => {
     // Every offline write used to run a full drain, so each op collected

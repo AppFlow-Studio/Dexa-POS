@@ -36,6 +36,7 @@ import { isTerminalKitchenMutationError } from "@/lib/kdsSendTraceability";
 import { seedFromAssignedOrderNumber } from "@/lib/localOrderSequence";
 import { sanitizeModifierRowsForRpc } from "@/lib/modifierRpc";
 import { markSessionSynced } from "@/lib/localFirst/unsyncedSessions";
+import { clearPendingToGo, markPendingToGo } from "@/lib/pendingToGo";
 import {
   outcomeFromError,
   type DrainOutcome,
@@ -145,7 +146,11 @@ export interface AddItemPayload {
   openItemName?: string | null;
   openItemPrice?: number | null;
   isTaxExempt?: boolean;
-  /** Open items carry TO GO natively via add_open_item_v5.p_is_to_go. */
+  /**
+   * Open items carry TO GO natively via add_open_item_v5.p_is_to_go. Regular
+   * items can't (add_order_item_v5 has no such param), so the drain follows
+   * their add with toggle_to_go_order_items.
+   */
   isToGo?: boolean;
   /**
    * The CartItem's id — a composite merge key, not the row uuid.
@@ -197,6 +202,12 @@ export interface ReplaceModifiersPayload {
   modifiers: unknown[];
 }
 
+export interface ToggleToGoPayload {
+  orderId: string;
+  itemId: string;
+  isToGo: boolean;
+}
+
 export interface SendToKitchenPayload {
   orderId: string;
   itemIds: string[];
@@ -238,6 +249,12 @@ export interface TableOccupiedConflict {
 export type ConflictSink = (conflict: TableOccupiedConflict) => void;
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Attempts a regular item's add op is held back for its TO GO flag before the
+ * line binds without it (the flag then retries on the durable to-go queue).
+ */
+const TO_GO_HOLD_ATTEMPTS = 2;
 
 function rpcError(rpc: string, error: unknown): DrainOutcome {
   const outcome = outcomeFromError(error);
@@ -371,6 +388,11 @@ export function makeOpHandlers(
       console.log(
         `[LF] → ${rpcName} item=${op.entityId} order=${p.orderId} name=${p.itemName} qty=${p.quantity} open=${!!p.isOpenItem}`,
       );
+      // A regular to-go item lands in two calls (see the TO GO block below).
+      // Guard the flag before the first, so a fetch that arrives between them
+      // can't overwrite the tablet's TO GO with the new row's default false.
+      const needsToGoToggle = !!p.isToGo && !p.isOpenItem;
+      if (needsToGoToggle) markPendingToGo([op.entityId], true);
       try {
         let data: any;
         let error: any;
@@ -424,6 +446,66 @@ export function makeOpHandlers(
         console.log(
           `[LF] ✓ ${rpcName} item=${op.entityId} order=${p.orderId} existed=${!!data?.already_existed}`,
         );
+
+        // Regular items: add_order_item_v5 has no p_is_to_go and the column
+        // defaults false, so TO GO rides a second call — the local-first twin
+        // of addItemToBackend's to-go reconcile. Without it the flag never
+        // reached the server: the KDS ticket had no TO GO pill, and the
+        // re-fetch after the kitchen send wiped the tablet's badge too.
+        //
+        // BEFORE the bind below, on purpose. A bound line is fair game for
+        // the kitchen send, so binding first let a Send in the gap route the
+        // ticket without TO GO (and log the row as "not synced", since its op
+        // was still running). Unbound, the send treats the line as a
+        // straggler and routes it once this op completes. A retry replays the
+        // add as a no-op (same row id) and this call again.
+        //
+        // Bounded, though: holding the line back must never cost the food. A
+        // flag that keeps failing is handed to the durable to-go queue and
+        // the line binds anyway.
+        if (needsToGoToggle) {
+          try {
+            const { error: toGoError } = await client.rpc(
+              "toggle_to_go_order_items",
+              { p_order_item_ids: [op.entityId], p_is_to_go: true },
+            );
+            if (toGoError) throw toGoError;
+            console.log(`[LF] ✓ to-go item=${op.entityId}`);
+          } catch (toGoErr) {
+            const outcome = rpcError("toggle_to_go_order_items", toGoErr);
+            if (
+              outcome.kind === "retry" &&
+              op.attempts < TO_GO_HOLD_ATTEMPTS
+            ) {
+              return outcome;
+            }
+            if (outcome.kind === "retry") {
+              // Keeps the pending guard and retries on its own schedule.
+              const { OrderService } =
+                require("@/services/orderService") as typeof import("@/services/orderService");
+              void OrderService.toggleToGoOnItems(client, [op.entityId], true, {
+                localOrderId: p.orderId,
+                localItemIds: p.cartItemId ? [p.cartItemId] : undefined,
+              }).catch(() => {});
+            } else {
+              // Permanent: the item is on the server, just not flagged. Drop
+              // the guard so the tablet shows what the kitchen will see.
+              clearPendingToGo([op.entityId]);
+            }
+            try {
+              Sentry.captureMessage("[LF] to-go flag not applied with add", {
+                level: "warning",
+                tags: { lf_event: "to_go_not_applied" },
+                extra: {
+                  item_id: op.entityId,
+                  order_id: p.orderId,
+                  reason:
+                    outcome.kind === "rejected" ? outcome.reason : outcome.kind,
+                },
+              });
+            } catch {}
+          }
+        }
 
         // NOW the server has the row, so the cart line may advertise it.
         // Every downstream path (kitchen send, coursing, seat assignment)
@@ -542,6 +624,23 @@ export function makeOpHandlers(
         return { kind: "synced" };
       } catch (error) {
         return rpcError("replace_order_item_modifiers_v2", error);
+      }
+    },
+
+    toggle_to_go: async (op: ClaimedOp): Promise<DrainOutcome> => {
+      const p = op.payload as ToggleToGoPayload;
+      console.log(
+        `[LF] → toggle_to_go_order_items item=${p.itemId} to_go=${p.isToGo}`,
+      );
+      try {
+        const { error } = await client.rpc("toggle_to_go_order_items", {
+          p_order_item_ids: [p.itemId],
+          p_is_to_go: p.isToGo,
+        });
+        if (error) return rpcError("toggle_to_go_order_items", error);
+        return { kind: "synced" };
+      } catch (error) {
+        return rpcError("toggle_to_go_order_items", error);
       }
     },
 

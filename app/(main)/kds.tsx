@@ -2624,7 +2624,8 @@ const KitchenDisplayScreen = () => {
     }
     clearStationSession();
     clearStationData();
-    replaceRoute("(auth)", "pin-login");
+    // KDS has no PIN step; pick a station again to restart it.
+    replaceRoute("(auth)", "station-select");
   }, [stationSessionId, selectedStore?.id, supabase, clearStationSession]);
 
   // Triple-tap station name → logout
@@ -4371,6 +4372,9 @@ const KitchenDisplayScreen = () => {
                Card Pressables capture their own taps. */
             onPressFooter={handleClearFocus}
             footerHeight={s(80)}
+            // Same skeleton as the loading state, kept up until the cards on
+            // screen are measured so the board doesn't paint at estimates.
+            placeholder={renderSkeletons()}
           />
         </View>
       )}

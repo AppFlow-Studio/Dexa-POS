@@ -57,9 +57,15 @@ const flushFrames = () =>
 
 function mountBoard(
   tickets: KDSTicket[],
-  opts: { columns?: number; height?: number; namespace?: string } = {},
+  opts: {
+    columns?: number;
+    height?: number;
+    namespace?: string;
+    placeholder?: React.ReactNode;
+  } = {},
 ) {
   const props = {
+    placeholder: opts.placeholder,
     columns: opts.columns ?? 3,
     renderCard,
     estimateHeight: () => opts.height ?? 100,
@@ -197,5 +203,63 @@ describe("KDSTicketBoard windowing", () => {
 
     const second = mountBoard(tickets, { namespace });
     expect(positions(second.renderer).t3).toEqual({ left: 0, top: 180 });
+  });
+});
+
+describe("KDSTicketBoard first paint", () => {
+  const slotOf = (renderer: Renderer, id: string) =>
+    renderer.root
+      .findAllByType(View)
+      .find(
+        (v: Instance) =>
+          v.props.onLayout &&
+          v.findAllByType(CardBody)[0]?.props.ticket.ticket_id === id,
+      )!;
+  const measure = (renderer: Renderer, id: string, height: number) =>
+    act(() =>
+      slotOf(renderer, id).props.onLayout({ nativeEvent: { layout: { height } } }),
+    );
+  const opacityOf = (renderer: Renderer, id: string) => {
+    let node: Instance | null = slotOf(renderer, id);
+    while (node && node.props.style?.position !== "absolute") node = node.parent;
+    return node!.props.style.opacity;
+  };
+  const hasPlaceholder = (renderer: Renderer) =>
+    renderer.root.findAllByProps({ testID: "placeholder" }).length > 0;
+
+  it("covers the board and hides cards until the cards on screen are measured", () => {
+    const { renderer } = mountBoard(makeTickets(3), {
+      placeholder: <View testID="placeholder" />,
+    });
+    expect(hasPlaceholder(renderer)).toBe(true);
+    expect(opacityOf(renderer, "t0")).toBe(0);
+
+    measure(renderer, "t0", 140);
+    measure(renderer, "t1", 120);
+    flushFrames();
+    // t2 still sits at its estimate.
+    expect(hasPlaceholder(renderer)).toBe(true);
+
+    measure(renderer, "t2", 160);
+    flushFrames();
+    expect(hasPlaceholder(renderer)).toBe(false);
+    expect(["t0", "t1", "t2"].map((id) => opacityOf(renderer, id))).toEqual([1, 1, 1]);
+  });
+
+  it("hides a new card until it is measured, without bringing the placeholder back", () => {
+    const tickets = makeTickets(3);
+    const { renderer, update } = mountBoard(tickets, {
+      placeholder: <View testID="placeholder" />,
+    });
+    tickets.forEach((t) => measure(renderer, t.ticket_id, 120));
+    flushFrames();
+
+    update([...tickets, { ticket_id: "new" } as KDSTicket]);
+    expect(hasPlaceholder(renderer)).toBe(false);
+    expect(opacityOf(renderer, "new")).toBe(0);
+
+    measure(renderer, "new", 130);
+    flushFrames();
+    expect(opacityOf(renderer, "new")).toBe(1);
   });
 });

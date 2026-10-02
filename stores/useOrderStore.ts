@@ -10607,6 +10607,9 @@ export const useOrderStore = create<OrderState>()(
                     mods: updatedItem.customizations?.modifiers,
                     addons: updatedItem.customizations?.addOns,
                   });
+                const toGoChanged =
+                  Boolean(originalItem?.is_to_go) !==
+                  Boolean(updatedItem.is_to_go);
 
                 const lfOrderId = order.db_order_id ?? activeOrderId;
                 void (async () => {
@@ -10635,6 +10638,9 @@ export const useOrderStore = create<OrderState>()(
                       : undefined,
                     modifiers: modsChanged
                       ? (flattenModifiersForRpc(updatedItem) ?? [])
+                      : undefined,
+                    isToGo: toGoChanged
+                      ? Boolean(updatedItem.is_to_go)
                       : undefined,
                   });
                   if (!res.ok) {

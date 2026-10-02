@@ -740,8 +740,10 @@ const SeatPill = memo(function SeatPill({
 // set the local flag; OrderService.toggleToGoOnItems marks the toggle pending
 // so an in-flight broadcast re-fetch won't clobber the optimistic value, and a
 // later re-fetch reconciles the server state. If the item has no db id yet, the
-// add-time reconcile in useOrderStore.addItemToBackend fires the toggle once the
-// id lands, so the change is never lost. Shared by the normal-item AND open-item
+// add carries the flag instead: the add-time reconcile in
+// useOrderStore.addItemToBackend (legacy), or on the local-first path
+// editLocalItem folds it into the queued add (or queues a toggle_to_go op behind
+// it), so the change is never lost. Shared by the normal-item AND open-item
 // save branches so they can't drift — that drift is exactly how open items ended
 // up showing [TO GO] locally while is_to_go stayed false on the server.
 const persistToGoIfChanged = (

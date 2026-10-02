@@ -320,9 +320,14 @@ const StationsScreen = () => {
           >
             <User size={s(12)} color={colors.label} />
             <Text style={{ fontSize: s(11), color: colors.label, marginLeft: s(6) }}>
-              In use by {station.current_session.staff_name}
-              {station.current_session.device_name &&
-                ` on ${station.current_session.device_name}`}
+              In use by{' '}
+              {station.current_session.staff_name
+                ? `${station.current_session.staff_name}${
+                    station.current_session.device_name
+                      ? ` on ${station.current_session.device_name}`
+                      : ''
+                  }`
+                : station.current_session.device_name ?? 'another device'}
             </Text>
           </View>
         )}

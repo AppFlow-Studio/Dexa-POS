@@ -1,7 +1,10 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { useStationSignIn } from "@/hooks/useStationSignIn";
+import { isUnattendedStation, resolvePostLoginRoute } from "@/lib/authFlow";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { createSupabaseClient } from "@/lib/supabase";
 import { colors, spinnerColor } from "@/lib/theme";
+import { toastService } from "@/lib/toastService";
 import { useUiScale } from "@/lib/uiScale";
 import {
   fetchLocationStationsWithBillingGate,
@@ -154,10 +157,12 @@ const StationSelectItem = ({
               >
                 <User size={s(11)} color={colors.muted} />
                 <Text style={{ fontSize: s(11), color: colors.muted }}>
-                  {station.current_session.staff_name}
-                  {station.current_session.device_name
-                    ? ` · ${station.current_session.device_name}`
-                    : ""}
+                  {[
+                    station.current_session.staff_name,
+                    station.current_session.device_name,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </Text>
               </View>
             )}
@@ -265,6 +270,10 @@ const StationSelectScreen = () => {
   const [stationToTakeover, setStationToTakeover] = useState<Station | null>(
     null,
   );
+  const [startingStationId, setStartingStationId] = useState<string | null>(
+    null,
+  );
+  const { startStation } = useStationSignIn();
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ["stations", selectedStore?.id],
@@ -293,27 +302,79 @@ const StationSelectScreen = () => {
     setShowTakeoverConfirm(true);
   };
 
-  const handleContinue = () => {
-    const station = stations?.find((s) => s.id === selectedStationId);
-    if (station) {
-      setSelectedStation(stationToSelectedStation(station));
+  // KDS and kiosk stations start right here, without a staff PIN; every other
+  // station signs in with a PIN next.
+  const openStation = async (station: Station, forceTakeover: boolean) => {
+    setSelectedStation(stationToSelectedStation(station));
+    const goToPinLogin = () =>
       router.push({
         pathname: "/pin-login",
-        params: { forceTakeover: "false" },
+        params: { forceTakeover: forceTakeover ? "true" : "false" },
       });
+    if (!isUnattendedStation(station.station_type)) {
+      goToPinLogin();
+      return;
     }
+    if (!selectedStore || startingStationId) return;
+
+    setStartingStationId(station.id);
+    const result = await startStation({
+      locationId: selectedStore.id,
+      stationId: station.id,
+      forceTakeover,
+    });
+    setStartingStationId(null);
+
+    switch (result.outcome) {
+      case "started":
+        replaceRoute("(main)", resolvePostLoginRoute(station.station_type));
+        return;
+      case "needs_pin":
+        goToPinLogin();
+        return;
+      case "in_use":
+        setStationToTakeover({
+          ...station,
+          current_session: result.currentSession ?? station.current_session,
+        });
+        setShowTakeoverConfirm(true);
+        return;
+      case "failed":
+        toastService.show({
+          title: result.title,
+          message: result.message,
+          type: "error",
+        });
+        return;
+    }
+  };
+
+  const handleContinue = () => {
+    const station = stations?.find((s) => s.id === selectedStationId);
+    if (station) void openStation(station, false);
   };
 
   const handleTakeoverConfirm = () => {
     if (stationToTakeover) {
-      setSelectedStation(stationToSelectedStation(stationToTakeover));
       setShowTakeoverConfirm(false);
-      router.push({
-        pathname: "/pin-login",
-        params: { forceTakeover: "true" },
-      });
+      void openStation(stationToTakeover, true);
     }
   };
+
+  const takeoverNeedsPin = !isUnattendedStation(
+    stationToTakeover?.station_type,
+  );
+  const takeoverHolder =
+    stationToTakeover?.current_session?.staff_name ??
+    stationToTakeover?.current_session?.device_name ??
+    null;
+  const takeoverDescription = takeoverNeedsPin
+    ? takeoverHolder
+      ? `Station is used by ${takeoverHolder}. You must enter your PIN to take over and end their session.`
+      : "Station is in use. You must enter your PIN to take over."
+    : takeoverHolder
+      ? `Station is used by ${takeoverHolder}. Taking over ends the session on that device.`
+      : "Station is in use on another device. Taking over ends that session.";
 
   if (isLoading) {
     return (
@@ -632,15 +693,21 @@ const StationSelectScreen = () => {
       {/* Continue button */}
       <TouchableOpacity
         onPress={handleContinue}
-        disabled={!selectedStationId}
+        disabled={!selectedStationId || !!startingStationId}
         style={{
           marginTop: s(14),
           backgroundColor: selectedStationId ? colors.teal : colors.teal + "30",
           borderRadius: s(10),
           paddingVertical: s(11),
           alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "row",
+          gap: s(8),
         }}
       >
+        {startingStationId ? (
+          <ActivityIndicator size="small" color={colors.onSolid} />
+        ) : null}
         <Text
           style={{
             fontSize: s(13),
@@ -648,7 +715,7 @@ const StationSelectScreen = () => {
             color: selectedStationId ? colors.onSolid : colors.muted,
           }}
         >
-          Continue
+          {startingStationId ? "Starting…" : "Continue"}
         </Text>
       </TouchableOpacity>
 
@@ -694,12 +761,8 @@ const StationSelectScreen = () => {
         onClose={() => setShowTakeoverConfirm(false)}
         onConfirm={handleTakeoverConfirm}
         title="Take Over Station?"
-        description={
-          stationToTakeover?.current_session
-            ? `Station is used by ${stationToTakeover.current_session.staff_name}. You must enter your PIN to take over and end their session.`
-            : "Station is in use. You must enter your PIN to take over."
-        }
-        confirmText="Proceed to PIN"
+        description={takeoverDescription}
+        confirmText={takeoverNeedsPin ? "Proceed to PIN" : "Take Over"}
         variant="destructive"
       />
     </View>

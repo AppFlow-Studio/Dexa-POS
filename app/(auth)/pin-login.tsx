@@ -509,15 +509,19 @@ const PinLoginScreen = () => {
 
         if (response.error_code === "STATION_IN_USE") {
           setPendingTakeoverPin(pin);
+          const holder =
+            response.current_session?.staff_name ??
+            response.current_session?.device_name ??
+            undefined;
           showDialog(
             "Take Over Station?",
-            response.current_session
-              ? `Station is being used by ${response.current_session.staff_name}. Taking over uses your PIN to end their session.`
+            holder
+              ? `Station is being used by ${holder}. Taking over uses your PIN to end their session.`
               : "Station is in use. Taking over uses your PIN to end the session.",
             "warning",
             {
               showTakeover: true,
-              currentUser: response.current_session?.staff_name,
+              currentUser: holder,
             },
           );
           setPin("");
