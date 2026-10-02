@@ -92,7 +92,7 @@ export async function renderDocumentToStarCommands(
     // Impact (dot-matrix) printers print text with their own fonts. Their head
     // is far narrower than the 576-dot raster below, so a rendered image comes
     // out enlarged with the right side cut off.
-    const fmt = createFormatTracker(printerBuilder, StarXpandCommand);
+    const fmt = createFormatTracker(printerBuilder, StarXpandCommand, true);
     for (const node of doc.nodes) {
       await renderNode(printerBuilder, node, w, options, StarXpandCommand, fmt);
     }
@@ -555,10 +555,13 @@ async function renderNode(
 // FORMAT TRACKER — only emits style commands when values actually change
 // ============================================================================
 
+// forceBold: every line emphasized. On impact heads that is double-strike — the
+// only darkness control the SDK exposes; single-strike text prints faded.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createFormatTracker(pb: any, sdk: any): FormatTracker {
+function createFormatTracker(pb: any, sdk: any, forceBold = false): FormatTracker {
+  if (forceBold) pb.styleBold(true);
   const current = {
-    bold: false,
+    bold: forceBold,
     underline: false,
     inverted: false,
     magX: 1,
@@ -587,8 +590,9 @@ function createFormatTracker(pb: any, sdk: any): FormatTracker {
     setFormat(format: PrintTextFormat | undefined) {
       if (!format) return;
 
-      if (!!format.bold !== current.bold) {
-        current.bold = !!format.bold;
+      const bold = forceBold || !!format.bold;
+      if (bold !== current.bold) {
+        current.bold = bold;
         pb.styleBold(current.bold);
       }
       if (!!format.underline !== current.underline) {
